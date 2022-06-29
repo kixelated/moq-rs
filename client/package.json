@@ -1,0 +1,13 @@
+{
+  "source": "src/index.html",
+  "scripts": {
+    "serve": "parcel serve --https --host localhost.warp.demo --port 4444",
+    "build": "parcel build",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@parcel/validator-typescript": "^2.6.0",
+    "parcel": "^2.6.0",
+    "typescript": ">=3.0.0"
+  }
+}
