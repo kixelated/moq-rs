@@ -3,8 +3,7 @@ Segmented live media delivery protocol utilizing QUIC streams. See the [Warp dra
 
 Warp works by delivering each audio and video segment as a separate QUIC stream. These streams are assigned a priority such that old video will arrive last and can be dropped. This avoids buffering in many cases, offering the viewer a potentially better experience.
 
-This demo includes a button that sends a custom message to throttle the network. This is not a realistic network simulation; you should evaluate Warp on real networks.
-
+# Limitations
 ## Browser Support
 This demo currently only works on Chrome for two reasons:
 
@@ -12,6 +11,34 @@ This demo currently only works on Chrome for two reasons:
 2. [Media underflow behavior](https://github.com/whatwg/html/issues/6359).
 
 The ability to skip video abuses the fact that Chrome can play audio without video for up to 3 seconds (hardcoded!) when using MSE. It is possible to use something like WebCodecs instead... but that's still Chrome only at the moment.
+
+## Streaming
+This demo works by reading pre-encoded media and sleeping based on media timestamps. Obviously this is not a live stream; you should plug in your own encoder or source.
+
+The media is encoded on disk as a LL-DASH playlist. There's a crude parser and I haven't used DASH before so don't expect it to work with arbitrary inputs.
+
+## QUIC Implementation
+This demo uses a fork of [quic-go](https://github.com/lucas-clemente/quic-go). There are two critical features missing upstream:
+
+1. [WebTransport](https://github.com/lucas-clemente/quic-go/issues/3191)
+2. [Prioritization](https://github.com/lucas-clemente/quic-go/pull/3442)
+
+## Congestion Control
+This demo uses a single rendition. A production implementation will want to:
+
+1. Change the rendition bitrate to match the estimated bitrate.
+2. Switch renditions at segment boundaries based on the estimated bitrate.
+3. or both!
+
+Also, quic-go ships with the default New Reno congestion control. Something like [BBRv2](https://github.com/lucas-clemente/quic-go/issues/341) will work much better for live video as it limits RTT growth.
+
+## Congestion Simulation
+This demo will artificially limit the socket to 4Mb/s and 250ms RTT using a crude throttling mechanism. Each time you click the "Throttle" button, the bitrate is cut in half for a short duration to simulate congestion.
+
+This is NOT how congestion works on real networks. It is meant to demonstrate how prioritizing streams allows playback to recover without buffering. Do not make any conclusions on how Warp or any other network protocol behaves under such crude simulations.
+
+This limit applies to the entire socket so multiple connections will fight for limited bandwidth. You'll want to raise or remove the default limit if you want to test multiple simultaneous connections.
+
 
 # Setup
 ## Requirements
@@ -28,7 +55,7 @@ Download your favorite media file:
 wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O media/combined.mp4
 ```
 
-Use ffmpeg to create a LL-DASH playlist. This creates a segment every 2s and MP4 fragment every 50ms.
+Use ffmpeg to create a LL-DASH playlist. This creates a segment every 2s and MP4 fragment every 10ms.
 ```
 ffmpeg -i media/combined.mp4 -f dash -use_timeline 0 -r:v 24 -g:v 48 -keyint_min:v 48 -sc_threshold:v 0 -tune zerolatency -streaming 1 -ldash 1 -seg_duration 2 -frag_duration 0.01 -frag_type duration media/fragmented.mpd
 ```
@@ -80,6 +107,7 @@ The web assets need to be hosted with a HTTPS server. If you're using a self-sig
 
 ```
 cd client
+yarn install
 yarn serve
 ```
 
