@@ -102,11 +102,11 @@ cd server
 go run ./warp-server
 ```
 
-## Web
+## Web Player
 The web assets need to be hosted with a HTTPS server. If you're using a self-signed certificate, you will need to ignore the security warning in Chrome (Advanced -> proceed to localhost.warp.demo). This can be avoided by adding your certificate to the root CA but I'm too lazy to do that.
 
 ```
-cd client
+cd player
 yarn install
 yarn serve
 ```
