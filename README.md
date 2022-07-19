@@ -65,7 +65,7 @@ You can increase the `frag_duration` (microseconds) to slightly reduce the file 
 ## TLS
 Unfortunately, QUIC mandates TLS and makes local development difficult.
 
-If you have a valid certificate you can use it instead of self-signing. The go binaries take a `-cert` and `-key` argument. Skip the remaining steps in this section and use your hostname instead of `localhost.warp.demo`.
+If you have a valid certificate you can use it instead of self-signing. The go binaries take a `-tls-cert` and `-tls-key` argument. Skip the remaining steps in this section and use your hostname instead of `localhost.warp.demo`.
 
 ### Self-Sign
 Generate a self-signed certificate for local testing:
@@ -112,3 +112,5 @@ yarn serve
 ```
 
 These can be accessed on `https://localhost.warp.demo:4444` by default.
+
+If you use a custom domain for the Warp server, make sure to override the server URL with the `url` query string parameter, e.g. `https://localhost:4444/?url=https://localhost:4443`.
