@@ -20,7 +20,7 @@ The media is encoded on disk as a LL-DASH playlist. There's a crude parser and I
 ## QUIC Implementation
 This demo uses a fork of [quic-go](https://github.com/lucas-clemente/quic-go). There are two critical features missing upstream:
 
-1. [WebTransport](https://github.com/lucas-clemente/quic-go/issues/3191)
+1. ~~[WebTransport](https://github.com/lucas-clemente/quic-go/issues/3191)~~
 2. [Prioritization](https://github.com/lucas-clemente/quic-go/pull/3442)
 
 ## Congestion Control
@@ -31,13 +31,6 @@ This demo uses a single rendition. A production implementation will want to:
 3. or both!
 
 Also, quic-go ships with the default New Reno congestion control. Something like [BBRv2](https://github.com/lucas-clemente/quic-go/issues/341) will work much better for live video as it limits RTT growth.
-
-## Congestion Simulation
-This demo will artificially limit the socket to 4Mb/s and 250ms RTT using a crude throttling mechanism. Each time you click the "Throttle" button, the bitrate is cut in half for a short duration to simulate congestion.
-
-This is NOT how congestion works on real networks. It is meant to demonstrate how prioritizing streams allows playback to recover without buffering. Do not make any conclusions on how Warp or any other network protocol behaves under such crude simulations.
-
-This limit applies to the entire socket so multiple connections will fight for limited bandwidth. You'll want to raise or remove the default limit if you want to test multiple simultaneous connections.
 
 
 # Setup
@@ -65,45 +58,25 @@ You can increase the `frag_duration` (microseconds) to slightly reduce the file 
 ## TLS
 Unfortunately, QUIC mandates TLS and makes local development difficult.
 
-If you have a valid certificate you can use it instead of self-signing. The go binaries take a `-cert` and `-key` argument. Skip the remaining steps in this section and use your hostname instead of `localhost.warp.demo`.
+If you have a valid certificate you can use it instead of self-signing. The go binaries take a `-cert` and `-key` argument. Skip the remaining steps in this section.
 
-### Self-Sign
-Generate a self-signed certificate for local testing:
+Otherwise, use [mkcert](https://github.com/FiloSottile/mkcert) to install a self-signed CA:
 ```
-./cert/generate
-```
-
-This creates `cert/localhost.warp.demo.crt` and `cert/localhost.warp.demo.key`.
-
-### Origin
-To have the browser accept our self-signed certificate, you'll need to add an entry to `/etc/hosts`.
-
-```
-echo '127.0.0.1 localhost.warp.demo' | sudo tee -a /etc/hosts
+mkcert -install
 ```
 
-### Chrome
-Now we need to make Chrome accept these certificates, which normally would involve trusting a root CA but this was not working with WebTransport when I last tried.
-
-Instead, we need to run a *fresh instance* of Chrome, instructing it to allow our self-signed certificate. This command will not work if Chrome is already running, so it's easier to use Chrome Canary instead. This command also needs to be executed in the project root because it invokes `./cert/fingerprint`.
-
-Launch a new instance of Chrome Canary:
-```
-/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary --origin-to-force-quic-on="localhost.warp.demo:4443" --ignore-certificate-errors-spki-list="`./cert/fingerprint`" https://localhost.warp.demo:4444
-```
-
-Note that this will open our web server on `localhost.warp.demo:4444`, which is started in the next section.
+With no arguments, the server will generate self-signed cert using this root CA.
 
 ## Server
 The Warp server defaults to listening on UDP 4443. It supports HTTP/3 and WebTransport, pushing media over WebTransport streams once a connection has been established. A more refined implementation would load content based on the WebTransport URL or some other messaging scheme.
 
 ```
 cd server
-go run ./warp-server
+go run ./server
 ```
 
 ## Web Player
-The web assets need to be hosted with a HTTPS server. If you're using a self-signed certificate, you will need to ignore the security warning in Chrome (Advanced -> proceed to localhost.warp.demo). This can be avoided by adding your certificate to the root CA but I'm too lazy to do that.
+The web assets need to be hosted with a HTTPS server. If you're using a self-signed certificate, you will need to ignore the security warning in Chrome (Advanced -> proceed to localhost). This can be avoided by adding your certificate to the root CA but I'm too lazy to do that.
 
 ```
 cd player
@@ -111,4 +84,14 @@ yarn install
 yarn serve
 ```
 
-These can be accessed on `https://localhost.warp.demo:4444` by default.
+These can be accessed on `https://127.0.0.1:4444` by default.
+
+## Chrome
+Now we need to make Chrome accept these certificates, which normally would involve trusting a root CA but this was not working with WebTransport when I last tried.
+
+Instead, we need to run a *fresh instance* of Chrome, instructing it to allow our self-signed certificate. This command will not work if Chrome is already running, so it's easier to use Chrome Canary instead.
+
+Launch a new instance of Chrome Canary:
+```
+/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary --allow-insecure-localhost --origin-to-force-quic-on=127.0.0.1:4443 https://127.0.0.1:4444
+```

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,8 +11,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/alta/insecure"
 	"github.com/kixelated/invoker"
-	"github.com/kixelated/warp-sample/internal/warp"
+	"github.com/kixelated/warp-demo/server/internal/warp"
 )
 
 func main() {
@@ -38,9 +40,9 @@ func main() {
 }
 
 func run(ctx context.Context) (err error) {
-	addr := flag.String("addr", ":4443", "HTTPS server address")
-	cert := flag.String("tls-cert", "../cert/localhost.warp.demo.crt", "TLS certificate file path")
-	key := flag.String("tls-key", "../cert/localhost.warp.demo.key", "TLS certificate file path")
+	addr := flag.String("addr", "127.0.0.1:4443", "HTTPS server address")
+	cert := flag.String("tls-cert", "", "TLS certificate file path")
+	key := flag.String("tls-key", "", "TLS certificate file path")
 	logDir := flag.String("log-dir", "", "logs will be written to the provided directory")
 
 	dash := flag.String("dash", "../media/fragmented.mpd", "DASH playlist path")
@@ -52,11 +54,24 @@ func run(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to open media: %w", err)
 	}
 
+	var tlsCert tls.Certificate
+
+	if *cert != "" && *key != "" {
+		tlsCert, err = tls.LoadX509KeyPair(*cert, *key)
+		if err != nil {
+			return fmt.Errorf("failed to load TLS certificate: %w", err)
+		}
+	} else {
+		tlsCert, err = insecure.Cert()
+		if err != nil {
+			return fmt.Errorf("failed to create insecure cert: %w", err)
+		}
+	}
+
 	config := warp.ServerConfig{
-		Addr:     *addr,
-		CertFile: *cert,
-		KeyFile:  *key,
-		LogDir:   *logDir,
+		Addr:   *addr,
+		Cert:   &tlsCert,
+		LogDir: *logDir,
 	}
 
 	ws, err := warp.NewServer(config, media)
