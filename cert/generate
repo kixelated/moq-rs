@@ -3,17 +3,4 @@ set -euxo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Generate a new RSA key/cert for local development
-HOST="localhost.warp.demo"
-
-openssl req \
-	-x509 \
-	-out "${HOST}.crt" \
-	-keyout "${HOST}.key" \
-	-newkey rsa:2048 \
-	-nodes \
-	-sha256 \
-	-subj "/CN=${HOST}" \
-	-extensions EXT \
-	-config <( \
-		printf "[dn]\nCN=${HOST}\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:${HOST}\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+mkcert -cert-file localhost.crt -key-file localhost.key localhost 127.0.0.1 ::1

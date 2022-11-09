@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-HOST="localhost.warp.demo"
+HOST="localhost"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 

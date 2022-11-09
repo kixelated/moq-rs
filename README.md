@@ -50,7 +50,7 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 
 Use ffmpeg to create a LL-DASH playlist. This creates a segment every 2s and MP4 fragment every 10ms.
 ```
-ffmpeg -i media/source.mp4 -f dash -use_timeline 0 -r:v 24 -g:v 48 -keyint_min:v 48 -sc_threshold:v 0 -tune zerolatency -streaming 1 -ldash 1 -seg_duration 2 -frag_duration 0.01 -frag_type duration media/fragmented.mpd
+ffmpeg -i media/source.mp4 -f dash -use_timeline 0 -r:v 24 -g:v 48 -keyint_min:v 48 -sc_threshold:v 0 -tune zerolatency -streaming 1 -ldash 1 -seg_duration 2 -frag_duration 0.01 -frag_type duration media/playlist.mpd
 ```
 
 You can increase the `frag_duration` (microseconds) to slightly reduce the file size in exchange for higher latency.
@@ -72,7 +72,7 @@ The Warp server defaults to listening on UDP 4443. It supports HTTP/3 and WebTra
 
 ```
 cd server
-go run ./server
+go run main.go
 ```
 
 ## Web Player

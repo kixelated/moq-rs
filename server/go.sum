@@ -10,8 +10,6 @@ git.apache.org/thrift.git v0.0.0-20180902110319-2566ecd5d999/go.mod h1:fPE2ZNJGy
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/abema/go-mp4 v0.7.2 h1:ugTC8gfEmjyaDKpXs3vi2QzgJbDu9B8m6UMMIpbYbGg=
 github.com/abema/go-mp4 v0.7.2/go.mod h1:vPl9t5ZK7K0x68jh12/+ECWBCXoWuIDtNgPtU2f04ws=
-github.com/alta/insecure v0.0.0-20210905232608-f5263498f0b2 h1:EywIbCj4slTFpT1rcE7g2MXFwjT5CynfVfwsERs+yuo=
-github.com/alta/insecure v0.0.0-20210905232608-f5263498f0b2/go.mod h1:r6TOiezIAprr6kv8prNJ3SRKJKOVtcpizS1jU4RZdos=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239/go.mod h1:2FmKhYUyUczH0OGQWaF5ceTx0UBShxjsH6f8oGKYe2c=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBTaaSFSlLx/70C2HPIMNZpVV8+vt/A+FMnYP11g=
