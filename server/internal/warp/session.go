@@ -10,33 +10,29 @@ import (
 	"math"
 	"time"
 
-	"github.com/adriancable/webtransport-go"
 	"github.com/kixelated/invoker"
+	"github.com/marten-seemann/webtransport-go"
 )
 
 // A single WebTransport session
 type Session struct {
-	inner  *webtransport.Session
-	media  *Media
-	socket *Socket
-	audio  *MediaStream
-	video  *MediaStream
+	inner *webtransport.Session
+	media *Media
+	audio *MediaStream
+	video *MediaStream
 
 	streams invoker.Tasks
 }
 
-func NewSession(session *webtransport.Session, media *Media, socket *Socket) (s *Session, err error) {
+func NewSession(session *webtransport.Session, media *Media) (s *Session, err error) {
 	s = new(Session)
 	s.inner = session
 	s.media = media
-	s.socket = socket
 	return s, nil
 }
 
 func (s *Session) Run(ctx context.Context) (err error) {
-	// TODO validate the session before accepting it
-	s.inner.AcceptSession()
-	defer s.inner.CloseSession()
+	defer s.inner.Close()
 
 	s.audio, s.video, err = s.media.Start()
 	if err != nil {
@@ -49,8 +45,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 
 func (s *Session) runAccept(ctx context.Context) (err error) {
 	for {
-		// TODO context support :(
-		stream, err := s.inner.AcceptStream()
+		stream, err := s.inner.AcceptStream(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to accept bidirectional stream: %w", err)
 		}
@@ -69,12 +64,12 @@ func (s *Session) runAcceptUni(ctx context.Context) (err error) {
 		}
 
 		s.streams.Add(func(ctx context.Context) (err error) {
-			return s.handleStream(ctx, &stream)
+			return s.handleStream(ctx, stream)
 		})
 	}
 }
 
-func (s *Session) handleStream(ctx context.Context, stream *webtransport.ReceiveStream) (err error) {
+func (s *Session) handleStream(ctx context.Context, stream webtransport.ReceiveStream) (err error) {
 	defer func() {
 		if err != nil {
 			stream.CancelRead(1)
@@ -270,7 +265,5 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment, init 
 }
 
 func (s *Session) setThrottle(msg *MessageThrottle) {
-	s.socket.SetWriteRate(msg.Rate)
-	s.socket.SetWriteBuffer(msg.Buffer)
-	s.socket.SetWriteLoss(msg.Loss)
+	// TODO
 }

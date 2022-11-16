@@ -2,6 +2,7 @@ package warp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -10,36 +11,29 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/adriancable/webtransport-go"
 	"github.com/kixelated/invoker"
 	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/logging"
 	"github.com/lucas-clemente/quic-go/qlog"
+	"github.com/marten-seemann/webtransport-go"
 )
 
 type Server struct {
-	inner  *webtransport.Server
-	media  *Media
-	socket *Socket
+	inner *webtransport.Server
+	media *Media
 
 	sessions invoker.Tasks
 }
 
 type ServerConfig struct {
-	Addr     string
-	CertFile string
-	KeyFile  string
-	LogDir   string
+	Addr   string
+	Cert   *tls.Certificate
+	LogDir string
 }
 
 func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 	s = new(Server)
-
-	// Listen using a custom socket that simulates congestion.
-	s.socket, err = NewSocket(config.Addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create socket: %w", err)
-	}
 
 	quicConfig := &quic.Config{}
 
@@ -57,26 +51,34 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 		})
 	}
 
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{*config.Cert},
+	}
+
+	mux := http.NewServeMux()
+
 	s.inner = &webtransport.Server{
-		Listen:     s.socket,
-		TLSCert:    webtransport.CertFile{Path: config.CertFile},
-		TLSKey:     webtransport.CertFile{Path: config.KeyFile},
-		QuicConfig: quicConfig,
+		H3: http3.Server{
+			TLSConfig:  tlsConfig,
+			QuicConfig: quicConfig,
+			Addr:       config.Addr,
+			Handler:    mux,
+		},
+		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
 	s.media = media
 
-	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-		session, ok := r.Body.(*webtransport.Session)
-		if !ok {
-			log.Print("http requests not supported")
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		session, err := s.inner.Upgrade(w, r)
+		if err != nil {
+			http.Error(w, "failed to upgrade session", 500)
 			return
 		}
 
-		ss, err := NewSession(session, s.media, s.socket)
+		ss, err := NewSession(session, s.media)
 		if err != nil {
-			// TODO handle better?
-			log.Printf("failed to create warp session: %v", err)
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
@@ -94,6 +96,16 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 	return s, nil
 }
 
+func (s *Server) runServe(ctx context.Context) (err error) {
+	return s.inner.ListenAndServe()
+}
+
+func (s *Server) runShutdown(ctx context.Context) (err error) {
+	<-ctx.Done()
+	s.inner.Close()
+	return ctx.Err()
+}
+
 func (s *Server) Run(ctx context.Context) (err error) {
-	return invoker.Run(ctx, s.inner.Run, s.socket.Run, s.sessions.Repeat)
+	return invoker.Run(ctx, s.runServe, s.runShutdown, s.sessions.Repeat)
 }

@@ -1,7 +1,7 @@
 {
   "source": "src/index.html",
   "scripts": {
-    "serve": "parcel serve --https --host localhost.warp.demo --port 4444",
+    "serve": "parcel serve --https --host localhost --port 4444 --cert ../cert/localhost.crt --key ../cert/localhost.key",
     "build": "parcel build",
     "check": "tsc --noEmit"
   },
