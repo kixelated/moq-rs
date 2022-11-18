@@ -123,8 +123,7 @@ func (s *Stream) WriteCancel(code webtransport.ErrorCode) {
 }
 
 func (s *Stream) SetPriority(prio int) {
-	// TODO
-	// s.inner.SetPriority(prio)
+	s.inner.SetPriority(prio)
 }
 
 func (s *Stream) Close() (err error) {

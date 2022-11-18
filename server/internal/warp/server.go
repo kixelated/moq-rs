@@ -76,21 +76,28 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 			return
 		}
 
-		ss, err := NewSession(session, s.media)
+		defer session.Close()
+
+		hijacker, ok := w.(http3.Hijacker)
+		if !ok {
+			log.Printf("unable to hijack connection")
+			return
+		}
+
+		conn := hijacker.Connection()
+
+		ss, err := NewSession(conn, session, s.media)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			log.Printf("failed to create session: %s", err)
 			return
 		}
 
 		// Run the session in parallel, logging errors instead of crashing
-		s.sessions.Add(func(ctx context.Context) (err error) {
-			err = ss.Run(ctx)
-			if err != nil {
-				log.Printf("terminated session: %s", err)
-			}
-
-			return nil
-		})
+		err = ss.Run(r.Context())
+		if err != nil {
+			log.Printf("terminated session: %s", err)
+			return
+		}
 	})
 
 	return s, nil

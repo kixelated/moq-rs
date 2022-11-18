@@ -16,6 +16,8 @@ import (
 )
 
 func main() {
+	invoker.Panic = true
+
 	err := run(context.Background())
 	if err == nil {
 		return
@@ -39,7 +41,7 @@ func main() {
 }
 
 func run(ctx context.Context) (err error) {
-	addr := flag.String("addr", "127.0.0.1:4443", "HTTPS server address")
+	addr := flag.String("addr", ":4443", "HTTPS server address")
 	cert := flag.String("tls-cert", "../cert/localhost.crt", "TLS certificate file path")
 	key := flag.String("tls-key", "../cert/localhost.key", "TLS certificate file path")
 	logDir := flag.String("log-dir", "", "logs will be written to the provided directory")

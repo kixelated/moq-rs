@@ -10,7 +10,7 @@ import { Message, MessageInit, MessageSegment } from "./message"
 export class Player {
 	mediaSource: MediaSource;
 
-	init: Map<number, InitParser>;
+	init: Map<string, InitParser>;
 	audio: Track;
 	video: Track;
 
@@ -89,27 +89,25 @@ export class Player {
 	}
 
 	sendThrottle() {
-		// TODO detect the incoming bitrate instead of hard-coding
-		const bitrate = 4 * 1024 * 1024 // 4Mb/s
+		let rate = 0;
 
-		// Right shift by throttle to divide by 2,4,8,16,etc each time
-		// Right shift by 3 more to divide by 8 to convert bits to bytes
-		// Right shift by another 2 to divide by 4 to get the number of bytes in a quarter of a second
-		let rate = bitrate >> (this.throttleCount + 3)
-		let buffer = bitrate >> (this.throttleCount + 5) // 250ms before dropping
+		if (this.throttleCount > 0) {
+			// TODO detect the incoming bitrate instead of hard-coding
+			// Right shift by throttle to divide by 2,4,8,16,etc each time
+			const bitrate = 4 * 1024 * 1024 // 4Mb/s
 
-		const str = formatBits(8*rate) + "/s"
-		this.throttleRef.textContent = `Throttle: ${ str }`;
+			rate = bitrate >> (this.throttleCount-1)
 
-		// NOTE: We don't use random packet loss because it's not a good simulator of how congestion works.
-		// Delay-based congestion control like BBR most ignores packet loss, rightfully so.
+			const str = formatBits(rate) + "/s"
+			this.throttleRef.textContent = `Throttle: ${ str }`;
+		} else {
+			this.throttleRef.textContent = "Throttle: none";
+		}
 
 		// Send the server a message to fake network congestion.
-		// This is done on the server side at the socket-level for maximum accuracy (impacts all packets).
 		this.sendMessage({
-			"x-throttle": {
-				rate: rate,
-				buffer: buffer,
+			"debug": {
+				max_bitrate: rate,
 			},
 		})
 	}
