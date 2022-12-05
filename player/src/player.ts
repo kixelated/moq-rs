@@ -242,7 +242,6 @@ export class Player {
 		const segment = new Segment(track.source, init, msg.timestamp)
 
 		// The track is responsible for flushing the segments in order
-		track.source.initialize(init)
 		track.add(segment)
 
 		/* TODO I'm not actually sure why this code doesn't work; something trips up the MP4 parser
