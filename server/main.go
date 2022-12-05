@@ -1,43 +1,21 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"strings"
 
 	"github.com/kixelated/invoker"
 	"github.com/kixelated/warp-demo/server/internal/warp"
 )
 
 func main() {
-	invoker.Panic = true
-
 	err := run(context.Background())
-	if err == nil {
-		return
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	log.Println(err)
-
-	var errPanic invoker.ErrPanic
-
-	// TODO use an interface
-	if errors.As(err, &errPanic) {
-		stack := string(errPanic.Stack())
-
-		scanner := bufio.NewScanner(strings.NewReader(stack))
-		for scanner.Scan() {
-			log.Println(scanner.Text())
-		}
-	}
-
-	os.Exit(1)
 }
 
 func run(ctx context.Context) (err error) {
