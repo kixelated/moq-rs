@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/marten-seemann/webtransport-go"
+	"github.com/kixelated/webtransport-go"
 )
 
 // Wrapper around quic.SendStream to make Write non-blocking.
@@ -118,7 +118,7 @@ func (s *Stream) WriteMessage(msg Message) (err error) {
 	return nil
 }
 
-func (s *Stream) WriteCancel(code webtransport.ErrorCode) {
+func (s *Stream) WriteCancel(code webtransport.StreamErrorCode) {
 	s.inner.CancelWrite(code)
 }
 

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/kixelated/invoker"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/marten-seemann/webtransport-go"
+	"github.com/kixelated/quic-go"
+	"github.com/kixelated/webtransport-go"
 )
 
 // A single WebTransport session
@@ -38,8 +38,6 @@ func NewSession(connection quic.Connection, session *webtransport.Session, media
 }
 
 func (s *Session) Run(ctx context.Context) (err error) {
-	defer s.inner.Close()
-
 	s.inits, s.audio, s.video, err = s.media.Start(s.conn.GetMaxBandwidth)
 	if err != nil {
 		return fmt.Errorf("failed to start media: %w", err)
