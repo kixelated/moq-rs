@@ -4,11 +4,15 @@ export interface Message {
 }
 
 export interface MessageInit {
-	id: number // integer id
+	id: string
 }
 
 export interface MessageSegment {
-	init: number      // integer id of the init segment
+	init: string // id of the init segment
 	timestamp: number // presentation timestamp in milliseconds of the first sample
 	// TODO track would be nice
+}
+
+export interface Debug {
+	max_bitrate: number
 }

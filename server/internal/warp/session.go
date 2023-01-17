@@ -7,40 +7,44 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"time"
 
 	"github.com/kixelated/invoker"
-	"github.com/marten-seemann/webtransport-go"
+	"github.com/kixelated/quic-go"
+	"github.com/kixelated/webtransport-go"
 )
 
 // A single WebTransport session
 type Session struct {
+	conn  quic.Connection
 	inner *webtransport.Session
+
 	media *Media
+	inits map[string]*MediaInit
 	audio *MediaStream
 	video *MediaStream
 
 	streams invoker.Tasks
 }
 
-func NewSession(session *webtransport.Session, media *Media) (s *Session, err error) {
+func NewSession(connection quic.Connection, session *webtransport.Session, media *Media) (s *Session, err error) {
 	s = new(Session)
+	s.conn = connection
 	s.inner = session
 	s.media = media
 	return s, nil
 }
 
 func (s *Session) Run(ctx context.Context) (err error) {
-	defer s.inner.Close()
-
-	s.audio, s.video, err = s.media.Start()
+	s.inits, s.audio, s.video, err = s.media.Start(s.conn.GetMaxBandwidth)
 	if err != nil {
 		return fmt.Errorf("failed to start media: %w", err)
 	}
 
 	// Once we've validated the session, now we can start accessing the streams
-	return invoker.Run(ctx, s.runAccept, s.runAcceptUni, s.runAudio, s.runVideo, s.streams.Repeat)
+	return invoker.Run(ctx, s.runAccept, s.runAcceptUni, s.runInit, s.runAudio, s.runVideo, s.streams.Repeat)
 }
 
 func (s *Session) runAccept(ctx context.Context) (err error) {
@@ -103,6 +107,8 @@ func (s *Session) handleStream(ctx context.Context, stream webtransport.ReceiveS
 			return fmt.Errorf("failed to read atom payload: %w", err)
 		}
 
+		log.Println("received message:", string(payload))
+
 		msg := Message{}
 
 		err = json.Unmarshal(payload, &msg)
@@ -110,26 +116,26 @@ func (s *Session) handleStream(ctx context.Context, stream webtransport.ReceiveS
 			return fmt.Errorf("failed to decode json payload: %w", err)
 		}
 
-		if msg.Throttle != nil {
-			s.setThrottle(msg.Throttle)
+		if msg.Debug != nil {
+			s.setDebug(msg.Debug)
 		}
 	}
 }
 
+func (s *Session) runInit(ctx context.Context) (err error) {
+	for _, init := range s.inits {
+		err = s.writeInit(ctx, init)
+		if err != nil {
+			return fmt.Errorf("failed to write init stream: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Session) runAudio(ctx context.Context) (err error) {
-	init, err := s.audio.Init(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to fetch init segment: %w", err)
-	}
-
-	// NOTE: Assumes a single init segment
-	err = s.writeInit(ctx, init, 1)
-	if err != nil {
-		return fmt.Errorf("failed to write init stream: %w", err)
-	}
-
 	for {
-		segment, err := s.audio.Segment(ctx)
+		segment, err := s.audio.Next(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get next segment: %w", err)
 		}
@@ -138,7 +144,7 @@ func (s *Session) runAudio(ctx context.Context) (err error) {
 			return nil
 		}
 
-		err = s.writeSegment(ctx, segment, 1)
+		err = s.writeSegment(ctx, segment)
 		if err != nil {
 			return fmt.Errorf("failed to write segment stream: %w", err)
 		}
@@ -146,19 +152,8 @@ func (s *Session) runAudio(ctx context.Context) (err error) {
 }
 
 func (s *Session) runVideo(ctx context.Context) (err error) {
-	init, err := s.video.Init(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to fetch init segment: %w", err)
-	}
-
-	// NOTE: Assumes a single init segment
-	err = s.writeInit(ctx, init, 2)
-	if err != nil {
-		return fmt.Errorf("failed to write init stream: %w", err)
-	}
-
 	for {
-		segment, err := s.video.Segment(ctx)
+		segment, err := s.video.Next(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get next segment: %w", err)
 		}
@@ -167,7 +162,7 @@ func (s *Session) runVideo(ctx context.Context) (err error) {
 			return nil
 		}
 
-		err = s.writeSegment(ctx, segment, 2)
+		err = s.writeSegment(ctx, segment)
 		if err != nil {
 			return fmt.Errorf("failed to write segment stream: %w", err)
 		}
@@ -175,7 +170,7 @@ func (s *Session) runVideo(ctx context.Context) (err error) {
 }
 
 // Create a stream for an INIT segment and write the container.
-func (s *Session) writeInit(ctx context.Context, init *MediaInit, id int) (err error) {
+func (s *Session) writeInit(ctx context.Context, init *MediaInit) (err error) {
 	temp, err := s.inner.OpenUniStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create stream: %w", err)
@@ -194,7 +189,7 @@ func (s *Session) writeInit(ctx context.Context, init *MediaInit, id int) (err e
 	stream.SetPriority(math.MaxInt)
 
 	err = stream.WriteMessage(Message{
-		Init: &MessageInit{Id: id},
+		Init: &MessageInit{Id: init.ID},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to write init header: %w", err)
@@ -209,7 +204,7 @@ func (s *Session) writeInit(ctx context.Context, init *MediaInit, id int) (err e
 }
 
 // Create a stream for a segment and write the contents, chunk by chunk.
-func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment, init int) (err error) {
+func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err error) {
 	temp, err := s.inner.OpenUniStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create stream: %w", err)
@@ -232,7 +227,7 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment, init 
 
 	err = stream.WriteMessage(Message{
 		Segment: &MessageSegment{
-			Init:      init,
+			Init:      segment.Init.ID,
 			Timestamp: ms,
 		},
 	})
@@ -264,6 +259,6 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment, init 
 	return nil
 }
 
-func (s *Session) setThrottle(msg *MessageThrottle) {
-	// TODO
+func (s *Session) setDebug(msg *MessageDebug) {
+	s.conn.SetMaxBandwidth(uint64(msg.MaxBitrate))
 }

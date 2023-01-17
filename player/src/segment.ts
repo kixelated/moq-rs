@@ -100,7 +100,8 @@ export class Segment {
 			mdat.write(stream);
 		}
 
-		this.source.appendBuffer(stream.buffer as ArrayBuffer)
+		this.source.initialize(this.init)
+		this.source.append(stream.buffer as ArrayBuffer)
 
 		return this.done
 	}
@@ -109,6 +110,9 @@ export class Segment {
 	finish() {
 		this.done = true
 		this.flush()
+
+		// Trim the buffer to 30s long after each segment.
+		this.source.trim(30)
 	}
 
 	// Extend the last sample so it reaches the provided timestamp

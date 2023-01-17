@@ -68,12 +68,14 @@ mkcert -install
 With no arguments, the server will generate self-signed cert using this root CA.
 
 ## Server
-The Warp server defaults to listening on UDP 4443. It supports HTTP/3 and WebTransport, pushing media over WebTransport streams once a connection has been established. A more refined implementation would load content based on the WebTransport URL or some other messaging scheme.
+The Warp server supports WebTransport, pushing media over streams once a connection has been established. A more refined implementation would load content based on the WebTransport URL or some other messaging scheme.
 
 ```
 cd server
 go run main.go
 ```
+
+This can be accessed via WebTransport on `https://localhost:4443` by default.
 
 ## Web Player
 The web assets need to be hosted with a HTTPS server. If you're using a self-signed certificate, you may need to ignore the security warning in Chrome (Advanced -> proceed to localhost).
@@ -84,7 +86,7 @@ yarn install
 yarn serve
 ```
 
-These can be accessed on `https://127.0.0.1:4444` by default.
+These can be accessed on `https://localhost:4444` by default.
 
 If you use a custom domain for the Warp server, make sure to override the server URL with the `url` query string parameter, e.g. `https://localhost:4444/?url=https://warp.demo`.
 
@@ -95,5 +97,5 @@ Instead, we need to run a *fresh instance* of Chrome, instructing it to allow ou
 
 Launch a new instance of Chrome Canary:
 ```
-/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary --allow-insecure-localhost --origin-to-force-quic-on=127.0.0.1:4443 https://127.0.0.1:4444
+/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary --allow-insecure-localhost --origin-to-force-quic-on=localhost:4443 https://localhost:4444
 ```

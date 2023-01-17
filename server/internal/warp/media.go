@@ -22,8 +22,9 @@ import (
 // It's just much easier to read from disk and "fake" being live.
 type Media struct {
 	base  fs.FS
-	audio *mpd.Representation
-	video *mpd.Representation
+	inits map[string]*MediaInit
+	video []*mpd.Representation
+	audio []*mpd.Representation
 }
 
 func NewMedia(playlistPath string) (m *Media, err error) {
@@ -51,132 +52,148 @@ func NewMedia(playlistPath string) (m *Media, err error) {
 			return nil, fmt.Errorf("missing representation mime type")
 		}
 
+		if representation.Bandwidth == nil {
+			return nil, fmt.Errorf("missing representation bandwidth")
+		}
+
 		switch *representation.MimeType {
 		case "video/mp4":
-			m.video = representation
+			m.video = append(m.video, representation)
 		case "audio/mp4":
-			m.audio = representation
+			m.audio = append(m.audio, representation)
 		}
 	}
 
-	if m.video == nil {
+	if len(m.video) == 0 {
 		return nil, fmt.Errorf("no video representation found")
 	}
 
-	if m.audio == nil {
+	if len(m.audio) == 0 {
 		return nil, fmt.Errorf("no audio representation found")
+	}
+
+	m.inits = make(map[string]*MediaInit)
+
+	var reps []*mpd.Representation
+	reps = append(reps, m.audio...)
+	reps = append(reps, m.video...)
+
+	for _, rep := range reps {
+		path := *rep.SegmentTemplate.Initialization
+
+		// TODO Support the full template engine
+		path = strings.ReplaceAll(path, "$RepresentationID$", *rep.ID)
+
+		f, err := fs.ReadFile(m.base, path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read init file: %w", err)
+		}
+
+		init, err := newMediaInit(*rep.ID, f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create init segment: %w", err)
+		}
+
+		m.inits[*rep.ID] = init
 	}
 
 	return m, nil
 }
 
-func (m *Media) Start() (audio *MediaStream, video *MediaStream, err error) {
+func (m *Media) Start(bitrate func() uint64) (inits map[string]*MediaInit, audio *MediaStream, video *MediaStream, err error) {
 	start := time.Now()
 
-	audio, err = newMediaStream(m, m.audio, start)
+	audio, err = newMediaStream(m, m.audio, start, bitrate)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	video, err = newMediaStream(m, m.video, start)
+	video, err = newMediaStream(m, m.video, start, bitrate)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return audio, video, nil
+	return m.inits, audio, video, nil
 }
 
 type MediaStream struct {
-	media *Media
-	init  *MediaInit
+	Media *Media
 
 	start    time.Time
-	rep      *mpd.Representation
+	reps     []*mpd.Representation
 	sequence int
+	bitrate  func() uint64 // returns the current estimated bitrate
 }
 
-func newMediaStream(m *Media, rep *mpd.Representation, start time.Time) (ms *MediaStream, err error) {
+func newMediaStream(m *Media, reps []*mpd.Representation, start time.Time, bitrate func() uint64) (ms *MediaStream, err error) {
 	ms = new(MediaStream)
-	ms.media = m
-	ms.rep = rep
+	ms.Media = m
+	ms.reps = reps
 	ms.start = start
+	ms.bitrate = bitrate
+	return ms, nil
+}
+
+func (ms *MediaStream) chooseRepresentation() (choice *mpd.Representation) {
+	bitrate := ms.bitrate()
+
+	// Loop over the renditions and pick the highest bitrate we can support
+	for _, r := range ms.reps {
+		if uint64(*r.Bandwidth) <= bitrate && (choice == nil || *r.Bandwidth > *choice.Bandwidth) {
+			choice = r
+		}
+	}
+
+	if choice != nil {
+		return choice
+	}
+
+	// We can't support any of the bitrates, so find the lowest one.
+	for _, r := range ms.reps {
+		if choice == nil || *r.Bandwidth < *choice.Bandwidth {
+			choice = r
+		}
+	}
+
+	return choice
+}
+
+// Returns the next segment in the stream
+func (ms *MediaStream) Next(ctx context.Context) (segment *MediaSegment, err error) {
+	rep := ms.chooseRepresentation()
 
 	if rep.SegmentTemplate == nil {
 		return nil, fmt.Errorf("missing segment template")
+	}
+
+	if rep.SegmentTemplate.Media == nil {
+		return nil, fmt.Errorf("no media template")
 	}
 
 	if rep.SegmentTemplate.StartNumber == nil {
 		return nil, fmt.Errorf("missing start number")
 	}
 
-	ms.sequence = int(*rep.SegmentTemplate.StartNumber)
-
-	return ms, nil
-}
-
-// Returns the init segment for the stream
-func (ms *MediaStream) Init(ctx context.Context) (init *MediaInit, err error) {
-	// Cache the init segment
-	if ms.init != nil {
-		return ms.init, nil
-	}
-
-	if ms.rep.SegmentTemplate.Initialization == nil {
-		return nil, fmt.Errorf("no init template")
-	}
-
-	path := *ms.rep.SegmentTemplate.Initialization
+	path := *rep.SegmentTemplate.Media
+	sequence := ms.sequence + int(*rep.SegmentTemplate.StartNumber)
 
 	// TODO Support the full template engine
-	path = strings.ReplaceAll(path, "$RepresentationID$", *ms.rep.ID)
-
-	f, err := fs.ReadFile(ms.media.base, path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read init file: %w", err)
-	}
-
-	ms.init, err = newMediaInit(f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create init segment: %w", err)
-	}
-
-	return ms.init, nil
-}
-
-// Returns the next segment in the stream
-func (ms *MediaStream) Segment(ctx context.Context) (segment *MediaSegment, err error) {
-	if ms.rep.SegmentTemplate.Media == nil {
-		return nil, fmt.Errorf("no media template")
-	}
-
-	path := *ms.rep.SegmentTemplate.Media
-
-	// TODO Support the full template engine
-	path = strings.ReplaceAll(path, "$RepresentationID$", *ms.rep.ID)
-	path = strings.ReplaceAll(path, "$Number%05d$", fmt.Sprintf("%05d", ms.sequence)) // TODO TODO
-
-	// Check if this is the first segment in the playlist
-	first := ms.sequence == int(*ms.rep.SegmentTemplate.StartNumber)
+	path = strings.ReplaceAll(path, "$RepresentationID$", *rep.ID)
+	path = strings.ReplaceAll(path, "$Number%05d$", fmt.Sprintf("%05d", sequence)) // TODO TODO
 
 	// Try openning the file
-	f, err := ms.media.base.Open(path)
-	if !first && errors.Is(err, os.ErrNotExist) {
+	f, err := ms.Media.base.Open(path)
+	if errors.Is(err, os.ErrNotExist) && ms.sequence != 0 {
 		// Return EOF if the next file is missing
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to open segment file: %w", err)
 	}
 
-	offset := ms.sequence - int(*ms.rep.SegmentTemplate.StartNumber)
-	duration := time.Duration(*ms.rep.SegmentTemplate.Duration) / time.Nanosecond
+	duration := time.Duration(*rep.SegmentTemplate.Duration) / time.Nanosecond
+	timestamp := time.Duration(ms.sequence) * duration
 
-	timestamp := time.Duration(offset) * duration
-
-	// We need the init segment to properly parse the media segment
-	init, err := ms.Init(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open init file: %w", err)
-	}
+	init := ms.Media.inits[*rep.ID]
 
 	segment, err = newMediaSegment(ms, init, f, timestamp)
 	if err != nil {
@@ -189,12 +206,14 @@ func (ms *MediaStream) Segment(ctx context.Context) (segment *MediaSegment, err 
 }
 
 type MediaInit struct {
+	ID        string
 	Raw       []byte
 	Timescale int
 }
 
-func newMediaInit(raw []byte) (mi *MediaInit, err error) {
+func newMediaInit(id string, raw []byte) (mi *MediaInit, err error) {
 	mi = new(MediaInit)
+	mi.ID = id
 	mi.Raw = raw
 
 	err = mi.parse()
@@ -241,18 +260,21 @@ func (mi *MediaInit) parse() (err error) {
 }
 
 type MediaSegment struct {
-	stream    *MediaStream
-	init      *MediaInit
+	Stream *MediaStream
+	Init   *MediaInit
+
 	file      fs.File
 	timestamp time.Duration
 }
 
 func newMediaSegment(s *MediaStream, init *MediaInit, file fs.File, timestamp time.Duration) (ms *MediaSegment, err error) {
 	ms = new(MediaSegment)
-	ms.stream = s
-	ms.init = init
+	ms.Stream = s
+	ms.Init = init
+
 	ms.file = file
 	ms.timestamp = timestamp
+
 	return ms, nil
 }
 
@@ -287,7 +309,7 @@ func (ms *MediaSegment) Read(ctx context.Context) (chunk []byte, err error) {
 	if sample != nil {
 		// Simulate a live stream by sleeping before we write this sample.
 		// Figure out how much time has elapsed since the start
-		elapsed := time.Since(ms.stream.start)
+		elapsed := time.Since(ms.Stream.start)
 		delay := sample.Timestamp - elapsed
 
 		if delay > 0 {
@@ -329,13 +351,13 @@ func (ms *MediaSegment) parseAtom(ctx context.Context, buf []byte) (sample *medi
 				dts = time.Duration(box.BaseMediaDecodeTimeV1)
 			}
 
-			if ms.init.Timescale == 0 {
+			if ms.Init.Timescale == 0 {
 				return nil, fmt.Errorf("missing timescale")
 			}
 
 			// Convert to seconds
 			// TODO What about PTS?
-			sample.Timestamp = dts * time.Second / time.Duration(ms.init.Timescale)
+			sample.Timestamp = dts * time.Second / time.Duration(ms.Init.Timescale)
 		}
 
 		// Expands children

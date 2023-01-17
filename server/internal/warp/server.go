@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 
 	"github.com/kixelated/invoker"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
-	"github.com/lucas-clemente/quic-go/logging"
-	"github.com/lucas-clemente/quic-go/qlog"
-	"github.com/marten-seemann/webtransport-go"
+	"github.com/kixelated/quic-go"
+	"github.com/kixelated/quic-go/http3"
+	"github.com/kixelated/quic-go/logging"
+	"github.com/kixelated/quic-go/qlog"
+	"github.com/kixelated/webtransport-go"
 )
 
 type Server struct {
@@ -70,27 +70,23 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 	s.media = media
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		session, err := s.inner.Upgrade(w, r)
+		hijacker, ok := w.(http3.Hijacker)
+		if !ok {
+			panic("unable to hijack connection: must use kixelated/quic-go")
+		}
+
+		conn := hijacker.Connection()
+
+		sess, err := s.inner.Upgrade(w, r)
 		if err != nil {
 			http.Error(w, "failed to upgrade session", 500)
 			return
 		}
 
-		ss, err := NewSession(session, s.media)
+		err = s.serve(r.Context(), conn, sess)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+			log.Println(err)
 		}
-
-		// Run the session in parallel, logging errors instead of crashing
-		s.sessions.Add(func(ctx context.Context) (err error) {
-			err = ss.Run(ctx)
-			if err != nil {
-				log.Printf("terminated session: %s", err)
-			}
-
-			return nil
-		})
 	})
 
 	return s, nil
@@ -108,4 +104,26 @@ func (s *Server) runShutdown(ctx context.Context) (err error) {
 
 func (s *Server) Run(ctx context.Context) (err error) {
 	return invoker.Run(ctx, s.runServe, s.runShutdown, s.sessions.Repeat)
+}
+
+func (s *Server) serve(ctx context.Context, conn quic.Connection, sess *webtransport.Session) (err error) {
+	defer func() {
+		if err != nil {
+			sess.CloseWithError(1, err.Error())
+		} else {
+			sess.CloseWithError(0, "end of broadcast")
+		}
+	}()
+
+	ss, err := NewSession(conn, sess, s.media)
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
+	err = ss.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("terminated session: %w", err)
+	}
+
+	return nil
 }

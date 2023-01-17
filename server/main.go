@@ -1,15 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"strings"
 
 	"github.com/kixelated/invoker"
 	"github.com/kixelated/warp-demo/server/internal/warp"
@@ -17,29 +13,13 @@ import (
 
 func main() {
 	err := run(context.Background())
-	if err == nil {
-		return
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	log.Println(err)
-
-	var errPanic invoker.ErrPanic
-
-	// TODO use an interface
-	if errors.As(err, &errPanic) {
-		stack := string(errPanic.Stack())
-
-		scanner := bufio.NewScanner(strings.NewReader(stack))
-		for scanner.Scan() {
-			log.Println(scanner.Text())
-		}
-	}
-
-	os.Exit(1)
 }
 
 func run(ctx context.Context) (err error) {
-	addr := flag.String("addr", "127.0.0.1:4443", "HTTPS server address")
+	addr := flag.String("addr", ":4443", "HTTPS server address")
 	cert := flag.String("tls-cert", "../cert/localhost.crt", "TLS certificate file path")
 	key := flag.String("tls-key", "../cert/localhost.key", "TLS certificate file path")
 	logDir := flag.String("log-dir", "", "logs will be written to the provided directory")
