@@ -1,6 +1,7 @@
-html, body, #player {
+html, body {
 	width: 100%;
 }
+
 
 body {
 	background: #000000;
@@ -10,6 +11,19 @@ body {
 	display: flex;
 	justify-content: center;
 	font-family: sans-serif;
+}
+
+#main {
+	padding: 20px;
+	width: 100%;
+}
+
+#main > div:nth-child(1) {
+	display: grid;
+	grid-template-columns: 0.6fr 0.4fr;
+	min-height: 50%;
+	align-items: center;
+	margin-bottom: 40px;
 }
 
 #screen {
@@ -31,14 +45,14 @@ body {
 
 #vid {
 	width: 100%;
-	height: 100%;
-	max-height: 100vh;
+	border-radius: 20px;
+	margin-bottom: 20px;
 }
 
 #controls {
 	display: flex;
 	flex-wrap: wrap;
-	padding: 8px 16px;
+	justify-content: flex-start;
 }
 
 #controls > * {
@@ -52,6 +66,8 @@ body {
 #stats {
 	display: grid;
 	grid-template-columns: auto 1fr;
+	gap: 5px;
+	height: fit-content;
 }
 
 #stats label {
@@ -67,13 +83,46 @@ body {
 	position: absolute;
 	transition-duration: 0.1s;
 	transition-property: left, right, background-color;
-	background-color: RebeccaPurple;
+	background-color: turquoise;
 	height: 100%;
 	text-align: right;
 	padding-right: 0.5rem;
 	overflow: hidden;
 }
 
+.label>.seconds {
+	font-size: 0.8em;
+}
+
 .buffer .fill.net {
-	background-color: Purple;
+	background-color: turquoise;
+}
+
+#plot {
+	margin-top: 20px;
+	margin-bottom: 20px;
+}
+
+#log textarea {
+	height: 500px;
+	width: 100%;
+}
+
+#repo_info {
+	padding: 17px;
+    font-size: 0.8em;
+    background-color: rgba(255,255,255,0.5);
+    margin-left: 17px;
+    border-radius: 10px;
+}
+
+#repo_info a {
+	color: white;
+}
+
+#right_col {
+	display: grid;
+    grid-template-rows: 1fr auto;
+    justify-content: space-between;
+    height: 80%;
 }

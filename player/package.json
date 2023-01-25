@@ -1,13 +1,19 @@
 {
   "source": "src/index.html",
   "scripts": {
-    "serve": "parcel serve --https --host localhost --port 4444 --cert ../cert/localhost.crt --key ../cert/localhost.key",
-    "build": "parcel build",
+    "serve": "parcel serve --https --cert ../cert/cert.pem --key ../cert/privkey.pem",
+    "build": "parcel build src/index.html --no-optimize src/appsettings.js",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@parcel/validator-typescript": "^2.6.0",
-    "parcel": "^2.6.0",
+    "@types/node": "^18.11.18",
+    "@types/plotly.js-dist": "npm:@types/plotly.js",
+    "buffer": "^5.7.1",
+    "parcel": "^2.8.2",
     "typescript": ">=3.0.0"
+  },
+  "dependencies": {
+    "plotly.js-dist": "^2.17.0"
   }
 }

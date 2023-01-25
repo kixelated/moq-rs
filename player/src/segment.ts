@@ -53,7 +53,7 @@ export class Segment {
 
 		// Make a copy of the atom because mp4box only accepts an ArrayBuffer unfortunately
 		let box = new Uint8Array(data.byteLength);
-		box.set(data)
+		box.set(data);
 
 		// and for some reason we need to modify the underlying ArrayBuffer with offset
 		let buffer = box.buffer as MP4ArrayBuffer
@@ -108,6 +108,7 @@ export class Segment {
 
 	// The segment has completed
 	finish() {
+		console.log(this.timestamp + " done")
 		this.done = true
 		this.flush()
 

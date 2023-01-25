@@ -27,6 +27,12 @@ type Session struct {
 	video *MediaStream
 
 	streams invoker.Tasks
+
+	prefs map[string]string
+
+	continueStreaming bool
+	audioTimeOffset   time.Duration
+	videoTimeOffset   time.Duration
 }
 
 func NewSession(connection quic.Connection, session *webtransport.Session, media *Media) (s *Session, err error) {
@@ -34,11 +40,13 @@ func NewSession(connection quic.Connection, session *webtransport.Session, media
 	s.conn = connection
 	s.inner = session
 	s.media = media
+	s.continueStreaming = true
 	return s, nil
 }
 
 func (s *Session) Run(ctx context.Context) (err error) {
 	s.inits, s.audio, s.video, err = s.media.Start(s.conn.GetMaxBandwidth)
+	s.prefs = make(map[string]string)
 	if err != nil {
 		return fmt.Errorf("failed to start media: %w", err)
 	}
@@ -119,6 +127,19 @@ func (s *Session) handleStream(ctx context.Context, stream webtransport.ReceiveS
 		if msg.Debug != nil {
 			s.setDebug(msg.Debug)
 		}
+
+		if msg.Pref != nil {
+			fmt.Printf("* Pref received name: %s value: %s\n", msg.Pref.Name, msg.Pref.Value)
+			s.setPref(msg.Pref)
+		}
+
+		if msg.Ping != nil {
+			println("Ping received")
+			err := s.sendPong(msg.Ping, ctx)
+			if err != nil {
+				return err
+			}
+		}
 	}
 }
 
@@ -134,8 +155,22 @@ func (s *Session) runInit(ctx context.Context) (err error) {
 }
 
 func (s *Session) runAudio(ctx context.Context) (err error) {
+	start := time.Now()
 	for {
-		segment, err := s.audio.Next(ctx)
+		if !s.continueStreaming {
+			// Sleep to let cpu off
+			err := invoker.Sleep(10 * time.Millisecond)(ctx)
+			if err != nil {
+				return fmt.Errorf("failed in runAudio: %w", err)
+			}
+			s.audioTimeOffset += time.Since(start)
+			continue
+		} else {
+			// reset start
+			start = time.Now()
+		}
+
+		segment, err := s.audio.Next(ctx, s, s.audioTimeOffset)
 		if err != nil {
 			return fmt.Errorf("failed to get next segment: %w", err)
 		}
@@ -152,8 +187,22 @@ func (s *Session) runAudio(ctx context.Context) (err error) {
 }
 
 func (s *Session) runVideo(ctx context.Context) (err error) {
+	start := time.Now()
 	for {
-		segment, err := s.video.Next(ctx)
+		if !s.continueStreaming {
+			// Sleep to let cpu off
+			err := invoker.Sleep(10 * time.Millisecond)(ctx)
+			if err != nil {
+				return fmt.Errorf("failed in runAudio: %w", err)
+			}
+			s.videoTimeOffset += time.Since(start)
+			continue
+		} else {
+			// reset start
+			start = time.Now()
+		}
+
+		segment, err := s.video.Next(ctx, s, s.videoTimeOffset)
 		if err != nil {
 			return fmt.Errorf("failed to get next segment: %w", err)
 		}
@@ -191,6 +240,7 @@ func (s *Session) writeInit(ctx context.Context, init *MediaInit) (err error) {
 	err = stream.WriteMessage(Message{
 		Init: &MessageInit{Id: init.ID},
 	})
+
 	if err != nil {
 		return fmt.Errorf("failed to write init header: %w", err)
 	}
@@ -225,18 +275,68 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 	// newer segments take priority
 	stream.SetPriority(ms)
 
-	err = stream.WriteMessage(Message{
+	init_message := Message{
 		Segment: &MessageSegment{
-			Init:      segment.Init.ID,
-			Timestamp: ms,
+			Init:             segment.Init.ID,
+			Timestamp:        ms,
+			ETP:              int(s.conn.GetMaxBandwidth() / 1024),
+			AvailabilityTime: int(time.Now().UnixMilli()),
 		},
-	})
+	}
+	/*
+
+			Segments on the Wire
+			------------------------------------------------------
+		    [chunk_S1_N] ...  [chunk_S1_1]  [segment 1 init]
+			------------------------------------------------------
+
+			Stream multiplexing in QUIC:
+			-----------------------------------------------------------
+		    [chunk_S1_N]  ..[chunk_S2_M] .. [chunk_S1_2]...[chunk_S1_1]
+			----------------------------------------------------------
+
+			Head of Line Blocking Problem in TCP:
+			------------------------------------
+			TCP Buffer
+			Pipeline
+			|    x   | c_s1_1 Head of line blocking
+			| c_s1_2 |
+			| c_s1_3 |
+			| c_s2_1 |
+			| c_s1_4 |
+
+			Quic treats each stream differently
+			-----------------------------------
+		    Stream 1
+			|    x   |
+			| c_s1_2 |
+			| c_s1_3 |
+			| c_s1_4 |
+
+			Stream 2
+			| c_s2_1 |
+			|        |
+
+	*/
+
+	err = stream.WriteMessage(init_message)
+
 	if err != nil {
 		return fmt.Errorf("failed to write segment header: %w", err)
 	}
 
+	segment_size := 0
+	box_count := 0
+	chunk_count := 0
+
+	print_moof_sizes := false
+
+	last_moof_size := 0
+
 	for {
 		// Get the next fragment
+		start := time.Now().UnixMilli()
+
 		buf, err := segment.Read(ctx)
 		if errors.Is(err, io.EOF) {
 			break
@@ -244,12 +344,29 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 			return fmt.Errorf("failed to read segment data: %w", err)
 		}
 
+		segment_size += len(buf)
+		box_count++
+
+		if print_moof_sizes {
+			if string(buf[4:8]) == "moof" {
+				last_moof_size = len(buf)
+				chunk_count++
+			} else if string(buf[4:8]) == "mdat" {
+				chunk_size := last_moof_size + len(buf)
+				fmt.Printf("* chunk: %d size: %d time offset: %d\n", chunk_count, chunk_size, time.Now().UnixMilli()-start)
+			}
+		}
+
 		// NOTE: This won't block because of our wrapper
 		_, err = stream.Write(buf)
 		if err != nil {
 			return fmt.Errorf("failed to write segment data: %w", err)
 		}
+
 	}
+
+	// for debug purposes
+	fmt.Printf("* id: %s ts: %d etp: %d segment size: %d box count:%d chunk count: %d\n", init_message.Segment.Init, init_message.Segment.Timestamp, init_message.Segment.ETP, segment_size, box_count, chunk_count)
 
 	err = stream.Close()
 	if err != nil {
@@ -260,5 +377,39 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 }
 
 func (s *Session) setDebug(msg *MessageDebug) {
-	s.conn.SetMaxBandwidth(uint64(msg.MaxBitrate))
+	if msg.MaxBitrate != nil {
+		s.conn.SetMaxBandwidth(uint64(*msg.MaxBitrate))
+	} else if msg.ContinueStreaming != nil {
+		s.continueStreaming = *msg.ContinueStreaming
+	}
+}
+
+func (s *Session) setPref(msg *MessagePref) {
+	s.prefs[msg.Name] = msg.Value
+}
+
+func (s *Session) sendPong(msg *MessagePing, ctx context.Context) (err error) {
+	temp, err := s.inner.OpenUniStreamSync(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create stream: %w", err)
+	}
+
+	// Wrap the stream in an object that buffers writes instead of blocking.
+	stream := NewStream(temp)
+	s.streams.Add(stream.Run)
+
+	defer func() {
+		if err != nil {
+			stream.WriteCancel(1)
+		}
+	}()
+
+	err = stream.WriteMessage(
+		Message{
+			Pong: &MessagePong{},
+		})
+	if err != nil {
+		return fmt.Errorf("failed to write init header: %w", err)
+	}
+	return nil
 }

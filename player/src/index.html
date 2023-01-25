@@ -1,82 +1,73 @@
-﻿<!doctype html>
+﻿<script type="module" src="index.ts"></script>
+
+<!doctype html>
 <html>
 
 <head>
-	<meta charset = "UTF-8">
+	<meta charset="UTF-8">
 	<title>WARP</title>
-
 	<link rel="stylesheet" href="player.css">
+	<script src="appsettings.js"></script>
 </head>
 
 <body>
-	<div id="player">
-		<div id="screen">
-			<div id="play"><span>click to play</span></div>
-			<video id="vid" controls></video>
+	<div id="main">
+		<div>
+			<div id="player">
+				<div id="screen">
+					<div id="play"><span>click to play</span></div>
+					<video id="vid" controls></video>
+				</div>
+
+				<div id="controls">
+					<button type="button" id="live">Go Live</button>
+					<button type="button" id="throttle" style="display: none">Throttle: None</button>
+
+					<select id="throttles">
+						<option>Throttle to:</option>
+					</select>
+
+					<select id="resolutions">
+						<option>Set resolution to:</option>
+					</select>
+					<button type="button" id="continue_streaming">Stop Streaming</button>
+					<button type="button" id="active_bw_test">Active BW Test</button>
+				</div>
+			</div>
+			<div id="right_col">
+				<div id="stats">
+					<label class="audio label">Audio Buffer: <span class="seconds"></span></label>
+					<div class="audio buffer">
+						<div class="fill"></div>
+					</div>
+	
+					<label class="video label">Video Buffer: <span class="seconds"></span></label>
+					<div class="video buffer">
+						<div class="fill"></div>
+					</div>
+	
+					<label>Server Reported Bandwidth</label>
+					<div class="server_bw"></div>
+					<label>SWMA<sub>th</sub></label>
+					<div class="swma_threshold"></div>
+					<label>Last Active BW Test</label>
+					<div class="active_bw"></div>
+				</div>
+				<div id="repo_info">
+					You can find the source code of this demo at
+					<a href="https://github.com/streaming-university/public-moq-demo" target="_blank">https://github.com/streaming-university/public-moq-demo</a>.
+				</div>
+			</div>
+			
 		</div>
-
-		<div id="controls">
-			<button type="button" id="live">Go Live</button>
-			<button type="button" id="throttle">Throttle: None</button>
-		</div>
-
-		<div id="stats">
-			<label>Audio Buffer:</label>
-			<div class="audio buffer"></div>
-
-			<label>Video Buffer:</label>
-			<div class="video buffer"></div>
+		<div>
+			<div id="plot"></div>
+			<div id="log">
+				<h4>Log</h4>
+				<textarea></textarea>
+			</div>
 		</div>
 	</div>
-
-	<script type="module">
-		import { Player } from "./player.ts"
-
-		// This is so ghetto but I'm too lazy to improve it right now
-		const vidRef = document.getElementById("vid")
-		const liveRef = document.getElementById("live")
-		const throttleRef = document.getElementById("throttle")
-		const statsRef = document.getElementById("stats")
-		const playRef = document.getElementById("play")
-
-		const params = new URLSearchParams(window.location.search)
-
-		const player = new Player({
-			url: params.get("url") || "https://localhost:4443",
-
-			vid: vidRef,
-			stats: statsRef,
-			throttle: throttleRef,
-		})
-
-		liveRef.addEventListener("click", (e) => {
-			e.preventDefault()
-			player.goLive()
-		})
-
-		throttleRef.addEventListener("click", (e) => {
-			e.preventDefault()
-			player.throttle()
-		})
-
-		playRef.addEventListener('click', (e) => {
-			vidRef.play()
-			e.preventDefault()
-		})
-
-		function playFunc(e) {
-			playRef.style.display = "none"
-			//player.goLive()
-
-			// Only fire once to restore pause/play functionality
-			vidRef.removeEventListener('play', playFunc)
-		}
-
-		vidRef.addEventListener('play', playFunc)
-		vidRef.volume = 0.5
-
-		// Try to autoplay but ignore errors on mobile; they need to click
-		//vidRef.play().catch((e) => console.warn(e))
-	</script>
 </body>
+
 </html>

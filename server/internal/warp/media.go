@@ -134,12 +134,14 @@ func newMediaStream(m *Media, reps []*mpd.Representation, start time.Time, bitra
 	return ms, nil
 }
 
-func (ms *MediaStream) chooseRepresentation() (choice *mpd.Representation) {
+func (ms *MediaStream) chooseRepresentation(preferredId string) (choice *mpd.Representation) {
 	bitrate := ms.bitrate()
 
 	// Loop over the renditions and pick the highest bitrate we can support
 	for _, r := range ms.reps {
-		if uint64(*r.Bandwidth) <= bitrate && (choice == nil || *r.Bandwidth > *choice.Bandwidth) {
+		if *r.ID == preferredId {
+			choice = r
+		} else if uint64(*r.Bandwidth) <= bitrate && (choice == nil || *r.Bandwidth > *choice.Bandwidth) {
 			choice = r
 		}
 	}
@@ -159,8 +161,8 @@ func (ms *MediaStream) chooseRepresentation() (choice *mpd.Representation) {
 }
 
 // Returns the next segment in the stream
-func (ms *MediaStream) Next(ctx context.Context) (segment *MediaSegment, err error) {
-	rep := ms.chooseRepresentation()
+func (ms *MediaStream) Next(ctx context.Context, session *Session, timeOffset time.Duration) (segment *MediaSegment, err error) {
+	rep := ms.chooseRepresentation(session.prefs["resolution"])
 
 	if rep.SegmentTemplate == nil {
 		return nil, fmt.Errorf("missing segment template")
@@ -191,7 +193,7 @@ func (ms *MediaStream) Next(ctx context.Context) (segment *MediaSegment, err err
 	}
 
 	duration := time.Duration(*rep.SegmentTemplate.Duration) / time.Nanosecond
-	timestamp := time.Duration(ms.sequence) * duration
+	timestamp := time.Duration(ms.sequence)*duration + timeOffset
 
 	init := ms.Media.inits[*rep.ID]
 
@@ -310,7 +312,7 @@ func (ms *MediaSegment) Read(ctx context.Context) (chunk []byte, err error) {
 		// Simulate a live stream by sleeping before we write this sample.
 		// Figure out how much time has elapsed since the start
 		elapsed := time.Since(ms.Stream.start)
-		delay := sample.Timestamp - elapsed
+		delay := (sample.Timestamp - elapsed)
 
 		if delay > 0 {
 			// Sleep until we're supposed to see these samples
