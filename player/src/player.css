@@ -109,20 +109,15 @@ body {
 }
 
 #repo_info {
-	padding: 17px;
-    font-size: 0.8em;
-    background-color: rgba(255,255,255,0.5);
     margin-left: 17px;
     border-radius: 10px;
-}
-
-#repo_info a {
-	color: white;
+	width: 100%;
+	text-align: right;
 }
 
 #right_col {
 	display: grid;
     grid-template-rows: 1fr auto;
-    justify-content: space-between;
     height: 80%;
+	width: 100%;
 }
