@@ -19,20 +19,26 @@
 					<video id="vid" controls></video>
 				</div>
 
-				<div id="controls">
-					<button type="button" id="live">Go Live</button>
-					<button type="button" id="throttle" style="display: none">Throttle: None</button>
+				<div id="screen_bottom">
+					<div id="controls">
+						<button type="button" id="live">Go Live</button>
+						<button type="button" id="throttle" style="display: none">Throttle: None</button>
 
-					<select id="throttles">
-						<option>Throttle to:</option>
-					</select>
+						<select id="throttles">
+							<option>Throttle to:</option>
+						</select>
 
-					<select id="resolutions">
-						<option>Set resolution to:</option>
-					</select>
-					<button type="button" id="continue_streaming">Stop Streaming</button>
-					<button type="button" id="active_bw_test">Active BW Test</button>
+						<select id="resolutions">
+							<option>Set resolution to:</option>
+						</select>
+						<button type="button" id="continue_streaming">Stop Streaming</button>
+						<button type="button" id="active_bw_test">Active BW Test</button>
+					</div>
+					<a href="https://github.com/streaming-university/public-moq-demo" target="_blank">
+						<img src="assets/github-mark-white.svg" class="github_logo">
+					</a>
 				</div>
+
 			</div>
 			<div id="right_col">
 				<div id="stats">
@@ -54,9 +60,7 @@
 					<div class="active_bw"></div>
 				</div>
 				<div id="repo_info">
-					<iframe
-						src="https://ghbtns.com/github-btn.html?user=streaming-university&repo=public-moq-demo&type=watch&count=true&size=large"
-						frameborder="0" scrolling="0" width="170" height="30" title="GitHub"></iframe>
+
 				</div>
 			</div>
 

@@ -49,10 +49,14 @@ body {
 	margin-bottom: 20px;
 }
 
+#screen_bottom {
+	display: flex;
+	justify-content: space-between;
+}
+
 #controls {
 	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-start;
+	align-items: center;
 }
 
 #controls > * {
@@ -120,4 +124,8 @@ body {
     grid-template-rows: 1fr auto;
     height: 80%;
 	width: 100%;
+}
+
+.github_logo {
+	width: 48px;
 }
