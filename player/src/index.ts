@@ -11,7 +11,7 @@ const playRef = document.getElementById("play") as HTMLDivElement;
 const resolutionsRef = document.getElementById("resolutions") as HTMLSelectElement;
 const activeBWTestRef = document.getElementById("active_bw_test")
 const continueStreamingRef = document.getElementById("continue_streaming")
-const logRef = document.querySelector("#log textarea") as HTMLTextAreaElement;
+const logRef = document.querySelector("#log_content") as HTMLTextAreaElement;
 
 const params = new URLSearchParams(window.location.search)
 
@@ -19,6 +19,35 @@ if (process.env.SERVER_URL) {
     console.log('Setting server url to %s', process.env.SERVER_URL)
     window.config.serverURL = process.env.SERVER_URL
 }
+
+// get default values from the querystring if there's any
+if (params.get('swma_calculation_type')) {
+    window.config.swma_calculation_type = params.get('swma_calculation_type') as SWMACalculationType;
+}
+
+if (params.get('swma_threshold_type')) {
+    window.config.swma_threshold_type = params.get('swma_threshold_type') as SWMAThresholdType;
+}
+
+if (params.get('swma_threshold')) {
+    window.config.swma_threshold = parseInt(params.get('swma_threshold') || '5', 10);
+}
+
+if (params.get('swma_window_size')) {
+    window.config.swma_window_size = parseInt(params.get('swma_window_size') || '50', 10);
+}
+
+if (params.get('swma_calculation_interval')) {
+    window.config.swma_calculation_interval = parseInt(params.get('swma_calculation_interval') || '10', 10);
+}
+
+const logHandler = (txt: string) => {
+    const div = document.createElement('div');
+    const pre = document.createElement('pre');
+    pre.innerText = txt;
+    div.appendChild(pre);
+    logRef.appendChild(div);
+};
 
 // fill resolutions combobox
 Object.keys(window.config.resolutions).forEach(key => {
@@ -36,7 +65,7 @@ const plotConfig = {
         width: 700,
         scale: 1 // Multiply title/legend/axis/canvas sizes by this factor
     },
-    displayModeBar: false,
+    displayModeBar: true,
     scrollZoom: true,
     displaylogo: false,
     responsive: true
@@ -113,7 +142,7 @@ const plotData = [{
     yaxis: 'y',
     marker: {
         size: 10,
-        color: 'red'
+        color: 'blue'
     },
 }
 ] as any[];
@@ -132,7 +161,7 @@ const player = new Player({
     activeBWTestRef: activeBWTestRef,
     continueStreamingRef: continueStreamingRef,
     activeBWAsset: window.config.activeBWAsset,
-    logger: (txt: string) => logRef.value += txt + '\n'
+    logger: logHandler
 })
 
 // expose player
@@ -143,7 +172,7 @@ setInterval(() => {
 
     plotData.forEach(p => (p.x as Plotly.Datum[]).push(currentSec));
     (plotData[0].y as Plotly.Datum[]).push(player.serverBandwidth / 1000000);
-    (plotData[1].y as Plotly.Datum[]).push(player.swmaThroughput_threshold / 1000000);
+    (plotData[1].y as Plotly.Datum[]).push(player.supress_swmaThroughput_threshold ? null : player.swmaThroughput_threshold / 1000000);
     (plotData[2].y as Plotly.Datum[]).push(player.activeBWTestResult === 0 ? null : player.activeBWTestResult / 1000000);
 
     // show max 60 seconds

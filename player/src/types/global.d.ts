@@ -5,7 +5,10 @@ declare global {
         config: AppSettings;
         player: any;
     }
+    type SWMAThresholdType = 'minimum_duration' | 'percentage';
+    type SWMACalculationType = 'segment' | 'window' | 'first_chunk';
 }
+
 
 interface AppSettings {
     defaultPlayerURL: string;
@@ -14,5 +17,8 @@ interface AppSettings {
     serverURL: string;
     activeBWAsset: { url: string; size: number }
     swma_threshold: number;
-    swma_threshold_type: 'minimum_duration' | 'percentage';
+    swma_calculation_type: SWMACalculationType;
+    swma_threshold_type: SWMAThresholdType;
+    swma_window_size: number; // sliding window size in terms of chunk count
+    swma_calculation_interval: number; // tput is computed each N chunk.
 }

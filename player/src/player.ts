@@ -44,8 +44,12 @@ export class Player {
 
 	serverBandwidth: number; // Kbps - comes from server in each segment in etp field
 	swmaThroughput_threshold: number;
+	supress_swmaThroughput_threshold: boolean;
 	activeBWTestResult: number;
 	lastActiveBWTestResult: number;
+
+	chunkStats: any[] = [];
+	totalChunkCount = 0; // video track chunk count
 
 	logFunc: Function;
 
@@ -58,7 +62,7 @@ export class Player {
 		this.continueStreamingRef = props.continueStreamingRef
 		this.activeBWTestRef = props.activeBWTestRef
 		this.activeBWAsset = props.activeBWAsset;
-
+		this.supress_swmaThroughput_threshold = false;
 		this.throttleCount = 0
 
 		this.logFunc = props.logger;
@@ -98,6 +102,26 @@ export class Player {
 
 		// Limit to 4Mb/s
 		this.sendThrottle()
+	}
+
+	getSWMAThreshold = () => {
+		return window.config.swma_threshold || 5;
+	}
+
+	getSWMACalculationType = () => {
+		return window.config.swma_calculation_type;
+	}
+
+	getSWMAThresholdType = () => {
+		return window.config.swma_threshold_type || 'percentage'
+	};
+
+	getSWMACalculationInterval = () => {
+		return window.config.swma_calculation_interval || 10;
+	}
+
+	getSWMAWindowSize = () => {
+		return window.config.swma_window_size || 50;
 	}
 
 	resolutionOnChange = () => {
@@ -196,12 +220,19 @@ export class Player {
 						console.info('started: %d ended: %d | duration: %d', start, end, duration, resp);
 						this.activeBWTestResult = Math.round(size * 8 * 1000 / duration);
 						this.lastActiveBWTestResult = this.activeBWTestResult;
+
 						// if another timer is active, clear it
 						if (this.activeBWBWResetTimer) {
 							clearTimeout(this.activeBWBWResetTimer)
 						}
 						this.activeBWBWResetTimer = setTimeout(() => { this.activeBWTestResult = 0; }, 1000);
 
+						// don't display swmaThroughput threshold for a few seconds
+						// to let the server warm-up
+						this.supress_swmaThroughput_threshold = true;
+						setTimeout(() => {
+							this.supress_swmaThroughput_threshold = false;
+						}, 3000);
 					}
 					this.activeBWTestRef.dataset.downloading = '';
 					this.activeBWTestRef.innerText = 'Active BW Test';
@@ -470,10 +501,7 @@ export class Player {
 			}
 		*/
 
-		// calculate the bandwidth using sliding window moving average
-		const chunkStats = [];
 		let totalSegmentSize = 0;
-		let totalChunkCount = 0;
 		const segmentDownloadStart = performance.now()
 
 		let chunkCounter = 0;
@@ -513,9 +541,17 @@ export class Player {
 					const chunkSize = size + lastMoofSize; // bytes
 					const chunkLatency = Math.round(lastMoofClockTime - msg.at);
 
-					chunkStats.push([chunkCounter, chunkSize, chunkDownloadDuration, lastMoofDownloadDuration, chunkDownloadDuration > 0 ? (chunkSize * 8 * 1000 / chunkDownloadDuration) : 0, chunkLatency]);
+					++this.totalChunkCount;
 
-					++totalChunkCount;
+					this.chunkStats.push([chunkCounter, chunkSize, chunkDownloadDuration, lastMoofDownloadDuration, chunkDownloadDuration > 0 ? (chunkSize * 8 * 1000 / chunkDownloadDuration) : 0, chunkLatency, msg.timestamp]);
+
+					if (this.getSWMACalculationType() === 'window' && this.chunkStats.length > this.getSWMAWindowSize() && this.totalChunkCount % this.getSWMACalculationInterval() === 0) {
+						this.chunkStats = this.chunkStats.splice(this.chunkStats.length - this.getSWMAWindowSize());
+						this.chunkStats = this.chunkStats.splice(0, 50);
+						let filteredStats: any[] = this.filterStats(this.chunkStats, this.getSWMAThreshold(), this.getSWMAThresholdType());
+						this.swmaThroughput_threshold = this.computeTPut(filteredStats);
+						this.logChunkStats(filteredStats);
+					}
 				}
 			}
 			totalSegmentSize += size;
@@ -530,32 +566,54 @@ export class Player {
 		const segmentFinish = performance.now() - segmentDownloadStart;
 
 		if (isVideoSegment) {
-			let filteredStats: any[] = this.filterStats(chunkStats, window.config.swma_threshold || 5, window.config.swma_threshold_type || 'percentage');
-			this.swmaThroughput_threshold = this.computeTPut(filteredStats);
 
 			this.logFunc('-----------------------------------------------------')
-			this.logFunc('segment chunk length: ' + chunkStats.length);
-			this.logFunc('segment finish duration: ' + Math.round(segmentFinish))
-			this.logFunc('total segment size: ' + formatBits(totalSegmentSize * 8))
+			this.logFunc('segment chunk length: ' + chunkCounter);
+			this.logFunc('segment finish duration: ' + Math.round(segmentFinish));
+			this.logFunc('total segment size: ' + formatBits(totalSegmentSize * 8));
 			this.logFunc('segment start (client): ' + new Date(performance.timeOrigin + segmentStartOffset).toISOString());
-			this.logFunc('availability time (server): ' + new Date(msg.at).toISOString())
-			this.logFunc('first chunk offset (wrt. at): ' + chunkStats[0][5]);
+			this.logFunc('availability time (server): ' + new Date(msg.at).toISOString());
 
-			this.logFunc('swmaThroughput_threshold: ' + formatBits(this.swmaThroughput_threshold));
-			this.logFunc('number of discarded chunks: ' + (chunkStats.length - filteredStats.length));
-
-			this.logFunc('')
-			this.logFunc('#\tChunk Size(byte)\tMDat Download Duration(ms)\tMoof Download Duration\tDownload Rate\tAvailability Offset (ms)');
-			chunkStats.forEach(row => {
-				this.logFunc(row.join('\t'));
-			});
-			this.logFunc(('-----------------------------------------------------'));
+			if (this.getSWMACalculationType() === 'segment' || this.getSWMACalculationType() === 'first_chunk') {
+				let filteredStats: any[];
+				if (this.getSWMACalculationType() === 'segment') {
+					filteredStats = this.filterStats(this.chunkStats, this.getSWMAThreshold(), this.getSWMAThresholdType());
+				} else {
+					// just get the first chunk
+					filteredStats = this.chunkStats.slice(0, 1);
+				}
+				this.swmaThroughput_threshold = this.computeTPut(filteredStats);
+				this.logChunkStats(filteredStats);
+				// reset stats at each segment finish
+				this.chunkStats = [];
+			}
 			this.logFunc('');
 		}
 	}
 
+	logChunkStats = (filteredChunkStats: any[]) => {
+		this.logFunc('-----------------------------------------------------')
+		this.logFunc('swma calculation type: ' + this.getSWMACalculationType());
+		if (this.getSWMACalculationType() === 'window') {
+			this.logFunc('swma window size: ' + this.getSWMAWindowSize());
+			this.logFunc('calculation interval: ' + this.getSWMACalculationInterval());
+		}
+		this.logFunc('total number of chunks: ' + this.totalChunkCount);
+		this.logFunc('')
+		this.logFunc('swmaThroughput_threshold: ' + formatBits(this.swmaThroughput_threshold));
+		this.logFunc('number of discarded chunks: ' + (this.chunkStats.length - filteredChunkStats.length));
+		this.logFunc('')
+		this.logFunc('#\tChunk Size(byte)\tMDat Download Duration(ms)\tMoof Download Duration\tDownload Rate\tAvailability Offset (ms)\tSegment TS');
+		this.chunkStats.forEach((row: any) => {
+			this.logFunc(row.join('\t'));
+		});
+		this.logFunc('-----------------------------------------------------');
+	}
+
 	filterStats = (chunkStats: any[], threshold: number, thresholdType: string) => {
 		let filteredStats = chunkStats.slice();
+		console.log('computeTPut | chunk count: %d thresholdType: %s threshold: %d', filteredStats.length, thresholdType, threshold);
+
 		if (thresholdType === 'percentage') {
 			if (threshold > 0 && threshold < 100) {
 				// sort chunk by download rate, in descending order
@@ -566,16 +624,14 @@ export class Player {
 				const topCut = Math.ceil(threshold / 100 * filteredStats.length);
 				const bottomCut = Math.floor(threshold / 100 * filteredStats.length);
 
-				console.log('computeTPut | chunk count: %d top cut: %d bottom cut: %d', filteredStats.length, topCut, bottomCut);
 				filteredStats.splice(0, topCut);
 				filteredStats.splice(filteredStats.length - bottomCut, bottomCut);
-				console.log('computeTPut | after filtering: chunk count: %d', filteredStats.length);
 			}
 		} else if (thresholdType === 'minimum_duration') {
-			console.log('computeTPut | chunk count: %d minimum duration: %d', filteredStats.length, threshold);
 			filteredStats = filteredStats.filter(c => c[2] >= threshold);
-			console.log('computeTPut | after filtering: chunk count: %d', filteredStats.length);
 		}
+
+		console.log('computeTPut | after filtering: chunk count: %d', filteredStats.length);
 		return filteredStats;
 	}
 

@@ -22,7 +22,7 @@ type MessageSegment struct {
 
 type MessageDebug struct {
 	MaxBitrate        *int  `json:"max_bitrate,omitempty"`        // Artificially limit the QUIC max bitrate
-	ContinueStreaming *bool `json:"continue_streaming,omitempty"` // Start or stop streaming
+	ContinueStreaming *bool `json:"continue_streaming,omitempty"` // Resume or pause streaming
 }
 
 type MessagePing struct {

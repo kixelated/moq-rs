@@ -107,9 +107,11 @@ body {
 	margin-bottom: 20px;
 }
 
-#log textarea {
+#log {
 	height: 500px;
-	width: 100%;
+    background-color: white;
+    overflow: auto;
+    color: black;
 }
 
 #repo_info {
