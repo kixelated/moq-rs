@@ -1,6 +1,6 @@
 window.config = {
     serverURL: "https://moq.streaming.university:4443",
-    resolutions: { 2: "Low (360p)", 1: "Medium (540p)", 0: "High (1080p)" },
+    resolutions: { 3: "360p", 2: "540p", 1: "720p", 0: "1080p" },
     throttleData: {
         209715200: "200Mb/s",
         67108864: "64Mb/s",
