@@ -1,4 +1,4 @@
-import { MP4New, MP4File, MP4ArrayBuffer, MP4Info } from "./mp4"
+import { MP4New, MP4File, MP4ArrayBuffer, MP4Info } from "../mp4/mp4"
 
 export class InitParser {
 	mp4box: MP4File;

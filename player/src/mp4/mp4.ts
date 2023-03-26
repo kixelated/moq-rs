@@ -1,6 +1,6 @@
 // Wrapper around MP4Box to play nicely with MP4Box.
 // I tried getting a mp4box.all.d.ts file to work but just couldn't figure it out
-import { createFile, ISOFile, DataStream, BoxParser } from "./mp4box.all"
+import { createFile, ISOFile, DataStream, BoxParser } from "./mp4box.all.js"
 
 // Rename some stuff so it's on brand.
 export { createFile as MP4New, ISOFile as MP4File, DataStream as MP4Stream, BoxParser as MP4Parser }
