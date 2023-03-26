@@ -1,4 +1,4 @@
-module github.com/kixelated/warp-demo/server
+module github.com/kixelated/warp/server
 
 go 1.18
 

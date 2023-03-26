@@ -1,12 +1,13 @@
 {
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*"
+  ],
   "compilerOptions": {
     "target": "es2021",
     "strict": true,
-	"typeRoots": [
+    "typeRoots": [
       "src/types"
-	],
-	"allowJs": true
+    ],
+    "allowJs": true
   }
 }
-

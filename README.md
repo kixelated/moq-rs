@@ -50,7 +50,7 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 
 Use ffmpeg to create a LL-DASH playlist. This creates a segment every 2s and MP4 fragment every 10ms.
 ```
-ffmpeg -i media/source.mp4 -f dash -use_timeline 0 -r:v 24 -g:v 48 -keyint_min:v 48 -sc_threshold:v 0 -tune zerolatency -streaming 1 -ldash 1 -seg_duration 2 -frag_duration 0.01 -frag_type duration media/playlist.mpd
+./media/generate
 ```
 
 You can increase the `frag_duration` (microseconds) to slightly reduce the file size in exchange for higher latency.
@@ -62,10 +62,10 @@ If you have a valid certificate you can use it instead of self-signing. The go b
 
 Otherwise, use [mkcert](https://github.com/FiloSottile/mkcert) to install a self-signed CA:
 ```
-mkcert -install
+./generate/cert
 ```
 
-With no arguments, the server will generate self-signed cert using this root CA.
+With no arguments, the server will generate self-signed cert using this root CA. This certificate is only valid for *2 weeks* due to how WebTransport performs certificate fingerprinting.
 
 ## Server
 The Warp server supports WebTransport, pushing media over streams once a connection has been established. A more refined implementation would load content based on the WebTransport URL or some other messaging scheme.
@@ -89,13 +89,3 @@ yarn serve
 These can be accessed on `https://localhost:4444` by default.
 
 If you use a custom domain for the Warp server, make sure to override the server URL with the `url` query string parameter, e.g. `https://localhost:4444/?url=https://warp.demo`.
-
-## Chrome
-Now we need to make Chrome accept these certificates, which normally would involve trusting a root CA but this was not working with WebTransport when I last tried.
-
-Instead, we need to run a *fresh instance* of Chrome, instructing it to allow our self-signed certificate. This command will not work if Chrome is already running, so it's easier to use Chrome Canary instead.
-
-Launch a new instance of Chrome Canary:
-```
-/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary --allow-insecure-localhost --origin-to-force-quic-on=localhost:4443 https://localhost:4444
-```

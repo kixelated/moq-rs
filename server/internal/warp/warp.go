@@ -20,20 +20,23 @@ import (
 )
 
 type Server struct {
-	inner *webtransport.Server
-	media *Media
-
+	inner    *webtransport.Server
+	media    *Media
 	sessions invoker.Tasks
+	cert     *tls.Certificate
 }
 
-type ServerConfig struct {
+type Config struct {
 	Addr   string
 	Cert   *tls.Certificate
 	LogDir string
+	Media  *Media
 }
 
-func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
+func New(config Config) (s *Server, err error) {
 	s = new(Server)
+	s.cert = config.Cert
+	s.media = config.Media
 
 	quicConfig := &quic.Config{}
 
@@ -52,10 +55,12 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{*config.Cert},
+		Certificates: []tls.Certificate{*s.cert},
 	}
 
+	// Host a HTTP/3 server to serve the WebTransport endpoint
 	mux := http.NewServeMux()
+	mux.HandleFunc("/watch", s.handleWatch)
 
 	s.inner = &webtransport.Server{
 		H3: http3.Server{
@@ -67,28 +72,6 @@ func NewServer(config ServerConfig, media *Media) (s *Server, err error) {
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
-	s.media = media
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		hijacker, ok := w.(http3.Hijacker)
-		if !ok {
-			panic("unable to hijack connection: must use kixelated/quic-go")
-		}
-
-		conn := hijacker.Connection()
-
-		sess, err := s.inner.Upgrade(w, r)
-		if err != nil {
-			http.Error(w, "failed to upgrade session", 500)
-			return
-		}
-
-		err = s.serve(r.Context(), conn, sess)
-		if err != nil {
-			log.Println(err)
-		}
-	})
-
 	return s, nil
 }
 
@@ -98,7 +81,7 @@ func (s *Server) runServe(ctx context.Context) (err error) {
 
 func (s *Server) runShutdown(ctx context.Context) (err error) {
 	<-ctx.Done()
-	s.inner.Close()
+	s.inner.Close() // close on context shutdown
 	return ctx.Err()
 }
 
@@ -106,7 +89,27 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	return invoker.Run(ctx, s.runServe, s.runShutdown, s.sessions.Repeat)
 }
 
-func (s *Server) serve(ctx context.Context, conn quic.Connection, sess *webtransport.Session) (err error) {
+func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
+	hijacker, ok := w.(http3.Hijacker)
+	if !ok {
+		panic("unable to hijack connection: must use kixelated/quic-go")
+	}
+
+	conn := hijacker.Connection()
+
+	sess, err := s.inner.Upgrade(w, r)
+	if err != nil {
+		http.Error(w, "failed to upgrade session", 500)
+		return
+	}
+
+	err = s.serveSession(r.Context(), conn, sess)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func (s *Server) serveSession(ctx context.Context, conn quic.Connection, sess *webtransport.Session) (err error) {
 	defer func() {
 		if err != nil {
 			sess.CloseWithError(1, err.Error())

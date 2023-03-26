@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 
 	"github.com/kixelated/invoker"
-	"github.com/kixelated/warp-demo/server/internal/warp"
+	"github.com/kixelated/warp/server/internal/warp"
+	"github.com/kixelated/warp/server/internal/web"
 )
 
 func main() {
@@ -38,18 +41,31 @@ func run(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to load TLS certificate: %w", err)
 	}
 
-	config := warp.ServerConfig{
+	warpConfig := warp.Config{
 		Addr:   *addr,
 		Cert:   &tlsCert,
 		LogDir: *logDir,
+		Media:  media,
 	}
 
-	ws, err := warp.NewServer(config, media)
+	warpServer, err := warp.New(warpConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create warp server: %w", err)
 	}
 
+	hash := sha256.Sum256(tlsCert.Certificate[0])
+	fingerprint := hex.EncodeToString(hash[:])
+
+	webConfig := web.Config{
+		Addr:        *addr,
+		CertFile:    *cert,
+		KeyFile:     *key,
+		Fingerprint: fingerprint,
+	}
+
+	webServer := web.New(webConfig)
+
 	log.Printf("listening on %s", *addr)
 
-	return invoker.Run(ctx, invoker.Interrupt, ws.Run)
+	return invoker.Run(ctx, invoker.Interrupt, warpServer.Run, webServer.Run)
 }

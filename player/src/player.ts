@@ -7,6 +7,18 @@ import { Message, MessageInit, MessageSegment } from "./message"
 
 ///<reference path="./types/webtransport.d.ts"/>
 
+export interface PlayerInit {
+	url: string;
+
+	videoRef: HTMLVideoElement;
+	statsRef: HTMLElement;
+	throttleRef: HTMLElement;
+}
+
+/*
+*/
+
+
 export class Player {
 	mediaSource: MediaSource;
 
@@ -20,17 +32,17 @@ export class Player {
 	// References to elements in the DOM
 	vidRef: HTMLVideoElement; // The video element itself
 	statsRef: HTMLElement; // The stats div
-	throttleRef: HTMLButtonElement; // The throttle button
+	throttleRef: HTMLElement; // The throttle button
 	throttleCount: number; // number of times we've clicked the button in a row
 
 	interval: number;
 
 	timeRef?: DOMHighResTimeStamp;
 
-	constructor(props: any) {
-		this.vidRef = props.vid
-		this.statsRef = props.stats
-		this.throttleRef = props.throttle
+	constructor(props: PlayerInit) {
+		this.vidRef = props.videoRef
+		this.statsRef = props.statsRef
+		this.throttleRef = props.throttleRef
 		this.throttleCount = 0
 
 		this.mediaSource = new MediaSource()
@@ -43,8 +55,7 @@ export class Player {
 		this.interval = setInterval(this.tick.bind(this), 100)
 		this.vidRef.addEventListener("waiting", this.tick.bind(this))
 
-		const quic = new WebTransport(props.url)
-		this.quic = quic.ready.then(() => { return quic });
+		this.quic = this.connect(props.url)
 
 		// Create a unidirectional stream for all of our messages
 		this.api = this.quic.then((q) => {
@@ -61,6 +72,38 @@ export class Player {
 	async close() {
 		clearInterval(this.interval);
 		(await this.quic).close()
+	}
+
+	async connect(url: string): Promise<WebTransport> {
+		// TODO remove this when WebTransport supports the system CA pool
+		const fingerprintURL = new URL(url);
+		fingerprintURL.pathname = "/fingerprint"
+
+		const response = await fetch(fingerprintURL)
+		if (!response.ok) {
+			throw new Error('failed to get server fingerprint');
+		}
+
+		const hex = await response.text()
+
+		// Convert the hex to binary.
+		let fingerprint = [];
+		for (let c = 0; c < hex.length; c += 2) {
+			fingerprint.push(parseInt(hex.substring(c, c+2), 16));
+		}
+
+		//const fingerprint = Uint8Array.from(atob(hex), c => c.charCodeAt(0))
+
+		const quic = new WebTransport(url, { 
+			"serverCertificateHashes": [{
+				"algorithm": "sha-256",
+				"value": new Uint8Array(fingerprint),
+			}]
+		})
+
+		await quic.ready
+
+		return quic
 	}
 
 	async sendMessage(msg: any) {

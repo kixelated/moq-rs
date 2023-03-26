@@ -3,4 +3,20 @@ set -euxo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-mkcert -cert-file localhost.crt -key-file localhost.key localhost 127.0.0.1 ::1
+# Generate a new RSA key/cert for local development
+HOST="localhost"
+CRT="$HOST.crt"
+KEY="$HOST.key"
+
+# Install the system certificate if it's not already
+mkcert -install
+
+# Generate a new certificate for localhost
+mkcert -ecdsa -cert-file "$CRT" -key-file "$KEY" localhost 127.0.0.1 ::1
+
+# Reduce the expiration time of the certificate to 14 days; the WebTransport maximum.
+# TODO https://github.com/FiloSottile/mkcert/pull/513
+openssl x509 -days 14 -in "$CRT" -signkey "$KEY" -out "$CRT"
+
+# Compute the sha256 fingerprint of the certificate for WebTransport
+# openssl x509 -in "$CRT" -outform der | openssl dgst -sha256

@@ -68,7 +68,7 @@ github.com/kisielk/errcheck v1.4.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/kixelated/invoker v1.0.0 h1:0wYlvK39yQPbkwIFy+YN41AhF89WOtGyWqV2pZB39xw=
 github.com/kixelated/invoker v1.0.0/go.mod h1:RjG3iqm/sKwZjOpcW4SGq+l+4DJCDR/yUtc70VjCRB8=
-github.com/kixelated/quic-go v1.31.0 h1:O3JomeXPnLNSCNpZF415NWOyfpzbFfuvP6dlIDg8VEA=
+github.com/kixelated/quic-go v1.31.0 h1:p2vq3Otvtmz+0EP23vjumnO/HU4Q/DFxNF6xNryVfmA=
 github.com/kixelated/quic-go v1.31.0/go.mod h1:AO7pURnb8HXHmdalp5e09UxQfsuwseEhl0NLmwiSOFY=
 github.com/kixelated/webtransport-go v1.4.1 h1:ZtY3P7hVe1wK5fAt71b+HHnNISFDcQ913v+bvaNATxA=
 github.com/kixelated/webtransport-go v1.4.1/go.mod h1:6RV5pTXF7oP53T83bosSDsLdSdw31j5cfpMDqsO4D5k=

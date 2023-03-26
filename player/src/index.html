@@ -5,7 +5,7 @@
 	<meta charset = "UTF-8">
 	<title>WARP</title>
 
-	<link rel="stylesheet" href="player.css">
+	<link rel="stylesheet" href="index.css">
 </head>
 
 <body>
@@ -29,54 +29,6 @@
 		</div>
 	</div>
 
-	<script type="module">
-		import { Player } from "./player.ts"
-
-		// This is so ghetto but I'm too lazy to improve it right now
-		const vidRef = document.getElementById("vid")
-		const liveRef = document.getElementById("live")
-		const throttleRef = document.getElementById("throttle")
-		const statsRef = document.getElementById("stats")
-		const playRef = document.getElementById("play")
-
-		const params = new URLSearchParams(window.location.search)
-
-		const player = new Player({
-			url: params.get("url") || "https://localhost:4443",
-
-			vid: vidRef,
-			stats: statsRef,
-			throttle: throttleRef,
-		})
-
-		liveRef.addEventListener("click", (e) => {
-			e.preventDefault()
-			player.goLive()
-		})
-
-		throttleRef.addEventListener("click", (e) => {
-			e.preventDefault()
-			player.throttle()
-		})
-
-		playRef.addEventListener('click', (e) => {
-			vidRef.play()
-			e.preventDefault()
-		})
-
-		function playFunc(e) {
-			playRef.style.display = "none"
-			//player.goLive()
-
-			// Only fire once to restore pause/play functionality
-			vidRef.removeEventListener('play', playFunc)
-		}
-
-		vidRef.addEventListener('play', playFunc)
-		vidRef.volume = 0.5
-
-		// Try to autoplay but ignore errors on mobile; they need to click
-		//vidRef.play().catch((e) => console.warn(e))
-	</script>
+	<script src="index.ts" type="module"></script>
 </body>
 </html>
