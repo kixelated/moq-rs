@@ -10,19 +10,26 @@ export default class Reader {
 
 	// Returns any number of bytes
 	async read(): Promise<Uint8Array | undefined> {
+
 		if (this.buffer.byteLength) {
 			const buffer = this.buffer;
 			this.buffer = new Uint8Array()
 			return buffer
 		}
 
-		const result = await this.reader.getReader().read()
+		const r = this.reader.getReader()
+		const result = await r.read()
+
+		r.releaseLock()
+
 		return result.value
 	}
 
 	async readAll(): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
 		while (1) {
-			const result = await this.reader.getReader().read()
+			const result = await r.read()
 			if (result.done) {
 				break
 			}
@@ -42,12 +49,16 @@ export default class Reader {
 		const result = this.buffer
 		this.buffer = new Uint8Array()
 
+		r.releaseLock()
+
 		return result
 	}
 
 	async bytes(size: number): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
 		while (this.buffer.byteLength < size) {
-			const result = await this.reader.getReader().read()
+			const result = await r.read()
 			if (result.done) {
 				throw "short buffer"
 			}
@@ -67,12 +78,16 @@ export default class Reader {
 		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
 		this.buffer = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + size)
 
+		r.releaseLock()
+
 		return result
 	}
 
 	async peek(size: number): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
 		while (this.buffer.byteLength < size) {
-			const result = await this.reader.getReader().read()
+			const result = await r.read()
 			if (result.done) {
 				throw "short buffer"
 			}
@@ -89,7 +104,11 @@ export default class Reader {
 			}
 		}
 
-		return new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
+		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
+
+		r.releaseLock()
+
+		return result
 	}
 
 	async view(size: number): Promise<DataView> {

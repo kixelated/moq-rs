@@ -200,6 +200,11 @@ func (s *Session) writeInit(ctx context.Context, init *MediaInit) (err error) {
 		return fmt.Errorf("failed to write init data: %w", err)
 	}
 
+	err = stream.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close init stream: %w", err)
+	}
+
 	return nil
 }
 
@@ -208,6 +213,11 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 	temp, err := s.inner.OpenUniStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create stream: %w", err)
+	}
+
+	if temp == nil {
+		// Not sure when this happens, perhaps when closing a connection?
+		return fmt.Errorf("received a nil stream from quic-go: %w", err)
 	}
 
 	// Wrap the stream in an object that buffers writes instead of blocking.

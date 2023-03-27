@@ -1,13 +1,13 @@
 // Wrapper around MP4Box to play nicely with MP4Box.
 // I tried getting a mp4box.all.d.ts file to work but just couldn't figure it out
-import { createFile, ISOFile, DataStream, BoxParser } from "./mp4box.all.js"
+import { createFile, ISOFile, DataStream, BoxParser } from "./mp4box.all"
 
 // Rename some stuff so it's on brand.
-export { createFile as MP4New, ISOFile as MP4File, DataStream as MP4Stream, BoxParser as MP4Parser }
+export { createFile as New, ISOFile as File, DataStream as Stream, BoxParser as Parser }
 
-export type MP4ArrayBuffer = ArrayBuffer & {fileStart: number};
+export type ArrayBufferOffset = ArrayBuffer & {fileStart: number};
 
-export interface MP4MediaTrack {
+export interface MediaTrack {
 	id: number;
 	created: Date;
 	modified: Date;
@@ -25,13 +25,13 @@ export interface MP4MediaTrack {
 	nb_samples: number;
 }
 
-export interface MP4VideoData {
+export interface VideoData {
 	width: number;
 	height: number;
 }
 
-export interface MP4VideoTrack extends MP4MediaTrack {
-	video: MP4VideoData;
+export interface VideoTrack extends MediaTrack {
+	video: VideoData;
 }
 
 export interface MP4AudioData {
@@ -40,13 +40,13 @@ export interface MP4AudioData {
 	sample_size: number;
 }
 
-export interface MP4AudioTrack extends MP4MediaTrack {
+export interface AudioTrack extends MediaTrack {
 	audio: MP4AudioData;
 }
 
-export type MP4Track = MP4VideoTrack | MP4AudioTrack;
+export type Track = VideoTrack | AudioTrack;
 
-export interface MP4Info {
+export interface Info {
 	duration: number;
 	timescale: number;
 	fragment_duration: number;
@@ -56,13 +56,13 @@ export interface MP4Info {
 	brands: string[];
 	created: Date;
 	modified: Date;
-	tracks: MP4Track[];
+	tracks: Track[];
 	mime: string;
-	videoTracks: MP4Track[];
-	audioTracks: MP4Track[];
+	videoTracks: Track[];
+	audioTracks: Track[];
 }
 
-export interface MP4Sample {
+export interface Sample {
 	number: number;
 	track_id: number;
 	timescale: number;
@@ -83,3 +83,5 @@ export interface MP4Sample {
 	offset: number;
 	subsamples: any;
 }
+
+export { Init, InitParser } from "./init"

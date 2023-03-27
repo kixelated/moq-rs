@@ -1,13 +1,10 @@
 import * as Message from "./message";
-import * as MP4 from "../mp4"
-import * as Stream from "../stream"
-import * as Util from "../util"
-
+import { InitParser } from "../mp4/init";
 import { Renderer } from "./renderer"
+import { MP4New, MP4Sample, MP4ArrayBuffer } from "../mp4/index"
 
 export class Decoder {
-    // Store the init message for each track
-    tracks: Map<string, Util.Deferred<Message.Init>>
+    tracks: Map<string, InitParser>;
     renderer: Renderer;
 
     constructor(renderer: Renderer) {
@@ -16,29 +13,42 @@ export class Decoder {
     }
 
     async init(msg: Message.Init) {
-		let track = this.tracks.get(msg.track);
-		if (!track) {
-            track = new Util.Deferred()
-			this.tracks.set(msg.track, track)
-		}
+        let track = this.tracks.get(msg.track);
+        if (!track) {
+            track = new InitParser()
+            this.tracks.set(msg.track, track)
+        }
 
-        track.resolve(msg)
+        while (1) {
+            const data = await msg.stream.read()
+            if (!data) break
+
+            track.init(data)
+        }
+
+        // TODO this will hang on incomplete data
+        const init = await track.ready;
+        const info = init.info;
+
+        if (info.audioTracks.length != 1 || info.videoTracks.length != 0) {
+            throw new Error("expected a single audio track")
+        }
     }
 
     async decode(msg: Message.Segment) {
 		let track = this.tracks.get(msg.track);
 		if (!track) {
-            track = new Util.Deferred()
+			track = new InitParser()
 			this.tracks.set(msg.track, track)
 		}
 
 		// Wait for the init segment to be fully received and parsed
-		const init = await track.promise;
+		const init = await track.ready;
         const info = init.info;
         const video = info.videoTracks[0]
 
-        const decoder = new VideoDecoder({
-            output: (frame: VideoFrame) => {
+        const decoder = new AudioDecoder({
+            output: (frame: AudioFrame) => {
                 this.renderer.push(frame)
             },
             error: (err: Error) => {
@@ -47,24 +57,21 @@ export class Decoder {
         });
 
         decoder.configure({
-            codec: video.codec,
-            codedHeight: video.track_height,
-            codedWidth: video.track_width,
+            codec: info.mime,
+            // TODO what else?
             // optimizeForLatency: true
         })
 
-		const input = MP4.New();
+		const input = MP4New();
 
-        input.onSamples = (id: number, user: any, samples: MP4.Sample[]) => {
+        input.onSamples = (id: number, user: any, samples: MP4Sample[]) => {
             for (let sample of samples) {
                 const timestamp = sample.dts / (1000 / info.timescale) // milliseconds
-                console.log(sample)
 
-                decoder.decode(new EncodedVideoChunk({
+                decoder.decode(new EncodedAudioChunk({
                     data: sample.data,
                     duration: sample.duration,
                     timestamp: timestamp,
-                    type: sample.is_sync ? "key" : "delta",
                 }))
             }
         }
@@ -74,15 +81,12 @@ export class Decoder {
 			input.start();
 		}
 
-        // MP4box requires us to reparse the init segment unfortunately
-        let offset = 0;
-        
-        for (let raw of init.raw) {
-            raw.fileStart = offset
-            input.appendBuffer(raw)
-        }
+        let offset = 0
 
-        const stream = new Stream.Reader(msg.reader, msg.buffer)
+        // MP4box requires us to reparse the init segment unfortunately
+        for (let raw of track.raw) {
+            offset = input.appendBuffer(raw)
+        }
 
 		/* TODO I'm not actually sure why this code doesn't work; something trips up the MP4 parser
 			while (1) {
@@ -95,17 +99,17 @@ export class Decoder {
 		*/
 
 		// One day I'll figure it out; until then read one top-level atom at a time
-		while (!await stream.done()) {
-			const raw = await stream.peek(4)
+		while (!await msg.stream.done()) {
+			const raw = await msg.stream.peek(4)
 			const size = new DataView(raw.buffer, raw.byteOffset, raw.byteLength).getUint32(0)
-			const atom = await stream.bytes(size)
+			const atom = await msg.stream.bytes(size)
 
             // Make a copy of the atom because mp4box only accepts an ArrayBuffer unfortunately
             let box = new Uint8Array(atom.byteLength);
             box.set(atom)
 
             // and for some reason we need to modify the underlying ArrayBuffer with offset
-            let buffer = box.buffer as MP4.ArrayBufferOffset
+            let buffer = box.buffer as MP4ArrayBuffer
             buffer.fileStart = offset
 
             // Parse the data

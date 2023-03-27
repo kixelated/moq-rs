@@ -11,12 +11,11 @@ self.addEventListener('message', async (e: MessageEvent) => {
 
         renderer = new Renderer(config)
         decoder = new Decoder(renderer)
-    } else if (e.data.init) {
-        const init = e.data.init as Message.Init
-        await decoder.init(init)
-    } else if (e.data.segment) {
+    }
+
+    if (e.data.segment) {
         const segment = e.data.segment as Message.Segment
+
         await decoder.decode(segment)
     }
 })
-

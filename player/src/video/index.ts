@@ -10,10 +10,10 @@ export default class Video {
     }
 
     init(init: Message.Init) {
-        this.worker.postMessage({ init }, [ init.stream.buffer, init.stream.reader ])
+        this.worker.postMessage({ init }) // note: we copy the raw init bytes each time
     }
 
     segment(segment: Message.Segment) {
-        this.worker.postMessage({ segment }, [ segment.stream.buffer, segment.stream.reader ])
+        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
     }
 }

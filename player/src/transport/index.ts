@@ -1,6 +1,7 @@
 import * as Message from "./message"
-import Reader from "../stream/reader"
-import Writer from "../stream/writer"
+import * as Stream from "../stream"
+import * as MP4 from "../mp4"
+
 import Video from "../video/index"
 
 ///<reference path="./types/webtransport.d.ts"/>
@@ -13,11 +14,14 @@ export interface PlayerInit {
 export class Player {
 	quic: Promise<WebTransport>;
 	api: Promise<WritableStream>;
+    tracks: Map<string, MP4.InitParser>
 
 	//audio: Worker;
 	video: Video;
 
 	constructor(props: PlayerInit) {
+		this.tracks = new Map();
+
 		//this.audio = new Worker("../audio")
 		this.video = new Video({
 			canvas: props.canvas.transferControlToOffscreen(),
@@ -76,7 +80,7 @@ export class Player {
 
 		const stream = await this.api
 
-		const writer = new Writer(stream)
+		const writer = new Stream.Writer(stream)
 		await writer.uint32(size)
 		await writer.string("warp")
 		await writer.string(payload)
@@ -97,7 +101,7 @@ export class Player {
 	}
 
 	async handleStream(stream: ReadableStream) {
-		let r = new Reader(stream.getReader())
+		let r = new Stream.Reader(stream)
 
 		while (!await r.done()) {
 			const size = await r.uint32();
@@ -117,19 +121,52 @@ export class Player {
 		}
 	}
 
-	async handleInit(stream: Reader, msg: Message.Init) {
-		// TODO properly determine if audio or video
-		this.video.init({
-			track: msg.id,
-			stream: stream,
-		})
+	async handleInit(stream: Stream.Reader, msg: Message.Init) {
+        let track = this.tracks.get(msg.id);
+        if (!track) {
+            track = new MP4.InitParser()
+            this.tracks.set(msg.id, track)
+        }
+
+        while (1) {
+            const data = await stream.read()
+            if (!data) break
+
+            track.push(data)
+        }
+
+		const info = await track.info
+
+        if (info.audioTracks.length + info.videoTracks.length != 1) {
+            throw new Error("expected a single track")
+        }
+
+		if (info.videoTracks.length) {
+			this.video.init({
+				track: msg.id,
+				info: info,
+				raw: track.raw,
+			})
+		}
 	}
 
-	async handleSegment(stream: Reader, msg: Message.Segment) {
-		// TODO properly determine if audio or video
-		this.video.segment({
-			track: msg.init,
-			stream: stream,
-		})
+	async handleSegment(stream: Stream.Reader, msg: Message.Segment) {
+        let track = this.tracks.get(msg.init);
+        if (!track) {
+            track = new MP4.InitParser()
+            this.tracks.set(msg.init, track)
+        }
+
+		const info = await track.info
+
+		// Wait until we learn if this is an audio or video track
+
+		if (info.videoTracks.length) {
+			this.video.segment({
+				track: msg.init,
+				buffer: stream.buffer,
+				reader: stream.reader,
+			})
+		}
 	}
 }
