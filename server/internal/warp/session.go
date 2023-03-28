@@ -176,6 +176,11 @@ func (s *Session) writeInit(ctx context.Context, init *MediaInit) (err error) {
 		return fmt.Errorf("failed to create stream: %w", err)
 	}
 
+	if temp == nil {
+		// Not sure when this happens, perhaps when closing a connection?
+		return fmt.Errorf("received a nil stream from quic-go")
+	}
+
 	// Wrap the stream in an object that buffers writes instead of blocking.
 	stream := NewStream(temp)
 	s.streams.Add(stream.Run)
@@ -217,7 +222,7 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 
 	if temp == nil {
 		// Not sure when this happens, perhaps when closing a connection?
-		return fmt.Errorf("received a nil stream from quic-go: %w", err)
+		return fmt.Errorf("received a nil stream from quic-go")
 	}
 
 	// Wrap the stream in an object that buffers writes instead of blocking.

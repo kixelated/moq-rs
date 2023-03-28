@@ -6,9 +6,10 @@
     "check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@parcel/transformer-inline-string": "2.8.3",
     "@parcel/validator-typescript": "^2.6.0",
+    "@types/dom-webcodecs": "^0.1.6",
     "parcel": "^2.8.0",
-    "typescript": ">=3.0.0",
-    "@types/dom-webcodecs": "^0.1.6"
+    "typescript": ">=3.0.0"
   }
 }

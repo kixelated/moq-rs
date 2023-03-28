@@ -60,8 +60,6 @@ export class Renderer {
                 break
             }
 
-            console.log("dropping frame")
-
             frame.close()
 
             this.queue.shift()

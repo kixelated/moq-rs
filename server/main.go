@@ -56,6 +56,8 @@ func run(ctx context.Context) (err error) {
 	hash := sha256.Sum256(tlsCert.Certificate[0])
 	fingerprint := hex.EncodeToString(hash[:])
 
+	fmt.Println(fingerprint)
+
 	webConfig := web.Config{
 		Addr:        *addr,
 		CertFile:    *cert,

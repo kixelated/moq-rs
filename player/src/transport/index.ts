@@ -3,6 +3,7 @@ import * as Stream from "../stream"
 import * as MP4 from "../mp4"
 
 import Video from "../video/index"
+import fingerprint from 'bundle-text:./fingerprint.hex';
 
 ///<reference path="./types/webtransport.d.ts"/>
 
@@ -43,29 +44,16 @@ export class Player {
 	}
 
 	async connect(url: string): Promise<WebTransport> {
-		// TODO remove this when WebTransport supports the system CA pool
-		const fingerprintURL = new URL(url);
-		fingerprintURL.pathname = "/fingerprint"
-
-		const response = await fetch(fingerprintURL)
-		if (!response.ok) {
-			throw new Error('failed to get server fingerprint');
-		}
-
-		const hex = await response.text()
-
 		// Convert the hex to binary.
-		let fingerprint = [];
-		for (let c = 0; c < hex.length; c += 2) {
-			fingerprint.push(parseInt(hex.substring(c, c+2), 16));
+		let hash = [];
+		for (let c = 0; c < fingerprint.length; c += 2) {
+			hash.push(parseInt(fingerprint.substring(c, c+2), 16));
 		}
-
-		//const fingerprint = Uint8Array.from(atob(hex), c => c.charCodeAt(0))
 
 		const quic = new WebTransport(url, { 
 			"serverCertificateHashes": [{
 				"algorithm": "sha-256",
-				"value": new Uint8Array(fingerprint),
+				"value": new Uint8Array(hash),
 			}]
 		})
 
