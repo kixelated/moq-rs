@@ -60,7 +60,7 @@ Unfortunately, QUIC mandates TLS and makes local development difficult.
 
 If you have a valid certificate you can use it instead of self-signing. The go binaries take a `-tls-cert` and `-tls-key` argument. Skip the remaining steps in this section and use your hostname instead.
 
-Otherwise, use [mkcert](https://github.com/FiloSottile/mkcert) to install a self-signed CA:
+Otherwise, we use [mkcert](https://github.com/FiloSottile/mkcert) to install a self-signed CA:
 ```
 ./generate/cert
 ```
