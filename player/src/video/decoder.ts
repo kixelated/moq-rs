@@ -46,19 +46,26 @@ export class Decoder {
             }
         });
 
-        decoder.configure({
-            codec: video.codec,
-            codedHeight: video.track_height,
-            codedWidth: video.track_width,
-            // optimizeForLatency: true
-        })
-
 		const input = MP4.New();
 
         input.onSamples = (id: number, user: any, samples: MP4.Sample[]) => {
             for (let sample of samples) {
-                const timestamp = sample.dts / (1000 / info.timescale) // milliseconds
-                console.log(sample)
+                const timestamp = 1000 * sample.dts / sample.timescale // milliseconds
+
+                if (sample.is_sync) {
+                    // Configure the decoder using the AVC box for H.264
+                    const avcc = sample.description.avcC;
+                    const description = new MP4.Stream(new Uint8Array(avcc.size), 0, false)
+                    avcc.write(description)
+
+                    decoder.configure({
+                        codec: video.codec,
+                        codedHeight: video.track_height,
+                        codedWidth: video.track_width,
+                        description: description.buffer?.slice(8),
+                        // optimizeForLatency: true
+                    })
+                }
 
                 decoder.decode(new EncodedVideoChunk({
                     data: sample.data,

@@ -46,7 +46,8 @@ export class Renderer {
 
         let frame = this.queue[0]
         if (frame.timestamp > target) {
-            // nothing to render yet
+            // nothing to render yet, wait for the next animation frame
+            this.render = self.requestAnimationFrame(this.draw.bind(this))
             return
         }
 
@@ -59,14 +60,25 @@ export class Renderer {
                 break
             }
 
+            console.log("dropping frame")
+
+            frame.close()
+
             this.queue.shift()
             frame = next
         }
 
         const ctx = this.canvas.getContext("2d");
-        ctx?.drawImage(frame, 0, 0) // TODO aspect ratio
+        ctx?.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height) // TODO aspect ratio
 
         this.last = frame.timestamp;
         frame.close()
+
+        if (this.queue.length > 0) {
+            this.render = self.requestAnimationFrame(this.draw.bind(this))
+        } else {
+            // Break the loop for now
+            this.render = 0
+        }
     }
 }
