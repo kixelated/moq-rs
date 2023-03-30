@@ -3,6 +3,8 @@ import * as Stream from "../stream"
 import * as MP4 from "../mp4"
 
 import Video from "../video/index"
+
+// @ts-ignore bundler embeds data
 import fingerprint from 'bundle-text:./fingerprint.hex';
 
 ///<reference path="./types/webtransport.d.ts"/>
@@ -46,7 +48,7 @@ export class Player {
 	async connect(url: string): Promise<WebTransport> {
 		// Convert the hex to binary.
 		let hash = [];
-		for (let c = 0; c < fingerprint.length; c += 2) {
+		for (let c = 0; c < fingerprint.length-1; c += 2) {
 			hash.push(parseInt(fingerprint.substring(c, c+2), 16));
 		}
 

@@ -7,11 +7,14 @@ export class Renderer {
     sync: DOMHighResTimeStamp; // the wall clock value for timestamp 0
     last?: number; // the timestamp of the last rendered frame
 
+    maxDuration: number; // the maximum duration allowed in the buffer
+
     constructor(config: Message.Config) {
         this.canvas = config.canvas;
         this.queue = [];
         this.render = 0;
         this.sync = 0;
+        this.maxDuration = 10 * 1000
     }
 
     push(frame: VideoFrame) {
@@ -27,14 +30,36 @@ export class Renderer {
         }
 
         // Insert the frame into the queue sorted by timestamp.
-        // TODO loop backwards for better performance
-        let index = this.queue.findIndex(other => {
-            return frame.timestamp < other.timestamp;
-        })
+        let low = 0
+        let high = this.queue.length;
 
-        // Insert into the queue.
-        this.queue.splice(index, 0, frame)
+        // Fast path because we normally append to the end.
+        if (this.queue.length > 0 && this.queue[this.queue.length].timestamp <= frame.timestamp) {
+            this.queue.push(frame)
+        } else {
+            // Do a full binary search
+            while (low < high) {
+                var mid = (low + high) >>> 1;
+                if (this.queue[mid].timestamp < frame.timestamp) low = mid + 1;
+                else high = mid;
+            }
 
+            this.queue.splice(low, 0, frame)
+        }
+
+        // Trim the max size of the buffer
+        const last = this.queue[this.queue.length-1].timestamp
+        while (1) {
+            const first = this.queue[0]
+            if (first.timestamp + this.maxDuration >= last) {
+                break
+            }
+
+            first.close()
+            this.queue.shift()
+        }
+
+        // Queue up to render the next frame.
         if (!this.render) {
             this.render = self.requestAnimationFrame(this.draw.bind(this))
         }
