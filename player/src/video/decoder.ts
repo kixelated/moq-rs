@@ -22,6 +22,10 @@ export class Decoder {
 			this.tracks.set(msg.track, track)
 		}
 
+        if (msg.info.videoTracks.length != 1 || msg.info.audioTracks.length != 0) {
+            throw new Error("Expected a single video track")
+        }
+
         track.resolve(msg)
     }
 
@@ -39,7 +43,7 @@ export class Decoder {
 
         const decoder = new VideoDecoder({
             output: (frame: VideoFrame) => {
-                this.renderer.push(frame)
+                this.renderer.emit(frame)
             },
             error: (err: Error) => {
                 console.warn(err)
@@ -83,7 +87,7 @@ export class Decoder {
 
         // MP4box requires us to reparse the init segment unfortunately
         let offset = 0;
-        
+
         for (let raw of init.raw) {
             raw.fileStart = offset
             input.appendBuffer(raw)

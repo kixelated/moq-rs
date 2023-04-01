@@ -2,7 +2,8 @@ import * as Message from "./message"
 import * as Stream from "../stream"
 import * as MP4 from "../mp4"
 
-import Video from "../video/index"
+import Audio from "../audio"
+import Video from "../video"
 
 // @ts-ignore bundler embeds data
 import fingerprint from 'bundle-text:./fingerprint.hex';
@@ -19,13 +20,14 @@ export class Player {
 	api: Promise<WritableStream>;
     tracks: Map<string, MP4.InitParser>
 
-	//audio: Worker;
+	audio: Audio;
 	video: Video;
 
 	constructor(props: PlayerInit) {
 		this.tracks = new Map();
 
-		//this.audio = new Worker("../audio")
+		// TODO move these to another class so this only deals with the transport.
+		this.audio = new Audio({})
 		this.video = new Video({
 			canvas: props.canvas.transferControlToOffscreen(),
 		})
@@ -52,7 +54,7 @@ export class Player {
 			hash.push(parseInt(fingerprint.substring(c, c+2), 16));
 		}
 
-		const quic = new WebTransport(url, { 
+		const quic = new WebTransport(url, {
 			"serverCertificateHashes": [{
 				"algorithm": "sha-256",
 				"value": new Uint8Array(hash),
@@ -131,12 +133,20 @@ export class Player {
             throw new Error("expected a single track")
         }
 
-		if (info.videoTracks.length) {
+		if (info.audioTracks) {
+			this.audio.init({
+				track: msg.id,
+				info: info,
+				raw: track.raw,
+			})
+		} else if (info.videoTracks) {
 			this.video.init({
 				track: msg.id,
 				info: info,
 				raw: track.raw,
 			})
+		} else {
+			throw new Error("init is neither audio nor video")
 		}
 	}
 
@@ -147,16 +157,23 @@ export class Player {
             this.tracks.set(msg.init, track)
         }
 
+		// Wait until we learn if this is an audio or video track
 		const info = await track.info
 
-		// Wait until we learn if this is an audio or video track
-
-		if (info.videoTracks.length) {
+		if (info.audioTracks) {
+			this.audio.segment({
+				track: msg.init,
+				buffer: stream.buffer,
+				reader: stream.reader,
+			})
+		} else if (info.videoTracks) {
 			this.video.segment({
 				track: msg.init,
 				buffer: stream.buffer,
 				reader: stream.reader,
 			})
+		} else {
+			throw new Error("segment is neither audio nor video")
 		}
 	}
 }

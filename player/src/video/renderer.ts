@@ -17,7 +17,7 @@ export class Renderer {
         this.maxDuration = 10 * 1000
     }
 
-    push(frame: VideoFrame) {
+    emit(frame: VideoFrame) {
         if (!this.sync) {
             // Save the frame as the sync point
             this.sync = performance.now() - frame.timestamp

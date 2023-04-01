@@ -1,15 +1,17 @@
-import Reader from "../stream/reader";
+import * as MP4 from "../mp4"
 
 export interface Config {
-    canvas: OffscreenCanvas;
+    // temporarily empty
 }
 
 export interface Init {
     track: string;
-    stream: Reader;
+    info: MP4.Info;
+    raw: MP4.ArrayBufferOffset[];
 }
 
 export interface Segment {
     track: string;
-    stream: Reader;
+    buffer: Uint8Array;     // unread buffered data
+    reader: ReadableStream; // unread unbuffered data
 }
