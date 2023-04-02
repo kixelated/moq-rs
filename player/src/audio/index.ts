@@ -1,19 +1,21 @@
 import * as Message from "./message"
+import { Renderer } from "./renderer"
+import { Decoder } from "./decoder"
 
-// Wrapper around the WebWorker API
 export default class Audio {
-    worker: Worker;
+    renderer: Renderer;
+    decoder: Decoder;
 
     constructor(config: Message.Config) {
-        this.worker = new Worker(new URL('worker.ts', import.meta.url), { type: "module" })
-        this.worker.postMessage({ config }, [])
+        this.renderer = new Renderer(config)
+        this.decoder = new Decoder(config, this.renderer)
     }
 
-    init(init: Message.Init) {
-        this.worker.postMessage({ init }) // note: we copy the raw init bytes each time
+    async init(init: Message.Init) {
+        await this.decoder.init(init)
     }
 
-    segment(segment: Message.Segment) {
-        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
+    async segment(segment: Message.Segment) {
+        await this.decoder.decode(segment)
     }
 }

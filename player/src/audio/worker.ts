@@ -9,8 +9,8 @@ self.addEventListener('message', async (e: MessageEvent) => {
     if (e.data.config) {
         const config = e.data.config as Message.Config;
 
-        renderer = new Renderer()
-        decoder = new Decoder(renderer)
+        renderer = new Renderer(config)
+        decoder = new Decoder(config, renderer)
     }
 
     if (e.data.init) {

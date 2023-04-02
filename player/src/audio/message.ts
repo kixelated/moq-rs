@@ -1,7 +1,7 @@
 import * as MP4 from "../mp4"
 
 export interface Config {
-    // temporarily empty
+    ctx: AudioContext;
 }
 
 export interface Init {

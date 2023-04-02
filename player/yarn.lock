@@ -743,6 +743,11 @@
   resolved "https://registry.yarnpkg.com/@trysound/sax/-/sax-0.2.0.tgz#cccaab758af56761eb7bf37af6f03f326dd798ad"
   integrity sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==
 
+"@types/audioworklet@^0.0.41":
+  version "0.0.41"
+  resolved "https://registry.yarnpkg.com/@types/audioworklet/-/audioworklet-0.0.41.tgz#ed2e67c7dcbe207974c54812e21819984c74a4f0"
+  integrity sha512-8BWffzGoSRz436IviQVPye75YYWfac4OKdcLgkZxb3APZxSmAOp2SMtsH1yuM1x57/z/J7bsm05Yq98Hzk1t/w==
+
 "@types/dom-webcodecs@^0.1.6":
   version "0.1.6"
   resolved "https://registry.yarnpkg.com/@types/dom-webcodecs/-/dom-webcodecs-0.1.6.tgz#204f2c8c2e6286114e1ec2997630bc0fd2081ffa"

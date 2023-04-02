@@ -3,7 +3,6 @@ import * as Message from "./message";
 import Source from "./source";
 
 export class Renderer {
-    ctx: AudioContext;
     source: Source;
 
     render: number; // non-zero if requestAnimationFrame has been called
@@ -11,16 +10,15 @@ export class Renderer {
 
     maxDuration: number; // the maximum duration allowed in the buffer
 
-    constructor() {
+    constructor(config: Message.Config) {
         this.render = 0;
         this.maxDuration = 10 * 1000
 
         // TODO evaluate { latencyHint: "interactive" }
-        this.ctx = new AudioContext()
-        this.source = new Source(this.ctx)
+        this.source = new Source(config.ctx)
     }
 
-    emit(frame: AudioFrame) {
+    emit(frame: AudioData) {
         this.source.emit(frame)
     }
 }

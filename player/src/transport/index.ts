@@ -27,7 +27,9 @@ export class Player {
 		this.tracks = new Map();
 
 		// TODO move these to another class so this only deals with the transport.
-		this.audio = new Audio({})
+		this.audio = new Audio({
+			ctx: new AudioContext(),
+		})
 		this.video = new Video({
 			canvas: props.canvas.transferControlToOffscreen(),
 		})
@@ -133,13 +135,13 @@ export class Player {
             throw new Error("expected a single track")
         }
 
-		if (info.audioTracks) {
+		if (info.audioTracks.length) {
 			this.audio.init({
 				track: msg.id,
 				info: info,
 				raw: track.raw,
 			})
-		} else if (info.videoTracks) {
+		} else if (info.videoTracks.length) {
 			this.video.init({
 				track: msg.id,
 				info: info,
@@ -160,13 +162,13 @@ export class Player {
 		// Wait until we learn if this is an audio or video track
 		const info = await track.info
 
-		if (info.audioTracks) {
+		if (info.audioTracks.length) {
 			this.audio.segment({
 				track: msg.init,
 				buffer: stream.buffer,
 				reader: stream.reader,
 			})
-		} else if (info.videoTracks) {
+		} else if (info.videoTracks.length) {
 			this.video.segment({
 				track: msg.init,
 				buffer: stream.buffer,

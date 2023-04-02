@@ -55,7 +55,7 @@ export default class Source {
         }
     }
 
-    emit(frame: AudioFrame) {
+    emit(frame: AudioData) {
         for (let i = 0; i < frame.channels; i += 1) {
             const ring = this.channels[i]
             ring.set(frame, i)

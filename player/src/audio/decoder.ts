@@ -10,7 +10,7 @@ export class Decoder {
     tracks: Map<string, Util.Deferred<Message.Init>>
     renderer: Renderer;
 
-    constructor(renderer: Renderer) {
+    constructor(config: Message.Config, renderer: Renderer) {
         this.tracks = new Map();
         this.renderer = renderer;
     }
@@ -22,6 +22,7 @@ export class Decoder {
 			this.tracks.set(msg.track, track)
 		}
 
+        console.log(msg.info)
         if (msg.info.audioTracks.length != 1 || msg.info.videoTracks.length != 0) {
             throw new Error("Expected a single audio track")
         }
@@ -42,16 +43,19 @@ export class Decoder {
         const audio = info.audioTracks[0]
 
         const decoder = new AudioDecoder({
-            output: (frame: AudioFrame) => {
+            output: (frame: AudioData) => {
                 this.renderer.emit(frame)
             },
             error: (err: Error) => {
                 console.warn(err)
             }
         });
+        console.log(audio)
 
         decoder.configure({
             codec: audio.codec,
+            numberOfChannels: audio.audio.channel_count,
+            sampleRate: audio.audio.sample_rate,
             // optimizeForLatency: true
         })
 
@@ -61,6 +65,7 @@ export class Decoder {
             for (let sample of samples) {
                 // TODO this assumes that timescale == sample rate
                 decoder.decode(new EncodedAudioChunk({
+                    type: sample.is_sync ? "key" : "delta",
                     data: sample.data,
                     duration: sample.duration,
                     timestamp: sample.dts,
