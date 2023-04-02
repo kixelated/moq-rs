@@ -1,7 +1,7 @@
 import * as MP4 from "./index"
 
 export interface Init {
-	raw: MP4.ArrayBufferOffset;
+	raw: MP4.ArrayBuffer;
 	info: MP4.Info;
 }
 
@@ -9,7 +9,7 @@ export class InitParser {
 	mp4box: MP4.File;
 	offset: number;
 
-	raw: MP4.ArrayBufferOffset[];
+	raw: MP4.ArrayBuffer[];
 	info: Promise<MP4.Info>;
 
 	constructor() {
@@ -42,7 +42,7 @@ export class InitParser {
 		box.set(data)
 
 		// and for some reason we need to modify the underlying ArrayBuffer with fileStart
-		let buffer = box.buffer as MP4.ArrayBufferOffset
+		let buffer = box.buffer as MP4.ArrayBuffer
 		buffer.fileStart = this.offset
 
 		// Parse the data

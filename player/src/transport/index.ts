@@ -8,8 +8,6 @@ import Video from "../video"
 // @ts-ignore bundler embeds data
 import fingerprint from 'bundle-text:./fingerprint.hex';
 
-///<reference path="./types/webtransport.d.ts"/>
-
 export interface PlayerInit {
 	url: string;
 	canvas: HTMLCanvasElement;

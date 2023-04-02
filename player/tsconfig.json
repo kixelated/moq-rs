@@ -7,9 +7,5 @@
     "module": "es2022",
     "moduleResolution": "node",
     "strict": true,
-    "typeRoots": [
-      "src/types"
-    ],
-    "allowJs": true
   }
 }

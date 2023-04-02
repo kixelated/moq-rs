@@ -109,7 +109,7 @@ export class Decoder {
             box.set(atom)
 
             // and for some reason we need to modify the underlying ArrayBuffer with offset
-            let buffer = box.buffer as MP4.ArrayBufferOffset
+            let buffer = box.buffer as MP4.ArrayBuffer
             buffer.fileStart = offset
 
             // Parse the data
