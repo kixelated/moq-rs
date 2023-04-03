@@ -7,7 +7,7 @@ export interface Config {
 export interface Init {
     track: string;
     info: MP4.Info;
-    raw: MP4.ArrayBufferOffset[];
+    raw: MP4.ArrayBuffer[];
 }
 
 export interface Segment {

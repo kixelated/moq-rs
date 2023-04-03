@@ -8,12 +8,13 @@ import Video from "../video"
 // @ts-ignore bundler embeds data
 import fingerprint from 'bundle-text:./fingerprint.hex';
 
-export interface PlayerInit {
+export interface TransportInit {
 	url: string;
-	canvas: HTMLCanvasElement;
+	audio: Audio;
+	video: Video;
 }
 
-export class Player {
+export default class Transport {
 	quic: Promise<WebTransport>;
 	api: Promise<WritableStream>;
     tracks: Map<string, MP4.InitParser>
@@ -21,16 +22,11 @@ export class Player {
 	audio: Audio;
 	video: Video;
 
-	constructor(props: PlayerInit) {
+	constructor(props: TransportInit) {
 		this.tracks = new Map();
 
-		// TODO move these to another class so this only deals with the transport.
-		this.audio = new Audio({
-			ctx: new AudioContext(),
-		})
-		this.video = new Video({
-			canvas: props.canvas.transferControlToOffscreen(),
-		})
+		this.audio = props.audio;
+		this.video = props.video;
 
 		this.quic = this.connect(props.url)
 

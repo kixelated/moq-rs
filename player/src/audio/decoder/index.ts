@@ -1,27 +1,29 @@
-import * as Message from "./message"
+import * as Message from "../message"
 
-// Wrapper around the WebWorker API
-export default class Video {
+// Wrapper to run the decoder in a Worker
+export default class Decoder {
     worker: Worker;
 
     constructor(config: Message.Config) {
         const url = new URL('worker.ts', import.meta.url)
         this.worker = new Worker(url, {
+            name: "audio",
             type: "module",
-            name: "video",
         })
-        this.worker.postMessage({ config }, [ config.canvas ])
+
+        this.worker.onmessage = this.onMessage.bind(this)
+        this.worker.postMessage({ config })
     }
 
     init(init: Message.Init) {
-        this.worker.postMessage({ init }) // note: we copy the raw init bytes each time
+        this.worker.postMessage({ init })
     }
 
     segment(segment: Message.Segment) {
         this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
     }
 
-    play() {
+    private onMessage(e: MessageEvent) {
         // TODO
     }
 }

@@ -1,33 +1,53 @@
-import * as Message from "./message";
-import * as MP4 from "../mp4"
-import * as Stream from "../stream"
-import * as Util from "../util"
+import * as Message from "../message";
+import * as MP4 from "../../mp4"
+import * as Stream from "../../stream"
+import * as Util from "../../util"
+import { Ring, RingState } from "../ring"
 
-import { Renderer } from "./renderer"
+        // Ignore the timestamp output by WebCodecs since it's in microseconds
+        // We will manually set the timestamp based on the sample rate.
+        let frameCount = 0
 
-export class Decoder {
+export default class Decoder {
     // Store the init message for each track
-    tracks: Map<string, Util.Deferred<Message.Init>>
-    renderer: Renderer;
+    tracks: Map<string, Util.Deferred<Message.Init>>;
+    sampleRate: number;
+    channels: Ring[];
+    sync?: number; // the first timestamp
 
-    constructor(config: Message.Config, renderer: Renderer) {
+    constructor(config: Message.Config) {
         this.tracks = new Map();
-        this.renderer = renderer;
+        this.sampleRate = config.sampleRate
+
+        this.channels = []
+        for (let state of config.channels) {
+            this.channels.push(new Ring(state))
+        }
     }
 
-    async init(msg: Message.Init) {
-		let track = this.tracks.get(msg.track);
-		if (!track) {
-            track = new Util.Deferred()
-			this.tracks.set(msg.track, track)
+    init(msg: Message.Init) {
+		let defer = this.tracks.get(msg.track);
+		if (!defer) {
+            defer = new Util.Deferred()
+			this.tracks.set(msg.track, defer)
 		}
 
-        console.log(msg.info)
         if (msg.info.audioTracks.length != 1 || msg.info.videoTracks.length != 0) {
             throw new Error("Expected a single audio track")
         }
 
-        track.resolve(msg)
+        const track = msg.info.audioTracks[0]
+        const audio = track.audio
+
+        if (audio.sample_rate != this.sampleRate) {
+            throw new Error("sample rate not supported")
+        }
+
+        if (audio.channel_count > this.channels.length) {
+            throw new Error("channel count not supported")
+        }
+
+        defer.resolve(msg)
     }
 
     async decode(msg: Message.Segment) {
@@ -39,18 +59,20 @@ export class Decoder {
 
 		// Wait for the init segment to be fully received and parsed
 		const init = await track.promise;
-        const info = init.info;
-        const audio = info.audioTracks[0]
+        const audio = init.info.audioTracks[0]
 
         const decoder = new AudioDecoder({
             output: (frame: AudioData) => {
-                this.renderer.emit(frame)
+                for (let i = 0; i < frame.numberOfChannels; i += 1) {
+                    this.channels[i].emit(frameCount, frame, i)
+                }
+
+                frameCount += frame.numberOfFrames;
             },
             error: (err: Error) => {
                 console.warn(err)
             }
         });
-        console.log(audio)
 
         decoder.configure({
             codec: audio.codec,
@@ -63,12 +85,20 @@ export class Decoder {
 
         input.onSamples = (id: number, user: any, samples: MP4.Sample[]) => {
             for (let sample of samples) {
-                // TODO this assumes that timescale == sample rate
+                if (!this.sync) {
+                    this.sync = sample.dts;
+                }
+
+                // Convert to milliseconds
+                const timestamp = 1000 * (sample.dts - this.sync) / sample.timescale
+                const duration = 1000 * sample.duration / sample.timescale
+
+                // This assumes that timescale == sample rate
                 decoder.decode(new EncodedAudioChunk({
                     type: sample.is_sync ? "key" : "delta",
                     data: sample.data,
-                    duration: sample.duration,
-                    timestamp: sample.dts,
+                    duration: duration,
+                    timestamp: timestamp,
                 }))
             }
         }

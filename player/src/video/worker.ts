@@ -1,5 +1,5 @@
-import { Renderer } from "./renderer"
-import { Decoder } from "./decoder"
+import Renderer from "./renderer"
+import Decoder from "./decoder"
 import * as Message from "./message"
 
 let decoder: Decoder;

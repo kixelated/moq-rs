@@ -1,21 +1,35 @@
 import * as Message from "./message"
-import { Renderer } from "./renderer"
-import { Decoder } from "./decoder"
+import Renderer from "./renderer"
+import Decoder from "./decoder"
+import { RingState } from "./ring"
 
+// Abstracts the Worker and Worklet into a simpler API
+// This class must be created on the main thread due to AudioContext.
 export default class Audio {
-    renderer: Renderer;
-    decoder: Decoder;
+    decoder: Decoder;   // WebWorker
+    renderer: Renderer; // AudioWorklet
 
-    constructor(config: Message.Config) {
+    constructor() {
+        // Assume 44.1kHz and two audio channels
+        const config = {
+            sampleRate: 44100,
+            channels: [ new RingState(44100), new RingState(44100) ],
+        }
+
+        // Start loading the worker script
+        this.decoder = new Decoder(config)
         this.renderer = new Renderer(config)
-        this.decoder = new Decoder(config, this.renderer)
     }
 
-    async init(init: Message.Init) {
-        await this.decoder.init(init)
+    init(init: Message.Init) {
+        this.decoder.init(init)
     }
 
-    async segment(segment: Message.Segment) {
-        await this.decoder.decode(segment)
+    segment(segment: Message.Segment) {
+        this.decoder.segment(segment)
+    }
+
+    play() {
+        this.renderer.play()
     }
 }

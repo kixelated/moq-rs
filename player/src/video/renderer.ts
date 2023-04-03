@@ -1,6 +1,6 @@
 import * as Message from "./message";
 
-export class Renderer {
+export default class Renderer {
     canvas: OffscreenCanvas;
     queue: Array<VideoFrame>;
     render: number; // non-zero if requestAnimationFrame has been called
@@ -34,7 +34,7 @@ export class Renderer {
         let high = this.queue.length;
 
         // Fast path because we normally append to the end.
-        if (this.queue.length > 0 && this.queue[this.queue.length].timestamp <= frame.timestamp) {
+        if (this.queue.length > 0 && this.queue[this.queue.length-1].timestamp <= frame.timestamp) {
             this.queue.push(frame)
         } else {
             // Do a full binary search
