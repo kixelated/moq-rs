@@ -3,11 +3,9 @@
     "src/**/*"
   ],
   "compilerOptions": {
-    "target": "es2021",
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "node",
     "strict": true,
-    "typeRoots": [
-      "src/types"
-    ],
-    "allowJs": true
   }
 }

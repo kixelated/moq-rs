@@ -1,33 +1,64 @@
 // Reader wraps a stream and provides convience methods for reading pieces from a stream
-export class StreamReader {
-	reader: ReadableStreamDefaultReader; // TODO make a separate class without promises when null
+export default class Reader {
+	reader: ReadableStream;
 	buffer: Uint8Array;
 
-	constructor(reader: ReadableStreamDefaultReader, buffer: Uint8Array = new Uint8Array(0)) {
+	constructor(reader: ReadableStream, buffer: Uint8Array = new Uint8Array(0)) {
 		this.reader = reader
 		this.buffer = buffer
 	}
 
-	// TODO implementing pipeTo seems more reasonable than releasing the lock
-	release() {
-		this.reader.releaseLock()
-	}
-
 	// Returns any number of bytes
 	async read(): Promise<Uint8Array | undefined> {
+
 		if (this.buffer.byteLength) {
 			const buffer = this.buffer;
 			this.buffer = new Uint8Array()
 			return buffer
 		}
 
-		const result = await this.reader.read()
+		const r = this.reader.getReader()
+		const result = await r.read()
+
+		r.releaseLock()
+
 		return result.value
 	}
 
+	async readAll(): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
+		while (1) {
+			const result = await r.read()
+			if (result.done) {
+				break
+			}
+
+			const buffer = new Uint8Array(result.value)
+
+			if (this.buffer.byteLength == 0) {
+				this.buffer = buffer
+			} else {
+				const temp = new Uint8Array(this.buffer.byteLength + buffer.byteLength)
+				temp.set(this.buffer)
+				temp.set(buffer, this.buffer.byteLength)
+				this.buffer = temp
+			}
+		}
+
+		const result = this.buffer
+		this.buffer = new Uint8Array()
+
+		r.releaseLock()
+
+		return result
+	}
+
 	async bytes(size: number): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
 		while (this.buffer.byteLength < size) {
-			const result = await this.reader.read()
+			const result = await r.read()
 			if (result.done) {
 				throw "short buffer"
 			}
@@ -47,12 +78,16 @@ export class StreamReader {
 		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
 		this.buffer = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + size)
 
+		r.releaseLock()
+
 		return result
 	}
 
 	async peek(size: number): Promise<Uint8Array> {
+		const r = this.reader.getReader()
+
 		while (this.buffer.byteLength < size) {
-			const result = await this.reader.read()
+			const result = await r.read()
 			if (result.done) {
 				throw "short buffer"
 			}
@@ -69,7 +104,11 @@ export class StreamReader {
 			}
 		}
 
-		return new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
+		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
+
+		r.releaseLock()
+
+		return result
 	}
 
 	async view(size: number): Promise<DataView> {
@@ -149,106 +188,5 @@ export class StreamReader {
 		} catch (err) {
 			return true // Assume EOF
 		}
-	}
-}
-
-// StreamWriter wraps a stream and writes chunks of data
-export class StreamWriter {
-	buffer: ArrayBuffer;
-	writer: WritableStreamDefaultWriter;
-
-	constructor(stream: WritableStream) {
-		this.buffer = new ArrayBuffer(8)
-		this.writer = stream.getWriter()
-	}
-
-	release() {
-		this.writer.releaseLock()
-	}
-
-	async close() {
-		return this.writer.close()
-	}
-
-	async uint8(v: number) {
-		const view = new DataView(this.buffer, 0, 1)
-		view.setUint8(0, v)
-		return this.writer.write(view)
-	}
-
-	async uint16(v: number) {
-		const view = new DataView(this.buffer, 0, 2)
-		view.setUint16(0, v)
-		return this.writer.write(view)
-	}
-
-	async uint24(v: number) {
-		const v1 = (v >> 16) & 0xff
-		const v2 = (v >> 8) & 0xff
-		const v3 = (v) & 0xff
-
-		const view = new DataView(this.buffer, 0, 3)
-		view.setUint8(0, v1)
-		view.setUint8(1, v2)
-		view.setUint8(2, v3)
-
-		return this.writer.write(view)
-	}
-
-	async uint32(v: number) {
-		const view = new DataView(this.buffer, 0, 4)
-		view.setUint32(0, v)
-		return this.writer.write(view)
-	}
-
-	async uint52(v: number) {
-		if (v > Number.MAX_SAFE_INTEGER) {
-			throw "value too large"
-		}
-
-		this.uint64(BigInt(v))
-	}
-
-	async vint52(v: number) {
-		if (v > Number.MAX_SAFE_INTEGER) {
-			throw "value too large"
-		}
-
-		if (v < (1 << 6)) {
-			return this.uint8(v)
-		} else if (v < (1 << 14)) {
-			return this.uint16(v|0x4000)
-		} else if (v < (1 << 30)) {
-			return this.uint32(v|0x80000000)
-		} else {
-			return this.uint64(BigInt(v) | 0xc000000000000000n)
-		}
-	}
-
-	async uint64(v: bigint) {
-		const view = new DataView(this.buffer, 0, 8)
-		view.setBigUint64(0, v)
-		return this.writer.write(view)
-	}
-
-	async vint64(v: bigint) {
-		if (v < (1 << 6)) {
-			return this.uint8(Number(v))
-		} else if (v < (1 << 14)) {
-			return this.uint16(Number(v)|0x4000)
-		} else if (v < (1 << 30)) {
-			return this.uint32(Number(v)|0x80000000)
-		} else {
-			return this.uint64(v | 0xc000000000000000n)
-		}
-	}
-
-	async bytes(buffer: ArrayBuffer) {
-		return this.writer.write(buffer)
-	}
-
-	async string(str: string) {
-		const data = new TextEncoder().encode(str)
-		return this.writer.write(data)
 	}
 }

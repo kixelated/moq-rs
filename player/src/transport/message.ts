@@ -1,13 +1,8 @@
-export interface Message {
-	init?: MessageInit
-	segment?: MessageSegment
-}
-
-export interface MessageInit {
+export interface Init {
 	id: string
 }
 
-export interface MessageSegment {
+export interface Segment {
 	init: string // id of the init segment
 	timestamp: number // presentation timestamp in milliseconds of the first sample
 	// TODO track would be nice
