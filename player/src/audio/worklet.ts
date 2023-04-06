@@ -2,17 +2,19 @@
 // The renderer copies audio samples to a ring buffer read by this worklet.
 // The worklet then outputs those samples to emit audio.
 
-import * as Message from "../message"
+import * as Message from "./message"
 
-import { Ring, RingState } from "../ring"
+import { Ring } from "./ring"
 
 class Renderer extends AudioWorkletProcessor {
-    channels?: Ring[];
+    ring?: Ring;
+    base: number;
 
     constructor(params: AudioWorkletNodeOptions) {
         // The super constructor call is required.
         super();
 
+        this.base = 0
         this.port.onmessage = this.onMessage.bind(this)
     }
 
@@ -23,15 +25,12 @@ class Renderer extends AudioWorkletProcessor {
     }
 
     config(config: Message.Config) {
-        this.channels = []
-        for (let state of config.channels) {
-            this.channels.push(new Ring(state))
-        }
+        this.ring = new Ring(config.ring)
     }
 
     // Inputs and outputs in groups of 128 samples.
     process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean {
-        if (!this.channels) {
+        if (!this.ring) {
             // Not initialized yet
             return true
         }
@@ -41,26 +40,7 @@ class Renderer extends AudioWorkletProcessor {
         }
 
         const output = outputs[0]
-
-        for (let i = 0; i < output.length; i += 1) {
-            const source = this.channels[i]
-            const channel = output[i];
-
-            const parts = source.peek(channel.length)
-
-            let offset = 0
-            for (let i = 0; i < parts.length; i += 1) {
-                channel.set(parts[i], offset)
-                offset += parts[i].length
-            }
-
-            if (offset < channel.length) {
-                // TODO render silence
-            }
-
-            // Always advance the full amount.
-            source.advance(channel.length)
-        }
+        this.ring.read(output)
 
         return true;
     }

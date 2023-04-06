@@ -4,17 +4,13 @@ export default class Renderer {
     canvas: OffscreenCanvas;
     queue: Array<VideoFrame>;
     render: number; // non-zero if requestAnimationFrame has been called
-    sync: DOMHighResTimeStamp; // the wall clock value for timestamp 0
+    sync?: DOMHighResTimeStamp; // the wall clock value for timestamp 0
     last?: number; // the timestamp of the last rendered frame
-
-    maxDuration: number; // the maximum duration allowed in the buffer
 
     constructor(config: Message.Config) {
         this.canvas = config.canvas;
         this.queue = [];
         this.render = 0;
-        this.sync = 0;
-        this.maxDuration = 10 * 1000
     }
 
     emit(frame: VideoFrame) {
@@ -30,14 +26,14 @@ export default class Renderer {
         }
 
         // Insert the frame into the queue sorted by timestamp.
-        let low = 0
-        let high = this.queue.length;
-
-        // Fast path because we normally append to the end.
         if (this.queue.length > 0 && this.queue[this.queue.length-1].timestamp <= frame.timestamp) {
+            // Fast path because we normally append to the end.
             this.queue.push(frame)
         } else {
             // Do a full binary search
+            let low = 0
+            let high = this.queue.length;
+
             while (low < high) {
                 var mid = (low + high) >>> 1;
                 if (this.queue[mid].timestamp < frame.timestamp) low = mid + 1;
@@ -45,18 +41,6 @@ export default class Renderer {
             }
 
             this.queue.splice(low, 0, frame)
-        }
-
-        // Trim the max size of the buffer
-        const last = this.queue[this.queue.length-1].timestamp
-        while (1) {
-            const first = this.queue[0]
-            if (first.timestamp + this.maxDuration >= last) {
-                break
-            }
-
-            first.close()
-            this.queue.shift()
         }
 
         // Queue up to render the next frame.
@@ -67,10 +51,10 @@ export default class Renderer {
 
     draw(now: DOMHighResTimeStamp) {
         // Determine the target timestamp.
-        const target = now - this.sync
+        const target = now - this.sync!
 
         let frame = this.queue[0]
-        if (frame.timestamp > target) {
+        if (frame.timestamp >= target) {
             // nothing to render yet, wait for the next animation frame
             this.render = self.requestAnimationFrame(this.draw.bind(this))
             return
@@ -92,7 +76,7 @@ export default class Renderer {
         }
 
         const ctx = this.canvas.getContext("2d");
-        ctx?.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height) // TODO aspect ratio
+        ctx!.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height) // TODO aspect ratio
 
         this.last = frame.timestamp;
         frame.close()

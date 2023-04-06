@@ -34,7 +34,13 @@ export default class Player {
 	}
 
 	play() {
-		this.audio.play()
-		this.video.play()
+		this.audio.play({})
+		//this.video.play()
 	}
+
+    onMessage(msg: any) {
+        if (msg.sync) {
+            msg.sync
+        }
+    }
 }

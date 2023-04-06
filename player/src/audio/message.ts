@@ -1,9 +1,9 @@
 import * as MP4 from "../mp4"
-import { RingState } from "./ring"
+import { RingInit } from "./ring"
 
 export interface Config {
     sampleRate: number;
-    channels: RingState[];
+    ring: RingInit;
 }
 
 export interface Init {
@@ -16,4 +16,15 @@ export interface Segment {
     track: string;
     buffer: Uint8Array;     // unread buffered data
     reader: ReadableStream; // unread unbuffered data
+}
+
+// Audio tells video when the given timestamp should be rendered.
+export interface Sync {
+    origin: number;
+    clock: DOMHighResTimeStamp;
+    timestamp: number;
+}
+
+export interface Play {
+    timestamp?: number;
 }
