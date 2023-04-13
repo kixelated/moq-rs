@@ -5,11 +5,10 @@ import * as MP4 from "../mp4"
 import Audio from "../audio"
 import Video from "../video"
 
-// @ts-ignore bundler embeds data
-import fingerprint from 'bundle-text:./fingerprint.hex';
-
 export interface TransportInit {
 	url: string;
+	fingerprint?: WebTransportHash; // the certificate fingerprint, temporarily needed for local development
+
 	audio: Audio;
 	video: Video;
 }
@@ -28,7 +27,7 @@ export default class Transport {
 		this.audio = props.audio;
 		this.video = props.video;
 
-		this.quic = this.connect(props.url)
+		this.quic = this.connect(props)
 
 		// Create a unidirectional stream for all of our messages
 		this.api = this.quic.then((q) => {
@@ -43,22 +42,16 @@ export default class Transport {
 		(await this.quic).close()
 	}
 
-	async connect(url: string): Promise<WebTransport> {
-		// Convert the hex to binary.
-		let hash = [];
-		for (let c = 0; c < fingerprint.length-1; c += 2) {
-			hash.push(parseInt(fingerprint.substring(c, c+2), 16));
+	// Helper function to make creating a promise easier
+	private async connect(props: TransportInit): Promise<WebTransport> {
+
+		let options: WebTransportOptions = {};
+		if (props.fingerprint) {
+			options.serverCertificateHashes = [ props.fingerprint ]
 		}
 
-		const quic = new WebTransport(url, {
-			"serverCertificateHashes": [{
-				"algorithm": "sha-256",
-				"value": new Uint8Array(hash),
-			}]
-		})
-
+		const quic = new WebTransport(props.url, options)
 		await quic.ready
-
 		return quic
 	}
 
