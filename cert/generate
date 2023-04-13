@@ -17,4 +17,4 @@ go run filippo.io/mkcert -ecdsa -install
 go run filippo.io/mkcert -ecdsa -days 10 -cert-file "$CRT" -key-file "$KEY" localhost 127.0.0.1 ::1
 
 # Compute the sha256 fingerprint of the certificate for WebTransport
-openssl x509 -in "$CRT" -outform der | openssl dgst -sha256 > ../player/src/transport/fingerprint.hex
+openssl x509 -in "$CRT" -outform der | openssl dgst -sha256 > ../player/fingerprint.hex
