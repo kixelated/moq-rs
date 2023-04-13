@@ -4,6 +4,7 @@ import Video from "../video"
 
 export interface PlayerInit {
 	url: string;
+	fingerprint?: WebTransportHash; // the certificate fingerprint, temporarily needed for local development
 	canvas: HTMLCanvasElement;
 }
 
@@ -20,6 +21,8 @@ export default class Player {
 
         this.transport = new Transport({
             url: props.url,
+			fingerprint: props.fingerprint,
+
             audio: this.audio,
             video: this.video,
         })
@@ -27,10 +30,6 @@ export default class Player {
 
 	async close() {
         this.transport.close()
-	}
-
-	async connect(url: string) {
-        await this.transport.connect(url)
 	}
 
 	play() {
