@@ -1,0 +1,10 @@
+rate 1200kbit
+wait 5s
+rate 800kbit
+wait 5s
+rate 400kbit
+wait 5s
+rate 800kbit
+wait 5s
+rate 1200kbit
+wait 5s

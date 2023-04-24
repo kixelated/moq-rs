@@ -13,6 +13,7 @@ export interface MessageSegment {
 	init: string // id of the init segment
 	timestamp: number // presentation timestamp in milliseconds of the first sample
 	etp: number // estimated throughput in Kbps / CTA 5006
+	tc_rate: number // applied tc netem rate in Mbps
 	at: number // availability time / CTA 5006
 	// TODO track would be nice
 }

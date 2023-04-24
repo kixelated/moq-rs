@@ -1,5 +1,5 @@
 window.config = {
-    serverURL: "https://moq.streaming.university:4443",
+    serverURL: ":4443",
     resolutions: { 3: "360p", 2: "540p", 1: "720p", 0: "1080p" },
     throttleData: {
         209715200: "200Mb/s",
@@ -13,11 +13,14 @@ window.config = {
         131072: "128Kb/s",
     },
     activeBWAsset: {
-        url: "https://moq.streaming.university/side-load/chunk-stream0-00007.m4s"
+        url: "https://moq.streaming.university/side-load/1MB-chunk.m4s"
     },
+    activeBWTestInterval: 1000000,
+    autoStart: false,
+    testDuration: 100,
     swma_calculation_type: 'segment',
     swma_threshold: 5,
     swma_threshold_type: 'percentage',
-    swma_window_size: 50,
-    swma_calculation_interval: 10
+    swma_window_size: 25,
+    swma_calculation_interval: 5
 };

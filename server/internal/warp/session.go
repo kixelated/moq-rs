@@ -26,6 +26,8 @@ type Session struct {
 	audio *MediaStream
 	video *MediaStream
 
+	server *Server
+
 	streams invoker.Tasks
 
 	prefs map[string]string
@@ -35,12 +37,14 @@ type Session struct {
 	videoTimeOffset   time.Duration
 }
 
-func NewSession(connection quic.Connection, session *webtransport.Session, media *Media) (s *Session, err error) {
+func NewSession(connection quic.Connection, session *webtransport.Session, media *Media, server *Server) (s *Session, err error) {
 	s = new(Session)
+	s.server = server
 	s.conn = connection
 	s.inner = session
 	s.media = media
 	s.continueStreaming = true
+	s.server.continueStreaming = true
 	return s, nil
 }
 
@@ -275,11 +279,17 @@ func (s *Session) writeSegment(ctx context.Context, segment *MediaSegment) (err 
 	// newer segments take priority
 	stream.SetPriority(ms)
 
+	tcRate := s.server.tcRate
+	if tcRate == -1 {
+		tcRate = 0
+	}
+
 	init_message := Message{
 		Segment: &MessageSegment{
 			Init:             segment.Init.ID,
 			Timestamp:        ms,
 			ETP:              int(s.conn.GetMaxBandwidth() / 1024),
+			TcRate:           tcRate * 1024,
 			AvailabilityTime: int(time.Now().UnixMilli()),
 		},
 	}
@@ -381,6 +391,12 @@ func (s *Session) setDebug(msg *MessageDebug) {
 		s.conn.SetMaxBandwidth(uint64(*msg.MaxBitrate))
 	} else if msg.ContinueStreaming != nil {
 		s.continueStreaming = *msg.ContinueStreaming
+		s.server.continueStreaming = *msg.ContinueStreaming
+	} else if *msg.TcReset {
+		// setting tcRate to -1 is a signal to reset tc rate
+		s.server.tcRate = -1
+		s.server.isTcActive = false
+		s.server.continueStreaming = true
 	}
 }
 

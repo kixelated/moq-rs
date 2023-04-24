@@ -1,0 +1,12 @@
+rate 5
+wait 11
+rate 1
+wait 11
+rate 2
+wait 11
+rate 3
+wait 11
+rate 5
+wait 11
+rate 10
+wait 11

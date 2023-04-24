@@ -21,6 +21,7 @@
 
 				<div id="screen_bottom">
 					<div id="controls">
+						<button type="button" id="start">Start</button>
 						<button type="button" id="live">Go Live</button>
 						<button type="button" id="throttle" style="display: none">Throttle: None</button>
 
@@ -31,7 +32,7 @@
 						<select id="resolutions">
 							<option>Set resolution to:</option>
 						</select>
-						<button type="button" id="continue_streaming">Stop Streaming</button>
+						<button type="button" id="continue_streaming" data-status="streaming">Pause Streaming</button>
 						<button type="button" id="active_bw_test">Active BW Test</button>
 					</div>
 					<a href="https://github.com/streaming-university/public-moq-demo" target="_blank">
@@ -54,7 +55,7 @@
 
 					<label>Server Reported Bandwidth</label>
 					<div class="server_bw"></div>
-					<label>SWMA<sub>th</sub></label>
+					<label>SWMA / FWA / IFA</label>
 					<div class="swma_threshold"></div>
 					<label>Last Active BW Test</label>
 					<div class="active_bw"></div>
@@ -67,6 +68,7 @@
 		</div>
 		<div>
 			<div id="plot"></div>
+			<a href="javascript: void 0" onclick="" id="toggle_log">Show Logs</a>
 			<div id="log">
 				<h4>Log</h4>
 				<div id="log_content"></div>

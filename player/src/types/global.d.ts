@@ -4,9 +4,12 @@ declare global {
     interface Window {
         config: AppSettings;
         player: any;
+        estimator: any;
     }
     type SWMAThresholdType = 'minimum_duration' | 'percentage';
     type SWMACalculationType = 'segment' | 'window' | 'first_chunk';
+
+    type StreamingStatus = 'paused' | 'streaming';
 }
 
 
@@ -15,7 +18,10 @@ interface AppSettings {
     resolutions: { [id: string]: string };
     throttleData: { [id: number]: string };
     serverURL: string;
-    activeBWAsset: { url: string; size: number }
+    activeBWAsset: { url: string; size: number };
+    activeBWTestInterval?: number,
+    autoStart: boolean;
+    testDuration?: number;
     swma_threshold: number;
     swma_calculation_type: SWMACalculationType;
     swma_threshold_type: SWMAThresholdType;

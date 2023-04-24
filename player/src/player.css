@@ -107,12 +107,7 @@ body {
 	margin-bottom: 20px;
 }
 
-#log {
-	height: 500px;
-    background-color: white;
-    overflow: auto;
-    color: black;
-}
+
 
 #repo_info {
     margin-left: 17px;
@@ -130,4 +125,17 @@ body {
 
 .github_logo {
 	width: 48px;
+}
+
+#toggle_log {
+	color: white;
+	font-size: 0.8rem;
+}
+
+#log {
+	display: none;
+	height: 500px;
+    background-color: white;
+    overflow: auto;
+    color: black;
 }

@@ -1,0 +1,10 @@
+rate	60kbit
+wait	30s
+rate	40kbit
+wait	30s
+rate	20kbit
+wait	30s
+rate	40kbit
+wait	30s
+rate	60kbit
+wait	30s

@@ -4,6 +4,7 @@ import { InitParser } from "./init"
 import { Segment } from "./segment"
 import { Track } from "./track"
 import { Message, MessageInit, MessagePing, MessagePong, MessagePref, MessageSegment } from "./message"
+import { dbStore } from './db';
 
 ///<reference path="./types/webtransport.d.ts"/>
 
@@ -14,8 +15,11 @@ export class Player {
 	audio: Track;
 	video: Track;
 
-	quic: Promise<WebTransport>;
-	api: Promise<WritableStream>;
+	quic?: Promise<WebTransport>;
+	api?: Promise<WritableStream>;
+	url: string;
+	started?: boolean;
+	paused?: boolean;
 
 	// References to elements in the DOM
 	vidRef: HTMLVideoElement; // The video element itself
@@ -27,13 +31,14 @@ export class Player {
 
 	activeBWTestRef: HTMLButtonElement; // The active bw test button
 	activeBWAsset: any; // {url}
-	activeBWBWResetTimer: NodeJS.Timer | undefined;
+	activeBWResetTimer: NodeJS.Timer | undefined;
 
 	bufferLevel: Map<string, number>;
 
 	throttleCount: number; // number of times we've clicked the button in a row
 
-	interval: NodeJS.Timer;
+	interval?: NodeJS.Timer;
+	activeBWTestTimer?: NodeJS.Timer;
 
 	timeRef?: DOMHighResTimeStamp;
 
@@ -42,16 +47,20 @@ export class Player {
 
 	selectedResolution: string | undefined;
 
+	lastSegmentTimestamp: number = -1; // the timestamp value of the last received segment
 	serverBandwidth: number; // Kbps - comes from server in each segment in etp field
-	swmaThroughput_threshold: number;
-	supress_swmaThroughput_threshold: boolean;
+	tcRate: number; // Kbps - comes from server in each segment in tcRate field
+	throughputs: Map<string, number>;
+	supress_throughput_value: boolean;
 	activeBWTestResult: number;
+	activeBWTestInterval: number;
 	lastActiveBWTestResult: number;
 
 	chunkStats: any[] = [];
 	totalChunkCount = 0; // video track chunk count
 
 	logFunc: Function;
+	testId: string;
 
 	constructor(props: any) {
 		this.vidRef = props.vid
@@ -62,15 +71,19 @@ export class Player {
 		this.continueStreamingRef = props.continueStreamingRef
 		this.activeBWTestRef = props.activeBWTestRef
 		this.activeBWAsset = props.activeBWAsset;
-		this.supress_swmaThroughput_threshold = false;
-		this.throttleCount = 0
+		this.throughputs = new Map();
+		this.throttleCount = 0;
+		this.url = props.url;
+		this.activeBWTestInterval = props.activeBWTestInterval * 1000 || 0;
 
 		this.logFunc = props.logger;
+		this.testId = this.createTestId();
 
 		this.bufferLevel = new Map();
 
 		this.serverBandwidth = 0;
-		this.swmaThroughput_threshold = 0;
+		this.tcRate = 0;
+		this.supress_throughput_value = false;
 		this.activeBWTestResult = 0;
 		this.lastActiveBWTestResult = 0;
 
@@ -81,15 +94,53 @@ export class Player {
 		this.audio = new Track(new Source(this.mediaSource));
 		this.video = new Track(new Source(this.mediaSource));
 
+		if (props.autoStart) {
+			this.start();
+		}
+	}
+
+	createTestId = () => {
+		return 't_' + (new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/g, '').replace('T', '_')) + '_' + Math.round(Math.random() * 10000);
+	};
+
+	saveResultBySecond = (name: string, value: number, second: number) => {
+		dbStore.addResultEntry({ testId: this.testId, name, value, second });
+	};
+
+	start = async () => {
+		// player can be started for once
+		if (this.started) {
+			return;
+		}
+
+		try {
+			console.log('initing db');
+			if (!await dbStore.init()) {
+				console.log('db already inited');
+			} else {
+				console.log('db inited');
+			}
+		} catch (ex) {
+			alert('db store could not be created');
+			console.error(ex);
+			return;
+		}
+
+		dbStore.addTestEntry({ testId: this.testId, timestamp: Date.now(), config: window.config });
+
+		this.started = true;
+		this.paused = (this.continueStreamingRef.dataset.status || 'streaming') === 'paused';
+
 		this.interval = setInterval(this.tick.bind(this), 100)
 		this.vidRef.addEventListener("waiting", this.tick.bind(this))
 
 		this.resolutionsRef.addEventListener('change', this.resolutionOnChange)
 		this.throttleDDLRef.addEventListener('change', this.throttleOnChange);
 		this.continueStreamingRef.addEventListener('click', this.continueStreamingClicked);
-		this.activeBWTestRef.addEventListener('click', this.activeBWTestClicked);
+		this.activeBWTestRef.addEventListener('click', this.startActiveBWTest);
 
-		const quic = new WebTransport(props.url)
+		console.log('in start | url: %s', this.url);
+		const quic = new WebTransport(this.url)
 		this.quic = quic.ready.then(() => { return quic });
 
 		// Create a unidirectional stream for all of our messages
@@ -100,9 +151,69 @@ export class Player {
 		// async functions
 		this.receiveStreams()
 
+		if (this.activeBWTestInterval > 0) {
+			setTimeout(() => {
+				this.activeBWTestTimer = setInterval(() => this.startActiveBWTest(), this.activeBWTestInterval);
+			}, this.activeBWTestInterval);
+		}
+
 		// Limit to 4Mb/s
-		this.sendThrottle()
+		// this.sendThrottle()
 	}
+
+	stop = async () => {
+		if (this.activeBWTestTimer) {
+			clearInterval(this.activeBWTestTimer);
+		}
+
+		// reset tc netem limiting
+		try {
+			await this.sendMessage({
+				"debug": {
+					tc_reset: true,
+				}
+			});
+		} finally {
+			location.reload();
+		}
+
+	};
+
+	pauseOrResume = (pause?: boolean) => {
+		console.log('in pauseOrResume | paused: %s pause: %s', this.paused, pause);
+		let status = this.continueStreamingRef.dataset.status || 'streaming';
+
+		let sendMessage = false;
+
+		if (!this.paused && (pause === true || pause === undefined)) {
+			this.continueStreamingRef.innerText = 'Continue Streaming';
+			this.paused = true;
+			if (this.activeBWTestTimer) {
+				clearInterval(this.activeBWTestTimer);
+			}
+			sendMessage = true;
+		} else if (this.paused && !pause) {
+			this.continueStreamingRef.innerText = 'Pause Streaming';
+			this.paused = false;
+
+			// re-schedule active bw test
+			if (this.activeBWTestTimer) {
+				clearInterval(this.activeBWTestTimer);
+			}
+			this.activeBWTestTimer = setInterval(() => this.startActiveBWTest(), this.activeBWTestInterval);
+			sendMessage = true;
+		}
+
+		if (sendMessage) {
+			this.continueStreamingRef.dataset.status = this.paused ? 'paused' : 'streaming';
+			// send a debug message
+			this.sendMessage({
+				"debug": {
+					"continue_streaming": !this.paused,
+				}
+			})
+		}
+	};
 
 	getSWMAThreshold = () => {
 		return window.config.swma_threshold || 5;
@@ -158,28 +269,11 @@ export class Player {
 	};
 
 	continueStreamingClicked = () => {
-		let status = this.continueStreamingRef.dataset.status || 'streaming';
-
-		if (status === 'streaming') {
-			this.continueStreamingRef.innerText = 'Continue Streaming';
-			status = 'stopped';
-		} else {
-			this.continueStreamingRef.innerText = 'Stop Streaming';
-			status = 'streaming';
-		}
-
-		this.continueStreamingRef.dataset.status = status;
-
-		// send a debug message
-		this.sendMessage({
-			"debug": {
-				"continue_streaming": status === 'streaming',
-			}
-		})
+		this.pauseOrResume();
 	};
 
-	activeBWTestClicked = () => {
-		console.log('in activeBWTestClicked | activeBWAsset: %s', this.activeBWAsset)
+	startActiveBWTest = () => {
+		console.log('in activeBWTestClicked', this.activeBWAsset)
 
 		if (!this.activeBWAsset) {
 			return;
@@ -222,23 +316,22 @@ export class Player {
 						this.lastActiveBWTestResult = this.activeBWTestResult;
 
 						// if another timer is active, clear it
-						if (this.activeBWBWResetTimer) {
-							clearTimeout(this.activeBWBWResetTimer)
+						if (this.activeBWResetTimer) {
+							clearTimeout(this.activeBWResetTimer)
 						}
-						this.activeBWBWResetTimer = setTimeout(() => { this.activeBWTestResult = 0; }, 1000);
+						this.activeBWResetTimer = setTimeout(() => { this.activeBWTestResult = 0; }, 1000);
 
 						// don't display swmaThroughput threshold for a few seconds
 						// to let the server warm-up
-						this.supress_swmaThroughput_threshold = true;
+						this.supress_throughput_value = true;
 						setTimeout(() => {
-							this.supress_swmaThroughput_threshold = false;
-						}, 3000);
+							this.supress_throughput_value = false;
+						}, 1000);
 					}
 					this.activeBWTestRef.dataset.downloading = '';
 					this.activeBWTestRef.innerText = 'Active BW Test';
 
-					const status = this.continueStreamingRef.dataset.status || 'streaming';
-					if (status == 'stopped') {
+					if (this.paused) {
 						this.continueStreamingRef.click();
 					}
 				}).catch(e => {
@@ -248,8 +341,7 @@ export class Player {
 		};
 
 		// if the streaming is active, first stop it and then start test
-		const status = this.continueStreamingRef.dataset.status || 'streaming';
-		if (status == 'streaming') {
+		if (!this.paused) {
 			this.continueStreamingRef.click();
 			test(3000);
 		} else {
@@ -259,6 +351,9 @@ export class Player {
 	};
 
 	async close() {
+		if (!this.quic) {
+			return;
+		}
 		clearInterval(this.interval);
 		(await this.quic).close()
 	}
@@ -269,6 +364,10 @@ export class Player {
 	};
 
 	async sendMessage(msg: any) {
+		if (!this.api) {
+			return;
+		}
+
 		const payload = JSON.stringify(msg)
 		const size = payload.length + 8
 
@@ -399,6 +498,10 @@ export class Player {
 	}
 
 	async receiveStreams() {
+		if (!this.quic) {
+			return;
+		}
+
 		let counter = 0;
 		const q = await this.quic
 
@@ -485,7 +588,16 @@ export class Player {
 			track = this.audio
 		}
 
-		this.serverBandwidth = msg.etp * 1024; // in bits, etp comes in kbit
+		// since streams are multiplexed
+		// a stale segment may come later which changes the latest
+		// etp and tc_rate values inadvertently.
+		if (msg.timestamp >= this.lastSegmentTimestamp) {
+			this.serverBandwidth = msg.etp * 1024; // in bits, comes as Kbps
+			this.tcRate = msg.tc_rate * 1024; // in bits, comes as Kbps
+		}
+		this.lastSegmentTimestamp = msg.timestamp;
+
+		console.log('msg: %o tcRate: %d serverBandwidth: %d', msg, this.tcRate, this.serverBandwidth)
 
 		const segment = new Segment(track.source, init, msg.timestamp)
 		// The track is responsible for flushing the segments in order
@@ -543,14 +655,49 @@ export class Player {
 
 					++this.totalChunkCount;
 
-					this.chunkStats.push([chunkCounter, chunkSize, chunkDownloadDuration, lastMoofDownloadDuration, chunkDownloadDuration > 0 ? (chunkSize * 8 * 1000 / chunkDownloadDuration) : 0, chunkLatency, msg.timestamp]);
+					dbStore.addLogEntry({
+						testId: this.testId,
+						segmentId: msg.init,
+						no: chunkCounter,
+						chunkSize,
+						chunkDownloadDuration,
+						lastMoofDownloadDuration,
+						chunkLatency,
+						msg_timestamp: msg.timestamp,
+						msg_at: msg.at,
+						msg_etp: msg.etp,
+						msg_tc_rate: msg.tc_rate,
+						perf_now: performance.now(),
+						activeBWTestResult: this.activeBWTestResult,
+						lastActiveBWTestResult: this.lastActiveBWTestResult,
+						timestamp: Date.now()
+					});
 
-					if (this.getSWMACalculationType() === 'window' && this.chunkStats.length > this.getSWMAWindowSize() && this.totalChunkCount % this.getSWMACalculationInterval() === 0) {
-						this.chunkStats = this.chunkStats.splice(this.chunkStats.length - this.getSWMAWindowSize());
-						this.chunkStats = this.chunkStats.splice(0, 50);
-						let filteredStats: any[] = this.filterStats(this.chunkStats, this.getSWMAThreshold(), this.getSWMAThresholdType());
-						this.swmaThroughput_threshold = this.computeTPut(filteredStats);
-						this.logChunkStats(filteredStats);
+					const stat = [chunkCounter, chunkSize, chunkDownloadDuration, lastMoofDownloadDuration, chunkDownloadDuration > 0 ? (chunkSize * 8 * 1000 / chunkDownloadDuration) : 0, chunkLatency, msg.timestamp];
+					this.chunkStats.push(stat);
+
+					if (chunkCounter === 1) {
+						let filteredStats = [stat];
+						const val = this.computeTPut(filteredStats);
+						console.log('ifa calc', val, stat, this.throughputs.get('ifa'));
+						// if the value is an outlier (100 times more than the last measurement)
+						// discard it
+						const lastVal = (this.throughputs.get('ifa') || 0);
+						if (lastVal === 0 || val < lastVal * 100) {
+							this.throughputs.set('ifa', val);
+						}
+					}
+
+					if (this.totalChunkCount >= this.getSWMAWindowSize() && this.totalChunkCount % this.getSWMACalculationInterval() === 0) {
+						const stats = this.chunkStats.slice(-this.getSWMAWindowSize());
+						let filteredStats: any[] = this.filterStats(stats, this.getSWMAThreshold(), this.getSWMAThresholdType(), this.throughputs.get('swma') || 0);
+						const tput = this.computeTPut(filteredStats);
+						if (tput > 0) {
+							this.throughputs.set('swma', tput);
+						} else {
+							console.warn('tput is zero.');
+						}
+						
 					}
 				}
 			}
@@ -566,28 +713,12 @@ export class Player {
 		const segmentFinish = performance.now() - segmentDownloadStart;
 
 		if (isVideoSegment) {
-
 			this.logFunc('-----------------------------------------------------')
 			this.logFunc('segment chunk length: ' + chunkCounter);
 			this.logFunc('segment finish duration: ' + Math.round(segmentFinish));
 			this.logFunc('total segment size: ' + formatBits(totalSegmentSize * 8));
 			this.logFunc('segment start (client): ' + new Date(performance.timeOrigin + segmentStartOffset).toISOString());
 			this.logFunc('availability time (server): ' + new Date(msg.at).toISOString());
-
-			if (this.getSWMACalculationType() === 'segment' || this.getSWMACalculationType() === 'first_chunk') {
-				let filteredStats: any[];
-				if (this.getSWMACalculationType() === 'segment') {
-					filteredStats = this.filterStats(this.chunkStats, this.getSWMAThreshold(), this.getSWMAThresholdType());
-				} else {
-					// just get the first chunk
-					filteredStats = this.chunkStats.slice(0, 1);
-				}
-				this.swmaThroughput_threshold = this.computeTPut(filteredStats);
-				this.logChunkStats(filteredStats);
-				// reset stats at each segment finish
-				this.chunkStats = [];
-			}
-			this.logFunc('');
 		}
 	}
 
@@ -600,7 +731,8 @@ export class Player {
 		}
 		this.logFunc('total number of chunks: ' + this.totalChunkCount);
 		this.logFunc('')
-		this.logFunc('swmaThroughput_threshold: ' + formatBits(this.swmaThroughput_threshold));
+		this.logFunc('swma: ' + formatBits(this.throughputs.get('swma') || 0));
+		this.logFunc('ifa: ' + formatBits(this.throughputs.get('ifa') || 0));
 		this.logFunc('number of discarded chunks: ' + (this.chunkStats.length - filteredChunkStats.length));
 		this.logFunc('')
 		this.logFunc('#\tChunk Size(byte)\tMDat Download Duration(ms)\tMoof Download Duration\tDownload Rate\tAvailability Offset (ms)\tSegment TS');
@@ -610,9 +742,12 @@ export class Player {
 		this.logFunc('-----------------------------------------------------');
 	}
 
-	filterStats = (chunkStats: any[], threshold: number, thresholdType: string) => {
+	filterStats = (chunkStats: any[], threshold: number, thresholdType: string, lastTPut?: number) => {
 		let filteredStats = chunkStats.slice();
 		console.log('computeTPut | chunk count: %d thresholdType: %s threshold: %d', filteredStats.length, thresholdType, threshold);
+
+		let zeroDurations = filteredStats.filter(a => a[2] === 0);
+		filteredStats = filteredStats.filter(a => a[2] > 0);
 
 		if (thresholdType === 'percentage') {
 			if (threshold > 0 && threshold < 100) {
@@ -630,6 +765,8 @@ export class Player {
 		} else if (thresholdType === 'minimum_duration') {
 			filteredStats = filteredStats.filter(c => c[2] >= threshold);
 		}
+
+		filteredStats = filteredStats.concat(zeroDurations);
 
 		console.log('computeTPut | after filtering: chunk count: %d', filteredStats.length);
 		return filteredStats;
@@ -671,10 +808,51 @@ export class Player {
 
 		if (bw) {
 			bw.innerText = formatBits(this.serverBandwidth, 1).toString();
-			bw_swma_threshold.innerText = formatBits(this.swmaThroughput_threshold, 1).toString();
+			bw_swma_threshold.innerText = formatBits(this.throughputs.get('swma') || 0, 1).toString() + ' / ' + formatBits(this.throughputs.get('ifa') || 0, 1).toString();
 			bw_active_bw.innerText = formatBits(this.lastActiveBWTestResult, 1).toString();
 		}
 	}
+
+	getDbStore = () => {
+		return dbStore;
+	};
+
+	downloadStats = async (testId?: string) => {
+		console.log('in downloadStats');
+
+		const link = document.createElement('a');
+		document.body.appendChild(link);
+
+		// download logs
+
+
+		const logs = await dbStore.getLogs(testId || this.testId);
+		if (logs.length > 0) {
+			const headers = Object.keys(logs[0]);
+			const csvContent = 'data:application/vnd.ms-excel;charset=utf-8,' + headers.join('\t') + '\n' + logs.map(e => Object.values(e).join('\t')).join('\n');
+			const encodedUri = encodeURI(csvContent);
+			link.setAttribute('href', encodedUri);
+			link.setAttribute('download', 'logs_' + this.testId + '.xls');
+			link.click();
+		} else {
+			console.log('no logs');
+		}
+
+		// download results
+		const results = await dbStore.getResults(testId || this.testId);
+		if (results.length > 0) {
+			const headers = Object.keys(results[0]);
+			const csvContent = 'data:application/vnd.ms-excel;charset=utf-8,' + headers.join('\t') + '\n' + results.map(e => Object.values(e).join('\t')).join('\n');
+			const encodedUri = encodeURI(csvContent);
+			link.setAttribute('href', encodedUri);
+			link.setAttribute('download', 'results_' + this.testId + '.xls');
+			link.click();
+		} else {
+			console.log('no results');
+		}
+
+		link.remove();
+	};
 
 	visualizeBuffer(bufferFiller: HTMLElement, durationEl: HTMLElement, bufferType: 'audio' | 'video', ranges: TimeRanges) {
 		const max = 5

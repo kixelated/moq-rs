@@ -14,15 +14,17 @@ type MessageInit struct {
 }
 
 type MessageSegment struct {
-	Init             string `json:"init"`      // ID of the init segment to use for this segment
-	Timestamp        int    `json:"timestamp"` // PTS of the first frame in milliseconds
-	ETP              int    `json:"etp"`       // Estimated throughput in bytes - CTA 5006
-	AvailabilityTime int    `json:"at"`        // The wallclock time at which the first byte of this object became available at the origin for successful request. - CTA 5006
+	Init             string  `json:"init"`      // ID of the init segment to use for this segment
+	Timestamp        int     `json:"timestamp"` // PTS of the first frame in milliseconds
+	ETP              int     `json:"etp"`       // Estimated throughput in bytes - CTA 5006
+	TcRate           float64 `json:"tc_rate"`   // Applied tc rate
+	AvailabilityTime int     `json:"at"`        // The wallclock time at which the first byte of this object became available at the origin for successful request. - CTA 5006
 }
 
 type MessageDebug struct {
 	MaxBitrate        *int  `json:"max_bitrate,omitempty"`        // Artificially limit the QUIC max bitrate
 	ContinueStreaming *bool `json:"continue_streaming,omitempty"` // Resume or pause streaming
+	TcReset           *bool `json:"tc_reset,omitempty"`           // Set tc profile
 }
 
 type MessagePing struct {

@@ -100,8 +100,9 @@ export class Source {
 							// No additional SourceBuffer objects may be added.
 							//
 							this.sourceBuffer = this.mediaSource.addSourceBuffer(this.init.info.mime)
-						} catch {
+						} catch (err) {
 							// TODO: handle this in a better way
+							console.error(err);
 							location.reload();
 							return;
 						}

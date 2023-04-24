@@ -1,0 +1,26 @@
+const PROFILE_SLOW_JITTERS = [
+  {
+    speed: 500,
+    duration: 5,
+  },
+  {
+    speed: 1200,
+    duration: 5,
+  },
+  {
+    speed: 500,
+    duration: 5,
+  },
+  {
+    speed: 1200,
+    duration: 5,
+  },
+  {
+    speed: 500,
+    duration: 5,
+  },
+  {
+    speed: 1200,
+    duration: 5,
+  },
+];

@@ -1,0 +1,1 @@
+sudo tc qdisc add dev enp0s31f6 root tbf rate 1500kbit burst 16kbit latency 10ms

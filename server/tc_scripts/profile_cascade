@@ -1,0 +1,10 @@
+rate 1200
+wait 30
+rate 800
+wait 30
+rate 400
+wait 30
+rate 800
+wait 30
+rate 1200
+wait 30

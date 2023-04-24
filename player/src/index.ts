@@ -1,8 +1,10 @@
 import { Player } from './player';
 import * as Plotly from 'plotly.js-dist';
+import { estimator } from './estimator';
 
 // This is so ghetto but I'm too lazy to improve it right now
 const vidRef = document.getElementById("vid") as HTMLVideoElement;
+const startRef = document.getElementById("start") as HTMLButtonElement;
 const liveRef = document.getElementById("live") as HTMLButtonElement;
 const throttleRef = document.getElementById("throttle") as HTMLButtonElement;
 const throttleDDL = document.getElementById("throttles") as HTMLSelectElement;
@@ -11,9 +13,11 @@ const playRef = document.getElementById("play") as HTMLDivElement;
 const resolutionsRef = document.getElementById("resolutions") as HTMLSelectElement;
 const activeBWTestRef = document.getElementById("active_bw_test")
 const continueStreamingRef = document.getElementById("continue_streaming")
-const logRef = document.querySelector("#log_content") as HTMLTextAreaElement;
+const logContentRef = document.querySelector("#log_content") as HTMLTextAreaElement;
+const toggleLogRef = document.querySelector("#toggle_log") as HTMLAnchorElement;
 
 const params = new URLSearchParams(window.location.search)
+window.estimator = estimator;
 
 if (process.env.SERVER_URL) {
     console.log('Setting server url to %s', process.env.SERVER_URL)
@@ -46,7 +50,7 @@ const logHandler = (txt: string) => {
     const pre = document.createElement('pre');
     pre.innerText = txt;
     div.appendChild(pre);
-    logRef.appendChild(div);
+    logContentRef.appendChild(div);
 };
 
 // fill resolutions combobox
@@ -77,7 +81,7 @@ const plotLayout = {
         r: 10,
         t: 40,
         b: 40,
-        l: 80
+        l: 50
     },
     height: 400,
     title: '',
@@ -97,12 +101,14 @@ const plotLayout = {
         type: 'linear',
         showgrid: true,
         showticklabels: true,
-        title: 'Time (s)'
+        title: 'Time (s)',
+        rangemode: 'tozero'
     },
     yaxis: {
         anchor: 'x',
         showgrid: true,
-        title: 'Mbps'
+        title: 'Mbps',
+        rangemode: 'tozero'
     },
     font: {
         family: 'sans-serif',
@@ -116,21 +122,56 @@ const plotData = [{
     x: [] as number[],
     y: [] as number[],
     name: 'Server ETP',
-    mode: 'lines',
+    mode: 'markers',
     xaxis: 'x',
     yaxis: 'y',
-    line: {
-        color: 'black'
+    marker: {
+        color: 'black',
+        size: 11,
+        symbol: 'cross-thin',
+        line: {
+            width: 3,
+        }
     }
 }, {
     x: [] as number[],
     y: [] as number[],
-    name: 'SWMA<sub>th</sub>',
-    mode: 'lines',
+    name: 'tc Rate',
+    mode: 'line',
     xaxis: 'x',
     yaxis: 'y',
     line: {
-        color: 'brown'
+        color: '#0905ed',
+        width: 3
+    }
+}, {
+    x: [] as number[],
+    y: [] as number[],
+    name: 'SWMA',
+    mode: 'markers',
+    xaxis: 'x',
+    yaxis: 'y',
+    marker: {
+        color: '#b33dc6',
+        size: 11,
+        symbol: 'x-thin',
+        line: {
+            width: 3,
+            color: 'red'
+        }
+    }
+},
+{
+    x: [] as number[],
+    y: [] as number[],
+    name: 'IFA',
+    mode: 'markers',
+    xaxis: 'x',
+    yaxis: 'y',
+    marker: {
+        color: '#037325',
+        size: 11,
+        symbol: 'star-triangle-down'
     }
 },
 {
@@ -141,13 +182,11 @@ const plotData = [{
     xaxis: 'x',
     yaxis: 'y',
     marker: {
-        size: 10,
-        color: 'blue'
+        size: 7,
+        color: '#27aeef'
     },
 }
 ] as any[];
-
-const start = performance.now();
 
 const plot = Plotly.newPlot(document.getElementById('plot') as HTMLDivElement, plotData, plotLayout, plotConfig);
 
@@ -161,35 +200,87 @@ const player = new Player({
     activeBWTestRef: activeBWTestRef,
     continueStreamingRef: continueStreamingRef,
     activeBWAsset: window.config.activeBWAsset,
+    activeBWTestInterval: window.config.activeBWTestInterval,
+    autioStart: window.config.autoStart || true,
     logger: logHandler
 })
 
 // expose player
 window.player = player;
 
-setInterval(() => {
-    const currentSec = Math.round((performance.now() - start) / 1000);
 
-    plotData.forEach(p => (p.x as Plotly.Datum[]).push(currentSec));
-    (plotData[0].y as Plotly.Datum[]).push(player.serverBandwidth / 1000000);
-    (plotData[1].y as Plotly.Datum[]).push(player.supress_swmaThroughput_threshold ? null : player.swmaThroughput_threshold / 1000000);
-    (plotData[2].y as Plotly.Datum[]).push(player.activeBWTestResult === 0 ? null : player.activeBWTestResult / 1000000);
+let timePassed = 0;
+let playerRefreshInterval = 1000; // 1 second
+const displayedHistory = 240; // 4 minutes
+const plotStartDelay = 4000; // 4 seconds
+const testDuration = window.config.testDuration || 0;
 
-    // show max 60 seconds
-    if (plotData[0].x.length > 60) {
-        plotData.forEach(item => {
-            (item.x as Plotly.Datum[]).splice(0, 1);
-            (item.y as Plotly.Datum[]).splice(0, 1);
-        })
+let plotTimer: NodeJS.Timer;
+
+const startPlotting = () => {
+    console.log('in startPlotting');
+    plotTimer = setInterval(() => {
+        if (!player.started || player.paused) {
+            return;
+        }
+        timePassed += playerRefreshInterval;
+
+        const currentSec = Math.round(timePassed / 1000);
+
+        if (testDuration > 0 && currentSec === testDuration) {
+            player.pauseOrResume(true);
+            player.downloadStats().then(results => {
+                console.log('results', results);
+            });
+            return;
+        }
+
+        // save results by time
+        // these will be downloaded after the test
+        player.saveResultBySecond('swma', player.throughputs.get('swma') || 0, currentSec);
+        player.saveResultBySecond('ifa', player.throughputs.get('ifa') || 0, currentSec);
+        player.saveResultBySecond('etp', player.serverBandwidth || 0, currentSec);
+        player.saveResultBySecond('tcRate', player.tcRate || 0, currentSec);
+        player.saveResultBySecond('last-active-bw', player.lastActiveBWTestResult || 0, currentSec);
+
+        plotData.forEach(p => (p.x as Plotly.Datum[]).push(currentSec));
+        (plotData[0].y as Plotly.Datum[]).push(player.serverBandwidth / 1000000);
+        (plotData[1].y as Plotly.Datum[]).push(player.tcRate / 1000000);
+        (plotData[2].y as Plotly.Datum[]).push(player.supress_throughput_value ? null : (player.throughputs.get('swma') || 0) / 1000000);
+        (plotData[3].y as Plotly.Datum[]).push(player.supress_throughput_value ? null : (player.throughputs.get('ifa') || 0) / 1000000);
+        (plotData[4].y as Plotly.Datum[]).push(player.activeBWTestResult === 0 ? null : player.activeBWTestResult / 1000000);
+
+        // show max 60 seconds
+        if (plotData[0].x.length > displayedHistory) {
+            plotData.forEach(item => {
+                (item.x as Plotly.Datum[]).splice(0, 1);
+                (item.y as Plotly.Datum[]).splice(0, 1);
+            })
+        }
+
+        const data_update = {
+            x: Object.values(plotData).map(item => item.x),
+            y: Object.values(plotData).map(item => item.y),
+        } as Plotly.Data;
+
+        Plotly.update(document.getElementById('plot') as Plotly.Root, data_update, plotLayout)
+    }, playerRefreshInterval);
+};
+
+startRef.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!player.started) {
+        await player.start();
+        if (player.started) {
+            startRef.innerText = 'Stop';
+            setTimeout(() => startPlotting(), plotStartDelay);
+        } else {
+            alert('Error occurred in starting!');
+        }
+    } else {
+        player.stop();
     }
-
-    const data_update = {
-        x: Object.values(plotData).map(item => item.x),
-        y: Object.values(plotData).map(item => item.y),
-    } as Plotly.Data;
-
-    Plotly.update(document.getElementById('plot') as Plotly.Root, data_update, plotLayout)
-}, 1000);
+})
 
 liveRef.addEventListener("click", (e) => {
     e.preventDefault()
@@ -206,6 +297,21 @@ playRef.addEventListener('click', (e) => {
     vidRef.play()
     e.preventDefault()
 })
+
+toggleLogRef.addEventListener('click', (e) => {
+    const logEl = document.getElementById('log');
+    if (!logEl) {
+        return;
+    };
+
+    if (toggleLogRef.innerText === 'Show Logs') {
+        toggleLogRef.innerText = 'Hide Logs';
+        logEl.style.display = 'block';
+    } else {
+        toggleLogRef.innerText = 'Show Logs';
+        logEl.style.display = 'none';
+    }
+});
 
 function playFunc(e: Event) {
     playRef.style.display = "none"
