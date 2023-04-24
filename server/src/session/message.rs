@@ -14,7 +14,6 @@ pub struct Init {
 #[derive(Serialize, Deserialize)]
 pub struct Segment {
     pub init: String,
-	pub timestamp: u64,
 }
 
 impl Message {

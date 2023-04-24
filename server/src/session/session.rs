@@ -6,10 +6,13 @@ use quiche::h3::webtransport;
 use crate::{media,transport};
 use super::message;
 
+use mp4;
+
 #[derive(Default)]
 pub struct Session {
     media: Option<media::Source>,
     stream_id: Option<u64>, // stream ID of the current segment
+    styp: Option<Vec<u8>>,
 }
 
 impl transport::App for Session {
@@ -58,7 +61,7 @@ impl transport::App for Session {
     }
 
     fn timeout(&self) -> Option<time::Duration> {
-        None
+        self.media.as_ref().and_then(|m| m.timeout())
     }
 }
 
@@ -73,8 +76,6 @@ impl Session {
             Some(f) => f,
             None => return Ok(()),
         };
-
-        log::debug!("{} {}", fragment.keyframe, fragment.timestamp);
 
         let mut stream_id = match self.stream_id {
             Some(stream_id) => stream_id,
@@ -101,7 +102,6 @@ impl Session {
             let mut message = message::Message::new();
             message.segment = Some(message::Segment{
                 init: "video".to_string(),
-                timestamp: fragment.timestamp,
             });
 
             let data = message.serialize()?;
@@ -111,17 +111,29 @@ impl Session {
             // TODO handle when stream is full
             stream_id = session.open_stream(conn, false)?;
             session.send_stream_data(conn, stream_id, data.as_slice())?;
+
+            let styp = self.styp.as_ref().expect("missing ftyp mox");
+            session.send_stream_data(conn, stream_id, &styp)?;
         }
 
         let data = fragment.data.as_slice();
 
         // TODO check if stream is writable
-        session.send_stream_data(conn, stream_id, data)?;
-
-        log::debug!("wrote {} to {}", std::str::from_utf8(&data[4..8]).unwrap(), stream_id);
+        let size = session.send_stream_data(conn, stream_id, data)?;
+        if size < data.len() {
+            anyhow::bail!("partial write: {} < {}", size, data.len());
+        }
 
         // Save for the next fragment
         self.stream_id = Some(stream_id);
+
+        // Save the ftyp fragment but modify it to be a styp for furture segments.
+        if fragment.typ == mp4::BoxType::FtypBox {
+            let mut data = fragment.data;
+            data[4] = b's'; // ftyp to styp
+
+            self.styp = Some(data);
+        }
 
         Ok(())
     }
