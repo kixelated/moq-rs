@@ -44,7 +44,6 @@ export default class Transport {
 
 	// Helper function to make creating a promise easier
 	private async connect(props: TransportInit): Promise<WebTransport> {
-
 		let options: WebTransportOptions = {};
 		if (props.fingerprint) {
 			options.serverCertificateHashes = [ props.fingerprint ]
@@ -98,11 +97,15 @@ export default class Transport {
 				return this.handleInit(r, msg.init as Message.Init)
 			} else if (msg.segment) {
 				return this.handleSegment(r, msg.segment as Message.Segment)
+			} else {
+				console.warn("unknown message", msg);
 			}
 		}
 	}
 
 	async handleInit(stream: Stream.Reader, msg: Message.Init) {
+		console.log("handle init", msg);
+
         let track = this.tracks.get(msg.id);
         if (!track) {
             track = new MP4.InitParser()
@@ -117,6 +120,8 @@ export default class Transport {
         }
 
 		const info = await track.info
+
+		console.log(info);
 
         if (info.audioTracks.length + info.videoTracks.length != 1) {
             throw new Error("expected a single track")
@@ -140,6 +145,8 @@ export default class Transport {
 	}
 
 	async handleSegment(stream: Stream.Reader, msg: Message.Segment) {
+		console.log("handle segment", msg);
+
         let track = this.tracks.get(msg.init);
         if (!track) {
             track = new MP4.InitParser()

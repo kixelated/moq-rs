@@ -31,8 +31,8 @@ impl Message {
         let size = bytes.len() + 8;
 
         let mut out = Vec::with_capacity(size);
+        out.extend_from_slice(&(size as u32).to_be_bytes());
         out.extend_from_slice(b"warp");
-        out.extend_from_slice(&size.to_be_bytes());
         out.extend_from_slice(bytes);
 
         Ok(out)

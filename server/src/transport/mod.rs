@@ -1,5 +1,4 @@
 mod server;
-mod session;
 mod connection;
 mod app;
 

@@ -1,7 +1,4 @@
-use quiche::h3::webtransport;
-use warp::transport;
-
-use std::time;
+use warp::{session,transport};
 
 use clap::Parser;
 use env_logger;
@@ -26,31 +23,6 @@ struct Cli {
     media: String,
 }
 
-#[derive(Default)]
-struct Connection {
-    webtransport: Option<webtransport::ServerSession>,
-}
-
-impl transport::App for Connection {
-    fn poll(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
-        if !conn.is_established() {
-            // Wait until the handshake finishes
-            return Ok(())
-        }
-
-        if self.webtransport.is_none() {
-            self.webtransport = Some(webtransport::ServerSession::with_transport(conn)?)
-        }
-
-        let webtransport = self.webtransport.as_mut().unwrap();
-
-        Ok(())
-    }
-
-    fn timeout(&self) -> Option<time::Duration> {
-        None
-    }
-}
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -62,6 +34,6 @@ fn main() -> anyhow::Result<()> {
         key: args.key,
     };
 
-    let mut server = transport::Server::<Connection>::new(server_config).unwrap();
+    let mut server = transport::Server::<session::Session>::new(server_config).unwrap();
     server.run()
 }

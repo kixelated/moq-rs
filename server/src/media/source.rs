@@ -9,15 +9,13 @@ use mp4::ReadBox;
 pub struct Source {
     reader: io::BufReader<fs::File>,
     start: time::Instant,
-
     pending: Option<Fragment>,
-    sequence: u64,
 }
 
 pub struct Fragment {
     pub data: Vec<u8>,
-    pub segment_id: u64,
-    pub timestamp: u64,
+    pub keyframe: bool,
+    pub timestamp: u64, // only used to simulate a live stream
 }
 
 impl Source {
@@ -30,7 +28,6 @@ impl Source {
             reader,
             start,
             pending: None,
-            sequence: 0,
         })
     }
 
@@ -52,29 +49,23 @@ impl Source {
         // Read the next full atom.
         let atom = read_box(&mut self.reader)?;
         let mut timestamp = 0;
+        let mut keyframe = false;
 
         // Before we return it, let's do some simple parsing.
         let mut reader = io::Cursor::new(&atom);
         let header = mp4::BoxHeader::read(&mut reader)?;
 
+        if header.name == mp4::BoxType::MoofBox {
+            let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
 
-        match header.name {
-            mp4::BoxType::MoofBox => {
-                let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
-
-                if has_keyframe(&moof) {
-                    self.sequence += 1
-                }
-
-                timestamp = first_timestamp(&moof);
-            }
-            _ => (),
+            keyframe = has_keyframe(&moof);
+            timestamp = first_timestamp(&moof);
         }
 
         Ok(Fragment {
             data: atom,
-            segment_id: self.sequence,
-            timestamp: timestamp,
+            keyframe,
+            timestamp,
         })
     }
 }
@@ -139,7 +130,7 @@ fn has_keyframe(moof: &mp4::MoofBox) -> bool {
             let keyframe = (flags >> 24) & 0x3 == 0x2; // kSampleDependsOnNoOther
             let non_sync = (flags >> 16) & 0x1 == 0x1; // kSampleIsNonSyncSample
 
-            if keyframe && non_sync {
+            if keyframe && !non_sync {
                 return true
             }
         }
