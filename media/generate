@@ -1,6 +1,13 @@
 #!/bin/bash
+cd "$(dirname "$0")"
+
+# empty_moov:       Uses moof fragments instead of one giant moov/mdat pair.
+# frag_every_frame: Creates a moof for each frame.
+# separate_moof:    Splits audio and video into separate moof flags.
+# omit_tfhd_offset: Removes absolute byte offsets so we can fragment.
+
 ffmpeg -i source.mp4 \
+	-movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset \
 	-c:v copy \
 	-an \
-	-movflags frag_every_frame+empty_moov \
 	fragmented.mp4

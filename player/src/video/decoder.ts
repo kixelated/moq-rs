@@ -53,8 +53,6 @@ export default class Decoder {
 		const input = MP4.New();
 
         input.onSamples = (id: number, user: any, samples: MP4.Sample[]) => {
-            console.log(samples)
-
             for (let sample of samples) {
                 const timestamp = 1000 * sample.dts / sample.timescale // milliseconds
 
@@ -92,7 +90,7 @@ export default class Decoder {
 
         for (let raw of init.raw) {
             raw.fileStart = offset
-            input.appendBuffer(raw)
+            offset = input.appendBuffer(raw)
         }
 
         const stream = new Stream.Reader(msg.reader, msg.buffer)
