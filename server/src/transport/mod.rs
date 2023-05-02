@@ -1,6 +1,6 @@
-mod server;
-mod connection;
 mod app;
+mod connection;
+mod server;
 mod streams;
 
 pub use app::App;

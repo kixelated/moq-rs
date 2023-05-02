@@ -1,8 +1,8 @@
 use std::collections::hash_map as hmap;
 use std::collections::VecDeque;
 
-use quiche;
 use anyhow;
+use quiche;
 
 #[derive(Default)]
 pub struct Streams {
@@ -16,14 +16,20 @@ struct State {
 }
 
 impl Streams {
-    pub fn send(&mut self, conn: &mut quiche::Connection, id: u64, buf: &[u8], fin: bool) -> anyhow::Result<()> {
+    pub fn send(
+        &mut self,
+        conn: &mut quiche::Connection,
+        id: u64,
+        buf: &[u8],
+        fin: bool,
+    ) -> anyhow::Result<()> {
         match self.lookup.entry(id) {
             hmap::Entry::Occupied(mut entry) => {
                 // Add to the existing buffer.
                 let state = entry.get_mut();
                 state.buffer.extend(buf);
                 state.fin |= fin;
-            },
+            }
             hmap::Entry::Vacant(entry) => {
                 let size = conn.stream_send(id, buf, fin)?;
 
@@ -32,9 +38,9 @@ impl Streams {
                     let mut buffer = VecDeque::with_capacity(buf.len());
                     buffer.extend(&buf[size..]);
 
-                    entry.insert(State{buffer, fin});
+                    entry.insert(State { buffer, fin });
                 }
-            },
+            }
         };
 
         Ok(())
@@ -58,7 +64,7 @@ impl Streams {
                 let size = conn.stream_send(id, parts.0, false)?;
                 if size == 0 {
                     // No more space available for this stream.
-                    continue 'outer
+                    continue 'outer;
                 }
 
                 // Remove the bytes that were written.

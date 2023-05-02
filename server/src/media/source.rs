@@ -1,13 +1,13 @@
-use std::{io,fs,time};
 use io::Read;
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
+use std::{fs, io, time};
 
 use std::io::Write;
 
-use mp4;
 use anyhow;
+use mp4;
 
-use mp4::{ReadBox,WriteBox};
+use mp4::{ReadBox, WriteBox};
 
 pub struct Source {
     // We read the file once, in order, and don't seek backwards.
@@ -40,7 +40,7 @@ pub struct Fragment {
     pub keyframe: bool,
 
     // The timestamp of the fragment, in milliseconds, to simulate a live stream.
-    pub timestamp: Option<u64>
+    pub timestamp: Option<u64>,
 }
 
 impl Source {
@@ -49,7 +49,7 @@ impl Source {
         let reader = io::BufReader::new(f);
         let start = time::Instant::now();
 
-        Ok(Self{
+        Ok(Self {
             reader,
             start,
             fragments: VecDeque::new(),
@@ -64,7 +64,7 @@ impl Source {
         };
 
         if self.timeout().is_some() {
-            return Ok(None)
+            return Ok(None);
         }
 
         Ok(self.fragments.pop_front())
@@ -84,7 +84,7 @@ impl Source {
                     // Don't return anything until we know the total number of tracks.
                     // To be honest, I didn't expect the borrow checker to allow this, but it does!
                     self.ftyp = atom;
-                },
+                }
                 mp4::BoxType::MoovBox => {
                     // We need to split the moov based on the tracks.
                     let moov = mp4::MoovBox::read_box(&mut reader, header.size)?;
@@ -105,7 +105,11 @@ impl Source {
                         // We remove every box for other track IDs.
                         let mut toov = moov.clone();
                         toov.traks.retain(|t| t.tkhd.track_id == track_id);
-                        toov.mvex.as_mut().expect("missing mvex").trexs.retain(|f| f.track_id == track_id);
+                        toov.mvex
+                            .as_mut()
+                            .expect("missing mvex")
+                            .trexs
+                            .retain(|f| f.track_id == track_id);
 
                         // Marshal the box.
                         let mut toov_data = Vec::new();
@@ -124,7 +128,7 @@ impl Source {
                     }
 
                     self.moov = Some(moov);
-                },
+                }
                 mp4::BoxType::MoofBox => {
                     let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
 
@@ -133,19 +137,19 @@ impl Source {
                         anyhow::bail!("multiple tracks per moof atom")
                     }
 
-                    self.fragments.push_back(Fragment{
+                    self.fragments.push_back(Fragment {
                         track: moof.trafs[0].tfhd.track_id,
                         typ: mp4::BoxType::MoofBox,
                         data: atom,
                         keyframe: has_keyframe(&moof),
                         timestamp: first_timestamp(&moof),
                     })
-                },
+                }
                 mp4::BoxType::MdatBox => {
                     let moof = self.fragments.back().expect("no atom before mdat");
                     assert!(moof.typ == mp4::BoxType::MoofBox, "no moof before mdat");
 
-                    self.fragments.push_back(Fragment{
+                    self.fragments.push_back(Fragment {
                         track: moof.track,
                         typ: mp4::BoxType::MoofBox,
                         data: atom,
@@ -154,8 +158,8 @@ impl Source {
                     });
 
                     // We have some media data, return so we can start sending it.
-                    return Ok(())
-                },
+                    return Ok(());
+                }
                 _ => anyhow::bail!("unknown top-level atom: {:?}", header.name),
             }
         }
@@ -167,7 +171,12 @@ impl Source {
         let timestamp = next.timestamp?;
 
         // Find the timescale for the track.
-        let track = self.moov.as_ref()?.traks.iter().find(|t| t.tkhd.track_id == next.track)?;
+        let track = self
+            .moov
+            .as_ref()?
+            .traks
+            .iter()
+            .find(|t| t.tkhd.track_id == next.track)?;
         let timescale = track.mdia.mdhd.timescale as u64;
 
         let delay = time::Duration::from_millis(1000 * timestamp / timescale);
@@ -195,17 +204,21 @@ fn read_box<R: io::Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
         1 => {
             reader.read_exact(&mut buf)?;
             let size_large = u64::from_be_bytes(buf);
-            anyhow::ensure!(size_large >= 16, "impossible extended box size: {}", size_large);
+            anyhow::ensure!(
+                size_large >= 16,
+                "impossible extended box size: {}",
+                size_large
+            );
 
             reader.take(size_large - 16)
-        },
+        }
 
         2..=7 => {
             anyhow::bail!("impossible box size: {}", size)
         }
 
         // Otherwise read based on the size.
-        size => reader.take(size - 8)
+        size => reader.take(size - 8),
     };
 
     // Append to the vector and return it.
@@ -238,7 +251,7 @@ fn has_keyframe(moof: &mp4::MoofBox) -> bool {
             let non_sync = (flags >> 16) & 0x1 == 0x1; // kSampleIsNonSyncSample
 
             if keyframe && !non_sync {
-                return true
+                return true;
             }
         }
     }

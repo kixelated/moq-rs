@@ -1,4 +1,4 @@
-use warp::{session,transport};
+use warp::{session, transport};
 
 use clap::Parser;
 use env_logger;
@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
-    let server_config = transport::Config{
+    let server_config = transport::Config {
         addr: args.addr,
         cert: args.cert,
         key: args.key,

@@ -3,8 +3,8 @@ use std::time;
 use quiche;
 use quiche::h3::webtransport;
 
-use crate::{media,transport};
 use super::message;
+use crate::{media, transport};
 
 #[derive(Default)]
 pub struct Session {
@@ -16,7 +16,11 @@ pub struct Session {
 
 impl transport::App for Session {
     // Process any updates to a session.
-    fn poll(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
+    fn poll(
+        &mut self,
+        conn: &mut quiche::Connection,
+        session: &mut webtransport::ServerSession,
+    ) -> anyhow::Result<()> {
         loop {
             let event = match session.poll(conn) {
                 Err(webtransport::Error::Done) => break,
@@ -39,18 +43,16 @@ impl transport::App for Session {
                     self.media = Some(media);
 
                     session.accept_connect_request(conn, None).unwrap();
-                },
+                }
                 webtransport::ServerEvent::StreamData(stream_id) => {
                     let mut buf = vec![0; 10000];
-                    while let Ok(len) =
-                        session.recv_stream_data(conn, stream_id, &mut buf)
-                    {
+                    while let Ok(len) = session.recv_stream_data(conn, stream_id, &mut buf) {
                         let stream_data = &buf[0..len];
                         log::debug!("stream data {:?}", stream_data);
                     }
                 }
 
-                _ => {},
+                _ => {}
             }
         }
 
@@ -69,7 +71,11 @@ impl transport::App for Session {
 }
 
 impl Session {
-    fn poll_source(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
+    fn poll_source(
+        &mut self,
+        conn: &mut quiche::Connection,
+        session: &mut webtransport::ServerSession,
+    ) -> anyhow::Result<()> {
         // Get the media source once the connection is established.
         let media = match &mut self.media {
             Some(m) => m,
@@ -92,7 +98,7 @@ impl Session {
 
                 // Encode a JSON header indicating this is the video track.
                 let mut message = message::Message::new();
-                message.segment = Some(message::Segment{
+                message.segment = Some(message::Segment {
                     init: "video".to_string(),
                 });
 
@@ -105,13 +111,13 @@ impl Session {
                 self.streams.send(conn, stream_id, &data, false)?;
 
                 stream_id
-            },
+            }
             None => {
                 // This is the start of an init segment.
 
                 // Create a JSON header.
                 let mut message = message::Message::new();
-                message.init = Some(message::Init{
+                message.init = Some(message::Init {
                     id: "video".to_string(),
                 });
 
