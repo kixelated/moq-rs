@@ -58,7 +58,7 @@ impl Source {
         })
     }
 
-    pub fn next(&mut self) -> anyhow::Result<Option<Fragment>> {
+    pub fn get(&mut self) -> anyhow::Result<Option<Fragment>> {
         if self.fragments.is_empty() {
             self.parse()?;
         };
@@ -116,7 +116,7 @@ impl Source {
                         toov.write_box(&mut toov_data)?;
 
                         let mut file = std::fs::File::create(format!("track{}.mp4", track_id))?;
-                        file.write_all(toov_data.as_slice());
+                        file.write_all(toov_data.as_slice())?;
 
                         self.fragments.push_back(Fragment {
                             track: track_id,

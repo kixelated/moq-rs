@@ -1,7 +1,6 @@
 use warp::{session, transport};
 
 use clap::Parser;
-use env_logger;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser)]

@@ -57,7 +57,7 @@ impl Streams {
             let state = entry.get_mut();
 
             // Keep reading from the buffer until it's empty.
-            while state.buffer.len() > 0 {
+            while !state.buffer.is_empty() {
                 // VecDeque is a ring buffer, so we can't write the whole thing at once.
                 let parts = state.buffer.as_slices();
 

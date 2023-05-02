@@ -250,7 +250,7 @@ impl<T: app::App> Server<T> {
     }
 
     pub fn app(&mut self) -> anyhow::Result<()> {
-        for (_, conn) in &mut self.conns {
+        for conn in self.conns.values_mut() {
             if let Some(session) = &mut conn.session {
                 if let Err(e) = conn.app.poll(&mut conn.quiche, session) {
                     // Close the connection on any application error
@@ -279,7 +279,7 @@ impl<T: app::App> Server<T> {
 
                 let pkt = &pkt[..size];
 
-                match self.socket.send_to(&pkt, info.to) {
+                match self.socket.send_to(pkt, info.to) {
                     Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                     Err(err) => return Err(err.into()),
                     Ok(_) => (),
