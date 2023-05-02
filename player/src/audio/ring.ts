@@ -59,11 +59,15 @@ export class Ring {
                     frameCount: first.length,
                 })
 
+               //For some reason this breaks audio... and this is my temporary fix
+               //console.log("frame offset", first.length , "frame count", second.length) to test
+               if (first.length < second.length) {
                 frame.copyTo(second, {
                     planeIndex: i,
                     frameOffset: first.length,
                     frameCount: second.length,
                 })
+              }
             }
         }
 
