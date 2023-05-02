@@ -329,8 +329,7 @@ dependencies = [
 [[package]]
 name = "mp4"
 version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509348cba250e7b852a875100a2ddce7a36ee3abf881a681c756670c1774264d"
+source = "git+https://github.com/kixelated/mp4-rust.git?branch=trexs#efefcc47353f477518bff01493785ae0daa8efd4"
 dependencies = [
  "byteorder",
  "bytes",

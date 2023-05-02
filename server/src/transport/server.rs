@@ -84,6 +84,7 @@ impl<T: app::App> Server<T> {
             self.receive()?;
             self.app()?;
             self.send()?;
+            self.cleanup();
         }
     }
 
@@ -242,7 +243,11 @@ impl<T: app::App> Server<T> {
     pub fn app(&mut self) -> anyhow::Result<()> {
         for (_, conn) in &mut self.conns {
             if let Some(session) = &mut conn.session {
-                conn.app.poll(&mut conn.quiche, session)?;
+                if let Err(e) = conn.app.poll(&mut conn.quiche, session) {
+                    // Close the connection on any application error
+                    let reason = format!("app error: {:?}", e);
+                    conn.quiche.close(true, 0xff, reason.as_bytes()).ok();
+                }
             }
         }
 
@@ -274,6 +279,11 @@ impl<T: app::App> Server<T> {
         }
 
         Ok(())
+    }
+
+    pub fn cleanup(&mut self) {
+        // Garbage collect closed connections.
+        self.conns.retain(|_, ref mut c| !c.quiche.is_closed() );
     }
 }
 
