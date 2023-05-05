@@ -329,7 +329,6 @@ dependencies = [
 [[package]]
 name = "mp4"
 version = "0.13.0"
-source = "git+https://github.com/kixelated/mp4-rust.git?branch=trexs#efefcc47353f477518bff01493785ae0daa8efd4"
 dependencies = [
  "byteorder",
  "bytes",

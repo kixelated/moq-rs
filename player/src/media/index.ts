@@ -1,40 +1,57 @@
 import * as Message from "./message"
-import Renderer from "../media/audio"
-import Decoder from "./decoder"
-
-import { RingInit } from "../media/ring"
+import { RingInit } from "./ring"
 
 // Abstracts the Worker and Worklet into a simpler API
 // This class must be created on the main thread due to AudioContext.
-export default class Audio {
+export default class Media {
     context: AudioContext;
     worker: Worker;
     worklet: Promise<AudioWorkletNode>;
 
-    constructor() {
+    constructor(videoConfig: Message.VideoConfig) {
         // Assume 44.1kHz and two audio channels
-        const config = {
+        const audioConfig = {
             sampleRate: 44100,
             ring: new RingInit(2, 4410), // 100ms at 44.1khz
         }
 
+        const config = {
+            audio: audioConfig,
+            video: videoConfig,
+        }
+
         this.context = new AudioContext({
             latencyHint: "interactive",
-            sampleRate: config.sampleRate,
+            sampleRate: config.audio.sampleRate,
         })
+
 
         this.worker = this.setupWorker(config)
         this.worklet = this.setupWorklet(config)
     }
 
+    init(init: Message.Init) {
+        this.worker.postMessage({ init }, [ init.buffer.buffer, init.reader ])
+    }
+
+    segment(segment: Message.Segment) {
+        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
+    }
+
+    play(play: Message.Play) {
+        this.context.resume()
+        //this.worker.postMessage({ play })
+    }
+
     private setupWorker(config: Message.Config): Worker {
         const url = new URL('worker.ts', import.meta.url)
+
         const worker = new Worker(url, {
-            name: "audio",
             type: "module",
+            name: "media",
         })
 
-        worker.postMessage({ config })
+        worker.postMessage({ config }, [ config.video.canvas ])
 
         return worker
     }
@@ -62,16 +79,4 @@ export default class Audio {
         return worklet
     }
 
-    init(init: Message.Init) {
-        this.worker.postMessage({ init })
-    }
-
-    segment(segment: Message.Segment) {
-        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
-    }
-
-    play(play: Message.Play) {
-        this.context.resume()
-        //this.worker.postMessage({ play })
-    }
 }

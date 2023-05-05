@@ -20,19 +20,7 @@ export class InitParser {
 		// Create a promise that gets resolved once the init segment has been parsed.
 		this.info = new Promise((resolve, reject) => {
 			this.mp4box.onError = reject
-
-			// https://github.com/gpac/mp4box.js#onreadyinfo
-			this.mp4box.onReady = (info: MP4.Info) => {
-				if (!info.isFragmented) {
-					reject("expected a fragmented mp4")
-				}
-
-				if (info.tracks.length != 1) {
-					reject("expected a single track")
-				}
-
-				resolve(info)
-			}
+			this.mp4box.onReady = resolve
 		})
 	}
 

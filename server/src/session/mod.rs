@@ -1,6 +1,7 @@
 mod message;
 
 use std::time;
+use std::collections::hash_map as hmap;
 
 use quiche;
 use quiche::h3::webtransport;
@@ -10,9 +11,8 @@ use crate::{media, transport};
 #[derive(Default)]
 pub struct Session {
     media: Option<media::Source>,
-    stream_id: Option<u64>, // stream ID of the current segment
-
     streams: transport::Streams, // An easy way of buffering stream data.
+    tracks: hmap::HashMap<u32, u64>, // map from track_id to current stream_id
 }
 
 impl transport::App for Session {
@@ -38,12 +38,23 @@ impl transport::App for Session {
                     // req.authority()
                     // req.path()
                     // and you can validate this request with req.origin()
+                    session.accept_connect_request(conn, None).unwrap();
 
                     // TODO
                     let media = media::Source::new("../media/fragmented.mp4")?;
-                    self.media = Some(media);
+                    let init = &media.init;
 
-                    session.accept_connect_request(conn, None).unwrap();
+                    // Create a JSON header.
+                    let mut message = message::Message::new();
+                    message.init = Some(message::Init{});
+                    let data = message.serialize()?;
+
+                    // Create a new stream and write the header.
+                    let stream_id = session.open_stream(conn, false)?;
+                    self.streams.send(conn, stream_id, data.as_slice(), false)?;
+                    self.streams.send(conn, stream_id, init.as_slice(), true)?;
+
+                    self.media = Some(media);
                 }
                 webtransport::ServerEvent::StreamData(stream_id) => {
                     let mut buf = vec![0; 10000];
@@ -84,61 +95,53 @@ impl Session {
         };
 
         // Get the next media fragment.
-        let fragment = match media.get()? {
+        let fragment = match media.fragment()? {
             Some(f) => f,
             None => return Ok(()),
         };
 
-        // Check if we have already created a stream for this fragment.
-        let stream_id = match self.stream_id {
-            Some(old_stream_id) if fragment.keyframe => {
-                // This is the start of a new segment.
+        let stream_id = match self.tracks.get(&fragment.track_id) {
+            // Close the old stream.
+            Some(stream_id) if fragment.keyframe => {
+                self.streams.send(conn, *stream_id, &[], true)?;
+                None
+            },
 
-                // Close the prior stream.
-                self.streams.send(conn, old_stream_id, &[], true)?;
+            // Use the existing stream
+            Some(stream_id) => Some(*stream_id),
 
-                // Encode a JSON header indicating this is the video track.
-                let mut message = message::Message::new();
-                message.segment = Some(message::Segment {
-                    init: "video".to_string(),
-                });
+            // No existing stream.
+            _ => None,
+        };
 
-                // Open a new stream.
+        let stream_id = match stream_id {
+            // Use the existing stream,
+            Some(stream_id) => stream_id,
+
+            // Open a new stream.
+            None => {
                 let stream_id = session.open_stream(conn, false)?;
                 // TODO: conn.stream_priority(stream_id, urgency, incremental)
+
+                // Encode a JSON header indicating this is a new track.
+                let mut message = message::Message::new();
+                message.segment = Some(message::Segment {
+                    track_id: fragment.track_id,
+                });
 
                 // Write the header.
                 let data = message.serialize()?;
                 self.streams.send(conn, stream_id, &data, false)?;
 
-                stream_id
-            }
-            None => {
-                // This is the start of an init segment.
-
-                // Create a JSON header.
-                let mut message = message::Message::new();
-                message.init = Some(message::Init {
-                    id: "video".to_string(),
-                });
-
-                let data = message.serialize()?;
-
-                // Create a new stream and write the header.
-                let stream_id = session.open_stream(conn, false)?;
-                self.streams.send(conn, stream_id, data.as_slice(), false)?;
+                self.tracks.insert(fragment.track_id, stream_id);
 
                 stream_id
-            }
-            Some(stream_id) => stream_id, // Continuation of init or segment
+            },
         };
 
         // Write the current fragment.
         let data = fragment.data.as_slice();
         self.streams.send(conn, stream_id, data, false)?;
-
-        // Save the stream ID for the next fragment.
-        self.stream_id = Some(stream_id);
 
         Ok(())
     }

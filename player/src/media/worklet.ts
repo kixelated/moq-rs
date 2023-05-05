@@ -25,7 +25,7 @@ class Renderer extends AudioWorkletProcessor {
     }
 
     config(config: Message.Config) {
-        this.ring = new Ring(config.ring)
+        this.ring = new Ring(config.audio.ring)
     }
 
     // Inputs and outputs in groups of 128 samples.

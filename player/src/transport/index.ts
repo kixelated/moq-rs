@@ -2,30 +2,22 @@ import * as Message from "./message"
 import * as Stream from "../stream"
 import * as MP4 from "../mp4"
 
-import Audio from "../audio"
-import Video from "../video"
+import Media from "../media"
 
 export interface TransportInit {
 	url: string;
 	fingerprint?: WebTransportHash; // the certificate fingerprint, temporarily needed for local development
-
-	audio: Audio;
-	video: Video;
+	media: Media;
 }
 
 export default class Transport {
 	quic: Promise<WebTransport>;
 	api: Promise<WritableStream>;
-    tracks: Map<string, MP4.InitParser>
 
-	audio: Audio;
-	video: Video;
+	media: Media;
 
 	constructor(props: TransportInit) {
-		this.tracks = new Map();
-
-		this.audio = props.audio;
-		this.video = props.video;
+		this.media = props.media;
 
 		this.quic = this.connect(props)
 
@@ -94,82 +86,18 @@ export default class Transport {
 			const msg = JSON.parse(payload)
 
 			if (msg.init) {
-				return this.handleInit(r, msg.init as Message.Init)
+				return this.media.init({
+					buffer: r.buffer,
+					reader: r.reader,
+				})
 			} else if (msg.segment) {
-				return this.handleSegment(r, msg.segment as Message.Segment)
+				return this.media.segment({
+					buffer: r.buffer,
+					reader: r.reader,
+				})
 			} else {
 				console.warn("unknown message", msg);
 			}
-		}
-	}
-
-	async handleInit(stream: Stream.Reader, msg: Message.Init) {
-		console.log("handle init", msg);
-
-        let track = this.tracks.get(msg.id);
-        if (!track) {
-            track = new MP4.InitParser()
-            this.tracks.set(msg.id, track)
-        }
-
-        while (1) {
-            const data = await stream.read()
-            if (!data) break
-
-            track.push(data)
-        }
-
-		const info = await track.info
-
-		console.log(info);
-
-        if (info.audioTracks.length + info.videoTracks.length != 1) {
-            throw new Error("expected a single track")
-        }
-
-		if (info.audioTracks.length) {
-			this.audio.init({
-				track: msg.id,
-				info: info,
-				raw: track.raw,
-			})
-		} else if (info.videoTracks.length) {
-			this.video.init({
-				track: msg.id,
-				info: info,
-				raw: track.raw,
-			})
-		} else {
-			throw new Error("init is neither audio nor video")
-		}
-	}
-
-	async handleSegment(stream: Stream.Reader, msg: Message.Segment) {
-		console.log("handle segment", msg);
-
-        let track = this.tracks.get(msg.init);
-        if (!track) {
-            track = new MP4.InitParser()
-            this.tracks.set(msg.init, track)
-        }
-
-		// Wait until we learn if this is an audio or video track
-		const info = await track.info
-
-		if (info.audioTracks.length) {
-			this.audio.segment({
-				track: msg.init,
-				buffer: stream.buffer,
-				reader: stream.reader,
-			})
-		} else if (info.videoTracks.length) {
-			this.video.segment({
-				track: msg.init,
-				buffer: stream.buffer,
-				reader: stream.reader,
-			})
-		} else {
-			throw new Error("segment is neither audio nor video")
 		}
 	}
 }

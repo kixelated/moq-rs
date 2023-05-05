@@ -7,13 +7,11 @@ pub struct Message {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Init {
-    pub id: String,
-}
+pub struct Init {}
 
 #[derive(Serialize, Deserialize)]
 pub struct Segment {
-    pub init: String,
+    pub track_id: u32,
 }
 
 impl Message {

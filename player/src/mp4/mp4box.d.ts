@@ -1,7 +1,7 @@
 // https://github.com/gpac/mp4box.js/issues/233
 
 declare module "mp4box" {
-    interface MP4MediaTrack {
+    export interface MP4MediaTrack {
         id: number;
         created: Date;
         modified: Date;
@@ -19,26 +19,26 @@ declare module "mp4box" {
         nb_samples: number;
     }
 
-    interface MP4VideoData {
+    export interface MP4VideoData {
         width: number;
         height: number;
     }
 
-    interface MP4VideoTrack extends MP4MediaTrack {
+    export interface MP4VideoTrack extends MP4MediaTrack {
         video: MP4VideoData;
     }
 
-    interface MP4AudioData {
+    export interface MP4AudioData {
         sample_rate: number;
         channel_count: number;
         sample_size: number;
     }
 
-    interface MP4AudioTrack extends MP4MediaTrack {
+    export interface MP4AudioTrack extends MP4MediaTrack {
         audio: MP4AudioData;
     }
 
-    type MP4Track = MP4VideoTrack | MP4AudioTrack;
+    export type MP4Track = MP4VideoTrack | MP4AudioTrack;
 
     export interface MP4Info {
         duration: number;

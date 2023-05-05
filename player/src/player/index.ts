@@ -1,6 +1,5 @@
-import Audio from "../audio"
 import Transport from "../transport"
-import Video from "../video"
+import Media from "../media"
 
 export interface PlayerInit {
 	url: string;
@@ -9,22 +8,18 @@ export interface PlayerInit {
 }
 
 export default class Player {
-	audio: Audio;
-	video: Video;
+	media: Media;
     transport: Transport;
 
 	constructor(props: PlayerInit) {
-		this.audio = new Audio()
-		this.video = new Video({
+		this.media = new Media({
 			canvas: props.canvas.transferControlToOffscreen(),
 		})
 
         this.transport = new Transport({
             url: props.url,
 			fingerprint: props.fingerprint,
-
-            audio: this.audio,
-            video: this.video,
+            media: this.media,
         })
 	}
 
@@ -33,13 +28,6 @@ export default class Player {
 	}
 
 	play() {
-		this.audio.play({})
-		//this.video.play()
+		//this.media.play()
 	}
-
-    onMessage(msg: any) {
-        if (msg.sync) {
-            msg.sync
-        }
-    }
 }
