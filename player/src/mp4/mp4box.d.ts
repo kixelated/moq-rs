@@ -82,7 +82,7 @@ declare module "mp4box" {
         description: any;
         data: ArrayBuffer;
         size: number;
-        alreadyRead: number;
+        alreadyRead?: number;
         duration: number;
         cts: number;
         dts: number;
@@ -104,7 +104,7 @@ declare module "mp4box" {
     const LITTLE_ENDIAN: boolean;
 
     export class DataStream {
-        constructor(buffer: ArrayBuffer, byteOffset?: number, littleEndian?: boolean);
+        constructor(buffer?: ArrayBuffer, byteOffset?: number, littleEndian?: boolean);
         getPosition(): number;
 
         get byteLength(): number;
@@ -142,6 +142,83 @@ declare module "mp4box" {
         memcpy(dst: ArrayBufferLike, dstOffset: number, src: ArrayBufferLike, srcOffset: number, byteLength: number): void;
 
         // TODO I got bored porting the remaining functions
+    }
+
+    export class Box {
+        write(stream: DataStream): void;
+    }
+
+    export interface TrackOptions {
+        id?: number;
+        type?: string;
+        width?: number;
+        height?: number;
+        duration?: number;
+        layer?: number;
+        timescale?: number;
+        media_duration?: number;
+        language?: string;
+        hdlr?: string;
+
+        // video
+        avcDecoderConfigRecord?: any;
+
+        // audio
+        balance?: number;
+        channel_count?: number;
+        samplesize?: number;
+        samplerate?: number;
+
+        //captions
+        namespace?: string;
+        schema_location?: string;
+        auxiliary_mime_types?: string;
+
+        description?: any;
+        description_boxes?: Box[];
+
+        default_sample_description_index_id?: number;
+        default_sample_duration?: number;
+        default_sample_size?: number;
+        default_sample_flags?: number;
+    }
+
+    export interface FileOptions {
+        brands?: string[];
+        timescale?: number;
+        rate?: number;
+        duration?: number;
+        width?: number;
+    }
+
+    export interface SampleOptions {
+        sample_description_index?: number;
+        duration?: number;
+        cts?: number;
+        dts?: number;
+        is_sync?: boolean;
+        is_leading?: number;
+        depends_on?: number;
+        is_depended_on?: number;
+        has_redundancy?: number;
+        degradation_priority?: number;
+        subsamples?: any;
+    }
+
+    // TODO add the remaining functions
+    // TODO move to another module
+    export class ISOFile {
+        constructor(stream?: DataStream);
+
+        init(options?: FileOptions): ISOFile;
+        addTrack(options?: TrackOptions): number;
+        addSample(track: number, data: ArrayBuffer, options?: SampleOptions): Sample;
+
+        createSingleSampleMoof(sample: Sample): Box;
+
+        // helpers
+        getTrackById(id: number): Box | undefined;
+        getTrexById(id: number): Box | undefined;
     }
 
     export { };

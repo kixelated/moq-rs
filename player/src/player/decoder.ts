@@ -1,7 +1,6 @@
 import * as Message from "./message";
 import * as MP4 from "../mp4"
 import * as Stream from "../stream"
-import * as Util from "../util"
 
 import Renderer from "./renderer"
 
@@ -82,7 +81,7 @@ export default class Decoder {
             // We need a sample to initalize the video decoder, because of mp4box limitations.
             let sample = samples[0];
 
-            if (MP4.isVideoTrack(track)) {
+            if (isVideoTrack(track)) {
                 // Configure the decoder using the AVC box for H.264
                 // TODO it should be easy to support other codecs, just need to know the right boxes.
                 const avcc = sample.description.avcC;
@@ -105,7 +104,7 @@ export default class Decoder {
                 })
 
                 decoder = videoDecoder
-            } else if (MP4.isAudioTrack(track)) {
+            } else if (isAudioTrack(track)) {
                 const audioDecoder = new AudioDecoder({
                     output: this.renderer.push.bind(this.renderer),
                     error: console.warn,
@@ -157,4 +156,12 @@ function isAudioDecoder(decoder: AudioDecoder | VideoDecoder): decoder is AudioD
 
 function isVideoDecoder(decoder: AudioDecoder | VideoDecoder): decoder is VideoDecoder {
     return decoder instanceof VideoDecoder
+}
+
+function isAudioTrack(track: MP4.Track): track is MP4.AudioTrack {
+	return (track as MP4.AudioTrack).audio !== undefined;
+}
+
+function isVideoTrack(track: MP4.Track): track is MP4.VideoTrack {
+	return (track as MP4.VideoTrack).video !== undefined;
 }

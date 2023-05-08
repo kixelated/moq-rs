@@ -68,8 +68,11 @@ export default class Renderer {
     }
 
     draw(now: DOMHighResTimeStamp) {
+        // Convert to microseconds
+        now *= 1000;
+
         // Determine the target timestamp.
-        const target = 1000 * now - this.sync!
+        const target = now - this.sync!
 
         this.drawAudio(now, target)
         this.drawVideo(now, target)
@@ -85,9 +88,11 @@ export default class Renderer {
         // Check if we should skip some frames
         while (this.audioQueue.length) {
             const next = this.audioQueue[0]
-            if (next.timestamp >= target) {
+
+            if (next.timestamp > target) {
                 let ok = this.audioRing.write(next)
                 if (!ok) {
+                    console.warn("ring buffer is full")
                     // No more space in the ring
                     break
                 }
@@ -101,7 +106,7 @@ export default class Renderer {
     }
 
     drawVideo(now: DOMHighResTimeStamp, target: DOMHighResTimeStamp) {
-        if (this.videoQueue.length == 0) return;
+        if (!this.videoQueue.length) return;
 
         let frame = this.videoQueue[0];
         if (frame.timestamp >= target) {

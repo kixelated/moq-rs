@@ -1,12 +1,16 @@
-import * as MP4 from "./rename"
-export * from "./rename"
+// Rename some stuff so it's on brand.
+export {
+	createFile as New,
+	MP4File as File,
+	MP4ArrayBuffer as ArrayBuffer,
+	MP4Info as Info,
+	MP4Track as Track,
+	MP4AudioTrack as AudioTrack,
+	MP4VideoTrack as VideoTrack,
+	DataStream as Stream,
+	Box,
+	ISOFile,
+	Sample,
+} from "mp4box"
 
 export { Init, InitParser } from "./init"
-
-export function isAudioTrack(track: MP4.Track): track is MP4.AudioTrack {
-	return (track as MP4.AudioTrack).audio !== undefined;
-}
-
-export function isVideoTrack(track: MP4.Track): track is MP4.VideoTrack {
-	return (track as MP4.VideoTrack).video !== undefined;
-}

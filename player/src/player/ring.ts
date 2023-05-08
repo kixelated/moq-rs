@@ -11,15 +11,15 @@ export class Ring {
     channels: Float32Array[];
     capacity: number;
 
-    constructor(init: RingInit) {
-        this.state = new Int32Array(init.state)
+    constructor(buf: Buffer) {
+        this.state = new Int32Array(buf.state)
 
         this.channels = []
-        for (let channel of init.channels) {
+        for (let channel of buf.channels) {
             this.channels.push(new Float32Array(channel))
         }
 
-        this.capacity = init.capacity
+        this.capacity = buf.capacity
     }
 
     // Add the samples for single audio frame
@@ -121,7 +121,7 @@ export class Ring {
 }
 
 // No prototype to make this easier to send via postMessage
-export class RingInit {
+export class Buffer {
     state: SharedArrayBuffer;
 
     channels: SharedArrayBuffer[];

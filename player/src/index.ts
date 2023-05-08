@@ -1,4 +1,5 @@
 import Player from "./player"
+import Transport from "./transport"
 
 // @ts-ignore embed the certificate fingerprint using bundler
 import fingerprintHex from 'bundle-text:../fingerprint.hex';
@@ -14,19 +15,23 @@ const params = new URLSearchParams(window.location.search)
 const url = params.get("url") || "https://127.0.0.1:4443/watch"
 const canvas = document.querySelector<HTMLCanvasElement>("canvas#video")!
 
-const player = new Player({
+const transport = new Transport({
     url: url,
     fingerprint: { // TODO remove when Chrome accepts the system CA
         "algorithm": "sha-256",
         "value": new Uint8Array(fingerprint),
     },
-    canvas: canvas,
+})
+
+const player = new Player({
+    transport,
+    canvas: canvas.transferControlToOffscreen(),
 })
 
 const play = document.querySelector<HTMLElement>("#screen #play")!
 
 let playFunc = (e: Event) => {
-    player.play()
+    player.play({})
     e.preventDefault()
 
     play.removeEventListener('click', playFunc)

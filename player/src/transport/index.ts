@@ -1,25 +1,18 @@
-import * as Message from "./message"
 import * as Stream from "../stream"
-import * as MP4 from "../mp4"
+import * as Interface from "./interface"
 
-import Media from "../media"
-
-export interface TransportInit {
+export interface Config {
 	url: string;
 	fingerprint?: WebTransportHash; // the certificate fingerprint, temporarily needed for local development
-	media: Media;
 }
 
 export default class Transport {
 	quic: Promise<WebTransport>;
 	api: Promise<WritableStream>;
+	callback?: Interface.Callback;
 
-	media: Media;
-
-	constructor(props: TransportInit) {
-		this.media = props.media;
-
-		this.quic = this.connect(props)
+	constructor(config: Config) {
+		this.quic = this.connect(config)
 
 		// Create a unidirectional stream for all of our messages
 		this.api = this.quic.then((q) => {
@@ -35,13 +28,13 @@ export default class Transport {
 	}
 
 	// Helper function to make creating a promise easier
-	private async connect(props: TransportInit): Promise<WebTransport> {
+	private async connect(config: Config): Promise<WebTransport> {
 		let options: WebTransportOptions = {};
-		if (props.fingerprint) {
-			options.serverCertificateHashes = [ props.fingerprint ]
+		if (config.fingerprint) {
+			options.serverCertificateHashes = [ config.fingerprint ]
 		}
 
-		const quic = new WebTransport(props.url, options)
+		const quic = new WebTransport(config.url, options)
 		await quic.ready
 		return quic
 	}
@@ -86,12 +79,12 @@ export default class Transport {
 			const msg = JSON.parse(payload)
 
 			if (msg.init) {
-				return this.media.init({
+				return this.callback?.onInit({
 					buffer: r.buffer,
 					reader: r.reader,
 				})
 			} else if (msg.segment) {
-				return this.media.segment({
+				return this.callback?.onSegment({
 					buffer: r.buffer,
 					reader: r.reader,
 				})

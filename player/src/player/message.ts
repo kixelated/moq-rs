@@ -1,5 +1,4 @@
-import * as MP4 from "../mp4"
-import { RingInit } from "../media/ring"
+import * as Ring from "./ring"
 
 export interface Config {
     audio: AudioConfig;
@@ -13,7 +12,7 @@ export interface VideoConfig {
 export interface AudioConfig {
     // audio stuff
     sampleRate: number;
-    ring: RingInit;
+    ring: Ring.Buffer;
 }
 
 export interface Init {
