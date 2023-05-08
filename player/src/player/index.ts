@@ -28,6 +28,6 @@ export default class Player {
 	}
 
 	play() {
-		//this.media.play()
+		this.media.play({})
 	}
 }

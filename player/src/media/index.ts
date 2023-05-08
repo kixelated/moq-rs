@@ -30,19 +30,6 @@ export default class Media {
         this.worklet = this.setupWorklet(config)
     }
 
-    init(init: Message.Init) {
-        this.worker.postMessage({ init }, [ init.buffer.buffer, init.reader ])
-    }
-
-    segment(segment: Message.Segment) {
-        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
-    }
-
-    play(play: Message.Play) {
-        this.context.resume()
-        //this.worker.postMessage({ play })
-    }
-
     private setupWorker(config: Message.Config): Worker {
         const url = new URL('worker.ts', import.meta.url)
 
@@ -79,4 +66,16 @@ export default class Media {
         return worklet
     }
 
+    init(init: Message.Init) {
+        this.worker.postMessage({ init }, [ init.buffer.buffer, init.reader ])
+    }
+
+    segment(segment: Message.Segment) {
+        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
+    }
+
+    play(play: Message.Play) {
+        this.context.resume()
+        //this.worker.postMessage({ play })
+    }
 }
