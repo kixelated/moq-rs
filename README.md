@@ -81,7 +81,7 @@ This can be accessed via WebTransport on `https://localhost:4443` by default.
 The web assets need to be hosted with a HTTPS server. If you're using a self-signed certificate, you may need to ignore the security warning in Chrome (Advanced -> proceed to localhost).
 
 ```
-cd player
+cd web
 yarn install
 yarn serve
 ```
