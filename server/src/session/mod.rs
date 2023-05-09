@@ -1,7 +1,7 @@
 mod message;
 
-use std::time;
 use std::collections::hash_map as hmap;
+use std::time;
 
 use quiche;
 use quiche::h3::webtransport;
@@ -29,11 +29,8 @@ impl transport::App for Session {
                 Ok(e) => e,
             };
 
-            log::debug!("webtransport event: {:?}", event);
-
             match event {
-                webtransport::ServerEvent::ConnectRequest(req) => {
-                    log::debug!("new connect {:?}", req);
+                webtransport::ServerEvent::ConnectRequest(_req) => {
                     // you can handle request with
                     // req.authority()
                     // req.path()
@@ -46,7 +43,7 @@ impl transport::App for Session {
 
                     // Create a JSON header.
                     let mut message = message::Message::new();
-                    message.init = Some(message::Init{});
+                    message.init = Some(message::Init {});
                     let data = message.serialize()?;
 
                     // Create a new stream and write the header.
@@ -59,8 +56,7 @@ impl transport::App for Session {
                 webtransport::ServerEvent::StreamData(stream_id) => {
                     let mut buf = vec![0; 10000];
                     while let Ok(len) = session.recv_stream_data(conn, stream_id, &mut buf) {
-                        let stream_data = &buf[0..len];
-                        log::debug!("stream data {:?}", stream_data);
+                        let _stream_data = &buf[0..len];
                     }
                 }
 
@@ -105,7 +101,7 @@ impl Session {
             Some(stream_id) if fragment.keyframe => {
                 self.streams.send(conn, *stream_id, &[], true)?;
                 None
-            },
+            }
 
             // Use the existing stream
             Some(stream_id) => Some(*stream_id),
@@ -143,7 +139,7 @@ impl Session {
                 self.tracks.insert(fragment.track_id, stream_id);
 
                 stream_id
-            },
+            }
         };
 
         // Write the current fragment.

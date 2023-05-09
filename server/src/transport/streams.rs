@@ -26,21 +26,25 @@ impl Streams {
         fin: bool,
     ) -> anyhow::Result<()> {
         if buf.is_empty() && !fin {
-            return Ok(())
+            return Ok(());
         }
 
         // Get the index of the stream, or add it to the list of streams.
-        let pos = self.ordered.iter().position(|s| s.id == id).unwrap_or_else(|| {
-            // Create a new stream
-            let stream = Stream{
-                id,
-                buffer: VecDeque::new(),
-                fin: false,
-                order: 0, // Default to highest priority until send_order is called.
-            };
+        let pos = self
+            .ordered
+            .iter()
+            .position(|s| s.id == id)
+            .unwrap_or_else(|| {
+                // Create a new stream
+                let stream = Stream {
+                    id,
+                    buffer: VecDeque::new(),
+                    fin: false,
+                    order: 0, // Default to highest priority until send_order is called.
+                };
 
-            self.insert(conn, stream)
-        });
+                self.insert(conn, stream)
+            });
 
         let stream = &mut self.ordered[pos];
 
@@ -93,7 +97,8 @@ impl Streams {
 
         // Remove streams that are done.
         // No need to reprioritize, since the streams are still in order order.
-        self.ordered.retain(|stream| !stream.buffer.is_empty() || !stream.fin);
+        self.ordered
+            .retain(|stream| !stream.buffer.is_empty() || !stream.fin);
 
         Ok(())
     }
@@ -105,7 +110,7 @@ impl Streams {
             Some(pos) => self.ordered.remove(pos),
 
             // This is a new stream, insert it into the list.
-            None => Stream{
+            None => Stream {
                 id,
                 buffer: VecDeque::new(),
                 fin: false,
@@ -120,7 +125,10 @@ impl Streams {
 
     fn insert(&mut self, conn: &mut quiche::Connection, stream: Stream) -> usize {
         // Look for the position to insert the stream.
-        let pos = match self.ordered.binary_search_by_key(&stream.order, |s| s.order) {
+        let pos = match self
+            .ordered
+            .binary_search_by_key(&stream.order, |s| s.order)
+        {
             Ok(pos) | Err(pos) => pos,
         };
 
@@ -129,7 +137,7 @@ impl Streams {
         // Reprioritize all later streams.
         // TODO we can avoid this if stream_priorty takes a u64
         for (i, stream) in self.ordered[pos..].iter().enumerate() {
-            _ = conn.stream_priority(stream.id, (pos+i) as u8, true);
+            _ = conn.stream_priority(stream.id, (pos + i) as u8, true);
         }
 
         pos

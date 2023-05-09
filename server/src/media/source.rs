@@ -1,6 +1,6 @@
-use std::{fs, io, time};
-use std::collections::{HashMap,VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
+use std::{fs, io, time};
 
 use anyhow;
 
@@ -18,7 +18,7 @@ pub struct Source {
     pub init: Vec<u8>,
 
     // The timescale used for each track.
-    timescale: HashMap<u32, u32>,
+    timescales: HashMap<u32, u32>,
 
     // Any fragments parsed and ready to be returned by next().
     fragments: VecDeque<Fragment>,
@@ -60,16 +60,12 @@ impl Source {
 
         // Parse the moov box so we can detect the timescales for each track.
         let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
-        let timescale = moov.traks
-            .iter()
-            .map(|trak| (trak.tkhd.track_id, trak.mdia.mdhd.timescale))
-            .collect();
 
-        Ok(Self{
+        Ok(Self {
             reader,
             start,
             init,
-            timescale,
+            timescales: timescales(&moov),
             fragments: VecDeque::new(),
         })
     }
@@ -94,7 +90,9 @@ impl Source {
             let header = mp4::BoxHeader::read(&mut reader)?;
 
             match header.name {
-                mp4::BoxType::FtypBox | mp4::BoxType::MoovBox => anyhow::bail!("must call init first"),
+                mp4::BoxType::FtypBox | mp4::BoxType::MoovBox => {
+                    anyhow::bail!("must call init first")
+                }
                 mp4::BoxType::MoofBox => {
                     let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
 
@@ -136,7 +134,7 @@ impl Source {
         let timestamp = next.timestamp;
 
         // Find the timescale for the track.
-        let timescale = self.timescale.get(&next.track_id).unwrap();
+        let timescale = self.timescales.get(&next.track_id).unwrap();
 
         let delay = time::Duration::from_millis(1000 * timestamp / *timescale as u64);
         let elapsed = self.start.elapsed();
@@ -222,4 +220,11 @@ fn has_keyframe(moof: &mp4::MoofBox) -> bool {
 
 fn first_timestamp(moof: &mp4::MoofBox) -> Option<u64> {
     Some(moof.trafs.first()?.tfdt.as_ref()?.base_media_decode_time)
+}
+
+fn timescales(moov: &mp4::MoovBox) -> HashMap<u32, u32> {
+    moov.traks
+        .iter()
+        .map(|trak| (trak.tkhd.track_id, trak.mdia.mdhd.timescale))
+        .collect()
 }
