@@ -120,11 +120,17 @@ impl Session {
 
             // Open a new stream.
             None => {
+                // Create a new unidirectional stream.
                 let stream_id = session.open_stream(conn, false)?;
-                // TODO: conn.stream_priority(stream_id, urgency, incremental)
+
+                // Set the stream priority to be equal to the timestamp.
+                // We subtract from u64::MAX so newer media is sent important.
+                // TODO prioritize audio
+                let order = u64::MAX - fragment.timestamp;
+                self.streams.send_order(conn, stream_id, order);
 
                 // Encode a JSON header indicating this is a new track.
-                let mut message = message::Message::new();
+                let mut message: message::Message = message::Message::new();
                 message.segment = Some(message::Segment {
                     track_id: fragment.track_id,
                 });
@@ -133,6 +139,7 @@ impl Session {
                 let data = message.serialize()?;
                 self.streams.send(conn, stream_id, &data, false)?;
 
+                // Keep a mapping from the track id to the current stream id.
                 self.tracks.insert(fragment.track_id, stream_id);
 
                 stream_id

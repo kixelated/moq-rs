@@ -35,7 +35,7 @@ pub struct Fragment {
     pub keyframe: bool,
 
     // The timestamp of the fragment, in milliseconds, to simulate a live stream.
-    pub timestamp: Option<u64>,
+    pub timestamp: u64,
 }
 
 impl Source {
@@ -107,7 +107,7 @@ impl Source {
                         track_id: moof.trafs[0].tfhd.track_id,
                         data: atom,
                         keyframe: has_keyframe(&moof),
-                        timestamp: first_timestamp(&moof),
+                        timestamp: first_timestamp(&moof).expect("couldn't find timestamp"),
                     })
                 }
                 mp4::BoxType::MdatBox => {
@@ -117,7 +117,7 @@ impl Source {
                         track_id: moof.track_id,
                         data: atom,
                         keyframe: false,
-                        timestamp: None,
+                        timestamp: moof.timestamp,
                     });
 
                     // We have some media data, return so we can start sending it.
@@ -133,7 +133,7 @@ impl Source {
     // Simulate a live stream by sleeping until the next timestamp in the media.
     pub fn timeout(&self) -> Option<time::Duration> {
         let next = self.fragments.front()?;
-        let timestamp = next.timestamp?;
+        let timestamp = next.timestamp;
 
         // Find the timescale for the track.
         let timescale = self.timescale.get(&next.track_id).unwrap();
