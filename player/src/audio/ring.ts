@@ -50,7 +50,9 @@ export class Ring {
                     planeIndex: i,
                     frameCount: count,
                 })
-            } else {
+            //audio seems to be breaking whenever endIndex is 0
+            //this works, without "chopiness" 
+            } else if (startIndex  >=  endIndex && endIndex != 0) {
                 const first = channel.subarray(startIndex)
                 const second = channel.subarray(0, endIndex)
 
@@ -59,6 +61,7 @@ export class Ring {
                     frameCount: first.length,
                 })
 
+               //console.log("frame offset", first.length , "frame count", second.length) to test
                 frame.copyTo(second, {
                     planeIndex: i,
                     frameOffset: first.length,
