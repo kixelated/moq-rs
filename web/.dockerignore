@@ -1,0 +1,4 @@
+dist
+.parcel-cache
+node_modules
+fingerprint.hex

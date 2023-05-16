@@ -12,7 +12,7 @@ for (let c = 0; c < fingerprintHex.length-1; c += 2) {
 
 const params = new URLSearchParams(window.location.search)
 
-const url = params.get("url") || "https://127.0.0.1:4443/watch"
+const url = params.get("url") || "https://localhost:4443/watch"
 const canvas = document.querySelector<HTMLCanvasElement>("canvas#video")!
 
 const transport = new Transport({
@@ -30,7 +30,7 @@ const player = new Player({
 
 const play = document.querySelector<HTMLElement>("#screen #play")!
 
-let playFunc = (e: Event) => {
+const playFunc = (e: Event) => {
     player.play({})
     e.preventDefault()
 

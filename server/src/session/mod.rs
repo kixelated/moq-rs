@@ -29,13 +29,15 @@ impl transport::App for Session {
                 Ok(e) => e,
             };
 
+            log::debug!("webtransport event {:?}", event);
+
             match event {
                 webtransport::ServerEvent::ConnectRequest(_req) => {
                     // you can handle request with
                     // req.authority()
                     // req.path()
                     // and you can validate this request with req.origin()
-                    session.accept_connect_request(conn, None).unwrap();
+                    session.accept_connect_request(conn, None)?;
 
                     // TODO
                     let media = media::Source::new("../media/fragmented.mp4")?;
@@ -65,10 +67,11 @@ impl transport::App for Session {
         }
 
         // Send any pending stream data.
-        self.streams.poll(conn)?;
+        // NOTE: This doesn't return an error because it's async, and would be confusing.
+        self.streams.poll(conn);
 
         // Fetch the next media fragment, possibly queuing up stream data.
-        self.poll_source(conn, session)?;
+        self.poll_source(conn, session).expect("poll_source");
 
         Ok(())
     }

@@ -329,6 +329,8 @@ dependencies = [
 [[package]]
 name = "mp4"
 version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "509348cba250e7b852a875100a2ddce7a36ee3abf881a681c756670c1774264d"
 dependencies = [
  "byteorder",
  "bytes",
@@ -384,7 +386,7 @@ dependencies = [
 [[package]]
 name = "octets"
 version = "0.2.0"
-source = "git+https://github.com/n8o/quiche.git?branch=master#0137dc3ca6f4f31e3175d0a0868acb9c64b46cc7"
+source = "git+https://github.com/kixelated/quiche.git?branch=master#007a25b35b9509d673466fed8ddc73fd8d9b4184"
 
 [[package]]
 name = "once_cell"
@@ -404,7 +406,7 @@ dependencies = [
 [[package]]
 name = "quiche"
 version = "0.17.1"
-source = "git+https://github.com/n8o/quiche.git?branch=master#0137dc3ca6f4f31e3175d0a0868acb9c64b46cc7"
+source = "git+https://github.com/kixelated/quiche.git?branch=master#007a25b35b9509d673466fed8ddc73fd8d9b4184"
 dependencies = [
  "cmake",
  "lazy_static",

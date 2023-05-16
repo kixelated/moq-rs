@@ -78,6 +78,8 @@ impl<T: app::App> Server<T> {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
+        log::info!("listening on {}", self.socket.local_addr()?);
+
         loop {
             self.wait()?;
             self.receive()?;
@@ -253,6 +255,8 @@ impl<T: app::App> Server<T> {
         for conn in self.conns.values_mut() {
             if let Some(session) = &mut conn.session {
                 if let Err(e) = conn.app.poll(&mut conn.quiche, session) {
+                    log::debug!("app error: {:?}", e);
+
                     // Close the connection on any application error
                     let reason = format!("app error: {:?}", e);
                     conn.quiche.close(true, 0xff, reason.as_bytes()).ok();

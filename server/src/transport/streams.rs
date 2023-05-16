@@ -55,7 +55,11 @@ impl Streams {
 
         // If there's no data buffered, try to write it immediately.
         let size = if stream.buffer.is_empty() {
-            conn.stream_send(id, buf, fin)?
+            match conn.stream_send(id, buf, fin) {
+                Ok(size) => size,
+                Err(quiche::Error::Done) => 0,
+                Err(e) => anyhow::bail!(e),
+            }
         } else {
             0
         };
@@ -71,36 +75,8 @@ impl Streams {
     }
 
     // Flush any pending stream data.
-    pub fn poll(&mut self, conn: &mut quiche::Connection) -> anyhow::Result<()> {
-        // Loop over stream in order order.
-        'outer: for stream in self.ordered.iter_mut() {
-            // Keep reading from the buffer until it's empty.
-            while !stream.buffer.is_empty() {
-                // VecDeque is a ring buffer, so we can't write the whole thing at once.
-                let parts = stream.buffer.as_slices();
-
-                let size = conn.stream_send(stream.id, parts.0, false)?;
-                if size == 0 {
-                    // No more space available for this stream.
-                    continue 'outer;
-                }
-
-                // Remove the bytes that were written.
-                stream.buffer.drain(..size);
-            }
-
-            if stream.fin {
-                // Write the stream done signal.
-                conn.stream_send(stream.id, &[], true)?;
-            }
-        }
-
-        // Remove streams that are done.
-        // No need to reprioritize, since the streams are still in order order.
-        self.ordered
-            .retain(|stream| !stream.buffer.is_empty() || !stream.fin);
-
-        Ok(())
+    pub fn poll(&mut self, conn: &mut quiche::Connection) {
+        self.ordered.retain_mut(|s| s.poll(conn).is_ok());
     }
 
     // Set the send order of the stream.
@@ -141,5 +117,33 @@ impl Streams {
         }
 
         pos
+    }
+}
+
+impl Stream {
+    fn poll(&mut self, conn: &mut quiche::Connection) -> quiche::Result<()> {
+        // Keep reading from the buffer until it's empty.
+        while !self.buffer.is_empty() {
+            // VecDeque is a ring buffer, so we can't write the whole thing at once.
+            let parts = self.buffer.as_slices();
+
+            let size = conn.stream_send(self.id, parts.0, false)?;
+            if size == 0 {
+                // No more space available for this stream.
+                return Ok(());
+            }
+
+            // Remove the bytes that were written.
+            self.buffer.drain(..size);
+        }
+
+        if self.fin {
+            // Write the stream done signal.
+            conn.stream_send(self.id, &[], true)?;
+
+            Err(quiche::Error::Done)
+        } else {
+            Ok(())
+        }
     }
 }

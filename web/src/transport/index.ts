@@ -56,7 +56,7 @@ export default class Transport {
 		const q = await this.quic
 		const streams = q.incomingUnidirectionalStreams.getReader()
 
-		while (true) {
+		for (;;) {
 			const result = await streams.read()
 			if (result.done) break
 
@@ -66,7 +66,7 @@ export default class Transport {
 	}
 
 	async handleStream(stream: ReadableStream) {
-		let r = new Stream.Reader(stream)
+		const r = new Stream.Reader(stream)
 
 		while (!await r.done()) {
 			const size = await r.uint32();
