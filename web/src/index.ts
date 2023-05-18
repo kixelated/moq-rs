@@ -6,8 +6,8 @@ import fingerprintHex from 'bundle-text:../fingerprint.hex';
 
 // Convert the hex to binary.
 let fingerprint = [];
-for (let c = 0; c < fingerprintHex.length-1; c += 2) {
-    fingerprint.push(parseInt(fingerprintHex.substring(c, c+2), 16));
+for (let c = 0; c < fingerprintHex.length - 1; c += 2) {
+    fingerprint.push(parseInt(fingerprintHex.substring(c, c + 2), 16));
 }
 
 const params = new URLSearchParams(window.location.search)

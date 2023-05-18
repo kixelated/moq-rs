@@ -6,7 +6,7 @@ use clap::Parser;
 #[derive(Parser)]
 struct Cli {
     /// Listen on this address
-    #[arg(short, long, default_value = "0.0.0.0:4443")]
+    #[arg(short, long, default_value = "[::]:4443")]
     addr: String,
 
     /// Use the certificate file at this path
