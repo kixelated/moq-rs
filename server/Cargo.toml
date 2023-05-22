@@ -1,0 +1,18 @@
+[package]
+name = "warp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quiche = { git = "https://github.com/kixelated/quiche.git", branch = "master", features = [ "qlog" ] } # WebTransport fork
+clap = { version = "4.0", features = [ "derive" ] }
+log = { version = "0.4", features = ["std"] }
+mio = { version = "0.8", features = ["net", "os-poll"] }
+env_logger = "0.9.3"
+ring = "0.16"
+anyhow = "1.0.70"
+mp4 = "0.13.0"
+serde = "1.0.160"
+serde_json = "1.0"
