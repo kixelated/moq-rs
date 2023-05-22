@@ -71,7 +71,7 @@ impl transport::App for Session {
         self.streams.poll(conn);
 
         // Fetch the next media fragment, possibly queuing up stream data.
-        self.poll_source(conn, session).expect("poll_source");
+        self.poll_source(conn, session)?;
 
         Ok(())
     }
