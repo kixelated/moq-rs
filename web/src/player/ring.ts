@@ -60,6 +60,12 @@ export class Ring {
             }
         }
 
+        // capacity = 1024
+        // read = 2048
+        // write = 3072
+        // startIndex = 0
+        // readIndex = 0
+
         let startIndex = startPos % this.capacity;
         let endIndex = endPos % this.capacity;
 
@@ -84,11 +90,13 @@ export class Ring {
                     frameCount: first.length,
                 })
 
-                frame.copyTo(second, {
-                    planeIndex: i,
-                    frameOffset: first.length,
-                    frameCount: second.length,
-                })
+                if (second.length > 0) {
+                    frame.copyTo(second, {
+                        planeIndex: i,
+                        frameOffset: first.length,
+                        frameCount: second.length,
+                    })
+                }
             }
         }
 
@@ -142,6 +150,7 @@ export class Ring {
     }
 
     size() {
+        // TODO is this thread safe?
         let readPos = Atomics.load(this.state, STATE.READ_POS)
         let writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
