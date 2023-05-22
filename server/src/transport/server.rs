@@ -240,6 +240,30 @@ impl<T: app::App> Server<T> {
             let mut conn =
                 quiche::accept(&conn_id, odcid.as_ref(), local_addr, from, &mut self.quic)?;
 
+            // Log each session with QLOG if the ENV var is set.
+            if let Some(dir) = std::env::var_os("QLOGDIR") {
+                let id = format!("{:?}", &scid);
+
+                let mut path = std::path::PathBuf::from(dir);
+                let filename = format!("server-{id}.sqlog");
+                path.push(filename);
+
+                let writer = match std::fs::File::create(&path) {
+                    Ok(f) => std::io::BufWriter::new(f),
+
+                    Err(e) => panic!(
+                        "Error creating qlog file attempted path was {:?}: {}",
+                        path, e
+                    ),
+                };
+
+                conn.set_qlog(
+                    std::boxed::Box::new(writer),
+                    "warp-server qlog".to_string(),
+                    format!("{} id={}", "warp-server qlog", id),
+                );
+            }
+
             // Process potentially coalesced packets.
             conn.recv(src, info)?;
 
