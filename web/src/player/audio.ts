@@ -8,7 +8,7 @@ export default class Audio {
     render?: number; // non-zero if requestAnimationFrame has been called
     last?: number; // the timestamp of the last rendered frame, in microseconds
 
-    constructor(config: Message.Config) {
+    constructor(_config: Message.Config) {
         this.queue = []
     }
 
@@ -47,7 +47,7 @@ export default class Audio {
         }
 
         while (this.queue.length) {
-            let frame = this.queue[0];
+            const frame = this.queue[0];
             if (ring.size() + frame.numberOfFrames > ring.capacity) {
                 // Buffer is full
                 break

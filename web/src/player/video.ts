@@ -89,7 +89,7 @@ export default class Video {
         frame.close()
     }
 
-    play(play: Message.Play) {
+    play(_play: Message.Play) {
         // Queue up to render the next frame.
         if (!this.render) {
             this.render = self.requestAnimationFrame(this.draw.bind(this))

@@ -16,8 +16,8 @@ export default class Decoder {
     }
 
     async receiveInit(msg: Message.Init) {
-        let stream = new Stream.Reader(msg.reader, msg.buffer);
-        while (1) {
+        const stream = new Stream.Reader(msg.reader, msg.buffer);
+        for (;;) {
             const data = await stream.read()
             if (!data) break
 
@@ -29,14 +29,14 @@ export default class Decoder {
 
     async receiveSegment(msg: Message.Segment) {
 		// Wait for the init segment to be fully received and parsed
-		const info = await this.init.info
+		const init = await this.init.info
 		const input = MP4.New();
 
         input.onSamples = this.onSamples.bind(this);
-		input.onReady = (info: any) => {
+		input.onReady = (track: any) => {
             // Extract all of the tracks, because we don't know if it's audio or video.
-            for (let track of info.tracks) {
-                input.setExtractionOptions(track.id, track, { nbSamples: 1 });
+            for (const i of init.tracks) {
+                input.setExtractionOptions(track.id, i, { nbSamples: 1 });
             }
 
 			input.start();
@@ -45,7 +45,7 @@ export default class Decoder {
         // MP4box requires us to reparse the init segment unfortunately
         let offset = 0;
 
-        for (let raw of this.init.raw) {
+        for (const raw of this.init.raw) {
             raw.fileStart = offset
             offset = input.appendBuffer(raw)
         }
@@ -61,11 +61,11 @@ export default class Decoder {
 			const atom = await stream.bytes(size)
 
             // Make a copy of the atom because mp4box only accepts an ArrayBuffer unfortunately
-            let box = new Uint8Array(atom.byteLength);
+            const box = new Uint8Array(atom.byteLength);
             box.set(atom)
 
             // and for some reason we need to modify the underlying ArrayBuffer with offset
-            let buffer = box.buffer as MP4.ArrayBuffer
+            const buffer = box.buffer as MP4.ArrayBuffer
             buffer.fileStart = offset
 
             // Parse the data
@@ -79,7 +79,7 @@ export default class Decoder {
 
         if (!decoder) {
             // We need a sample to initalize the video decoder, because of mp4box limitations.
-            let sample = samples[0];
+            const sample = samples[0];
 
             if (isVideoTrack(track)) {
                 // Configure the decoder using the AVC box for H.264
@@ -124,7 +124,7 @@ export default class Decoder {
             this.decoders.set(track_id, decoder)
         }
 
-        for (let sample of samples) {
+        for (const sample of samples) {
             // Convert to microseconds
             const timestamp = 1000 * 1000 * sample.dts / sample.timescale
             const duration = 1000 * 1000 * sample.duration / sample.timescale

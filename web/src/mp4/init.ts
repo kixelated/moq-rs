@@ -26,11 +26,11 @@ export class InitParser {
 
 	push(data: Uint8Array) {
 		// Make a copy of the atom because mp4box only accepts an ArrayBuffer unfortunately
-		let box = new Uint8Array(data.byteLength);
+		const box = new Uint8Array(data.byteLength);
 		box.set(data)
 
 		// and for some reason we need to modify the underlying ArrayBuffer with fileStart
-		let buffer = box.buffer as MP4.ArrayBuffer
+		const buffer = box.buffer as MP4.ArrayBuffer
 		buffer.fileStart = this.offset
 
 		// Parse the data

@@ -5,7 +5,7 @@ import Transport from "./transport"
 import fingerprintHex from 'bundle-text:../fingerprint.hex';
 
 // Convert the hex to binary.
-let fingerprint = [];
+const fingerprint = [];
 for (let c = 0; c < fingerprintHex.length - 1; c += 2) {
     fingerprint.push(parseInt(fingerprintHex.substring(c, c + 2), 16));
 }

@@ -29,7 +29,7 @@ export default class Transport {
 
 	// Helper function to make creating a promise easier
 	private async connect(config: Config): Promise<WebTransport> {
-		let options: WebTransportOptions = {};
+		const options: WebTransportOptions = {};
 		if (config.fingerprint) {
 			options.serverCertificateHashes = [ config.fingerprint ]
 		}

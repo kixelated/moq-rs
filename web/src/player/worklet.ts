@@ -10,7 +10,7 @@ class Renderer extends AudioWorkletProcessor {
     ring?: Ring;
     base: number;
 
-    constructor(params: AudioWorkletNodeOptions) {
+    constructor(_params: AudioWorkletNodeOptions) {
         // The super constructor call is required.
         super();
 
@@ -29,7 +29,7 @@ class Renderer extends AudioWorkletProcessor {
     }
 
     // Inputs and outputs in groups of 128 samples.
-    process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean {
+    process(inputs: Float32Array[][], outputs: Float32Array[][], _parameters: Record<string, Float32Array>): boolean {
         if (!this.ring) {
             // Paused
             return true

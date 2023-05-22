@@ -37,7 +37,7 @@ export class Ring {
         this.state = new Int32Array(buffer.state)
 
         this.channels = []
-        for (let channel of buffer.channels) {
+        for (const channel of buffer.channels) {
             this.channels.push(new Float32Array(channel))
         }
 
@@ -46,8 +46,8 @@ export class Ring {
 
     // Write samples for single audio frame, returning the total number written.
     write(frame: AudioData): number {
-        let readPos = Atomics.load(this.state, STATE.READ_POS)
-        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
+        const readPos = Atomics.load(this.state, STATE.READ_POS)
+        const writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
         const startPos = writePos
         let endPos = writePos + frame.numberOfFrames;
@@ -60,8 +60,8 @@ export class Ring {
             }
         }
 
-        let startIndex = startPos % this.capacity;
-        let endIndex = endPos % this.capacity;
+        const startIndex = startPos % this.capacity;
+        const endIndex = endPos % this.capacity;
 
         // Loop over each channel
         for (let i = 0; i < this.channels.length; i += 1) {
@@ -102,10 +102,10 @@ export class Ring {
     }
 
     read(dst: Float32Array[]): number {
-        let readPos = Atomics.load(this.state, STATE.READ_POS)
-        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
+        const readPos = Atomics.load(this.state, STATE.READ_POS)
+        const writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
-        let startPos = readPos;
+        const startPos = readPos;
         let endPos = startPos + dst[0].length;
 
         if (endPos > writePos) {
@@ -116,8 +116,8 @@ export class Ring {
             }
         }
 
-        let startIndex = startPos % this.capacity;
-        let endIndex = endPos % this.capacity;
+        const startIndex = startPos % this.capacity;
+        const endIndex = endPos % this.capacity;
 
         // Loop over each channel
         for (let i = 0; i < dst.length; i += 1) {
@@ -147,8 +147,8 @@ export class Ring {
 
     size() {
         // TODO is this thread safe?
-        let readPos = Atomics.load(this.state, STATE.READ_POS)
-        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
+        const readPos = Atomics.load(this.state, STATE.READ_POS)
+        const writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
         return writePos - readPos
     }
