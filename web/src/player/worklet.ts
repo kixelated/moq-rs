@@ -19,19 +19,19 @@ class Renderer extends AudioWorkletProcessor {
     }
 
     onMessage(e: MessageEvent) {
-        if (e.data.config) {
-            this.onConfig(e.data.config)
+        if (e.data.play) {
+            this.onPlay(e.data.play)
         }
     }
 
-    onConfig(config: Message.AudioConfig) {
-        this.ring = new Ring(config.ring)
+    onPlay(play: Message.Play) {
+        this.ring = new Ring(play.buffer)
     }
 
     // Inputs and outputs in groups of 128 samples.
     process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean {
         if (!this.ring) {
-            // Not initialized yet
+            // Paused
             return true
         }
 
@@ -40,7 +40,11 @@ class Renderer extends AudioWorkletProcessor {
         }
 
         const output = outputs[0]
-        this.ring.read(output)
+
+        const size = this.ring.read(output)
+        if (size < output.length) {
+            // TODO trigger rebuffering event
+        }
 
         return true;
     }

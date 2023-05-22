@@ -5,10 +5,10 @@ export default class Video {
     queue: Array<VideoFrame>;
 
     render: number; // non-zero if requestAnimationFrame has been called
-    sync?: DOMHighResTimeStamp; // the wall clock value for timestamp 0, in microseconds
+    sync?: number; // the wall clock value for timestamp 0, in microseconds
     last?: number; // the timestamp of the last rendered frame, in microseconds
 
-    constructor(config: Message.VideoConfig) {
+    constructor(config: Message.Config) {
         this.canvas = config.canvas;
         this.queue = [];
 
@@ -16,11 +16,6 @@ export default class Video {
     }
 
     push(frame: VideoFrame) {
-        if (!this.sync) {
-            // Save the frame as the sync point
-            this.sync = 1000 * performance.now() - frame.timestamp
-        }
-
         // Drop any old frames
         if (this.last && frame.timestamp <= this.last) {
             frame.close()
@@ -28,7 +23,7 @@ export default class Video {
         }
 
         // Insert the frame into the queue sorted by timestamp.
-        if (this.queue.length > 0 && this.queue[this.queue.length-1].timestamp <= frame.timestamp) {
+        if (this.queue.length > 0 && this.queue[this.queue.length - 1].timestamp <= frame.timestamp) {
             // Fast path because we normally append to the end.
             this.queue.push(frame)
         } else {
@@ -44,24 +39,35 @@ export default class Video {
 
             this.queue.splice(low, 0, frame)
         }
-
-        // Queue up to render the next frame.
-        if (!this.render) {
-            this.render = self.requestAnimationFrame(this.draw.bind(this))
-        }
     }
 
-    draw(now: DOMHighResTimeStamp) {
+    draw(now: number) {
+        // Draw and then queue up the next draw call.
+        this.drawOnce(now);
+
+        // Queue up the new draw frame.
+        this.render = self.requestAnimationFrame(this.draw.bind(this))
+    }
+
+    drawOnce(now: number) {
         // Convert to microseconds
         now *= 1000;
 
-        // Determine the target timestamp.
-        const target = now - this.sync!
+        if (!this.queue.length) {
+            return
+        }
 
         let frame = this.queue[0];
+
+        if (!this.sync) {
+            this.sync = now - frame.timestamp;
+        }
+
+        // Determine the target timestamp.
+        const target = now - this.sync
+
         if (frame.timestamp >= target) {
             // nothing to render yet, wait for the next animation frame
-            this.render = self.requestAnimationFrame(this.draw.bind(this))
             return
         }
 
@@ -81,11 +87,12 @@ export default class Video {
 
         this.last = frame.timestamp;
         frame.close()
+    }
 
-        if (this.queue.length) {
+    play(play: Message.Play) {
+        // Queue up to render the next frame.
+        if (!this.render) {
             this.render = self.requestAnimationFrame(this.draw.bind(this))
-        } else {
-            this.render = 0
         }
     }
 }

@@ -1,18 +1,8 @@
 import * as Ring from "./ring"
 
 export interface Config {
-    audio: AudioConfig;
-    video: VideoConfig;
-}
-
-export interface VideoConfig {
+    // video stuff
     canvas: OffscreenCanvas;
-}
-
-export interface AudioConfig {
-    // audio stuff
-    sampleRate: number;
-    ring: Ring.Buffer;
 }
 
 export interface Init {
@@ -27,4 +17,5 @@ export interface Segment {
 
 export interface Play {
     timestamp?: number;
+    buffer: Ring.Buffer;
 }

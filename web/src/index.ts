@@ -31,7 +31,7 @@ const player = new Player({
 const play = document.querySelector<HTMLElement>("#screen #play")!
 
 const playFunc = (e: Event) => {
-    player.play({})
+    player.play()
     e.preventDefault()
 
     play.removeEventListener('click', playFunc)

@@ -1,9 +1,31 @@
 // Ring buffer with audio samples.
 
 enum STATE {
-    READ_INDEX = 0, // Index of the current read position (mod capacity)
-    WRITE_INDEX,    // Index of the current write position (mod capacity)
-    LENGTH          // Clever way of saving the total number of enums values.
+    READ_POS = 0, // The current read position
+    WRITE_POS,    // The current write position
+    LENGTH              // Clever way of saving the total number of enums values.
+}
+
+// No prototype to make this easier to send via postMessage
+export class Buffer {
+    state: SharedArrayBuffer;
+
+    channels: SharedArrayBuffer[];
+    capacity: number;
+
+    constructor(channels: number, capacity: number) {
+        // Store the current state in a separate ring buffer.
+        this.state = new SharedArrayBuffer(STATE.LENGTH * Int32Array.BYTES_PER_ELEMENT)
+
+        // Create a buffer for each audio channel
+        this.channels = []
+        for (let i = 0; i < channels; i += 1) {
+            const buffer = new SharedArrayBuffer(capacity * Float32Array.BYTES_PER_ELEMENT)
+            this.channels.push(buffer)
+        }
+
+        this.capacity = capacity
+    }
 }
 
 export class Ring {
@@ -11,32 +33,35 @@ export class Ring {
     channels: Float32Array[];
     capacity: number;
 
-    constructor(buf: Buffer) {
-        this.state = new Int32Array(buf.state)
+    constructor(buffer: Buffer) {
+        this.state = new Int32Array(buffer.state)
 
         this.channels = []
-        for (let channel of buf.channels) {
+        for (let channel of buffer.channels) {
             this.channels.push(new Float32Array(channel))
         }
 
-        this.capacity = buf.capacity
+        this.capacity = buffer.capacity
     }
 
-    // Add the samples for single audio frame
-    write(frame: AudioData): boolean {
-        let count = frame.numberOfFrames;
+    // Write samples for single audio frame, returning the total number written.
+    write(frame: AudioData): number {
+        let readPos = Atomics.load(this.state, STATE.READ_POS)
+        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
-        let readIndex = Atomics.load(this.state, STATE.READ_INDEX)
-        let writeIndex = Atomics.load(this.state, STATE.WRITE_INDEX)
-        let writeIndexNew = writeIndex + count;
+        const startPos = writePos
+        let endPos = writePos + frame.numberOfFrames;
 
-        // There's not enough space in the ring buffer
-        if (writeIndexNew - readIndex > this.capacity) {
-            return false
+        if (endPos > readPos + this.capacity) {
+            endPos = readPos + this.capacity
+            if (endPos <= startPos) {
+                // No space to write
+                return 0
+            }
         }
 
-        let startIndex = writeIndex % this.capacity;
-        let endIndex = writeIndexNew % this.capacity;
+        let startIndex = startPos % this.capacity;
+        let endIndex = endPos % this.capacity;
 
         // Loop over each channel
         for (let i = 0; i < this.channels.length; i += 1) {
@@ -48,7 +73,7 @@ export class Ring {
 
                 frame.copyTo(full, {
                     planeIndex: i,
-                    frameCount: count,
+                    frameCount: endIndex - startIndex,
                 })
             } else {
                 const first = channel.subarray(startIndex)
@@ -67,27 +92,28 @@ export class Ring {
             }
         }
 
-        Atomics.store(this.state, STATE.WRITE_INDEX, writeIndexNew)
+        Atomics.store(this.state, STATE.WRITE_POS, endPos)
 
-        return true
+        return endPos - startPos
     }
 
-    read(dst: Float32Array[]) {
-        let readIndex = Atomics.load(this.state, STATE.READ_INDEX)
-        let writeIndex = Atomics.load(this.state, STATE.WRITE_INDEX)
-        if (readIndex >= writeIndex) {
-            // nothing to read
-            return
+    read(dst: Float32Array[]): number {
+        let readPos = Atomics.load(this.state, STATE.READ_POS)
+        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
+
+        let startPos = readPos;
+        let endPos = startPos + dst[0].length;
+
+        if (endPos > writePos) {
+            endPos = writePos
+            if (endPos <= startPos) {
+                // Nothing to read
+                return 0
+            }
         }
 
-        let readIndexNew = readIndex + dst[0].length
-        if (readIndexNew > writeIndex) {
-            // Partial read
-            readIndexNew = writeIndex
-        }
-
-        let startIndex = readIndex % this.capacity;
-        let endIndex = readIndexNew % this.capacity;
+        let startIndex = startPos % this.capacity;
+        let endIndex = endPos % this.capacity;
 
         // Loop over each channel
         for (let i = 0; i < dst.length; i += 1) {
@@ -110,34 +136,15 @@ export class Ring {
             }
         }
 
-        Atomics.store(this.state, STATE.READ_INDEX, readIndexNew)
+        Atomics.store(this.state, STATE.READ_POS, endPos)
+
+        return endPos - startPos
     }
 
-    // TODO not thread safe
-    clear() {
-        const writeIndex = Atomics.load(this.state, STATE.WRITE_INDEX)
-        Atomics.store(this.state, STATE.READ_INDEX, writeIndex)
-    }
-}
+    size() {
+        let readPos = Atomics.load(this.state, STATE.READ_POS)
+        let writePos = Atomics.load(this.state, STATE.WRITE_POS)
 
-// No prototype to make this easier to send via postMessage
-export class Buffer {
-    state: SharedArrayBuffer;
-
-    channels: SharedArrayBuffer[];
-    capacity: number;
-
-    constructor(channels: number, capacity: number) {
-        // Store the current state in a separate ring buffer.
-        this.state = new SharedArrayBuffer(STATE.LENGTH * Int32Array.BYTES_PER_ELEMENT)
-
-        // Create a buffer for each audio channel
-        this.channels = []
-        for (let i = 0; i < channels; i += 1) {
-            const buffer = new SharedArrayBuffer(capacity * Float32Array.BYTES_PER_ELEMENT)
-            this.channels.push(buffer)
-        }
-
-        this.capacity = capacity
+        return writePos - readPos
     }
 }

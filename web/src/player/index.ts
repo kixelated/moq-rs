@@ -19,26 +19,16 @@ export default class Player {
         this.transport = config.transport
         this.transport.callback = this;
 
-        const video = {
-            canvas: config.canvas,
-        };
-
-        // Assume 44.1kHz and two audio channels
-        const audio = {
-            sampleRate: 44100,
-            ring: new Ring.Buffer(2, 4410), // 100ms at 44.1khz
-        }
-
         this.context = new AudioContext({
             latencyHint: "interactive",
-            sampleRate: audio.sampleRate,
+            sampleRate: 44100,
         })
 
-        this.worker = this.setupWorker({ audio, video })
-        this.worklet = this.setupWorklet(audio)
+        this.worker = this.setupWorker(config)
+        this.worklet = this.setupWorklet(config)
     }
 
-    private setupWorker(config: Message.Config): Worker {
+    private setupWorker(config: Config): Worker {
         const url = new URL('worker.ts', import.meta.url)
 
         const worker = new Worker(url, {
@@ -46,12 +36,16 @@ export default class Player {
             name: "media",
         })
 
-        worker.postMessage({ config }, [ config.video.canvas ])
+        const msg = {
+            canvas: config.canvas,
+        }
+
+        worker.postMessage({ config: msg }, [msg.canvas])
 
         return worker
     }
 
-    private async setupWorklet(config: Message.AudioConfig): Promise<AudioWorkletNode> {
+    private async setupWorklet(config: Config): Promise<AudioWorkletNode> {
         // Load the worklet source code.
         const url = new URL('worklet.ts', import.meta.url)
         await this.context.audioWorklet.addModule(url)
@@ -65,8 +59,6 @@ export default class Player {
             console.error("Audio worklet error:", e)
         };
 
-        worklet.port.postMessage({ config })
-
         // Connect the worklet to the volume node and then to the speakers
         worklet.connect(volume)
         volume.connect(this.context.destination)
@@ -75,15 +67,22 @@ export default class Player {
     }
 
     onInit(init: Message.Init) {
-        this.worker.postMessage({ init }, [ init.buffer.buffer, init.reader ])
+        this.worker.postMessage({ init }, [init.buffer.buffer, init.reader])
     }
 
     onSegment(segment: Message.Segment) {
-        this.worker.postMessage({ segment }, [ segment.buffer.buffer, segment.reader ])
+        this.worker.postMessage({ segment }, [segment.buffer.buffer, segment.reader])
     }
 
-    play(play: Message.Play) {
+    async play() {
         this.context.resume()
-        //this.worker.postMessage({ play })
+
+        const play = {
+            buffer: new Ring.Buffer(2, 44100 / 10), // 100ms of audio
+        }
+
+        const worklet = await this.worklet;
+        worklet.port.postMessage({ play })
+        this.worker.postMessage({ play })
     }
 }

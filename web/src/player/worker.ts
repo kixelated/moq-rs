@@ -17,6 +17,9 @@ self.addEventListener('message', async (e: MessageEvent) => {
     } else if (e.data.segment) {
         const segment = e.data.segment as Message.Segment
         await decoder.receiveSegment(segment)
+    } else if (e.data.play) {
+        const play = e.data.play as Message.Play
+        await renderer.play(play)
     }
 })
 
