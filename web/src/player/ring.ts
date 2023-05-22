@@ -60,12 +60,6 @@ export class Ring {
             }
         }
 
-        // capacity = 1024
-        // read = 2048
-        // write = 3072
-        // startIndex = 0
-        // readIndex = 0
-
         let startIndex = startPos % this.capacity;
         let endIndex = endPos % this.capacity;
 
@@ -90,7 +84,9 @@ export class Ring {
                     frameCount: first.length,
                 })
 
-                if (second.length > 0) {
+                // We need this conditional when startIndex == 0 and endIndex == 0
+                // When capacity=4410 and frameCount=1024, this was happening 52s into the audio.
+                if (second.length) {
                     frame.copyTo(second, {
                         planeIndex: i,
                         frameOffset: first.length,
