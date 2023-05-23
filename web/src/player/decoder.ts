@@ -3,33 +3,48 @@ import * as MP4 from "../mp4"
 import * as Stream from "../stream"
 
 import Renderer from "./renderer"
+import { Deferred } from "../util"
 
 export default class Decoder {
-	init: MP4.InitParser
 	decoders: Map<number, AudioDecoder | VideoDecoder>
 	renderer: Renderer
 
+	init: Deferred<MP4.ArrayBuffer[]>
+
 	constructor(renderer: Renderer) {
-		this.init = new MP4.InitParser()
+		this.init = new Deferred()
 		this.decoders = new Map()
 		this.renderer = renderer
 	}
 
 	async receiveInit(msg: Message.Init) {
+		const init = new Array<MP4.ArrayBuffer>()
+		let offset = 0
+
 		const stream = new Stream.Reader(msg.reader, msg.buffer)
 		for (;;) {
 			const data = await stream.read()
 			if (!data) break
 
-			this.init.push(data)
+			// Make a copy of the atom because mp4box only accepts an ArrayBuffer unfortunately
+			const box = new Uint8Array(data.byteLength)
+			box.set(data)
+
+			// and for some reason we need to modify the underlying ArrayBuffer with fileStart
+			const buffer = box.buffer as MP4.ArrayBuffer
+			buffer.fileStart = offset
+
+			// Add the box to our queue of chunks
+			init.push(buffer)
+
+			offset += data.byteLength
 		}
 
-		// TODO make sure the init segment is fully received
+		this.init.resolve(init)
 	}
 
 	async receiveSegment(msg: Message.Segment) {
 		// Wait for the init segment to be fully received and parsed
-		await this.init.info
 		const input = MP4.New()
 
 		input.onSamples = this.onSamples.bind(this)
@@ -42,11 +57,12 @@ export default class Decoder {
 			input.start()
 		}
 
-		// MP4box requires us to reparse the init segment unfortunately
+		// MP4box requires us to parse the init segment for each segment unfortunately
+		// TODO If this sees production usage, I would recommend caching this somehow.
 		let offset = 0
 
-		for (const raw of this.init.raw) {
-			raw.fileStart = offset
+		const init = await this.init.promise
+		for (const raw of init) {
 			offset = input.appendBuffer(raw)
 		}
 

@@ -12,5 +12,3 @@ export {
 	ISOFile,
 	Sample,
 } from "mp4box"
-
-export { Init, InitParser } from "./init"
