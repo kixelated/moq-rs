@@ -25,11 +25,13 @@ jobs:
 
     - name: fmt
       uses: mbrobbel/rustfmt-check@master
+      working-directory: server
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
+      working-directory: server
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         args: --all-features
