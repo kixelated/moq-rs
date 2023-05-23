@@ -27,9 +27,9 @@ jobs:
       run: cargo test --verbose
 
     - name: fmt
-      uses: mbrobbel/rustfmt-check@master
+      uses: actions-rust-lang/rustfmt@v1
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        manifest-path: server/Cargo.toml
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
