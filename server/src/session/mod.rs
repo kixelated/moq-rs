@@ -10,9 +10,25 @@ use crate::{media, transport};
 
 #[derive(Default)]
 pub struct Session {
+	// The media source, configured on CONNECT.
 	media: Option<media::Source>,
-	streams: transport::Streams,     // An easy way of buffering stream data.
-	tracks: hmap::HashMap<u32, u64>, // map from track_id to current stream_id
+
+	// A helper for automatically buffering stream data.
+	streams: transport::Streams,
+
+	// Map from track_id to the the Track state.
+	tracks: hmap::HashMap<u32, Track>,
+}
+
+pub struct Track {
+	// Current stream_id
+	stream_id: Option<u64>,
+
+	// The timescale used for this track.
+	timescale: u64,
+
+	// The timestamp of the last keyframe.
+	keyframe: u64,
 }
 
 impl transport::App for Session {
@@ -95,25 +111,27 @@ impl Session {
 			None => return Ok(()),
 		};
 
-		let stream_id = match self.tracks.get(&fragment.track_id) {
-			// Close the old stream.
-			Some(stream_id) if fragment.keyframe => {
-				self.streams.send(conn, *stream_id, &[], true)?;
-				None
+		// Get the track state or insert a new entry.
+		let track = self.tracks.entry(fragment.track_id).or_insert_with(|| Track {
+			stream_id: None,
+			timescale: fragment.timescale,
+			keyframe: 0,
+		});
+
+		if let Some(stream_id) = track.stream_id {
+			// Existing stream, check if we should close it.
+			if fragment.keyframe && fragment.timestamp >= track.keyframe + track.timescale {
+				// Close the existing stream
+				self.streams.send(conn, stream_id, &[], true)?;
+
+				// Unset the stream id so we create a new one.
+				track.stream_id = None;
+				track.keyframe = fragment.timestamp;
 			}
+		}
 
-			// Use the existing stream
-			Some(stream_id) => Some(*stream_id),
-
-			// No existing stream.
-			_ => None,
-		};
-
-		let stream_id = match stream_id {
-			// Use the existing stream,
+		let stream_id = match track.stream_id {
 			Some(stream_id) => stream_id,
-
-			// Open a new stream.
 			None => {
 				// Create a new unidirectional stream.
 				let stream_id = session.open_stream(conn, false)?;
@@ -134,9 +152,6 @@ impl Session {
 				let data = message.serialize()?;
 				self.streams.send(conn, stream_id, &data, false)?;
 
-				// Keep a mapping from the track id to the current stream id.
-				self.tracks.insert(fragment.track_id, stream_id);
-
 				stream_id
 			}
 		};
@@ -144,6 +159,9 @@ impl Session {
 		// Write the current fragment.
 		let data = fragment.data.as_slice();
 		self.streams.send(conn, stream_id, data, false)?;
+
+		// Save the stream_id for the next fragment.
+		track.stream_id = Some(stream_id);
 
 		Ok(())
 	}
