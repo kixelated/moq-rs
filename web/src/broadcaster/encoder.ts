@@ -69,7 +69,7 @@ export class Encoder {
 			dts: frame.timestamp,
 		});
 
-		const stream = this.container.createSingleSampleMoof(sample);
+		const _stream = this.container.createSingleSampleMoof(sample);
 	}
 
 	onVideo(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
@@ -99,6 +99,6 @@ export class Encoder {
 			dts: frame.timestamp,
 		});
 
-		const stream = this.container.createSingleSampleMoof(sample);
+		const _stream = this.container.createSingleSampleMoof(sample);
 	}
 }

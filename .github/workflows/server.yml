@@ -1,4 +1,4 @@
-name: Rust
+name: server
 
 on:
   push:
@@ -10,14 +10,14 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: Build
+    - name: build
       working-directory: server
       run: cargo build --verbose
-    - name: Run tests
+    - name: test
       working-directory: server
       run: cargo test --verbose

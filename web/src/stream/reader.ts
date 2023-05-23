@@ -28,7 +28,7 @@ export default class Reader {
 	async readAll(): Promise<Uint8Array> {
 		const r = this.reader.getReader()
 
-		while (1) {
+		for (;;) {
 			const result = await r.read()
 			if (result.done) {
 				break
@@ -164,18 +164,22 @@ export default class Reader {
 		const size = (first & 0xc0) >> 6
 
 		switch (size) {
-		case 0:
-			const v0 = await this.uint8()
-			return BigInt(v0) & 0x3fn
-		case 1:
-			const v1 = await this.uint16()
-			return BigInt(v1) & 0x3fffn
-		case 2:
-			const v2 = await this.uint32()
-			return BigInt(v2) & 0x3fffffffn
-		case 3:
-			const v3 = await this.uint64()
-			return v3 & 0x3fffffffffffffffn
+		case 0: {
+			const v = await this.uint8()
+			return BigInt(v) & 0x3fn
+		}
+		case 1: {
+			const v = await this.uint16()
+			return BigInt(v) & 0x3fffn
+		}
+		case 2: {
+			const v = await this.uint32()
+			return BigInt(v) & 0x3fffffffn
+		}
+		case 3: {
+			const v = await this.uint64()
+			return v & 0x3fffffffffffffffn
+		}
 		default:
 			throw "impossible"
 		}
@@ -183,7 +187,7 @@ export default class Reader {
 
 	async done(): Promise<boolean> {
 		try {
-			const peek = await this.peek(1)
+			await this.peek(1)
 			return false
 		} catch (err) {
 			return true // Assume EOF

@@ -29,7 +29,7 @@ interface WebTransport {
     readonly incomingUnidirectionalStreams: ReadableStream;
 }
 
-declare var WebTransport: {
+declare const WebTransport: {
     prototype: WebTransport;
     new(url: string, options?: WebTransportOptions): WebTransport;
 };
@@ -71,7 +71,7 @@ interface WebTransportError extends DOMException {
     readonly streamErrorCode: number;
 }
 
-declare var WebTransportError: {
+declare const WebTransportError: {
     prototype: WebTransportError;
     new(init?: WebTransportErrorInit): WebTransportError;
 };

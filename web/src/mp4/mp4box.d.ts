@@ -121,10 +121,10 @@ declare module "mp4box" {
         mapUint8Array(length: number): Uint8Array;
         readInt32Array(length: number, littleEndian: boolean): Int32Array;
         readInt16Array(length: number, littleEndian: boolean): Int16Array;
-        readInt8(length: number): Int8Array;
+        readInt8Array(length: number): Int8Array;
         readUint32Array(length: number, littleEndian: boolean): Uint32Array;
         readUint16Array(length: number, littleEndian: boolean): Uint16Array;
-        readUint8(length: number): Uint8Array;
+        readUint8Array(length: number): Uint8Array;
         readFloat64Array(length: number, littleEndian: boolean): Float64Array;
         readFloat32Array(length: number, littleEndian: boolean): Float32Array;
 

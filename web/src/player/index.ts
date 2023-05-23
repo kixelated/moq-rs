@@ -45,7 +45,7 @@ export default class Player {
         return worker
     }
 
-    private async setupWorklet(config: Config): Promise<AudioWorkletNode> {
+    private async setupWorklet(_config: Config): Promise<AudioWorkletNode> {
         // Load the worklet source code.
         const url = new URL('worklet.ts', import.meta.url)
         await this.context.audioWorklet.addModule(url)
