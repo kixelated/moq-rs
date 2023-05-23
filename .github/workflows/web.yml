@@ -1,4 +1,4 @@
-name: Web
+name: web
 
 on:
   push:
@@ -7,20 +7,20 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: Install
+    - name: install
       working-directory: web
       run: yarn install
-    - name: Cert
+    - name: cert
       working-directory: cert
       run: ./generate
-    - name: Build
+    - name: build
       working-directory: web
       run: yarn build
-    - name: Lint
+    - name: lint
       working-directory: web
       run: yarn lint
