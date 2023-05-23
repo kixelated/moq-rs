@@ -29,14 +29,14 @@ export default class Decoder {
 
 	async receiveSegment(msg: Message.Segment) {
 		// Wait for the init segment to be fully received and parsed
-		const init = await this.init.info
+		await this.init.info
 		const input = MP4.New()
 
 		input.onSamples = this.onSamples.bind(this)
-		input.onReady = (track: any) => {
+		input.onReady = (info: MP4.Info) => {
 			// Extract all of the tracks, because we don't know if it's audio or video.
-			for (const i of init.tracks) {
-				input.setExtractionOptions(track.id, i, { nbSamples: 1 })
+			for (const track of info.tracks) {
+				input.setExtractionOptions(track.id, track, { nbSamples: 1 })
 			}
 
 			input.start()
