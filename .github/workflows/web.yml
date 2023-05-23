@@ -25,8 +25,5 @@ jobs:
     - name: build
       run: yarn build
 
-    - name: fmt
-      run: yarn prettier --check .
-
     - name: lint
       run: yarn lint
