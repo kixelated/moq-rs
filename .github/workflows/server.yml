@@ -1,8 +1,6 @@
 name: server
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -13,11 +11,23 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./server
+
     steps:
     - uses: actions/checkout@v3
-    - name: build
-      working-directory: server
-      run: cargo build --verbose
+
+    - name: toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: clippy, rustfmt
+
     - name: test
-      working-directory: server
       run: cargo test --verbose
+
+    - name: fmt
+      run: cargo fmt --check
+
+    - name: clippy
+      run: cargo clippy

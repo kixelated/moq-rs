@@ -1,11 +1,9 @@
 {
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "compilerOptions": {
     "target": "es2022",
     "module": "es2022",
     "moduleResolution": "node",
-    "strict": true,
+    "strict": true
   }
 }
