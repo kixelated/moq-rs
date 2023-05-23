@@ -1,8 +1,6 @@
 name: server
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -15,9 +13,23 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: build
-      working-directory: server
-      run: cargo build --verbose
+
+    - name: toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: clippy, rustfmt
+
     - name: test
       working-directory: server
       run: cargo test --verbose
+
+    - name: fmt
+      uses: mbrobbel/rustfmt-check@master
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features

@@ -1,18 +1,20 @@
 // Reader wraps a stream and provides convience methods for reading pieces from a stream
 export default class Reader {
-	reader: ReadableStream;
-	buffer: Uint8Array;
+	reader: ReadableStream
+	buffer: Uint8Array
 
-	constructor(reader: ReadableStream, buffer: Uint8Array = new Uint8Array(0)) {
+	constructor(
+		reader: ReadableStream,
+		buffer: Uint8Array = new Uint8Array(0)
+	) {
 		this.reader = reader
 		this.buffer = buffer
 	}
 
 	// Returns any number of bytes
 	async read(): Promise<Uint8Array | undefined> {
-
 		if (this.buffer.byteLength) {
-			const buffer = this.buffer;
+			const buffer = this.buffer
 			this.buffer = new Uint8Array()
 			return buffer
 		}
@@ -39,7 +41,9 @@ export default class Reader {
 			if (this.buffer.byteLength == 0) {
 				this.buffer = buffer
 			} else {
-				const temp = new Uint8Array(this.buffer.byteLength + buffer.byteLength)
+				const temp = new Uint8Array(
+					this.buffer.byteLength + buffer.byteLength
+				)
 				temp.set(this.buffer)
 				temp.set(buffer, this.buffer.byteLength)
 				this.buffer = temp
@@ -68,15 +72,24 @@ export default class Reader {
 			if (this.buffer.byteLength == 0) {
 				this.buffer = buffer
 			} else {
-				const temp = new Uint8Array(this.buffer.byteLength + buffer.byteLength)
+				const temp = new Uint8Array(
+					this.buffer.byteLength + buffer.byteLength
+				)
 				temp.set(this.buffer)
 				temp.set(buffer, this.buffer.byteLength)
 				this.buffer = temp
 			}
 		}
 
-		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
-		this.buffer = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + size)
+		const result = new Uint8Array(
+			this.buffer.buffer,
+			this.buffer.byteOffset,
+			size
+		)
+		this.buffer = new Uint8Array(
+			this.buffer.buffer,
+			this.buffer.byteOffset + size
+		)
 
 		r.releaseLock()
 
@@ -97,14 +110,20 @@ export default class Reader {
 			if (this.buffer.byteLength == 0) {
 				this.buffer = buffer
 			} else {
-				const temp = new Uint8Array(this.buffer.byteLength + buffer.byteLength)
+				const temp = new Uint8Array(
+					this.buffer.byteLength + buffer.byteLength
+				)
 				temp.set(this.buffer)
 				temp.set(buffer, this.buffer.byteLength)
 				this.buffer = temp
 			}
 		}
 
-		const result = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset, size)
+		const result = new Uint8Array(
+			this.buffer.buffer,
+			this.buffer.byteOffset,
+			size
+		)
 
 		r.releaseLock()
 
@@ -160,28 +179,32 @@ export default class Reader {
 	// NOTE: Returns a BigInt instead of a Number
 	async vint64(): Promise<bigint> {
 		const peek = await this.peek(1)
-		const first = new DataView(peek.buffer, peek.byteOffset, peek.byteLength).getUint8(0)
+		const first = new DataView(
+			peek.buffer,
+			peek.byteOffset,
+			peek.byteLength
+		).getUint8(0)
 		const size = (first & 0xc0) >> 6
 
 		switch (size) {
-		case 0: {
-			const v = await this.uint8()
-			return BigInt(v) & 0x3fn
-		}
-		case 1: {
-			const v = await this.uint16()
-			return BigInt(v) & 0x3fffn
-		}
-		case 2: {
-			const v = await this.uint32()
-			return BigInt(v) & 0x3fffffffn
-		}
-		case 3: {
-			const v = await this.uint64()
-			return v & 0x3fffffffffffffffn
-		}
-		default:
-			throw "impossible"
+			case 0: {
+				const v = await this.uint8()
+				return BigInt(v) & 0x3fn
+			}
+			case 1: {
+				const v = await this.uint16()
+				return BigInt(v) & 0x3fffn
+			}
+			case 2: {
+				const v = await this.uint32()
+				return BigInt(v) & 0x3fffffffn
+			}
+			case 3: {
+				const v = await this.uint64()
+				return v & 0x3fffffffffffffffn
+			}
+			default:
+				throw "impossible"
 		}
 	}
 

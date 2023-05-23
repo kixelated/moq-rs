@@ -4,11 +4,11 @@ export interface Callback {
 }
 
 export interface Init {
-    buffer: Uint8Array;     // unread buffered data
-    reader: ReadableStream; // unread unbuffered data
+	buffer: Uint8Array // unread buffered data
+	reader: ReadableStream // unread unbuffered data
 }
 
 export interface Segment {
-    buffer: Uint8Array;     // unread buffered data
-    reader: ReadableStream; // unread unbuffered data
+	buffer: Uint8Array // unread buffered data
+	reader: ReadableStream // unread unbuffered data
 }

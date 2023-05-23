@@ -1,24 +1,27 @@
 {
-  "license": "Apache-2.0",
-  "source": "src/index.html",
-  "scripts": {
-    "serve": "parcel serve --https --cert ../cert/localhost.crt --key ../cert/localhost.key --port 4444 --open",
-    "build": "parcel build",
-    "check": "tsc --noEmit",
-	"lint": "eslint ."
-  },
-  "devDependencies": {
-    "@parcel/transformer-inline-string": "2.8.3",
-    "@parcel/validator-typescript": "^2.6.0",
-    "@types/audioworklet": "^0.0.41",
-    "@types/dom-webcodecs": "^0.1.6",
-    "@typescript-eslint/eslint-plugin": "^5.59.7",
-    "@typescript-eslint/parser": "^5.59.7",
-    "eslint": "^8.41.0",
-    "parcel": "^2.8.0",
-    "typescript": "^5.0.4"
-  },
-  "dependencies": {
-    "mp4box": "^0.5.2"
-  }
+	"license": "Apache-2.0",
+	"source": "src/index.html",
+	"scripts": {
+		"serve": "parcel serve --https --cert ../cert/localhost.crt --key ../cert/localhost.key --port 4444 --open",
+		"build": "parcel build",
+		"check": "tsc --noEmit",
+		"lint": "eslint .",
+		"fmt": "prettier --write ."
+	},
+	"devDependencies": {
+		"@parcel/transformer-inline-string": "2.8.3",
+		"@parcel/validator-typescript": "^2.6.0",
+		"@types/audioworklet": "^0.0.41",
+		"@types/dom-webcodecs": "^0.1.6",
+		"@typescript-eslint/eslint-plugin": "^5.59.7",
+		"@typescript-eslint/parser": "^5.59.7",
+		"eslint": "^8.41.0",
+		"eslint-config-prettier": "^8.8.0",
+		"parcel": "^2.8.0",
+		"prettier": "^2.8.8",
+		"typescript": "^5.0.4"
+	},
+	"dependencies": {
+		"mp4box": "^0.5.2"
+	}
 }

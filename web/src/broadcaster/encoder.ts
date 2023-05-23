@@ -6,19 +6,19 @@ export class Encoder {
 	video: VideoEncoder
 
 	constructor() {
-		this.container = new MP4.ISOFile();
+		this.container = new MP4.ISOFile()
 
 		this.audio = new AudioEncoder({
 			output: this.onAudio.bind(this),
 			error: console.warn,
-		});
+		})
 
 		this.video = new VideoEncoder({
 			output: this.onVideo.bind(this),
 			error: console.warn,
-		});
+		})
 
-		this.container.init();
+		this.container.init()
 
 		this.audio.configure({
 			codec: "mp4a.40.2",
@@ -43,7 +43,7 @@ export class Encoder {
 
 	onAudio(frame: EncodedAudioChunk, metadata: EncodedAudioChunkMetadata) {
 		const config = metadata.decoderConfig!
-		const track_id = 1;
+		const track_id = 1
 
 		if (!this.container.getTrackById(track_id)) {
 			this.container.addTrack({
@@ -56,25 +56,25 @@ export class Encoder {
 
 				description: config.description, // TODO verify
 				// TODO description_boxes?: Box[];
-			});
+			})
 		}
 
-		const buffer = new Uint8Array(frame.byteLength);
-		frame.copyTo(buffer);
+		const buffer = new Uint8Array(frame.byteLength)
+		frame.copyTo(buffer)
 
 		// TODO cts?
 		const sample = this.container.addSample(track_id, buffer, {
 			is_sync: frame.type == "key",
 			duration: frame.duration!,
 			dts: frame.timestamp,
-		});
+		})
 
-		const _stream = this.container.createSingleSampleMoof(sample);
+		const _stream = this.container.createSingleSampleMoof(sample)
 	}
 
 	onVideo(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
 		const config = metadata!.decoderConfig!
-		const track_id = 2;
+		const track_id = 2
 
 		if (!this.container.getTrackById(track_id)) {
 			this.container.addTrack({
@@ -86,19 +86,19 @@ export class Encoder {
 
 				description: config.description, // TODO verify
 				// TODO description_boxes?: Box[];
-			});
+			})
 		}
 
-		const buffer = new Uint8Array(frame.byteLength);
-		frame.copyTo(buffer);
+		const buffer = new Uint8Array(frame.byteLength)
+		frame.copyTo(buffer)
 
 		// TODO cts?
 		const sample = this.container.addSample(track_id, buffer, {
 			is_sync: frame.type == "key",
 			duration: frame.duration!,
 			dts: frame.timestamp,
-		});
+		})
 
-		const _stream = this.container.createSingleSampleMoof(sample);
+		const _stream = this.container.createSingleSampleMoof(sample)
 	}
 }

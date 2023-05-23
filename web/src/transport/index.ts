@@ -2,14 +2,14 @@ import * as Stream from "../stream"
 import * as Interface from "./interface"
 
 export interface Config {
-	url: string;
-	fingerprint?: WebTransportHash; // the certificate fingerprint, temporarily needed for local development
+	url: string
+	fingerprint?: WebTransportHash // the certificate fingerprint, temporarily needed for local development
 }
 
 export default class Transport {
-	quic: Promise<WebTransport>;
-	api: Promise<WritableStream>;
-	callback?: Interface.Callback;
+	quic: Promise<WebTransport>
+	api: Promise<WritableStream>
+	callback?: Interface.Callback
 
 	constructor(config: Config) {
 		this.quic = this.connect(config)
@@ -24,14 +24,14 @@ export default class Transport {
 	}
 
 	async close() {
-		(await this.quic).close()
+		;(await this.quic).close()
 	}
 
 	// Helper function to make creating a promise easier
 	private async connect(config: Config): Promise<WebTransport> {
-		const options: WebTransportOptions = {};
+		const options: WebTransportOptions = {}
 		if (config.fingerprint) {
-			options.serverCertificateHashes = [ config.fingerprint ]
+			options.serverCertificateHashes = [config.fingerprint]
 		}
 
 		const quic = new WebTransport(config.url, options)
@@ -68,14 +68,16 @@ export default class Transport {
 	async handleStream(stream: ReadableStream) {
 		const r = new Stream.Reader(stream)
 
-		while (!await r.done()) {
-			const size = await r.uint32();
-			const typ = new TextDecoder('utf-8').decode(await r.bytes(4));
+		while (!(await r.done())) {
+			const size = await r.uint32()
+			const typ = new TextDecoder("utf-8").decode(await r.bytes(4))
 
 			if (typ != "warp") throw "expected warp atom"
 			if (size < 8) throw "atom too small"
 
-			const payload = new TextDecoder('utf-8').decode(await r.bytes(size - 8));
+			const payload = new TextDecoder("utf-8").decode(
+				await r.bytes(size - 8)
+			)
 			const msg = JSON.parse(payload)
 
 			if (msg.init) {
@@ -89,7 +91,7 @@ export default class Transport {
 					reader: r.reader,
 				})
 			} else {
-				console.warn("unknown message", msg);
+				console.warn("unknown message", msg)
 			}
 		}
 	}
