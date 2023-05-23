@@ -74,54 +74,20 @@ export default class Decoder {
 		}
 	}
 
-	onSamples(track_id: number, track: MP4.Track, samples: MP4.Sample[]) {
-		let decoder = this.decoders.get(track_id)
+	onSamples(_track_id: number, track: MP4.Track, samples: MP4.Sample[]) {
+		if (!track.track_width) {
+			// TODO ignoring audio to debug
+			return
+		}
 
-		if (!decoder) {
+		let decoder
+		if (isVideoTrack(track)) {
 			// We need a sample to initalize the video decoder, because of mp4box limitations.
-			const sample = samples[0]
-
-			if (isVideoTrack(track)) {
-				// Configure the decoder using the AVC box for H.264
-				// TODO it should be easy to support other codecs, just need to know the right boxes.
-				const avcc = sample.description.avcC
-				if (!avcc) throw new Error("TODO only h264 is supported")
-
-				const description = new MP4.Stream(new Uint8Array(avcc.size), 0, false)
-				avcc.write(description)
-
-				const videoDecoder = new VideoDecoder({
-					output: this.renderer.push.bind(this.renderer),
-					error: console.warn,
-				})
-
-				videoDecoder.configure({
-					codec: track.codec,
-					codedHeight: track.video.height,
-					codedWidth: track.video.width,
-					description: description.buffer?.slice(8),
-					// optimizeForLatency: true
-				})
-
-				decoder = videoDecoder
-			} else if (isAudioTrack(track)) {
-				const audioDecoder = new AudioDecoder({
-					output: this.renderer.push.bind(this.renderer),
-					error: console.warn,
-				})
-
-				audioDecoder.configure({
-					codec: track.codec,
-					numberOfChannels: track.audio.channel_count,
-					sampleRate: track.audio.sample_rate,
-				})
-
-				decoder = audioDecoder
-			} else {
-				throw new Error("unknown track type")
-			}
-
-			this.decoders.set(track_id, decoder)
+			decoder = this.videoDecoder(track, samples[0])
+		} else if (isAudioTrack(track)) {
+			decoder = this.audioDecoder(track)
+		} else {
+			throw new Error("unknown track type")
 		}
 
 		for (const sample of samples) {
@@ -129,7 +95,9 @@ export default class Decoder {
 			const timestamp = (1000 * 1000 * sample.dts) / sample.timescale
 			const duration = (1000 * 1000 * sample.duration) / sample.timescale
 
-			if (isAudioDecoder(decoder)) {
+			if (!decoder) {
+				throw new Error("decoder not initialized")
+			} else if (isAudioDecoder(decoder)) {
 				decoder.decode(
 					new EncodedAudioChunk({
 						type: sample.is_sync ? "key" : "delta",
@@ -151,6 +119,65 @@ export default class Decoder {
 				throw new Error("unknown decoder type")
 			}
 		}
+	}
+
+	audioDecoder(track: MP4.AudioTrack): AudioDecoder {
+		// Reuse the audio decoder when possible to avoid glitches.
+		// TODO detect when the codec changes and make a new decoder.
+		const decoder = this.decoders.get(track.id)
+		if (decoder && isAudioDecoder(decoder)) {
+			return decoder
+		}
+
+		const audioDecoder = new AudioDecoder({
+			output: this.renderer.push.bind(this.renderer),
+			error: console.error,
+		})
+
+		audioDecoder.configure({
+			codec: track.codec,
+			numberOfChannels: track.audio.channel_count,
+			sampleRate: track.audio.sample_rate,
+		})
+
+		this.decoders.set(track.id, audioDecoder)
+
+		return audioDecoder
+	}
+
+	videoDecoder(track: MP4.VideoTrack, sample: MP4.Sample): VideoDecoder {
+		// Make a new video decoder for each keyframe.
+		if (!sample.is_sync) {
+			const decoder = this.decoders.get(track.id)
+			if (decoder && isVideoDecoder(decoder)) {
+				return decoder
+			}
+		}
+
+		// Configure the decoder using the AVC box for H.264
+		// TODO it should be easy to support other codecs, just need to know the right boxes.
+		const avcc = sample.description.avcC
+		if (!avcc) throw new Error("TODO only h264 is supported")
+
+		const description = new MP4.Stream(new Uint8Array(avcc.size), 0, false)
+		avcc.write(description)
+
+		const videoDecoder = new VideoDecoder({
+			output: this.renderer.push.bind(this.renderer),
+			error: console.error,
+		})
+
+		videoDecoder.configure({
+			codec: track.codec,
+			codedHeight: track.video.height,
+			codedWidth: track.video.width,
+			description: description.buffer?.slice(8),
+			// optimizeForLatency: true
+		})
+
+		this.decoders.set(track.id, videoDecoder)
+
+		return videoDecoder
 	}
 }
 
