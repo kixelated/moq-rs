@@ -3,5 +3,5 @@ export type Init = any
 export type Segment = any
 
 export interface Debug {
-  max_bitrate: number
+	max_bitrate: number
 }
