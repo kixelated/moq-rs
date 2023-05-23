@@ -1,0 +1,23 @@
+name: Web
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install
+      working-directory: web
+      run: yarn install
+    - name: Build
+      working-directory: web
+      run: yarn build
+    - name: Lint
+      working-directory: web
+      run: yarn lint

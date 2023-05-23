@@ -1,4 +1,4 @@
-name: Rust
+name: Server
 
 on:
   push:
@@ -18,6 +18,6 @@ jobs:
     - name: Build
       working-directory: server
       run: cargo build --verbose
-    - name: Run tests
+    - name: Test
       working-directory: server
       run: cargo test --verbose
