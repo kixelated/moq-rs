@@ -8,15 +8,10 @@ It requires a client, such as [moq-js](https://github.com/kixelated/moq-js).
 
 ## Requirements
 
--   _Chrome_: currently (May 2023) the only browser to support both WebTransport and WebCodecs.
--   _yarn_: required to install dependencies.
-
-## Requirements
-
--   _rust_: duh
--   _ffmpeg_: (optional) used to generate fragmented media
--   _go_: (optional) used to generate self-signed certificates
--   _openssl_: (options) ...also used to generate self-signed certificates
+-   **rust**: duh
+-   **ffmpeg**: (optional) used to generate fragmented media
+-   **go**: (optional) used to generate self-signed certificates
+-   **openssl**: (options) ...also used to generate self-signed certificates
 
 ## Media
 
