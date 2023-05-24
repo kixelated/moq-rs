@@ -1,4 +1,4 @@
-name: server
+name: moq.rs
 
 on:
   pull_request:
@@ -10,10 +10,6 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: ./server
 
     steps:
     - uses: actions/checkout@v3
