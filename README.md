@@ -11,7 +11,6 @@ It requires a client, such as [moq-js](https://github.com/kixelated/moq-js).
 -   **rust**: duh
 -   **ffmpeg**: (optional) used to generate fragmented media
 -   **go**: (optional) used to generate self-signed certificates
--   **openssl**: (options) ...also used to generate self-signed certificates
 
 ## Media
 
@@ -29,14 +28,15 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 Unfortunately, QUIC mandates TLS and makes local development difficult.
 If you have a valid certificate you can use it instead of self-signing.
 
-Otherwise, we use [mkcert](https://github.com/FiloSottile/mkcert) to install a self-signed CA:
+Otherwise, we use [mkcert](https://github.com/FiloSottile/mkcert) to generate a self-signed certificate:
 
 ```
 ./cert/generate
 ```
 
 With no arguments, the server will generate self-signed cert using this root CA.
-This certificate is only valid for _2 weeks_ due to how WebTransport performs certificate fingerprinting.
+This certificate is only valid for **10 days** due to how WebTransport performs certificate fingerprinting.
+This limitation will be removed once Chrome uses the system CA for WebTransport.
 
 ## Server
 
