@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::io::Read;
 use std::{fs, io, time};
 
@@ -17,8 +17,8 @@ pub struct Source {
 	// The initialization payload; ftyp + moov boxes.
 	pub init: Vec<u8>,
 
-	// The timescale used for each track.
-	timescales: HashMap<u32, u32>,
+	// The parsed moov box.
+	moov: mp4::MoovBox,
 
 	// Any fragments parsed and ready to be returned by next().
 	fragments: VecDeque<Fragment>,
@@ -34,7 +34,10 @@ pub struct Fragment {
 	// Whether this fragment is a keyframe.
 	pub keyframe: bool,
 
-	// The timestamp of the fragment, in milliseconds, to simulate a live stream.
+	// The number of samples that make up a second (ex. ms = 1000)
+	pub timescale: u64,
+
+	// The timestamp of the fragment, in timescale units, to simulate a live stream.
 	pub timestamp: u64,
 }
 
@@ -65,7 +68,7 @@ impl Source {
 			reader,
 			start,
 			init,
-			timescales: timescales(&moov),
+			moov,
 			fragments: VecDeque::new(),
 		})
 	}
@@ -101,11 +104,20 @@ impl Source {
 						anyhow::bail!("multiple tracks per moof atom")
 					}
 
+					let track_id = moof.trafs[0].tfhd.track_id;
+					let timestamp = sample_timestamp(&moof).expect("couldn't find timestamp");
+
+					// Detect if this is a keyframe.
+					let keyframe = sample_keyframe(&moof);
+
+					let timescale = track_timescale(&self.moov, track_id);
+
 					self.fragments.push_back(Fragment {
-						track_id: moof.trafs[0].tfhd.track_id,
+						track_id,
 						data: atom,
-						keyframe: has_keyframe(&moof),
-						timestamp: first_timestamp(&moof).expect("couldn't find timestamp"),
+						keyframe,
+						timescale,
+						timestamp,
 					})
 				}
 				mp4::BoxType::MdatBox => {
@@ -115,6 +127,7 @@ impl Source {
 						track_id: moof.track_id,
 						data: atom,
 						keyframe: false,
+						timescale: moof.timescale,
 						timestamp: moof.timestamp,
 					});
 
@@ -131,12 +144,8 @@ impl Source {
 	// Simulate a live stream by sleeping until the next timestamp in the media.
 	pub fn timeout(&self) -> Option<time::Duration> {
 		let next = self.fragments.front()?;
-		let timestamp = next.timestamp;
 
-		// Find the timescale for the track.
-		let timescale = self.timescales.get(&next.track_id).unwrap();
-
-		let delay = time::Duration::from_millis(1000 * timestamp / *timescale as u64);
+		let delay = time::Duration::from_millis(1000 * next.timestamp / next.timescale);
 		let elapsed = self.start.elapsed();
 
 		delay.checked_sub(elapsed)
@@ -182,7 +191,18 @@ pub fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
 	Ok(raw)
 }
 
-fn has_keyframe(moof: &mp4::MoofBox) -> bool {
+// Find the timescale for the given track.
+fn track_timescale(moov: &mp4::MoovBox, track_id: u32) -> u64 {
+	let trak = moov
+		.traks
+		.iter()
+		.find(|trak| trak.tkhd.track_id == track_id)
+		.expect("failed to find trak");
+
+	trak.mdia.mdhd.timescale as u64
+}
+
+fn sample_keyframe(moof: &mp4::MoofBox) -> bool {
 	for traf in &moof.trafs {
 		// TODO trak default flags if this is None
 		let default_flags = traf.tfhd.default_sample_flags.unwrap_or_default();
@@ -214,13 +234,18 @@ fn has_keyframe(moof: &mp4::MoofBox) -> bool {
 	false
 }
 
-fn first_timestamp(moof: &mp4::MoofBox) -> Option<u64> {
+fn sample_timestamp(moof: &mp4::MoofBox) -> Option<u64> {
 	Some(moof.trafs.first()?.tfdt.as_ref()?.base_media_decode_time)
 }
 
-fn timescales(moov: &mp4::MoovBox) -> HashMap<u32, u32> {
-	moov.traks
+/*
+fn track_type(moov: &mp4::MoovBox, track_id: u32) -> mp4::TrackType {
+	let trak = moov
+		.traks
 		.iter()
-		.map(|trak| (trak.tkhd.track_id, trak.mdia.mdhd.timescale))
-		.collect()
+		.find(|trak| trak.tkhd.track_id == track_id)
+		.expect("failed to find trak");
+
+	mp4::TrackType::try_from(&trak.mdia.hdlr.handler_type).expect("unknown track type")
 }
+*/
