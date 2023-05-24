@@ -71,9 +71,13 @@ async fn run_http(args: Cli) -> anyhow::Result<()> {
 	let fingerprint = hex::encode(fingerprint.as_ref());
 	let fingerprint = Arc::new(fingerprint);
 
+	let cors = warp::cors().allow_any_origin();
+
 	// What an annoyingly complicated way to serve a static String
 	// I spent a long time trying to find the exact way of cloning and dereferencing the Arc.
-	let routes = warp::path!("fingerprint").map(move || (*(fingerprint.clone())).clone());
+	let routes = warp::path!("fingerprint")
+		.map(move || (*(fingerprint.clone())).clone())
+		.with(cors);
 
 	warp::serve(routes)
 		.tls()
