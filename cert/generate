@@ -14,8 +14,5 @@ go run filippo.io/mkcert -ecdsa -install
 
 # Generate a new certificate for localhost
 # This fork of mkcert supports the -days flag.
+# TODO remove the -days flag when Chrome accepts self-signed certs.
 go run filippo.io/mkcert -ecdsa -days 10 -cert-file "$CRT" -key-file "$KEY" localhost 127.0.0.1 ::1
-
-# Compute the sha256 fingerprint of the certificate for WebTransport
-# TODO remove openssl as a requirement
-openssl x509 -in "$CRT" -outform der | openssl dgst -sha256 -binary | xxd -p -c 256 > localhost.hex
