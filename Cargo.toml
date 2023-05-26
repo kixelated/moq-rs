@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-quiche = { git = "https://github.com/kixelated/quiche.git", branch = "master", features = [ "qlog" ] } # WebTransport fork
+# Fork of quiche until they add WebTransport support.
+quiche = { git = "https://github.com/kixelated/quiche-webtransport.git", branch = "master", features = [ "qlog" ] }
 clap = { version = "4.0", features = [ "derive" ] }
 log = { version = "0.4", features = ["std"] }
 mio = { version = "0.8", features = ["net", "os-poll"] }
