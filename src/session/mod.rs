@@ -52,7 +52,7 @@ impl transport::App for Session {
 					session.accept_connect_request(conn, None)?;
 
 					// TODO
-					let media = media::Source::new("../media/fragmented.mp4")?;
+					let media = media::Source::new("../media/fragmented.mp4").expect("failed to open fragmented.mp4");
 					let init = &media.init;
 
 					// Create a JSON header.
