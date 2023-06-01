@@ -17,6 +17,10 @@ struct Stream {
 }
 
 impl Streams {
+	pub fn new() -> Self {
+		Default::default()
+	}
+
 	// Write the data to the given stream, buffering it if needed.
 	pub fn send(&mut self, conn: &mut quiche::Connection, id: u64, buf: &[u8], fin: bool) -> anyhow::Result<()> {
 		if buf.is_empty() && !fin {

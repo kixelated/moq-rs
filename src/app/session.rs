@@ -1,17 +1,16 @@
-mod message;
-
 use std::collections::hash_map as hmap;
+
 use std::time;
 
 use quiche;
 use quiche::h3::webtransport;
 
+use super::message;
 use crate::{media, transport};
 
-#[derive(Default)]
 pub struct Session {
-	// The media source, configured on CONNECT.
-	media: Option<media::Source>,
+	// The media source
+	media: media::Source,
 
 	// A helper for automatically buffering stream data.
 	streams: transport::Streams,
@@ -31,7 +30,17 @@ pub struct Track {
 	keyframe: u64,
 }
 
-impl transport::App for Session {
+impl Session {
+	pub fn new(media: media::Source) -> Self {
+		Self {
+			media,
+			streams: transport::Streams::new(),
+			tracks: hmap::HashMap::new(),
+		}
+	}
+}
+
+impl transport::app::Session for Session {
 	// Process any updates to a session.
 	fn poll(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
 		loop {
@@ -50,6 +59,7 @@ impl transport::App for Session {
 					// req.path()
 					// and you can validate this request with req.origin()
 					session.accept_connect_request(conn, None)?;
+					/*
 
 					// TODO
 					let media = media::Source::new("media/fragmented.mp4").expect("failed to open fragmented.mp4");
@@ -64,8 +74,11 @@ impl transport::App for Session {
 					let stream_id = session.open_stream(conn, false)?;
 					self.streams.send(conn, stream_id, data.as_slice(), false)?;
 					self.streams.send(conn, stream_id, init.as_slice(), true)?;
+					*/
 
-					self.media = Some(media);
+					// TODO
+
+					//self.media = Some(media);
 				}
 				webtransport::ServerEvent::StreamData(stream_id) => {
 					let mut buf = vec![0; 10000];
@@ -89,7 +102,8 @@ impl transport::App for Session {
 	}
 
 	fn timeout(&self) -> Option<time::Duration> {
-		self.media.as_ref().and_then(|m| m.timeout())
+		// TODO subscription timeout
+		None
 	}
 }
 
@@ -99,14 +113,8 @@ impl Session {
 		conn: &mut quiche::Connection,
 		session: &mut webtransport::ServerSession,
 	) -> anyhow::Result<()> {
-		// Get the media source once the connection is established.
-		let media = match &mut self.media {
-			Some(m) => m,
-			None => return Ok(()),
-		};
-
 		// Get the next media fragment.
-		let fragment = match media.fragment()? {
+		let fragment = match self.media.fragment()? {
 			Some(f) => f,
 			None => return Ok(()),
 		};

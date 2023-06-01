@@ -2,7 +2,7 @@ use std::io::BufReader;
 use std::net::SocketAddr;
 use std::{fs::File, sync::Arc};
 
-use moq::{session, transport};
+use moq::{app, transport};
 
 use clap::Parser;
 use ring::digest::{digest, SHA256};
@@ -49,8 +49,11 @@ fn run_transport(args: Cli) -> anyhow::Result<()> {
 		key: args.key,
 	};
 
-	let mut server = transport::Server::<session::Session>::new(server_config).unwrap();
-	server.run()
+	let media = media::Source::new(args.media).expect("failed to open fragmented.mp4");
+	let server = app::Server::new(media);
+
+	let mut transport = transport::Server::new(server_config, server).unwrap();
+	transport.run()
 }
 
 // Run a HTTP server using Warp

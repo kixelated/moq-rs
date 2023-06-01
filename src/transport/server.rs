@@ -3,11 +3,12 @@ use std::io;
 use quiche::h3::webtransport;
 
 use super::app;
+use super::app::Session;
 use super::connection;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
-pub struct Server<T: app::App> {
+pub struct Server<T: app::Server> {
 	// IO stuff
 	socket: mio::net::UdpSocket,
 	poll: mio::Poll,
@@ -17,7 +18,8 @@ pub struct Server<T: app::App> {
 	quic: quiche::Config,
 	seed: ring::hmac::Key, // connection ID seed
 
-	conns: connection::Map<T>,
+	conns: connection::Map<T::Session>,
+	app: T,
 }
 
 pub struct Config {
@@ -26,8 +28,8 @@ pub struct Config {
 	pub key: String,
 }
 
-impl<T: app::App> Server<T> {
-	pub fn new(config: Config) -> io::Result<Self> {
+impl<T: app::Server> Server<T> {
+	pub fn new(config: Config, app: T) -> io::Result<Self> {
 		// Listen on the provided socket address
 		let addr = config.addr.parse().unwrap();
 		let mut socket = mio::net::UdpSocket::bind(addr).unwrap();
@@ -72,6 +74,7 @@ impl<T: app::App> Server<T> {
 			quic,
 			seed,
 
+			app,
 			conns,
 		})
 	}
@@ -82,13 +85,13 @@ impl<T: app::App> Server<T> {
 		loop {
 			self.wait()?;
 			self.receive()?;
-			self.app()?;
+			self.poll()?;
 			self.send()?;
 			self.cleanup();
 		}
 	}
 
-	pub fn wait(&mut self) -> anyhow::Result<()> {
+	fn wait(&mut self) -> anyhow::Result<()> {
 		// Find the shorter timeout from all the active connections.
 		//
 		// TODO: use event loop that properly supports timers
@@ -97,7 +100,7 @@ impl<T: app::App> Server<T> {
 			.values()
 			.filter_map(|c| {
 				let timeout = c.quiche.timeout();
-				let expires = c.app.timeout();
+				let expires = c.app.as_ref().and_then(|app| app.timeout());
 
 				match (timeout, expires) {
 					(Some(a), Some(b)) => Some(a.min(b)),
@@ -253,28 +256,49 @@ impl<T: app::App> Server<T> {
 			let user = connection::Connection {
 				quiche: conn,
 				session: None,
-				app: T::default(),
+				app: None,
 			};
 
 			self.conns.insert(conn_id, user);
 		}
 	}
 
-	pub fn app(&mut self) -> anyhow::Result<()> {
+	fn poll(&mut self) -> anyhow::Result<()> {
 		for conn in self.conns.values_mut() {
-			if conn.quiche.is_closed() {
-				continue;
-			}
+			if let Err(e) = Self::poll_conn(&mut self.app, conn) {
+				log::debug!("app error: {:?}", e);
 
-			if let Some(session) = &mut conn.session {
-				if let Err(e) = conn.app.poll(&mut conn.quiche, session) {
-					log::debug!("app error: {:?}", e);
-
-					// Close the connection on any application error
-					let reason = format!("app error: {:?}", e);
-					conn.quiche.close(true, 0xff, reason.as_bytes()).ok();
-				}
+				// Close the connection on any application error
+				let reason = format!("app error: {:?}", e);
+				conn.quiche.close(true, 0xff, reason.as_bytes()).ok();
 			}
+		}
+
+		Ok(())
+	}
+
+	// Poll a connection, waiting for the CONNECT request
+	// NOTE: Doesn't take &mut self because the borrow checker is annoying.
+	fn poll_conn(server: &mut T, conn: &mut connection::Connection<T::Session>) -> anyhow::Result<()> {
+		if conn.quiche.is_closed() {
+			return Ok(());
+		}
+
+		let session = match &mut conn.session {
+			Some(session) => session,
+			None => return Ok(()),
+		};
+
+		if let Some(app) = &mut conn.app {
+			return app.poll(&mut conn.quiche, session);
+		};
+
+		let event = session.poll(&mut conn.quiche)?;
+
+		if let webtransport::ServerEvent::ConnectRequest(req) = event {
+			let session = server.accept(req)?;
+			// TODO support multiple sessions on the same connection
+			conn.app = Some(session);
 		}
 
 		Ok(())
@@ -283,11 +307,11 @@ impl<T: app::App> Server<T> {
 	// Generate outgoing QUIC packets for all active connections and send
 	// them on the UDP socket, until quiche reports that there are no more
 	// packets to be sent.
-	pub fn send(&mut self) -> anyhow::Result<()> {
+	fn send(&mut self) -> anyhow::Result<()> {
 		for conn in self.conns.values_mut() {
 			let conn = &mut conn.quiche;
 
-			if let Err(e) = send_conn(&self.socket, conn) {
+			if let Err(e) = Self::send_conn(&self.socket, conn) {
 				log::error!("{} send failed: {:?}", conn.trace_id(), e);
 				conn.close(false, 0x1, b"fail").ok();
 			}
@@ -296,30 +320,30 @@ impl<T: app::App> Server<T> {
 		Ok(())
 	}
 
-	pub fn cleanup(&mut self) {
+	// Send any pending packets for the connection over the socket.
+	fn send_conn(socket: &mio::net::UdpSocket, conn: &mut quiche::Connection) -> anyhow::Result<()> {
+		let mut pkt = [0; MAX_DATAGRAM_SIZE];
+
+		loop {
+			let (size, info) = match conn.send(&mut pkt) {
+				Ok(v) => v,
+				Err(quiche::Error::Done) => return Ok(()),
+				Err(e) => return Err(e.into()),
+			};
+
+			let pkt = &pkt[..size];
+
+			match socket.send_to(pkt, info.to) {
+				Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+				Err(e) => return Err(e.into()),
+				Ok(_) => (),
+			}
+		}
+	}
+
+	fn cleanup(&mut self) {
 		// Garbage collect closed connections.
 		self.conns.retain(|_, ref mut c| !c.quiche.is_closed());
-	}
-}
-
-// Send any pending packets for the connection over the socket.
-fn send_conn(socket: &mio::net::UdpSocket, conn: &mut quiche::Connection) -> anyhow::Result<()> {
-	let mut pkt = [0; MAX_DATAGRAM_SIZE];
-
-	loop {
-		let (size, info) = match conn.send(&mut pkt) {
-			Ok(v) => v,
-			Err(quiche::Error::Done) => return Ok(()),
-			Err(e) => return Err(e.into()),
-		};
-
-		let pkt = &pkt[..size];
-
-		match socket.send_to(pkt, info.to) {
-			Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
-			Err(e) => return Err(e.into()),
-			Ok(_) => (),
-		}
 	}
 }
 

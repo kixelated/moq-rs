@@ -8,8 +8,8 @@ pub type Id = quiche::ConnectionId<'static>;
 use super::app;
 
 pub type Map<T> = hmap::HashMap<Id, Connection<T>>;
-pub struct Connection<T: app::App> {
+pub struct Connection<T: app::Session> {
 	pub quiche: quiche::Connection,
 	pub session: Option<webtransport::ServerSession>,
-	pub app: T,
+	pub app: Option<T>,
 }

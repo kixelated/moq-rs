@@ -141,6 +141,11 @@ impl Source {
 		}
 	}
 
+	pub fn poll(&mut self) -> anyhow::Result<()> {
+		// TODO
+		Ok(())
+	}
+
 	// Simulate a live stream by sleeping until the next timestamp in the media.
 	pub fn timeout(&self) -> Option<time::Duration> {
 		let next = self.fragments.front()?;
