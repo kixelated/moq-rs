@@ -1,4 +1,4 @@
-use super::Session;
+use super::connection::Connection;
 use crate::{media, transport};
 
 use std::time;
@@ -18,21 +18,19 @@ impl Server {
 }
 
 impl transport::app::Server for Server {
-	type Session = Session;
+	type Connection = Connection;
 
-	fn accept(&mut self, _req: webtransport::ConnectRequest) -> anyhow::Result<Session> {
+	fn accept(&mut self, mut conn: quiche::Connection) -> anyhow::Result<Self::Connection> {
+		let session = webtransport::ServerSession::with_transport(&mut conn)?;
+
 		let subscription = self.media.subscribe();
 
-		let session = Session::new(subscription);
+		let session = Connection::new(conn, session, subscription);
 		Ok(session)
 	}
 
 	// Called periodically based on the timeout returned.
-	fn poll(&mut self) -> anyhow::Result<()> {
-		self.media.poll().into()
-	}
-
-	fn timeout(&self) -> Option<time::Duration> {
-		self.media.timeout()
+	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>> {
+		self.media.poll()
 	}
 }

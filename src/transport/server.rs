@@ -1,10 +1,9 @@
 use std::io;
 
-use quiche::h3::webtransport;
-
 use super::app;
-use super::app::Session;
-use super::connection;
+use super::app::Connection;
+
+use std::collections::HashMap;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
@@ -18,8 +17,8 @@ pub struct Server<T: app::Server> {
 	quic: quiche::Config,
 	seed: ring::hmac::Key, // connection ID seed
 
-	conns: connection::Map<T::Session>,
 	app: T,
+	conns: HashMap<quiche::ConnectionId<'static>, T::Connection>,
 }
 
 pub struct Config {
@@ -85,7 +84,7 @@ impl<T: app::Server> Server<T> {
 		loop {
 			self.wait()?;
 			self.receive()?;
-			self.poll()?;
+			self.poll()?; // TODO use timeout value returned
 			self.send()?;
 			self.cleanup();
 		}
@@ -95,30 +94,15 @@ impl<T: app::Server> Server<T> {
 		// Find the shorter timeout from all the active connections.
 		//
 		// TODO: use event loop that properly supports timers
-		let timeout = self
-			.conns
-			.values()
-			.filter_map(|c| {
-				let timeout = c.quiche.timeout();
-				let expires = c.app.as_ref().and_then(|app| app.timeout());
-
-				match (timeout, expires) {
-					(Some(a), Some(b)) => Some(a.min(b)),
-					(Some(a), None) => Some(a),
-					(None, Some(b)) => Some(b),
-					(None, None) => None,
-				}
-			})
-			.min();
-
+		let timeout = self.conns.values_mut().filter_map(|app| app.conn().timeout()).min();
 		self.poll.poll(&mut self.events, timeout).unwrap();
 
 		// If the event loop reported no events, it means that the timeout
 		// has expired, so handle it without attempting to read packets. We
 		// will then proceed with the send loop.
 		if self.events.is_empty() {
-			for conn in self.conns.values_mut() {
-				conn.quiche.on_timeout();
+			for app in self.conns.values_mut() {
+				app.conn().on_timeout();
 			}
 		}
 
@@ -151,23 +135,11 @@ impl<T: app::Server> Server<T> {
 			let conn_id = &conn_id.as_ref()[..quiche::MAX_CONN_ID_LEN];
 			let conn_id = conn_id.to_vec().into();
 
-			// Check if it's an existing connection.
-			if let Some(conn) = self.conns.get_mut(&hdr.dcid) {
-				conn.quiche.recv(src, info)?;
-
-				if conn.session.is_none() && conn.quiche.is_established() {
-					conn.session = Some(webtransport::ServerSession::with_transport(&mut conn.quiche)?)
-				}
-
+			if let Some(app) = self.conns.get_mut(&hdr.dcid) {
+				app.conn().recv(src, info)?;
 				continue;
-			} else if let Some(conn) = self.conns.get_mut(&conn_id) {
-				conn.quiche.recv(src, info)?;
-
-				// TODO is this needed here?
-				if conn.session.is_none() && conn.quiche.is_established() {
-					conn.session = Some(webtransport::ServerSession::with_transport(&mut conn.quiche)?)
-				}
-
+			} else if let Some(app) = self.conns.get_mut(&conn_id) {
+				app.conn().recv(src, info)?;
 				continue;
 			}
 
@@ -253,52 +225,24 @@ impl<T: app::Server> Server<T> {
 			// Process potentially coalesced packets.
 			conn.recv(src, info)?;
 
-			let user = connection::Connection {
-				quiche: conn,
-				session: None,
-				app: None,
-			};
-
-			self.conns.insert(conn_id, user);
+			let session = self.app.accept(conn)?;
+			self.conns.insert(conn_id, session);
 		}
 	}
 
 	fn poll(&mut self) -> anyhow::Result<()> {
-		for conn in self.conns.values_mut() {
-			if let Err(e) = Self::poll_conn(&mut self.app, conn) {
+		// Poll the application server.
+		self.app.poll()?;
+
+		// Poll each active connection.
+		for app in self.conns.values_mut() {
+			if let Err(e) = app.poll() {
 				log::debug!("app error: {:?}", e);
 
 				// Close the connection on any application error
 				let reason = format!("app error: {:?}", e);
-				conn.quiche.close(true, 0xff, reason.as_bytes()).ok();
+				app.conn().close(true, 0xff, reason.as_bytes()).ok();
 			}
-		}
-
-		Ok(())
-	}
-
-	// Poll a connection, waiting for the CONNECT request
-	// NOTE: Doesn't take &mut self because the borrow checker is annoying.
-	fn poll_conn(server: &mut T, conn: &mut connection::Connection<T::Session>) -> anyhow::Result<()> {
-		if conn.quiche.is_closed() {
-			return Ok(());
-		}
-
-		let session = match &mut conn.session {
-			Some(session) => session,
-			None => return Ok(()),
-		};
-
-		if let Some(app) = &mut conn.app {
-			return app.poll(&mut conn.quiche, session);
-		};
-
-		let event = session.poll(&mut conn.quiche)?;
-
-		if let webtransport::ServerEvent::ConnectRequest(req) = event {
-			let session = server.accept(req)?;
-			// TODO support multiple sessions on the same connection
-			conn.app = Some(session);
 		}
 
 		Ok(())
@@ -308,8 +252,8 @@ impl<T: app::Server> Server<T> {
 	// them on the UDP socket, until quiche reports that there are no more
 	// packets to be sent.
 	fn send(&mut self) -> anyhow::Result<()> {
-		for conn in self.conns.values_mut() {
-			let conn = &mut conn.quiche;
+		for app in self.conns.values_mut() {
+			let conn = app.conn();
 
 			if let Err(e) = Self::send_conn(&self.socket, conn) {
 				log::error!("{} send failed: {:?}", conn.trace_id(), e);
@@ -343,7 +287,7 @@ impl<T: app::Server> Server<T> {
 
 	fn cleanup(&mut self) {
 		// Garbage collect closed connections.
-		self.conns.retain(|_, ref mut c| !c.quiche.is_closed());
+		self.conns.retain(|_, ref mut c| !c.conn().is_closed());
 	}
 }
 

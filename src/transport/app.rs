@@ -1,20 +1,20 @@
 use std::time;
 
-use quiche::h3::webtransport;
-
+// Wraps a QUIC server, automatically mapping from incoming connections to returned Connection objects.
 pub trait Server {
-	type Session: Session;
+	type Connection: Connection;
 
-	// TODO take ownership of a connection
-	fn accept(&mut self, req: webtransport::ConnectRequest) -> anyhow::Result<Self::Session>;
+	// Take ownership of a connection, wrapping it with our own Connection object
+	fn accept(&mut self, conn: quiche::Connection) -> anyhow::Result<Self::Connection>;
 
-	// TODO combine these two
-	fn poll(&mut self) -> anyhow::Result<()>;
-	fn timeout(&self) -> Option<time::Duration>;
+	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>>;
 }
 
-pub trait Session {
-	// TODO combine these two
-	fn poll(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()>;
-	fn timeout(&self) -> Option<time::Duration>;
+// Wraps a QUIC connection, automatically calling poll() and performing the underlying IO.
+pub trait Connection {
+	// Return the inner QUIC connection, so that the server can automatically poll it.
+	fn conn(&mut self) -> &mut quiche::Connection;
+
+	// NOTE: Do not call conn.poll() or conn.timeout() directly
+	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>>;
 }

@@ -5,12 +5,18 @@ use std::time;
 use quiche;
 use quiche::h3::webtransport;
 
-use super::message;
+
 use crate::{media, transport};
 
-pub struct Session {
-	// The media source
-	media: media::Source,
+pub struct Connection {
+	// The underlying QUIC connection
+	quic: quiche::Connection,
+
+	// The WebTransport session on top of the QUIC connection
+	session: webtransport::ServerSession,
+
+	// The media subscription
+	media: media::Subscription,
 
 	// A helper for automatically buffering stream data.
 	streams: transport::Streams,
@@ -30,9 +36,11 @@ pub struct Track {
 	keyframe: u64,
 }
 
-impl Session {
-	pub fn new(media: media::Source) -> Self {
+impl Connection {
+	pub fn new(quic: quiche::Connection, session: webtransport::ServerSession, media: media::Subscription) -> Self {
 		Self {
+			quic,
+			session,
 			media,
 			streams: transport::Streams::new(),
 			tracks: hmap::HashMap::new(),
@@ -40,11 +48,15 @@ impl Session {
 	}
 }
 
-impl transport::app::Session for Session {
-	// Process any updates to a session.
-	fn poll(&mut self, conn: &mut quiche::Connection, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
+impl transport::app::Connection for Connection {
+	fn conn(&mut self) -> &mut quiche::Connection {
+		&mut self.quic
+	}
+
+	// Process any updates to the connection.
+	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>> {
 		loop {
-			let event = match session.poll(conn) {
+			let event = match self.session.poll(&mut self.quic) {
 				Err(webtransport::Error::Done) => break,
 				Err(e) => return Err(e.into()),
 				Ok(e) => e,
@@ -58,7 +70,7 @@ impl transport::app::Session for Session {
 					// req.authority()
 					// req.path()
 					// and you can validate this request with req.origin()
-					session.accept_connect_request(conn, None)?;
+					self.session.accept_connect_request(&mut self.quic, None)?;
 					/*
 
 					// TODO
@@ -82,7 +94,7 @@ impl transport::app::Session for Session {
 				}
 				webtransport::ServerEvent::StreamData(stream_id) => {
 					let mut buf = vec![0; 10000];
-					while let Ok(len) = session.recv_stream_data(conn, stream_id, &mut buf) {
+					while let Ok(len) = self.session.recv_stream_data(&mut self.quic, stream_id, &mut buf) {
 						let _stream_data = &buf[0..len];
 					}
 				}
@@ -93,26 +105,15 @@ impl transport::app::Session for Session {
 
 		// Send any pending stream data.
 		// NOTE: This doesn't return an error because it's async, and would be confusing.
-		self.streams.poll(conn);
+		self.streams.poll(&mut self.quic);
 
-		// Fetch the next media fragment, possibly queuing up stream data.
-		self.poll_source(conn, session)?;
-
-		Ok(())
-	}
-
-	fn timeout(&self) -> Option<time::Duration> {
-		// TODO subscription timeout
-		None
+		Ok(None)
 	}
 }
 
-impl Session {
-	fn poll_source(
-		&mut self,
-		conn: &mut quiche::Connection,
-		session: &mut webtransport::ServerSession,
-	) -> anyhow::Result<()> {
+impl Connection {
+	/*
+	fn poll_source(&mut self, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
 		// Get the next media fragment.
 		let fragment = match self.media.fragment()? {
 			Some(f) => f,
@@ -173,4 +174,5 @@ impl Session {
 
 		Ok(())
 	}
+	*/
 }

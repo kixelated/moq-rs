@@ -1,5 +1,4 @@
 pub mod app;
-mod connection;
 mod server;
 mod streams;
 
