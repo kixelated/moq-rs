@@ -23,7 +23,7 @@ impl transport::app::Server for Server {
 	fn accept(&mut self, mut conn: quiche::Connection) -> anyhow::Result<Self::Connection> {
 		let session = webtransport::ServerSession::with_transport(&mut conn)?;
 
-		let subscription = self.media.subscribe();
+		let subscription = media::broadcast::Subscriber::new(self.media.broadcast());
 
 		let session = Connection::new(conn, session, subscription);
 		Ok(session)

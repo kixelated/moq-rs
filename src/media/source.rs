@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::sync::Mutex;
+
 use std::{fs, io, time};
 
 use anyhow;
@@ -7,7 +7,7 @@ use anyhow;
 use mp4;
 use mp4::ReadBox;
 
-use super::{Broadcast, Fragment, Segment, Track};
+use super::{Broadcast, Segment, Shared, Track};
 
 pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
@@ -20,7 +20,7 @@ pub struct Source {
 	moov: mp4::MoovBox,
 
 	// The broadcast we're producing
-	broadcast: Arc<Mutex<Broadcast>>,
+	broadcast: Shared<Broadcast>,
 
 	// The timestamp of the last fragment we pushed.
 	timestamp: time::Duration,
@@ -49,33 +49,31 @@ impl Source {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		// Create a broadcast.
-		let broadcast = Broadcast::new();
+		// Create the broadcast state.
+		let mut broadcast = Broadcast::new();
 
-		// Create a catalog track with the full init segment.
-		// TODO the track ID is 0xff for now, but we should probably use a better way to signal catalog tracks.
-		let segment = Segment::new();
-		segment.add_fragment(init);
+		// Create a track to contain only the init fragment.
+		let mut track = Track::new();
+		let mut segment = Segment::new();
 
-		let track = Track::new();
-		track.add_segment(segment);
-
-		broadcast.add_track(0xff, track);
+		segment.push_fragment(init);
+		track.push_segment(segment);
+		broadcast.insert_track(0xff, track);
 
 		// Add the top level tracks.
-		for track in &moov.traks {
-			let track_id = track.tkhd.track_id;
+		for trak in &moov.traks {
+			let track_id = trak.tkhd.track_id;
 			anyhow::ensure!(track_id != 0xff, "track ID 0xff is reserved");
 
-			broadcast.add_track(track.tkhd.track_id, Track::new());
+			broadcast.create_track(trak.tkhd.track_id);
 		}
 
 		Ok(Self {
 			reader,
 			start,
 			moov,
-			broadcast: Arc::new(Mutex::new(broadcast)),
-			timestamp: 0,
+			broadcast: Shared::new(broadcast),
+			timestamp: Default::default(),
 		})
 	}
 
@@ -93,9 +91,9 @@ impl Source {
 	}
 
 	// Parse the next mdat atom and add it to the broadcast.
-	pub fn parse(&mut self) -> anyhow::Result<()> {
+	fn parse(&mut self) -> anyhow::Result<()> {
 		// The current segment for the track.
-		let segment = None;
+		let mut segment = None;
 
 		loop {
 			let atom = read_atom(&mut self.reader)?;
@@ -113,7 +111,8 @@ impl Source {
 					}
 
 					let track_id = moof.trafs[0].tfhd.track_id;
-					let track = self.broadcast.get_track(track_id);
+					let mut broadcast = self.broadcast.lock();
+					let mut track = broadcast.get_track(track_id).expect("couldn't find track");
 
 					// Parse the moof to get some timing information to sleep.
 					let timestamp = sample_timestamp(&moof).expect("couldn't find timestamp");
@@ -125,18 +124,20 @@ impl Source {
 					// Detect if we should start a new segment.
 					let keyframe = sample_keyframe(&moof);
 
-					let last = if keyframe {
-						track.add_segment(Segment::new())
+					let mut last = if keyframe {
+						track.lock().create_segment()
 					} else {
-						track.last_segment().expect("missing keyframe at start of track")
+						track.lock().segments.back_mut().expect("missing segment").clone()
 					};
 
-					last.push_fragment(atom);
+					last.lock().push_fragment(atom);
 
 					segment = Some(last)
 				}
 				mp4::BoxType::MdatBox => {
-					segment.expect("missing moof before mdat").push_fragment(atom);
+					let mut segment = segment.expect("missing moof before mdat");
+					segment.lock().push_fragment(atom);
+
 					return Ok(());
 				}
 				_ => {
@@ -144,6 +145,10 @@ impl Source {
 				}
 			}
 		}
+	}
+
+	pub fn broadcast(&self) -> Shared<Broadcast> {
+		self.broadcast.clone()
 	}
 }
 

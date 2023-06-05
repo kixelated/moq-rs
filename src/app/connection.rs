@@ -1,11 +1,11 @@
-use std::collections::hash_map as hmap;
+use std::collections::HashMap;
 
 use std::time;
 
 use quiche;
 use quiche::h3::webtransport;
 
-
+use super::message;
 use crate::{media, transport};
 
 pub struct Connection {
@@ -15,35 +15,28 @@ pub struct Connection {
 	// The WebTransport session on top of the QUIC connection
 	session: webtransport::ServerSession,
 
-	// The media subscription
-	media: media::Subscription,
-
 	// A helper for automatically buffering stream data.
 	streams: transport::Streams,
 
-	// Map from track_id to the the Track state.
-	tracks: hmap::HashMap<u32, Track>,
-}
+	// Each active track, with the key as the track_id.
+	tracks: HashMap<u32, media::track::Subscriber>,
 
-pub struct Track {
-	// Current stream_id
-	stream_id: Option<u64>,
-
-	// The timescale used for this track.
-	timescale: u64,
-
-	// The timestamp of the last keyframe.
-	keyframe: u64,
+	// Each active segment with the key as the stream_id.
+	segments: HashMap<u64, media::segment::Subscriber>,
 }
 
 impl Connection {
-	pub fn new(quic: quiche::Connection, session: webtransport::ServerSession, media: media::Subscription) -> Self {
+	pub fn new(
+		quic: quiche::Connection,
+		session: webtransport::ServerSession,
+		mut broadcast: media::broadcast::Subscriber,
+	) -> Self {
 		Self {
 			quic,
 			session,
-			media,
+			tracks: broadcast.tracks(),
+			segments: HashMap::new(),
 			streams: transport::Streams::new(),
-			tracks: hmap::HashMap::new(),
 		}
 	}
 }
@@ -55,6 +48,20 @@ impl transport::app::Connection for Connection {
 
 	// Process any updates to the connection.
 	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>> {
+		self.poll_transport()?;
+
+		let timeout = self.poll_media()?;
+
+		// Send any pending stream data.
+		// TODO: return any errors
+		self.streams.poll(&mut self.quic);
+
+		Ok(timeout)
+	}
+}
+
+impl Connection {
+	fn poll_transport(&mut self) -> anyhow::Result<()> {
 		loop {
 			let event = match self.session.poll(&mut self.quic) {
 				Err(webtransport::Error::Done) => break,
@@ -71,26 +78,6 @@ impl transport::app::Connection for Connection {
 					// req.path()
 					// and you can validate this request with req.origin()
 					self.session.accept_connect_request(&mut self.quic, None)?;
-					/*
-
-					// TODO
-					let media = media::Source::new("media/fragmented.mp4").expect("failed to open fragmented.mp4");
-					let init = &media.init;
-
-					// Create a JSON header.
-					let mut message = message::Message::new();
-					message.init = Some(message::Init {});
-					let data = message.serialize()?;
-
-					// Create a new stream and write the header.
-					let stream_id = session.open_stream(conn, false)?;
-					self.streams.send(conn, stream_id, data.as_slice(), false)?;
-					self.streams.send(conn, stream_id, init.as_slice(), true)?;
-					*/
-
-					// TODO
-
-					//self.media = Some(media);
 				}
 				webtransport::ServerEvent::StreamData(stream_id) => {
 					let mut buf = vec![0; 10000];
@@ -98,81 +85,58 @@ impl transport::app::Connection for Connection {
 						let _stream_data = &buf[0..len];
 					}
 				}
-
 				_ => {}
 			}
 		}
 
-		// Send any pending stream data.
-		// NOTE: This doesn't return an error because it's async, and would be confusing.
-		self.streams.poll(&mut self.quic);
-
-		Ok(None)
+		Ok(())
 	}
-}
 
-impl Connection {
-	/*
-	fn poll_source(&mut self, session: &mut webtransport::ServerSession) -> anyhow::Result<()> {
-		// Get the next media fragment.
-		let fragment = match self.media.fragment()? {
-			Some(f) => f,
-			None => return Ok(()),
-		};
-
-		// Get the track state or insert a new entry.
-		let track = self.tracks.entry(fragment.track_id).or_insert_with(|| Track {
-			stream_id: None,
-			timescale: fragment.timescale,
-			keyframe: 0,
-		});
-
-		if let Some(stream_id) = track.stream_id {
-			// Existing stream, check if we should close it.
-			if fragment.keyframe && fragment.timestamp >= track.keyframe + track.timescale {
-				// Close the existing stream
-				self.streams.send(conn, stream_id, &[], true)?;
-
-				// Unset the stream id so we create a new one.
-				track.stream_id = None;
-				track.keyframe = fragment.timestamp;
-			}
-		}
-
-		let stream_id = match track.stream_id {
-			Some(stream_id) => stream_id,
-			None => {
+	fn poll_media(&mut self) -> anyhow::Result<Option<time::Duration>> {
+		for (track_id, track_sub) in &mut self.tracks {
+			while let Some(segment) = track_sub.segment() {
 				// Create a new unidirectional stream.
-				let stream_id = session.open_stream(conn, false)?;
+				let stream_id = self.session.open_stream(&mut self.quic, false)?;
 
+				// TODO send order
 				// Set the stream priority to be equal to the timestamp.
 				// We subtract from u64::MAX so newer media is sent important.
 				// TODO prioritize audio
-				let order = u64::MAX - fragment.timestamp;
-				self.streams.send_order(conn, stream_id, order);
+				// let order = u64::MAX - fragment.timestamp;
+				// self.streams.send_order(conn, stream_id, order);
 
 				// Encode a JSON header indicating this is a new track.
 				let mut message: message::Message = message::Message::new();
-				message.segment = Some(message::Segment {
-					track_id: fragment.track_id,
-				});
+				message.segment = Some(message::Segment { track_id: *track_id });
 
 				// Write the header.
 				let data = message.serialize()?;
-				self.streams.send(conn, stream_id, &data, false)?;
+				self.streams.send(&mut self.quic, stream_id, &data, false)?;
 
-				stream_id
+				let segment = media::segment::Subscriber::new(segment);
+				self.segments.insert(stream_id, segment);
 			}
-		};
+		}
 
-		// Write the current fragment.
-		let data = fragment.data.as_slice();
-		self.streams.send(conn, stream_id, data, false)?;
+		self.tracks.retain(|_, track_sub| !track_sub.done());
 
-		// Save the stream_id for the next fragment.
-		track.stream_id = Some(stream_id);
+		for (stream_id, segment_sub) in &mut self.segments {
+			while let Some(fragment) = segment_sub.fragment() {
+				// Write the fragment.
+				self.streams
+					.send(&mut self.quic, *stream_id, fragment.as_slice(), false)?;
+			}
 
-		Ok(())
+			// TODO combine with the retain call below
+			if segment_sub.done() {
+				// Close the stream
+				self.streams.send(&mut self.quic, *stream_id, &[], true)?;
+			}
+		}
+
+		self.segments.retain(|_stream_id, segment_sub| !segment_sub.done());
+
+		// TODO implement futures...
+		Ok(time::Duration::from_millis(10).into())
 	}
-	*/
 }
