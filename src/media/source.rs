@@ -1,36 +1,32 @@
 use std::io::Read;
 
-use std::{fs, io, time};
+use std::{fs, io, path, time};
 
 use anyhow;
 
 use mp4;
 use mp4::ReadBox;
 
-use super::{Broadcast, Segment, Shared, Track};
+use anyhow::Context;
+use std::collections::HashMap;
 
-pub struct Source {
+use crate::media::{broadcast, segment, track};
+
+pub struct Broadcast {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
-	// The timestamp when the broadcast "started", so we can sleep to simulate a live stream.
-	start: time::Instant,
-
-	// The parsed moov box.
-	moov: mp4::MoovBox,
-
 	// The broadcast we're producing
-	broadcast: Shared<Broadcast>,
+	broadcast: broadcast::Publisher,
 
-	// The timestamp of the last fragment we pushed.
-	timestamp: time::Duration,
+	// The tracks we're producing.
+	tracks: HashMap<u32, Track>,
 }
 
-impl Source {
-	pub fn new(path: &str) -> anyhow::Result<Self> {
+impl Broadcast {
+	pub fn new(path: path::PathBuf) -> anyhow::Result<Self> {
 		let f = fs::File::open(path)?;
 		let mut reader = io::BufReader::new(f);
-		let start = time::Instant::now();
 
 		let ftyp = read_atom(&mut reader)?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -50,50 +46,42 @@ impl Source {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the broadcast state.
-		let mut broadcast = Broadcast::new();
-
-		// Create a track to contain only the init fragment.
-		let mut track = Track::new();
-		let mut segment = Segment::new();
-
+		let mut broadcast = broadcast::Publisher::new();
+		let mut track = broadcast.create_track(0xff);
+		let mut segment = track.create_segment();
 		segment.push_fragment(init);
-		track.push_segment(segment);
-		broadcast.insert_track(0xff, track);
+		segment.close();
+		track.close();
 
-		// Add the top level tracks.
+		// Create a map with the current segment for each track.
+		// NOTE: We don't add the init track to this, since it's not part of the MP4.
+		let mut tracks = HashMap::new();
+
 		for trak in &moov.traks {
 			let track_id = trak.tkhd.track_id;
 			anyhow::ensure!(track_id != 0xff, "track ID 0xff is reserved");
 
-			broadcast.create_track(trak.tkhd.track_id);
+			let timescale = track_timescale(&moov, track_id);
+
+			let track = broadcast.create_track(track_id);
+			let track = Track::new(track, timescale);
+
+			tracks.insert(track_id, track);
 		}
 
 		Ok(Self {
 			reader,
-			start,
-			moov,
-			broadcast: Shared::new(broadcast),
-			timestamp: Default::default(),
+			broadcast,
+			tracks,
 		})
 	}
 
-	pub fn poll(&mut self) -> anyhow::Result<Option<time::Duration>> {
-		loop {
-			let elapsed = self.start.elapsed();
+	pub async fn run(&mut self) -> anyhow::Result<()> {
+		// The timestamp when the broadcast "started", so we can sleep to simulate a live stream.
+		let start = tokio::time::Instant::now();
 
-			let timeout = self.timestamp.checked_sub(elapsed);
-			if timeout.is_some() {
-				return Ok(timeout);
-			}
-
-			self.parse()?;
-		}
-	}
-
-	// Parse the next mdat atom and add it to the broadcast.
-	fn parse(&mut self) -> anyhow::Result<()> {
-		// The current segment for the track.
-		let mut segment = None;
+		// The ID of the last moof header.
+		let mut track_id = None;
 
 		loop {
 			let atom = read_atom(&mut self.reader)?;
@@ -103,42 +91,32 @@ impl Source {
 
 			match header.name {
 				mp4::BoxType::MoofBox => {
-					let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
+					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
 
-					if moof.trafs.len() != 1 {
-						// We can't split the mdat atom, so this is impossible to support
-						anyhow::bail!("multiple tracks per moof atom")
-					}
+					// Process the moof.
+					let fragment = Fragment::new(moof)?;
 
-					let track_id = moof.trafs[0].tfhd.track_id;
-					let mut broadcast = self.broadcast.lock();
-					let mut track = broadcast.get_track(track_id).expect("couldn't find track");
+					// Get the track for this moof.
+					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
 
-					// Parse the moof to get some timing information to sleep.
-					let timestamp = sample_timestamp(&moof).expect("couldn't find timestamp");
-					let timescale = track_timescale(&self.moov, track_id);
+					// Sleep until we should publish this sample.
+					let timestamp = time::Duration::from_millis(1000 * fragment.timestamp / track.timescale);
+					tokio::time::sleep_until(start + timestamp).await;
 
-					// Update the timestamp so we'll sleep before parsing the next fragment.
-					self.timestamp = time::Duration::from_millis(1000 * timestamp / timescale);
+					// Save the track ID for the next iteration, which must be a mdat.
+					anyhow::ensure!(track_id.is_none(), "multiple moof atoms");
+					track_id.replace(fragment.track);
 
-					// Detect if we should start a new segment.
-					let keyframe = sample_keyframe(&moof);
-
-					let mut last = if keyframe {
-						track.lock().create_segment()
-					} else {
-						track.lock().segments.back_mut().expect("missing segment").clone()
-					};
-
-					last.lock().push_fragment(atom);
-
-					segment = Some(last)
+					// Publish the moof header, creating a new segment if it's a keyframe.
+					track.header(atom, fragment).context("failed to publish moof")?;
 				}
 				mp4::BoxType::MdatBox => {
-					let mut segment = segment.expect("missing moof before mdat");
-					segment.lock().push_fragment(atom);
+					// Get the track ID from the previous moof.
+					let track_id = track_id.take().context("missing moof")?;
+					let track = self.tracks.get_mut(&track_id).context("failed to find track")?;
 
-					return Ok(());
+					// Publish the mdat atom.
+					track.data(atom).context("failed to publish mdat")?;
 				}
 				_ => {
 					// Skip unknown atoms
@@ -147,13 +125,98 @@ impl Source {
 		}
 	}
 
-	pub fn broadcast(&self) -> Shared<Broadcast> {
-		self.broadcast.clone()
+	pub fn subscribe(&self) -> broadcast::Subscriber {
+		self.broadcast.subscribe()
+	}
+}
+
+struct Track {
+	// The track we're producing
+	publisher: track::Publisher,
+
+	// The current segment
+	segment: Option<segment::Publisher>,
+
+	// The timestamp of the last keyframe, in timescale units.
+	keyframe: u64,
+
+	// The number of units per second.
+	timescale: u64,
+}
+
+impl Track {
+	fn new(publisher: track::Publisher, timescale: u64) -> Self {
+		Self {
+			publisher,
+			segment: None,
+			keyframe: 0,
+			timescale,
+		}
+	}
+
+	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
+		// Check if we should reuse the existing segment
+		let mut segment = if let Some(mut segment) = self.segment.take() {
+			// Create a new segment if this is a keyframe and it's been >1s since the last keyframe.
+			if fragment.keyframe && fragment.timestamp >= self.keyframe + self.timescale {
+				segment.close();
+				self.publisher.create_segment()
+			} else {
+				segment
+			}
+		} else {
+			self.publisher.create_segment()
+		};
+
+		segment.push_fragment(raw);
+
+		// Save the current segment for the next iteration.
+		self.segment = Some(segment);
+
+		Ok(())
+	}
+
+	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
+		let segment = self.segment.as_mut().context("missing keyframe")?;
+		segment.push_fragment(raw);
+
+		Ok(())
+	}
+}
+
+struct Fragment {
+	// The track for this fragment.
+	track: u32,
+
+	// The timestamp of the first sample in this fragment, in timescale units.
+	timestamp: u64,
+
+	// True if this fragment is a keyframe.
+	keyframe: bool,
+}
+
+impl Fragment {
+	fn new(moof: mp4::MoofBox) -> anyhow::Result<Self> {
+		// We can't split the mdat atom, so this is impossible to support
+		anyhow::ensure!(moof.trafs.len() == 1, "multiple tracks per moof atom");
+		let track = moof.trafs[0].tfhd.track_id;
+
+		// Parse the moof to get some timing information to sleep.
+		let timestamp = sample_timestamp(&moof).expect("couldn't find timestamp");
+
+		// Detect if we should start a new segment.
+		let keyframe = sample_keyframe(&moof);
+
+		Ok(Self {
+			track,
+			timestamp,
+			keyframe,
+		})
 	}
 }
 
 // Read a full MP4 atom into a vector.
-pub fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
+fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
 	// Read the 8 bytes for the size + type
 	let mut buf = [0u8; 8];
 	reader.read_exact(&mut buf)?;

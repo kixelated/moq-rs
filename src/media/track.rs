@@ -1,83 +1,97 @@
-use super::{Segment, Shared};
+use super::segment;
 
 use std::collections::VecDeque;
 
+use anyhow::Context;
+use tokio::sync::watch;
+
 #[derive(Default)]
-pub struct Track {
-	// The number of segments removed from the front of the queue.
-	// ID = offset + index
-	pub offset: usize,
+struct State {
+	// The track ID as stored in the MP4
+	id: u32,
 
 	// A list of segments, which are independently decodable.
-	pub segments: VecDeque<Shared<Segment>>,
+	segments: VecDeque<segment::Subscriber>,
 
 	// If the track has finished producing segments.
-	pub fin: bool,
+	fin: bool,
+
+	// The number of segments removed from the front of the queue.
+	// ID = pruned + index
+	pruned: usize,
 }
 
-impl Track {
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	pub fn create_segment(&mut self) -> Shared<Segment> {
-		self.push_segment(Segment::new())
-	}
-
-	pub fn push_segment(&mut self, segment: Segment) -> Shared<Segment> {
-		let owned = Shared::new(segment);
-		self.segments.push_back(owned.clone());
-		owned
-	}
-
-	// TODO based on timestamp, not size
-	pub fn expire(&mut self, max: usize) {
-		while self.segments.len() > max {
-			self.segments.pop_front();
-			self.offset += 1;
-		}
-	}
-
-	pub fn done(&mut self) {
-		self.fin = true;
-	}
+pub struct Publisher {
+	// Sends state updates; this is the only copy.
+	state: watch::Sender<State>,
 }
 
-pub enum Error {
-	Wait,
-	Final,
-}
-
+#[derive(Clone)]
 pub struct Subscriber {
-	// The track state
-	state: Shared<Track>,
-
-	// The last seen index.
+	state: watch::Receiver<State>,
 	index: usize,
 }
 
+impl State {
+	pub fn new(id: u32) -> Self {
+		Self {
+			id,
+			segments: VecDeque::new(),
+			pruned: 0,
+			fin: false,
+		}
+	}
+}
+
+impl Publisher {
+	pub fn new(id: u32) -> Self {
+		let init = State::new(id);
+		let (state, _) = watch::channel(init);
+		Self { state }
+	}
+
+	pub fn create_segment(&mut self) -> segment::Publisher {
+		let segment = segment::Publisher::new();
+		self.state
+			.send_modify(|state| state.segments.push_back(segment.subscribe()));
+		segment
+	}
+
+	pub fn close(&mut self) {
+		self.state.send_modify(|state| state.fin = true);
+	}
+
+	pub fn subscribe(&self) -> Subscriber {
+		Subscriber::new(self.state.subscribe())
+	}
+}
+
 impl Subscriber {
-	pub fn new(state: Shared<Track>) -> Self {
+	fn new(state: watch::Receiver<State>) -> Self {
 		Self { state, index: 0 }
 	}
 
-	// TODO support futures
-	pub fn segment(&mut self) -> Option<Shared<Segment>> {
-		let state = self.state.lock();
-
-		if self.index < state.offset + state.segments.len() {
-			let segment = state.segments[self.index - state.offset].clone();
-			self.index += 1;
-
-			Some(segment)
-		} else {
-			None
-		}
+	pub fn id(&self) -> u32 {
+		self.state.borrow().id
 	}
 
-	pub fn done(&mut self) -> bool {
-		// TODO avoid a mutable lock
-		let state = self.state.lock();
-		state.fin && self.index >= state.offset + state.segments.len()
+	pub async fn next_segment(&mut self) -> anyhow::Result<Option<segment::Subscriber>> {
+		let state = self
+			.state
+			.wait_for(|state| state.fin || self.index < state.pruned + state.segments.len())
+			.await
+			.context("publisher dropped without close")?;
+
+		let index = self.index.saturating_sub(state.pruned);
+		if index < state.segments.len() {
+			log::info!("track index: {}", index);
+			let segment = state.segments[index].clone();
+			self.index = index + state.pruned + 1;
+			Ok(Some(segment))
+		} else if state.fin {
+			Ok(None)
+		} else {
+			panic!("impossible state")
+		}
 	}
 }

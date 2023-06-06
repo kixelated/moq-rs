@@ -1,57 +1,88 @@
-use super::{Fragment, Shared};
+use super::fragment;
 
+use anyhow::Context;
 use std::sync::Arc;
+use tokio::sync::watch;
 
 #[derive(Default)]
-pub struct Segment {
+struct State {
 	// A list of fragments that make up the segment.
-	pub fragments: Vec<Arc<Fragment>>,
+	fragments: Vec<fragment::Shared>,
 
 	// Whether the final fragment has been pushed.
-	pub fin: bool,
+	fin: bool,
 }
 
-impl Segment {
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	pub fn push_fragment(&mut self, data: Fragment) {
-		let owned = Arc::new(data);
-		self.fragments.push(owned);
+impl State {
+	fn new() -> Self {
+		Default::default()
 	}
 }
 
+pub struct Publisher {
+	state: watch::Sender<State>,
+}
+
+#[derive(Clone)]
 pub struct Subscriber {
-	// The segment
-	state: Shared<Segment>,
+	state: watch::Receiver<State>,
 
 	// The last seen index.
 	index: usize,
 }
 
+impl Publisher {
+	pub fn new() -> Self {
+		let init = State::new();
+		let (state, _) = watch::channel(init);
+
+		Self { state }
+	}
+
+	pub fn push_fragment(&mut self, fragment: fragment::Data) {
+		let owned = Arc::new(fragment);
+
+		self.state.send_modify(|state| {
+			state.fragments.push(owned);
+		});
+	}
+
+	pub fn close(&mut self) {
+		self.state.send_modify(|state| {
+			state.fin = true;
+		});
+	}
+
+	pub fn subscribe(&self) -> Subscriber {
+		Subscriber::new(self.state.subscribe())
+	}
+}
+
+impl Default for Publisher {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Subscriber {
-	pub fn new(state: Shared<Segment>) -> Self {
+	fn new(state: watch::Receiver<State>) -> Self {
 		Self { state, index: 0 }
 	}
 
-	// TODO support futures
-	pub fn fragment(&mut self) -> Option<Arc<Fragment>> {
-		let state = self.state.lock();
+	pub async fn next_fragment(&mut self) -> anyhow::Result<Option<fragment::Shared>> {
+		let state = self
+			.state
+			.wait_for(|segment| segment.fin || self.index < segment.fragments.len())
+			.await
+			.context("publisher dropped without close")?;
 
-		if self.index >= state.fragments.len() {
+		if self.index < state.fragments.len() {
 			let fragment = state.fragments[self.index].clone();
 			self.index += 1;
 
-			Some(fragment)
+			Ok(Some(fragment))
 		} else {
-			None
+			Ok(None)
 		}
-	}
-
-	pub fn done(&mut self) -> bool {
-		// TODO avoid needing a mutable lock
-		let state = self.state.lock();
-		state.fin && self.index >= state.fragments.len()
 	}
 }

@@ -1,36 +1,38 @@
-use super::connection::Connection;
-use crate::{media, transport};
+use crate::{app, media, transport};
 
-use std::time;
-
-use quiche::h3::webtransport;
+use anyhow::Context;
 
 pub struct Server {
+	// The QUIC server, yielding new connections and sessions.
+	transport: transport::Server,
+
 	// The media source
-	media: media::Source,
+	broadcast: media::source::Broadcast,
 }
 
 impl Server {
 	// Create a new server
-	pub fn new(media: media::Source) -> Self {
-		Self { media }
-	}
-}
-
-impl transport::app::Server for Server {
-	type Connection = Connection;
-
-	fn accept(&mut self, mut conn: quiche::Connection) -> anyhow::Result<Self::Connection> {
-		let session = webtransport::ServerSession::with_transport(&mut conn)?;
-
-		let subscription = media::broadcast::Subscriber::new(self.media.broadcast());
-
-		let session = Connection::new(conn, session, subscription);
-		Ok(session)
+	pub fn new(transport: transport::Server, broadcast: media::source::Broadcast) -> Self {
+		Self { transport, broadcast }
 	}
 
-	// Called periodically based on the timeout returned.
-	fn poll(&mut self) -> anyhow::Result<Option<time::Duration>> {
-		self.media.poll()
+	pub async fn run(&mut self) -> anyhow::Result<()> {
+		loop {
+			let conn = self.transport.accept().await.context("failed to accept connection")?;
+			let broadcast = self.broadcast.subscribe();
+
+			tokio::spawn(async move {
+				if let Err(e) = Self::run_conn(conn, broadcast).await {
+					log::error!("connection closed: {:?}", e);
+				}
+			});
+		}
+	}
+
+	async fn run_conn(conn: transport::Connection, broadcast: media::broadcast::Subscriber) -> anyhow::Result<()> {
+		let session = conn.connect().await.context("failed to accept session")?;
+		let session = app::Session::new(session);
+
+		session.serve_broadcast(broadcast).await
 	}
 }

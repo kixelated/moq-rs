@@ -1,58 +1,71 @@
-use super::{track, Shared, Track};
+use super::track;
 
-use std::collections::HashMap;
+use anyhow::Context;
+use tokio::sync::watch;
 
 #[derive(Default)]
-pub struct Broadcast {
-	// The list of subscribable tracks
-	// NOTE: The track ID is a u32 (for now) because it matches MP4.
-	pub tracks: HashMap<u32, Shared<Track>>,
-
-	// The epoch, which increases on every update.
-	pub epoch: u64,
+struct State {
+	pub tracks: Vec<track::Subscriber>,
 }
 
-impl Broadcast {
-	pub fn new() -> Self {
+pub struct Publisher {
+	state: watch::Sender<State>,
+}
+
+#[derive(Clone)]
+pub struct Subscriber {
+	state: watch::Receiver<State>,
+	index: usize,
+}
+
+impl State {
+	fn new() -> Self {
 		Default::default()
 	}
+}
 
-	pub fn create_track(&mut self, id: u32) -> Shared<Track> {
-		self.insert_track(id, Track::new())
+impl Publisher {
+	pub fn new() -> Self {
+		let (state, _) = watch::channel(State::new());
+		Self { state }
 	}
 
-	pub fn insert_track(&mut self, id: u32, track: Track) -> Shared<Track> {
-		let owned = Shared::new(track);
-		let existing = self.tracks.insert(id, owned.clone());
-		assert!(existing.is_none(), "track already exists"); // TODO return a Result
-		self.epoch += 1;
-		owned
+	pub fn create_track(&mut self, track_id: u32) -> track::Publisher {
+		let track = track::Publisher::new(track_id);
+
+		self.state.send_modify(|broadcast| {
+			broadcast.tracks.push(track.subscribe());
+		});
+
+		track
 	}
 
-	pub fn get_track(&mut self, id: u32) -> Option<Shared<Track>> {
-		self.tracks.get_mut(&id).cloned()
+	pub fn subscribe(&self) -> Subscriber {
+		Subscriber::new(self.state.subscribe())
 	}
 }
 
-pub struct Subscriber {
-	// The broadcast state
-	state: Shared<Broadcast>,
+impl Default for Publisher {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl Subscriber {
-	pub fn new(shared: Shared<Broadcast>) -> Self {
-		Self { state: shared }
+	fn new(state: watch::Receiver<State>) -> Self {
+		Self { state, index: 0 }
 	}
 
-	// TODO support updates
-	pub fn tracks(&mut self) -> HashMap<u32, track::Subscriber> {
-		let state = self.state.lock();
+	pub async fn next_track(&mut self) -> anyhow::Result<track::Subscriber> {
+		let broadcast = self
+			.state
+			.wait_for(|broadcast| self.index < broadcast.tracks.len())
+			.await
+			.context("publisher dropped without close")?;
 
-		// Convert the broadcast::Subscriber object into multiple track::Subscriber objects.
-		let tracks = &state.tracks;
-		tracks
-			.iter()
-			.map(|(id, shared)| (*id, track::Subscriber::new(shared.clone())))
-			.collect()
+		let track = broadcast.tracks[self.index].clone();
+
+		self.index += 1;
+		Ok(track)
 	}
 }
