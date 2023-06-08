@@ -1,6 +1,7 @@
 use std::io::Read;
 
-use std::{fs, io, path, time};
+use std::sync::Arc;
+use std::{fs, io, path, sync, time};
 
 use anyhow;
 
@@ -10,20 +11,20 @@ use mp4::ReadBox;
 use anyhow::Context;
 use std::collections::HashMap;
 
-use crate::media::{broadcast, segment, track};
+use crate::media;
 
-pub struct Broadcast {
+pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
 	// The broadcast we're producing
-	broadcast: broadcast::Producer,
+	broadcast: sync::Arc<media::Broadcast>,
 
 	// The tracks we're producing.
-	tracks: HashMap<u32, Track>,
+	tracks: HashMap<u32, SourceTrack>,
 }
 
-impl Broadcast {
+impl Source {
 	pub fn new(path: path::PathBuf) -> anyhow::Result<Self> {
 		let f = fs::File::open(path)?;
 		let mut reader = io::BufReader::new(f);
@@ -46,16 +47,18 @@ impl Broadcast {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the broadcast state.
-		let mut broadcast = broadcast::Broadcast::new();
+		let broadcast = media::Broadcast::new();
 
-		let mut init_segment = segment::Segment::new(time::Duration::ZERO);
-		init_segment.push_fragment(init);
+		let init_segment = media::Segment::new(time::Duration::ZERO);
+		init_segment.fragments.push(init.into());
+		init_segment.fragments.close();
 
 		// Create an init track with a single segment.
-		let mut init_track = track::Track::new(0xff, None);
-		init_track.push_segment(init_segment.subscribe());
+		let init_track = media::Track::new(0xff, None);
+		init_track.segments.push(init_segment.into());
+		init_track.segments.close();
 
-		broadcast.add_track(init_track.subscribe());
+		broadcast.tracks.push(init_track.into());
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
@@ -68,17 +71,22 @@ impl Broadcast {
 			let timescale = track_timescale(&moov, track_id);
 
 			// Create a new track that can hold 10s of media at most.
-			let track = track::Track::new(track_id, Some(time::Duration::from_secs(10)));
-			broadcast.add_track(track.subscribe());
+			let track = media::Track::new(track_id, Some(time::Duration::from_secs(10)));
+			let track = Arc::new(track);
+
+			broadcast.tracks.push(track.clone());
 
 			// Store the track publisher in a map so we can update it later.
-			let track = Track::new(track, timescale);
+			let track = SourceTrack::new(track, timescale);
 			tracks.insert(track_id, track);
 		}
 
+		// No new tracks will be spawned
+		broadcast.tracks.close();
+
 		Ok(Self {
 			reader,
-			broadcast,
+			broadcast: broadcast.into(),
 			tracks,
 		})
 	}
@@ -101,7 +109,7 @@ impl Broadcast {
 					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
 
 					// Process the moof.
-					let fragment = Fragment::new(moof)?;
+					let fragment = SourceFragment::new(moof)?;
 
 					// Get the track for this moof.
 					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
@@ -132,62 +140,65 @@ impl Broadcast {
 		}
 	}
 
-	pub fn subscribe(&self) -> broadcast::Consumer {
-		self.broadcast.subscribe()
+	pub fn broadcast(&self) -> sync::Arc<media::Broadcast> {
+		self.broadcast.clone()
 	}
 }
 
-struct Track {
+struct SourceTrack {
 	// The track we're producing
-	publisher: track::Producer,
+	track: Arc<media::Track>,
 
 	// The current segment
-	segment: Option<segment::Producer>,
+	segment: Option<Arc<media::Segment>>,
 
 	// The number of units per second.
 	timescale: u64,
 }
 
-impl Track {
-	fn new(publisher: track::Producer, timescale: u64) -> Self {
+impl SourceTrack {
+	fn new(track: Arc<media::Track>, timescale: u64) -> Self {
 		Self {
-			publisher,
+			track,
 			segment: None,
 			timescale,
 		}
 	}
 
-	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
+	pub fn header(&mut self, raw: Vec<u8>, fragment: SourceFragment) -> anyhow::Result<()> {
 		// Close the current segment if we have a new keyframe.
 		if fragment.keyframe {
-			self.segment.take();
+			if let Some(segment) = self.segment.take() {
+				// TODO implement drop
+				segment.fragments.close();
+			}
 		}
 
 		// Get or create the current segment.
 		let segment = self.segment.get_or_insert_with(|| {
 			let timestamp = fragment.timestamp(self.timescale);
 
-			let segment = segment::Segment::new(timestamp);
-			self.publisher.push_segment(segment.subscribe());
+			let segment = Arc::new(media::Segment::new(timestamp));
+			self.track.segments.push(segment.clone());
 
 			segment
 		});
 
 		// Insert the raw atom into the segment.
-		segment.push_fragment(raw);
+		segment.fragments.push(raw.into());
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let segment = self.segment.as_mut().context("missing keyframe")?;
-		segment.push_fragment(raw);
+		segment.fragments.push(raw.into());
 
 		Ok(())
 	}
 }
 
-struct Fragment {
+struct SourceFragment {
 	// The track for this fragment.
 	track: u32,
 
@@ -198,7 +209,7 @@ struct Fragment {
 	keyframe: bool,
 }
 
-impl Fragment {
+impl SourceFragment {
 	fn new(moof: mp4::MoofBox) -> anyhow::Result<Self> {
 		// We can't split the mdat atom, so this is impossible to support
 		anyhow::ensure!(moof.trafs.len() == 1, "multiple tracks per moof atom");

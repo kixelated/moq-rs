@@ -22,19 +22,28 @@ impl Session {
 		Self { transport }
 	}
 
-	pub async fn serve_broadcast(&self, mut broadcast: media::broadcast::Consumer) -> anyhow::Result<()> {
+	pub async fn serve_broadcast(&self, broadcast: Arc<media::Broadcast>) -> anyhow::Result<()> {
+		log::info!("serving broadcast");
+
 		let mut tasks = JoinSet::new();
+
+		let mut tracks = broadcast.tracks.subscribe();
+		let mut tracks_done = false;
 
 		loop {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
-				track = broadcast.next_track() => {
-					let track = track.context("failed to accept track")?;
-					let session = self.clone();
+				track = tracks.next(), if !tracks_done => {
+					match track {
+						Some(track) => {
+							let session = self.clone();
 
-					tasks.spawn(async move {
-						session.serve_track(track).await
-					});
+							tasks.spawn(async move {
+								session.serve_track(track).await
+							});
+						},
+						None => tracks_done = true,
+					}
 				},
 				// Poll any pending tracks until they exit.
 				res = tasks.join_next(), if !tasks.is_empty() => {
@@ -47,27 +56,28 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_track(&self, mut track: media::track::Consumer) -> anyhow::Result<()> {
-		let mut tasks = JoinSet::new();
-		let mut fin = false;
+	pub async fn serve_track(&self, track: Arc<media::Track>) -> anyhow::Result<()> {
+		log::info!("serving track: id={}", track.id);
 
-		let track_id = track.id();
+		let mut tasks = JoinSet::new();
+
+		let mut segments = track.segments.subscribe();
+		let mut segments_done = false;
 
 		loop {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
-				segment = track.next_segment(), if !fin => {
+				segment = segments.next(), if !segments_done => {
 					match segment {
 						Some(segment) => {
+							let track = track.clone();
 							let session = self.clone();
+
 							tasks.spawn(async move {
-								session.serve_segment(track_id, segment).await
+								session.serve_segment(track, segment).await
 							});
 						},
-						None => {
-							// No more segments, but keep looping until tasks are empty
-							fin = true;
-						},
+						None => segments_done = true,
 					}
 				},
 				// Poll any pending segments until they exit.
@@ -81,7 +91,9 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_segment(&self, track_id: u32, mut segment: media::segment::Consumer) -> anyhow::Result<()> {
+	pub async fn serve_segment(&self, track: Arc<media::Track>, segment: Arc<media::Segment>) -> anyhow::Result<()> {
+		log::info!("serving segment: track={} timestamp={:?}", track.id, segment.timestamp);
+
 		let mut stream = self.transport.open_uni(self.transport.session_id()).await?;
 
 		// TODO support prioirty
@@ -91,10 +103,10 @@ impl Session {
 		let mut message: message::Message = message::Message::new();
 
 		// TODO combine init and segment messages into one.
-		if track_id == 0xff {
+		if track.id == 0xff {
 			message.init = Some(message::Init {});
 		} else {
-			message.segment = Some(message::Segment { track_id });
+			message.segment = Some(message::Segment { track_id: track.id });
 		}
 
 		// Write the JSON header.
@@ -102,11 +114,20 @@ impl Session {
 		stream.write_all(data.as_slice()).await?;
 
 		// Write each fragment as they are available.
-		while let Some(fragment) = segment.next_fragment().await {
+		let mut fragments = segment.fragments.subscribe();
+
+		while let Some(fragment) = fragments.next().await {
+			log::info!(
+				"writing fragment: track={} timestamp={:?} size={}",
+				track.id,
+				segment.timestamp,
+				fragment.len()
+			);
 			stream.write_all(fragment.as_slice()).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped
+		log::info!("finished segment: track={} timestamp={:?}", track.id, segment.timestamp);
 
 		Ok(())
 	}

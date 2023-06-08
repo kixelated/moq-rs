@@ -36,14 +36,14 @@ async fn main() -> anyhow::Result<()> {
 	let serve = serve_http(args.clone());
 
 	// Create a fake media source from disk.
-	let mut media = media::source::Broadcast::new(args.media).context("failed to open fragmented.mp4")?;
+	let mut media = media::Source::new(args.media).context("failed to open fragmented.mp4")?;
 
 	// Create a server to actually serve the media
 	let config = app::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broadcast: media.subscribe(),
+		broadcast: media.broadcast(),
 	};
 
 	let mut server = app::Server::new(config).context("failed to create server")?;

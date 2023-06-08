@@ -12,7 +12,7 @@ pub struct Server {
 	server: quinn::Endpoint,
 
 	// The media source
-	broadcast: media::broadcast::Consumer,
+	broadcast: sync::Arc<media::Broadcast>,
 }
 
 pub struct ServerConfig {
@@ -20,7 +20,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcast: media::broadcast::Consumer,
+	pub broadcast: sync::Arc<media::Broadcast>,
 }
 
 impl Server {

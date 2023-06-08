@@ -1,5 +1,8 @@
-pub mod broadcast;
-pub mod fragment;
-pub mod segment;
-pub mod source;
-pub mod track;
+mod source;
+pub use source::Source;
+
+mod model;
+pub use model::*;
+
+mod watch;
+use watch::Producer;
