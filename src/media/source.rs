@@ -186,14 +186,19 @@ impl SourceTrack {
 
 		// Get or create the current segment.
 		let fragments = self.fragments.get_or_insert_with(|| {
+			// Compute the timestamp in seconds.
 			let timestamp = fragment.timestamp(self.timescale);
 
+			// Create a new segment, and save the fragments producer so we can push to it.
 			let fragments = Producer::<Fragment>::new();
-
 			self.segments.push(Segment {
 				timestamp,
 				fragments: fragments.subscribe(),
 			});
+
+			// Remove any segments older than 10s.
+			let expires = timestamp.saturating_sub(time::Duration::from_secs(10));
+			self.segments.drain(|segment| segment.timestamp < expires);
 
 			fragments
 		});

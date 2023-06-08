@@ -23,8 +23,6 @@ impl Session {
 	}
 
 	pub async fn serve_broadcast(&self, mut broadcast: media::Broadcast) -> anyhow::Result<()> {
-		log::info!("serving broadcast");
-
 		let mut tasks = JoinSet::new();
 		let mut done = false;
 
@@ -55,8 +53,6 @@ impl Session {
 	}
 
 	pub async fn serve_track(&self, mut track: media::Track) -> anyhow::Result<()> {
-		log::info!("serving track: id={}", track.id);
-
 		let mut tasks = JoinSet::new();
 		let mut done = false;
 
@@ -88,8 +84,6 @@ impl Session {
 	}
 
 	pub async fn serve_segment(&self, track: media::Track, mut segment: media::Segment) -> anyhow::Result<()> {
-		log::info!("serving segment: track={} timestamp={:?}", track.id, segment.timestamp);
-
 		let mut stream = self.transport.open_uni(self.transport.session_id()).await?;
 
 		// TODO support prioirty
@@ -111,17 +105,10 @@ impl Session {
 
 		// Write each fragment as they are available.
 		while let Some(fragment) = segment.fragments.next().await {
-			log::info!(
-				"writing fragment: track={} timestamp={:?} size={}",
-				track.id,
-				segment.timestamp,
-				fragment.len()
-			);
 			stream.write_all(fragment.as_slice()).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped
-		log::info!("finished segment: track={} timestamp={:?}", track.id, segment.timestamp);
 
 		Ok(())
 	}
