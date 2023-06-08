@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Message {
 	pub init: Option<Init>,
 	pub segment: Option<Segment>,
@@ -16,10 +16,7 @@ pub struct Segment {
 
 impl Message {
 	pub fn new() -> Self {
-		Message {
-			init: None,
-			segment: None,
-		}
+		Default::default()
 	}
 
 	pub fn serialize(&self) -> anyhow::Result<Vec<u8>> {

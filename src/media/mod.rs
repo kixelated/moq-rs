@@ -1,3 +1,8 @@
 mod source;
+pub use source::Source;
 
-pub use source::{Fragment, Source};
+mod model;
+pub use model::*;
+
+mod watch;
+use watch::{Producer, Subscriber};
