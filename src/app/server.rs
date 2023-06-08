@@ -61,10 +61,14 @@ impl Server {
 		tls_config.alpn_protocols = alpn;
 
 		let mut server_config = quinn::ServerConfig::with_crypto(sync::Arc::new(tls_config));
+
+		// Enable BBR congestion control
+		// TODO validate the implementation
 		let mut transport_config = quinn::TransportConfig::default();
 		transport_config.keep_alive_interval(Some(time::Duration::from_secs(2)));
-		server_config.transport = sync::Arc::new(transport_config);
+		transport_config.congestion_controller_factory(sync::Arc::new(quinn::congestion::BbrConfig::default()));
 
+		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broadcast = config.broadcast;
 
