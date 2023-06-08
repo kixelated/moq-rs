@@ -9,7 +9,7 @@ struct State<T> {
 }
 
 impl<T> State<T> {
-	pub fn new() -> Self {
+	fn new() -> Self {
 		Self {
 			queue: VecDeque::new(),
 			drained: 0,

@@ -87,9 +87,8 @@ impl Source {
 
 	// Create an init track
 	fn create_init_track(raw: Vec<u8>) -> Track {
-		// TODO support static producers
-		let mut fragments = Producer::<Fragment>::new();
-		let mut segments = Producer::<Segment>::new();
+		let mut fragments = Producer::new();
+		let mut segments = Producer::new();
 
 		fragments.push(raw.into());
 
