@@ -1,27 +1,28 @@
-use crate::{media, transport};
+use crate::media;
 
 use anyhow::Context;
 
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet;
 
-use tokio::io::AsyncWriteExt;
+use super::WebTransportSession;
 
 use super::message;
 
 #[derive(Clone)]
 pub struct Session {
 	// The underlying transport session
-	transport: Arc<transport::Session>,
+	transport: Arc<WebTransportSession>,
 }
 
 impl Session {
-	pub fn new(transport: transport::Session) -> Self {
+	pub fn new(transport: WebTransportSession) -> Self {
 		let transport = Arc::new(transport);
 		Self { transport }
 	}
 
-	pub async fn serve_broadcast(&self, mut broadcast: media::broadcast::Subscriber) -> anyhow::Result<()> {
+	pub async fn serve_broadcast(&self, mut broadcast: media::broadcast::Consumer) -> anyhow::Result<()> {
 		let mut tasks = JoinSet::new();
 
 		loop {
@@ -46,9 +47,7 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_track(&self, mut track: media::track::Subscriber) -> anyhow::Result<()> {
-		log::info!("serving track: {}", track.id());
-
+	pub async fn serve_track(&self, mut track: media::track::Consumer) -> anyhow::Result<()> {
 		let mut tasks = JoinSet::new();
 		let mut fin = false;
 
@@ -58,24 +57,21 @@ impl Session {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
 				segment = track.next_segment(), if !fin => {
-					log::info!("next segment: {} {:?}", track.id(), segment.is_ok());
-					match segment.context("failed to get next segment")? {
+					match segment {
 						Some(segment) => {
 							let session = self.clone();
-
 							tasks.spawn(async move {
 								session.serve_segment(track_id, segment).await
 							});
 						},
 						None => {
-							log::info!("no more segments");
+							// No more segments, but keep looping until tasks are empty
 							fin = true;
 						},
 					}
 				},
 				// Poll any pending segments until they exit.
 				res = tasks.join_next(), if !tasks.is_empty() => {
-					log::info!("segment ended: {:?}", res);
 					let res = res.context("no tasks running")?;
 					let res = res.context("failed to run segment")?;
 					res.context("failed serve segment")?
@@ -85,8 +81,7 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_segment(&self, track_id: u32, mut segment: media::segment::Subscriber) -> anyhow::Result<()> {
-		log::info!("serving segment: {}", track_id);
+	pub async fn serve_segment(&self, track_id: u32, mut segment: media::segment::Consumer) -> anyhow::Result<()> {
 		let mut stream = self.transport.open_uni(self.transport.session_id()).await?;
 
 		// TODO support prioirty
@@ -107,64 +102,12 @@ impl Session {
 		stream.write_all(data.as_slice()).await?;
 
 		// Write each fragment as they are available.
-		while let Some(fragment) = segment.next_fragment().await? {
+		while let Some(fragment) = segment.next_fragment().await {
 			stream.write_all(fragment.as_slice()).await?;
 		}
 
-		// TODO support closing streams
-		// stream.finish().await?;
+		// NOTE: stream is automatically closed when dropped
 
 		Ok(())
 	}
 }
-
-/*
-	fn poll_media(&mut self) -> anyhow::Result<Option<time::Duration>> {
-		for (track_id, track_sub) in &mut self.tracks {
-			while let Some(segment) = track_sub.segment() {
-				// Create a new unidirectional stream.
-				let stream_id = self.session.open_stream(&mut self.quic, false)?;
-
-				// TODO send order
-				// Set the stream priority to be equal to the timestamp.
-				// We subtract from u64::MAX so newer media is sent important.
-				// TODO prioritize audio
-				// let order = u64::MAX - fragment.timestamp;
-				// self.streams.send_order(conn, stream_id, order);
-
-				// Encode a JSON header indicating this is a new track.
-				let mut message: message::Message = message::Message::new();
-				message.segment = Some(message::Segment { track_id: *track_id });
-
-				// Write the header.
-				let data = message.serialize()?;
-				self.streams.send(&mut self.quic, stream_id, &data, false)?;
-
-				let segment = media::segment::Subscriber::new(segment);
-				self.segments.insert(stream_id, segment);
-			}
-		}
-
-		self.tracks.retain(|_, track_sub| !track_sub.done());
-
-		for (stream_id, segment_sub) in &mut self.segments {
-			while let Some(fragment) = segment_sub.fragment() {
-				// Write the fragment.
-				self.streams
-					.send(&mut self.quic, *stream_id, fragment.as_slice(), false)?;
-			}
-
-			// TODO combine with the retain call below
-			if segment_sub.done() {
-				// Close the stream
-				self.streams.send(&mut self.quic, *stream_id, &[], true)?;
-			}
-		}
-
-		self.segments.retain(|_stream_id, segment_sub| !segment_sub.done());
-
-		// TODO implement futures...
-		Ok(time::Duration::from_millis(10).into())
-	}
-}
-	*/

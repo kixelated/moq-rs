@@ -1,67 +1,81 @@
 use super::track;
 
-use anyhow::Context;
 use tokio::sync::watch;
 
 #[derive(Default)]
-struct State {
-	pub tracks: Vec<track::Subscriber>,
+pub struct Broadcast {
+	tracks: Vec<track::Consumer>,
+
+	closed: bool,
 }
 
-pub struct Publisher {
-	state: watch::Sender<State>,
+pub struct Producer {
+	state: watch::Sender<Broadcast>,
 }
 
 #[derive(Clone)]
-pub struct Subscriber {
-	state: watch::Receiver<State>,
+pub struct Consumer {
+	state: watch::Receiver<Broadcast>,
 	index: usize,
 }
 
-impl State {
-	fn new() -> Self {
-		Default::default()
+impl Broadcast {
+	pub fn new() -> Producer {
+		let broadcast = Default::default();
+		Producer::new(broadcast)
+	}
+
+	pub fn add_track(&mut self, track: track::Consumer) {
+		self.tracks.push(track);
 	}
 }
 
-impl Publisher {
-	pub fn new() -> Self {
-		let (state, _) = watch::channel(State::new());
+impl Producer {
+	pub fn new(broadcast: Broadcast) -> Self {
+		let (state, _) = watch::channel(broadcast);
 		Self { state }
 	}
 
-	pub fn add_track(&mut self, track: &track::Publisher) {
-		self.state.send_modify(|broadcast| {
-			broadcast.tracks.push(track.subscribe());
+	pub fn add_track(&mut self, track: track::Consumer) {
+		self.state.send_modify(|state| {
+			state.add_track(track);
 		});
 	}
 
-	pub fn subscribe(&self) -> Subscriber {
-		Subscriber::new(self.state.subscribe())
+	pub fn subscribe(&self) -> Consumer {
+		Consumer::new(self.state.subscribe())
 	}
 }
 
-impl Default for Publisher {
-	fn default() -> Self {
-		Self::new()
+impl Drop for Producer {
+	fn drop(&mut self) {
+		self.state.send_modify(|state| state.closed = true);
 	}
 }
 
-impl Subscriber {
-	fn new(state: watch::Receiver<State>) -> Self {
+impl Consumer {
+	fn new(state: watch::Receiver<Broadcast>) -> Self {
 		Self { state, index: 0 }
 	}
 
-	pub async fn next_track(&mut self) -> anyhow::Result<track::Subscriber> {
+	pub async fn next_track(&mut self) -> Option<track::Consumer> {
 		let broadcast = self
 			.state
-			.wait_for(|broadcast| self.index < broadcast.tracks.len())
+			.wait_for(|state| state.closed || self.index < state.tracks.len())
 			.await
-			.context("publisher dropped without close")?;
+			.expect("publisher dropped without close");
 
-		let track = broadcast.tracks[self.index].clone();
+		if self.index < broadcast.tracks.len() {
+			let track = broadcast.tracks[self.index].clone();
+			self.index += 1;
 
-		self.index += 1;
-		Ok(track)
+			Some(track)
+		} else {
+			None
+		}
+	}
+
+	pub fn lock(&self) -> watch::Ref<Broadcast> {
+		self.state.borrow()
 	}
 }

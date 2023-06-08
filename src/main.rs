@@ -1,4 +1,4 @@
-use moq::{app, media, transport};
+use moq::{app, media};
 use std::{fs, io, net, path, sync};
 
 use anyhow::Context;
@@ -32,30 +32,33 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	tokio::select! {
-		res = run_transport(args.clone()) => res,
-		res = run_http(args.clone()) => res,
-	}
-}
+	// Create a web server to serve the fingerprint
+	let serve = serve_http(args.clone());
 
-// Run the WebTransport server using quiche.
-async fn run_transport(args: Cli) -> anyhow::Result<()> {
-	let server_config = transport::ServerConfig {
+	// Create a fake media source from disk.
+	let mut media = media::source::Broadcast::new(args.media).context("failed to open fragmented.mp4")?;
+
+	// Create a server to actually serve the media
+	let config = app::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
+		broadcast: media.subscribe(),
 	};
 
-	let media = media::source::Broadcast::new(args.media).context("failed to open fragmented.mp4")?;
-	let transport = transport::Server::new(server_config).context("failed to create transport server")?;
+	let mut server = app::Server::new(config).context("failed to create server")?;
 
-	let mut server = app::Server::new(transport, media);
-	server.run().await
+	// Run all of the above
+	tokio::select! {
+		res = server.run() => res.context("failed to run server"),
+		res = media.run() => res.context("failed to run media source"),
+		res = serve => res.context("failed to run HTTP server"),
+	}
 }
 
 // Run a HTTP server using Warp
 // TODO remove this when Chrome adds support for self-signed certificates using WebTransport
-async fn run_http(args: Cli) -> anyhow::Result<()> {
+async fn serve_http(args: Cli) -> anyhow::Result<()> {
 	// Read the PEM certificate file
 	let crt = fs::File::open(&args.cert)?;
 	let mut crt = io::BufReader::new(crt);

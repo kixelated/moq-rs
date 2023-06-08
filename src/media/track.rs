@@ -1,79 +1,98 @@
 use super::segment;
 
 use std::collections::VecDeque;
+use std::time;
 
-use anyhow::Context;
 use tokio::sync::watch;
 
+// TODO split into static and dynamic components
 #[derive(Default)]
-struct State {
+pub struct Track {
 	// The track ID as stored in the MP4
-	id: u32,
+	pub id: u32,
+
+	// Automatically remove segments after this time.
+	pub ttl: Option<time::Duration>,
 
 	// A list of segments, which are independently decodable.
-	segments: VecDeque<segment::Subscriber>,
-
-	// If the track has finished producing segments.
-	fin: bool,
+	segments: VecDeque<segment::Consumer>,
 
 	// The number of segments removed from the front of the queue.
 	// ID = pruned + index
 	pruned: usize,
+
+	// If the track has finished updates.
+	closed: bool,
 }
 
-pub struct Publisher {
-	// Sends state updates; this is the only copy.
-	state: watch::Sender<State>,
-}
-
-#[derive(Clone)]
-pub struct Subscriber {
-	state: watch::Receiver<State>,
-	index: usize,
-}
-
-impl State {
-	pub fn new(id: u32, capacity: usize) -> Self {
-		Self {
+impl Track {
+	pub fn new(id: u32, ttl: Option<time::Duration>) -> Producer {
+		let track = Self {
 			id,
-			segments: VecDeque::with_capacity(capacity),
+			ttl,
+			segments: VecDeque::new(),
 			pruned: 0,
-			fin: false,
+			closed: false,
+		};
+
+		Producer::new(track)
+	}
+
+	pub fn push_segment(&mut self, segment: segment::Consumer) {
+		self.segments.push_back(segment);
+
+		if let Some(ttl) = self.ttl {
+			// Compute the last allowed timestamp in the queue.
+			let expires = self.segments.back().unwrap().lock().timestamp.saturating_sub(ttl);
+
+			// Remove segments from the front based on their timestamp.
+			// TODO this assumes segments are pushed in chronological order, which is not true.
+			while let Some(front) = self.segments.front() {
+				if front.lock().timestamp <= expires {
+					break;
+				}
+
+				self.segments.pop_front();
+				self.pruned += 1;
+			}
 		}
 	}
 }
 
-impl Publisher {
-	// TODO represent capacity in units of time (or bytes?)
-	pub fn new(id: u32, capacity: usize) -> Self {
-		let init = State::new(id, capacity);
-		let (state, _) = watch::channel(init);
+pub struct Producer {
+	// Sends state updates; this is the only copy.
+	state: watch::Sender<Track>,
+}
+
+impl Producer {
+	pub fn new(track: Track) -> Self {
+		let (state, _) = watch::channel(track);
 		Self { state }
 	}
 
-	pub fn push_segment(&mut self, segment: &segment::Publisher) {
-		self.state.send_modify(|state| {
-			// Remove segments from the front as we will up on capacity.
-			if state.segments.capacity() == state.segments.len() {
-				state.segments.pop_front();
-				state.pruned += 1;
-			}
-
-			state.segments.push_back(segment.subscribe());
-		});
+	pub fn push_segment(&mut self, segment: segment::Consumer) {
+		self.state.send_modify(|state| state.push_segment(segment));
 	}
 
-	pub fn close(&mut self) {
-		self.state.send_modify(|state| state.fin = true);
-	}
-
-	pub fn subscribe(&self) -> Subscriber {
-		Subscriber::new(self.state.subscribe())
+	pub fn subscribe(&self) -> Consumer {
+		Consumer::new(self.state.subscribe())
 	}
 }
 
-impl Subscriber {
-	fn new(state: watch::Receiver<State>) -> Self {
+impl Drop for Producer {
+	fn drop(&mut self) {
+		self.state.send_modify(|state| state.closed = true);
+	}
+}
+
+#[derive(Clone)]
+pub struct Consumer {
+	state: watch::Receiver<Track>,
+	index: usize,
+}
+
+impl Consumer {
+	fn new(state: watch::Receiver<Track>) -> Self {
 		Self { state, index: 0 }
 	}
 
@@ -81,22 +100,25 @@ impl Subscriber {
 		self.state.borrow().id
 	}
 
-	pub async fn next_segment(&mut self) -> anyhow::Result<Option<segment::Subscriber>> {
+	pub async fn next_segment(&mut self) -> Option<segment::Consumer> {
 		let state = self
 			.state
-			.wait_for(|state| state.fin || self.index < state.pruned + state.segments.len())
+			.wait_for(|state| state.closed || self.index < state.pruned + state.segments.len())
 			.await
-			.context("publisher dropped without close")?;
+			.expect("publisher dropped without close");
 
 		let index = self.index.saturating_sub(state.pruned);
 		if index < state.segments.len() {
 			let segment = state.segments[index].clone();
 			self.index = index + state.pruned + 1;
-			Ok(Some(segment))
-		} else if state.fin {
-			Ok(None)
+
+			Some(segment)
 		} else {
-			panic!("impossible state")
+			None
 		}
+	}
+
+	pub fn lock(&self) -> watch::Ref<Track> {
+		self.state.borrow()
 	}
 }

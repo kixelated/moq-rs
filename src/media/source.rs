@@ -17,7 +17,7 @@ pub struct Broadcast {
 	reader: io::BufReader<fs::File>,
 
 	// The broadcast we're producing
-	broadcast: broadcast::Publisher,
+	broadcast: broadcast::Producer,
 
 	// The tracks we're producing.
 	tracks: HashMap<u32, Track>,
@@ -46,15 +46,16 @@ impl Broadcast {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the broadcast state.
-		let mut broadcast = broadcast::Publisher::new();
-		let mut init_track = track::Publisher::new(0xff, 1);
-		let mut init_segment = segment::Publisher::new();
+		let mut broadcast = broadcast::Broadcast::new();
 
-		broadcast.add_track(&init_track);
-		init_track.push_segment(&init_segment);
+		let mut init_segment = segment::Segment::new(time::Duration::ZERO);
+		init_segment.push_fragment(init);
 
-		init_segment.close();
-		init_track.close();
+		// Create an init track with a single segment.
+		let mut init_track = track::Track::new(0xff, None);
+		init_track.push_segment(init_segment.subscribe());
+
+		broadcast.add_track(init_track.subscribe());
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
@@ -66,10 +67,9 @@ impl Broadcast {
 
 			let timescale = track_timescale(&moov, track_id);
 
-			// Create a new track that can hold 10 segments at most.
-			// TODO represent capacity in terms of time.
-			let track = track::Publisher::new(track_id, 10);
-			broadcast.add_track(&track);
+			// Create a new track that can hold 10s of media at most.
+			let track = track::Track::new(track_id, Some(time::Duration::from_secs(10)));
+			broadcast.add_track(track.subscribe());
 
 			// Store the track publisher in a map so we can update it later.
 			let track = Track::new(track, timescale);
@@ -84,8 +84,6 @@ impl Broadcast {
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		log::info!("run source");
-
 		// The timestamp when the broadcast "started", so we can sleep to simulate a live stream.
 		let start = tokio::time::Instant::now();
 
@@ -97,8 +95,6 @@ impl Broadcast {
 
 			let mut reader = io::Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
-
-			log::info!("atom: {:?}", header);
 
 			match header.name {
 				mp4::BoxType::MoofBox => {
@@ -136,60 +132,49 @@ impl Broadcast {
 		}
 	}
 
-	pub fn subscribe(&self) -> broadcast::Subscriber {
+	pub fn subscribe(&self) -> broadcast::Consumer {
 		self.broadcast.subscribe()
 	}
 }
 
 struct Track {
 	// The track we're producing
-	publisher: track::Publisher,
+	publisher: track::Producer,
 
 	// The current segment
-	segment: Option<segment::Publisher>,
-
-	// The timestamp of the last keyframe, in timescale units.
-	keyframe: u64,
+	segment: Option<segment::Producer>,
 
 	// The number of units per second.
 	timescale: u64,
 }
 
 impl Track {
-	fn new(publisher: track::Publisher, timescale: u64) -> Self {
+	fn new(publisher: track::Producer, timescale: u64) -> Self {
 		Self {
 			publisher,
 			segment: None,
-			keyframe: 0,
 			timescale,
 		}
 	}
 
 	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
-		// Check if we should reuse the existing segment
-		let mut segment = if let Some(mut segment) = self.segment.take() {
-			// Create a new segment if this is a keyframe and it's been >1s since the last keyframe.
-			if fragment.keyframe && fragment.timestamp >= self.keyframe + self.timescale {
-				segment.close();
+		// Close the current segment if we have a new keyframe.
+		if fragment.keyframe {
+			self.segment.take();
+		}
 
-				let segment = segment::Publisher::new();
-				self.publisher.push_segment(&segment);
+		// Get or create the current segment.
+		let segment = self.segment.get_or_insert_with(|| {
+			let timestamp = fragment.timestamp(self.timescale);
 
-				segment
-			} else {
-				segment
-			}
-		} else {
-			let segment = segment::Publisher::new();
-			self.publisher.push_segment(&segment);
+			let segment = segment::Segment::new(timestamp);
+			self.publisher.push_segment(segment.subscribe());
 
 			segment
-		};
+		});
 
+		// Insert the raw atom into the segment.
 		segment.push_fragment(raw);
-
-		// Save the current segment for the next iteration.
-		self.segment = Some(segment);
 
 		Ok(())
 	}
@@ -230,6 +215,11 @@ impl Fragment {
 			timestamp,
 			keyframe,
 		})
+	}
+
+	// Convert from timescale units to a duration.
+	fn timestamp(&self, timescale: u64) -> time::Duration {
+		time::Duration::from_millis(1000 * self.timestamp / timescale)
 	}
 }
 

@@ -1,88 +1,95 @@
 use super::fragment;
 
-use anyhow::Context;
-use std::sync::Arc;
+use std::{sync, time};
+
 use tokio::sync::watch;
 
-#[derive(Default)]
-struct State {
+pub struct Segment {
+	// The timestamp of the segment.
+	pub timestamp: time::Duration,
+
 	// A list of fragments that make up the segment.
 	fragments: Vec<fragment::Shared>,
 
-	// Whether the final fragment has been pushed.
-	fin: bool,
+	// Whether the segment is finished updated.
+	closed: bool,
 }
 
-impl State {
-	fn new() -> Self {
-		Default::default()
+impl Segment {
+	pub fn new(timestamp: time::Duration) -> Producer {
+		let state = Self {
+			timestamp,
+			fragments: Vec::new(),
+			closed: false,
+		};
+
+		Producer::new(state)
+	}
+
+	pub fn push_fragment(&mut self, fragment: fragment::Data) {
+		let owned = sync::Arc::new(fragment);
+		self.fragments.push(owned);
 	}
 }
 
-pub struct Publisher {
-	state: watch::Sender<State>,
+pub struct Producer {
+	state: watch::Sender<Segment>,
 }
 
 #[derive(Clone)]
-pub struct Subscriber {
-	state: watch::Receiver<State>,
+pub struct Consumer {
+	state: watch::Receiver<Segment>,
 
 	// The last seen index.
 	index: usize,
 }
 
-impl Publisher {
-	pub fn new() -> Self {
-		let init = State::new();
-		let (state, _) = watch::channel(init);
-
+impl Producer {
+	pub fn new(segment: Segment) -> Self {
+		let (state, _) = watch::channel(segment);
 		Self { state }
 	}
 
 	pub fn push_fragment(&mut self, fragment: fragment::Data) {
-		let owned = Arc::new(fragment);
-
-		self.state.send_modify(|state| {
-			state.fragments.push(owned);
-		});
+		self.state.send_modify(|state| state.push_fragment(fragment));
 	}
 
-	pub fn close(&mut self) {
-		self.state.send_modify(|state| {
-			state.fin = true;
-		});
-	}
-
-	pub fn subscribe(&self) -> Subscriber {
-		Subscriber::new(self.state.subscribe())
+	pub fn subscribe(&self) -> Consumer {
+		Consumer::new(self.state.subscribe())
 	}
 }
 
-impl Default for Publisher {
-	fn default() -> Self {
-		Self::new()
+impl Drop for Producer {
+	fn drop(&mut self) {
+		self.state.send_modify(|state| {
+			state.closed = true;
+		});
 	}
 }
 
-impl Subscriber {
-	fn new(state: watch::Receiver<State>) -> Self {
+impl Consumer {
+	fn new(state: watch::Receiver<Segment>) -> Self {
 		Self { state, index: 0 }
 	}
 
-	pub async fn next_fragment(&mut self) -> anyhow::Result<Option<fragment::Shared>> {
+	pub async fn next_fragment(&mut self) -> Option<fragment::Shared> {
 		let state = self
 			.state
-			.wait_for(|segment| segment.fin || self.index < segment.fragments.len())
+			.wait_for(|segment| segment.closed || self.index < segment.fragments.len())
 			.await
-			.context("publisher dropped without close")?;
+			.expect("publisher dropped without close");
 
 		if self.index < state.fragments.len() {
 			let fragment = state.fragments[self.index].clone();
 			self.index += 1;
 
-			Ok(Some(fragment))
+			Some(fragment)
 		} else {
-			Ok(None)
+			None
 		}
+	}
+
+	pub fn lock(&self) -> watch::Ref<Segment> {
+		self.state.borrow()
 	}
 }
