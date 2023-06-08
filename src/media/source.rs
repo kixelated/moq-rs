@@ -1,7 +1,6 @@
 use std::io::Read;
 
-use std::sync::Arc;
-use std::{fs, io, path, sync, time};
+use std::{fs, io, path, time};
 
 use anyhow;
 
@@ -11,14 +10,14 @@ use mp4::ReadBox;
 use anyhow::Context;
 use std::collections::HashMap;
 
-use crate::media;
+use super::{Broadcast, Fragment, Producer, Segment, Track};
 
 pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
-	// The broadcast we're producing
-	broadcast: sync::Arc<media::Broadcast>,
+	// The tracks we're producing
+	broadcast: Broadcast,
 
 	// The tracks we're producing.
 	tracks: HashMap<u32, SourceTrack>,
@@ -46,23 +45,20 @@ impl Source {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		// Create the broadcast state.
-		let broadcast = media::Broadcast::new();
+		// Create a producer to populate the tracks.
+		let mut tracks = Producer::<Track>::new();
 
-		let init_segment = media::Segment::new(time::Duration::ZERO);
-		init_segment.fragments.push(init.into());
-		init_segment.fragments.close();
+		let broadcast = Broadcast {
+			tracks: tracks.subscribe(),
+		};
 
-		// Create an init track with a single segment.
-		let init_track = media::Track::new(0xff, None);
-		init_track.segments.push(init_segment.into());
-		init_track.segments.close();
-
-		broadcast.tracks.push(init_track.into());
+		// Create the init track
+		let init_track = Self::create_init_track(init);
+		tracks.push(init_track);
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
-		let mut tracks = HashMap::new();
+		let mut lookup = HashMap::new();
 
 		for trak in &moov.traks {
 			let track_id = trak.tkhd.track_id;
@@ -70,25 +66,42 @@ impl Source {
 
 			let timescale = track_timescale(&moov, track_id);
 
-			// Create a new track that can hold 10s of media at most.
-			let track = media::Track::new(track_id, Some(time::Duration::from_secs(10)));
-			let track = Arc::new(track);
+			let segments = Producer::<Segment>::new();
 
-			broadcast.tracks.push(track.clone());
+			tracks.push(Track {
+				id: track_id,
+				segments: segments.subscribe(),
+			});
 
 			// Store the track publisher in a map so we can update it later.
-			let track = SourceTrack::new(track, timescale);
-			tracks.insert(track_id, track);
+			let track = SourceTrack::new(segments, timescale);
+			lookup.insert(track_id, track);
 		}
-
-		// No new tracks will be spawned
-		broadcast.tracks.close();
 
 		Ok(Self {
 			reader,
-			broadcast: broadcast.into(),
-			tracks,
+			broadcast,
+			tracks: lookup,
 		})
+	}
+
+	// Create an init track
+	fn create_init_track(raw: Vec<u8>) -> Track {
+		// TODO support static producers
+		let mut fragments = Producer::<Fragment>::new();
+		let mut segments = Producer::<Segment>::new();
+
+		fragments.push(raw.into());
+
+		segments.push(Segment {
+			fragments: fragments.subscribe(),
+			timestamp: time::Duration::ZERO,
+		});
+
+		Track {
+			id: 0xff,
+			segments: segments.subscribe(),
+		}
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -140,27 +153,27 @@ impl Source {
 		}
 	}
 
-	pub fn broadcast(&self) -> sync::Arc<media::Broadcast> {
+	pub fn broadcast(&self) -> Broadcast {
 		self.broadcast.clone()
 	}
 }
 
 struct SourceTrack {
 	// The track we're producing
-	track: Arc<media::Track>,
+	segments: Producer<Segment>,
 
-	// The current segment
-	segment: Option<Arc<media::Segment>>,
+	// The current segment's fragments
+	fragments: Option<Producer<Fragment>>,
 
 	// The number of units per second.
 	timescale: u64,
 }
 
 impl SourceTrack {
-	fn new(track: Arc<media::Track>, timescale: u64) -> Self {
+	fn new(segments: Producer<Segment>, timescale: u64) -> Self {
 		Self {
-			track,
-			segment: None,
+			segments,
+			fragments: None,
 			timescale,
 		}
 	}
@@ -168,31 +181,32 @@ impl SourceTrack {
 	pub fn header(&mut self, raw: Vec<u8>, fragment: SourceFragment) -> anyhow::Result<()> {
 		// Close the current segment if we have a new keyframe.
 		if fragment.keyframe {
-			if let Some(segment) = self.segment.take() {
-				// TODO implement drop
-				segment.fragments.close();
-			}
+			self.fragments.take();
 		}
 
 		// Get or create the current segment.
-		let segment = self.segment.get_or_insert_with(|| {
+		let fragments = self.fragments.get_or_insert_with(|| {
 			let timestamp = fragment.timestamp(self.timescale);
 
-			let segment = Arc::new(media::Segment::new(timestamp));
-			self.track.segments.push(segment.clone());
+			let fragments = Producer::<Fragment>::new();
 
-			segment
+			self.segments.push(Segment {
+				timestamp,
+				fragments: fragments.subscribe(),
+			});
+
+			fragments
 		});
 
 		// Insert the raw atom into the segment.
-		segment.fragments.push(raw.into());
+		fragments.push(raw.into());
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		let segment = self.segment.as_mut().context("missing keyframe")?;
-		segment.fragments.push(raw.into());
+		let fragments = self.fragments.as_mut().context("missing keyframe")?;
+		fragments.push(raw.into());
 
 		Ok(())
 	}

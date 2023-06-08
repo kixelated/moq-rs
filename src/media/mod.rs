@@ -5,4 +5,4 @@ mod model;
 pub use model::*;
 
 mod watch;
-use watch::Producer;
+use watch::{Producer, Subscriber};

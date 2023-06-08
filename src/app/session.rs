@@ -22,18 +22,16 @@ impl Session {
 		Self { transport }
 	}
 
-	pub async fn serve_broadcast(&self, broadcast: Arc<media::Broadcast>) -> anyhow::Result<()> {
+	pub async fn serve_broadcast(&self, mut broadcast: media::Broadcast) -> anyhow::Result<()> {
 		log::info!("serving broadcast");
 
 		let mut tasks = JoinSet::new();
-
-		let mut tracks = broadcast.tracks.subscribe();
-		let mut tracks_done = false;
+		let mut done = false;
 
 		loop {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
-				track = tracks.next(), if !tracks_done => {
+				track = broadcast.tracks.next(), if !done => {
 					match track {
 						Some(track) => {
 							let session = self.clone();
@@ -42,7 +40,7 @@ impl Session {
 								session.serve_track(track).await
 							});
 						},
-						None => tracks_done = true,
+						None => done = true,
 					}
 				},
 				// Poll any pending tracks until they exit.
@@ -56,18 +54,16 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_track(&self, track: Arc<media::Track>) -> anyhow::Result<()> {
+	pub async fn serve_track(&self, mut track: media::Track) -> anyhow::Result<()> {
 		log::info!("serving track: id={}", track.id);
 
 		let mut tasks = JoinSet::new();
-
-		let mut segments = track.segments.subscribe();
-		let mut segments_done = false;
+		let mut done = false;
 
 		loop {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
-				segment = segments.next(), if !segments_done => {
+				segment = track.segments.next(), if !done => {
 					match segment {
 						Some(segment) => {
 							let track = track.clone();
@@ -77,7 +73,7 @@ impl Session {
 								session.serve_segment(track, segment).await
 							});
 						},
-						None => segments_done = true,
+						None => done = true,
 					}
 				},
 				// Poll any pending segments until they exit.
@@ -91,7 +87,7 @@ impl Session {
 		}
 	}
 
-	pub async fn serve_segment(&self, track: Arc<media::Track>, segment: Arc<media::Segment>) -> anyhow::Result<()> {
+	pub async fn serve_segment(&self, track: media::Track, mut segment: media::Segment) -> anyhow::Result<()> {
 		log::info!("serving segment: track={} timestamp={:?}", track.id, segment.timestamp);
 
 		let mut stream = self.transport.open_uni(self.transport.session_id()).await?;
@@ -114,9 +110,7 @@ impl Session {
 		stream.write_all(data.as_slice()).await?;
 
 		// Write each fragment as they are available.
-		let mut fragments = segment.fragments.subscribe();
-
-		while let Some(fragment) = fragments.next().await {
+		while let Some(fragment) = segment.fragments.next().await {
 			log::info!(
 				"writing fragment: track={} timestamp={:?} size={}",
 				track.id,
