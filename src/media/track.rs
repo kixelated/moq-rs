@@ -33,10 +33,10 @@ pub struct Subscriber {
 }
 
 impl State {
-	pub fn new(id: u32) -> Self {
+	pub fn new(id: u32, capacity: usize) -> Self {
 		Self {
 			id,
-			segments: VecDeque::new(),
+			segments: VecDeque::with_capacity(capacity),
 			pruned: 0,
 			fin: false,
 		}
@@ -44,17 +44,23 @@ impl State {
 }
 
 impl Publisher {
-	pub fn new(id: u32) -> Self {
-		let init = State::new(id);
+	// TODO represent capacity in units of time (or bytes?)
+	pub fn new(id: u32, capacity: usize) -> Self {
+		let init = State::new(id, capacity);
 		let (state, _) = watch::channel(init);
 		Self { state }
 	}
 
-	pub fn create_segment(&mut self) -> segment::Publisher {
-		let segment = segment::Publisher::new();
-		self.state
-			.send_modify(|state| state.segments.push_back(segment.subscribe()));
-		segment
+	pub fn push_segment(&mut self, segment: &segment::Publisher) {
+		self.state.send_modify(|state| {
+			// Remove segments from the front as we will up on capacity.
+			if state.segments.capacity() == state.segments.len() {
+				state.segments.pop_front();
+				state.pruned += 1;
+			}
+
+			state.segments.push_back(segment.subscribe());
+		});
 	}
 
 	pub fn close(&mut self) {
@@ -84,7 +90,6 @@ impl Subscriber {
 
 		let index = self.index.saturating_sub(state.pruned);
 		if index < state.segments.len() {
-			log::info!("track index: {}", index);
 			let segment = state.segments[index].clone();
 			self.index = index + state.pruned + 1;
 			Ok(Some(segment))

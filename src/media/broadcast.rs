@@ -30,14 +30,10 @@ impl Publisher {
 		Self { state }
 	}
 
-	pub fn create_track(&mut self, track_id: u32) -> track::Publisher {
-		let track = track::Publisher::new(track_id);
-
+	pub fn add_track(&mut self, track: &track::Publisher) {
 		self.state.send_modify(|broadcast| {
 			broadcast.tracks.push(track.subscribe());
 		});
-
-		track
 	}
 
 	pub fn subscribe(&self) -> Subscriber {

@@ -47,11 +47,14 @@ impl Broadcast {
 
 		// Create the broadcast state.
 		let mut broadcast = broadcast::Publisher::new();
-		let mut track = broadcast.create_track(0xff);
-		let mut segment = track.create_segment();
-		segment.push_fragment(init);
-		segment.close();
-		track.close();
+		let mut init_track = track::Publisher::new(0xff, 1);
+		let mut init_segment = segment::Publisher::new();
+
+		broadcast.add_track(&init_track);
+		init_track.push_segment(&init_segment);
+
+		init_segment.close();
+		init_track.close();
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
@@ -63,9 +66,13 @@ impl Broadcast {
 
 			let timescale = track_timescale(&moov, track_id);
 
-			let track = broadcast.create_track(track_id);
-			let track = Track::new(track, timescale);
+			// Create a new track that can hold 10 segments at most.
+			// TODO represent capacity in terms of time.
+			let track = track::Publisher::new(track_id, 10);
+			broadcast.add_track(&track);
 
+			// Store the track publisher in a map so we can update it later.
+			let track = Track::new(track, timescale);
 			tracks.insert(track_id, track);
 		}
 
@@ -77,6 +84,8 @@ impl Broadcast {
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
+		log::info!("run source");
+
 		// The timestamp when the broadcast "started", so we can sleep to simulate a live stream.
 		let start = tokio::time::Instant::now();
 
@@ -88,6 +97,8 @@ impl Broadcast {
 
 			let mut reader = io::Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
+
+			log::info!("atom: {:?}", header);
 
 			match header.name {
 				mp4::BoxType::MoofBox => {
@@ -160,12 +171,19 @@ impl Track {
 			// Create a new segment if this is a keyframe and it's been >1s since the last keyframe.
 			if fragment.keyframe && fragment.timestamp >= self.keyframe + self.timescale {
 				segment.close();
-				self.publisher.create_segment()
+
+				let segment = segment::Publisher::new();
+				self.publisher.push_segment(&segment);
+
+				segment
 			} else {
 				segment
 			}
 		} else {
-			self.publisher.create_segment()
+			let segment = segment::Publisher::new();
+			self.publisher.push_segment(&segment);
+
+			segment
 		};
 
 		segment.push_fragment(raw);

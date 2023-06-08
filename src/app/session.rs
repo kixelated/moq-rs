@@ -47,7 +47,8 @@ impl Session {
 	}
 
 	pub async fn serve_track(&self, mut track: media::track::Subscriber) -> anyhow::Result<()> {
-		log::info!("serving track");
+		log::info!("serving track: {}", track.id());
+
 		let mut tasks = JoinSet::new();
 		let mut fin = false;
 
@@ -57,7 +58,7 @@ impl Session {
 			tokio::select! {
 				// Accept new tracks added to the broadcast.
 				segment = track.next_segment(), if !fin => {
-					log::info!("next segment: {:?}", segment.is_ok());
+					log::info!("next segment: {} {:?}", track.id(), segment.is_ok());
 					match segment.context("failed to get next segment")? {
 						Some(segment) => {
 							let session = self.clone();
@@ -74,7 +75,7 @@ impl Session {
 				},
 				// Poll any pending segments until they exit.
 				res = tasks.join_next(), if !tasks.is_empty() => {
-					log::info!("join_next: {:?}", res);
+					log::info!("segment ended: {:?}", res);
 					let res = res.context("no tasks running")?;
 					let res = res.context("failed to run segment")?;
 					res.context("failed serve segment")?
@@ -91,9 +92,15 @@ impl Session {
 		// TODO support prioirty
 		// stream.set_priority(0);
 
-		// Encode a JSON header indicating this is a new track.
+		// Encode a JSON header indicating this is a new segment.
 		let mut message: message::Message = message::Message::new();
-		message.segment = Some(message::Segment { track_id });
+
+		// TODO combine init and segment messages into one.
+		if track_id == 0xff {
+			message.init = Some(message::Init {});
+		} else {
+			message.segment = Some(message::Segment { track_id });
+		}
 
 		// Write the JSON header.
 		let data = message.serialize()?;

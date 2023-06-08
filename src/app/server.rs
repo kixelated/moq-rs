@@ -17,9 +17,21 @@ impl Server {
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
+		let broadcast = self.broadcast.subscribe();
+
+		tokio::select! {
+			res = Self::run_transport(&mut self.transport, broadcast) => res,
+			res = self.broadcast.run() => res,
+		}
+	}
+
+	async fn run_transport(
+		transport: &mut transport::Server,
+		broadcast: media::broadcast::Subscriber,
+	) -> anyhow::Result<()> {
 		loop {
-			let conn = self.transport.accept().await.context("failed to accept connection")?;
-			let broadcast = self.broadcast.subscribe();
+			let conn = transport.accept().await.context("failed to accept connection")?;
+			let broadcast = broadcast.clone();
 
 			tokio::spawn(async move {
 				if let Err(e) = Self::run_conn(conn, broadcast).await {
