@@ -1,41 +1,6 @@
-[package]
-name = "moq"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-# Fork of h3 with WebTransport support
-h3 = { git = "https://github.com/security-union/h3", branch = "add-webtransport" }
-h3-quinn = { git = "https://github.com/security-union/h3", branch = "add-webtransport" }
-h3-webtransport = { git = "https://github.com/security-union/h3", branch = "add-webtransport" }
-quinn = { version = "0.10", default-features = false, features = ["runtime-tokio", "tls-rustls", "ring"] }
-
-# Crypto dependencies
-ring = "0.16"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-pemfile = "1.0.2"
-
-# Async stuff
-tokio = { version = "1.27", features = ["full"] }
-futures = "0.3"
-
-# Media
-mp4 = "0.13.0"
-
-# Encoding
-bytes = "1"
-serde = "1.0.160"
-serde_json = "1.0"
-
-# Web server to serve the fingerprint
-http = "0.2"
-warp = { version = "0.3.3", features = ["tls"] }
-hex = "0.4.3"
-
-# Logging and utility
-clap = { version = "4.0", features = [ "derive" ] }
-log = { version = "0.4", features = ["std"] }
-env_logger = "0.9.3"
-anyhow = "1.0.70"
+members = [
+    "moq-transport",
+	"moq-warp"
+]
