@@ -14,7 +14,7 @@ pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, Size, VarInt, WithSize};
 use bytes::{Buf, BufMut};
 
 // Use a macro to generate the message types rather than copy-paste.
@@ -29,11 +29,11 @@ macro_rules! message_types {
 			fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
 				let t = VarInt::decode(r)?;
 
-				let len = VarInt::decode(r)?.into();
-				let mut r = r.take(len);
-
 				Ok(match t.into() {
-					$(VarInt($val) => Self::$name($name::decode(&mut r)?),)*
+					$(VarInt($val) => {
+						let v = WithSize::decode::<B, $name>(r)?;
+						Self::$name(v)
+					})*
 					_ => anyhow::bail!("invalid message type: {}", t),
 				})
 			}
@@ -44,8 +44,7 @@ macro_rules! message_types {
 				match self {
 					$(Self::$name(ref m) => {
 						VarInt($val).encode(w)?;
-						VarInt::try_from(m.size()?)?.encode(w)?;
-						m.encode(w)
+						WithSize::encode(w, m)
 					},)*
 				}
 			}
@@ -53,9 +52,11 @@ macro_rules! message_types {
 
 		impl Size for Message {
 			fn size(&self) -> anyhow::Result<usize> {
-				match self {
-					$(Self::$name(ref m) => m.size(),)*
-				}
+				Ok(match self {
+					$(Self::$name(ref m) => {
+						VarInt($val).size()? + WithSize::size(m)?
+					},)*
+				})
 			}
 		}
     }
