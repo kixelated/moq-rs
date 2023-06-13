@@ -1,10 +1,10 @@
-use super::Version;
 use crate::coding::{Decode, Encode, Params, Size};
+use crate::version::Version;
 
 // Sent by the server in response to a client.
 // NOTE: This is not a message type, but rather the control stream header.
 // Proposal: https://github.com/moq-wg/moq-transport/issues/138
-pub struct Server {
+pub struct Setup {
 	// The list of supported versions in preferred order.
 	selected: Version,
 
@@ -12,7 +12,7 @@ pub struct Server {
 	params: Params,
 }
 
-impl Decode for Server {
+impl Decode for Setup {
 	fn decode<B: bytes::Buf>(r: &mut B) -> anyhow::Result<Self> {
 		let selected = Version::decode(r)?;
 		let params = Params::decode(r)?;
@@ -21,7 +21,7 @@ impl Decode for Server {
 	}
 }
 
-impl Encode for Server {
+impl Encode for Setup {
 	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
 		self.selected.encode(w)?;
 		self.params.encode(w)?;
@@ -30,7 +30,7 @@ impl Encode for Server {
 	}
 }
 
-impl Size for Server {
+impl Size for Setup {
 	fn size(&self) -> anyhow::Result<usize> {
 		Ok(self.selected.size()? + self.params.size()?)
 	}

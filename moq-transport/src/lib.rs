@@ -1,3 +1,5 @@
+pub mod client;
 pub mod coding;
-pub mod message;
-pub mod setup;
+pub mod control;
+pub mod server;
+pub mod version;

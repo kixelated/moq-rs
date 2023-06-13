@@ -11,6 +11,8 @@ use super::{Decode, Encode, Size, UnexpectedEnd};
 
 use thiserror::Error;
 
+use tokio::io::{AsyncRead, AsyncReadExt};
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value too large for varint encoding")]
 pub struct BoundsExceeded;
@@ -186,5 +188,35 @@ impl Size for VarInt {
 		} else {
 			anyhow::bail!("malformed VarInt");
 		})
+	}
+}
+
+impl VarInt {
+	// TODO combine with decode
+	pub async fn read<T: AsyncRead + Unpin>(mut r: T) -> anyhow::Result<Self> {
+		let mut buf = [0; 8];
+		r.read_exact(buf[0..1].as_mut()).await?;
+
+		let tag = buf[0] >> 6;
+		buf[0] &= 0b0011_1111;
+
+		let x = match tag {
+			0b00 => u64::from(buf[0]),
+			0b01 => {
+				r.read_exact(buf[1..2].as_mut()).await?;
+				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
+			}
+			0b10 => {
+				r.read_exact(buf[1..4].as_mut()).await?;
+				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
+			}
+			0b11 => {
+				r.read_exact(buf[1..8].as_mut()).await?;
+				u64::from_be_bytes(buf)
+			}
+			_ => unreachable!(),
+		};
+
+		Ok(Self(x))
 	}
 }

@@ -12,6 +12,7 @@ h3-quinn = { git = "https://github.com/security-union/h3", branch = "add-webtran
 h3-webtransport = { git = "https://github.com/security-union/h3", branch = "add-webtransport" }
 quinn = { version = "0.10", default-features = false, features = ["runtime-tokio", "tls-rustls", "ring"] }
 quinn-proto = "0.10"
+http = "0.2"
 
 # Crypto dependencies
 ring = "0.16"
