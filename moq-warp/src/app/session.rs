@@ -10,12 +10,11 @@ use tokio::io::AsyncWriteExt;
 #[derive(Clone)]
 pub struct Session {
 	// The underlying MoQ transport session
-	transport: Arc<moq_transport::server::Session>,
+	transport: moq_transport::server::Session,
 }
 
 impl Session {
 	pub fn new(transport: moq_transport::server::Session) -> Self {
-		let transport = Arc::new(transport);
 		Self { transport }
 	}
 

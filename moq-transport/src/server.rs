@@ -3,6 +3,8 @@ use crate::{control, object, setup};
 
 use anyhow::Context;
 use bytes::Bytes;
+//use h3::quic::BidiStream;
+
 use tokio::task::JoinSet;
 
 // Reduce typing because the h3 WebTransport library has quite verbose types.
@@ -96,8 +98,8 @@ impl Accept {
 			.context("failed to accept bidi stream")?
 			.unwrap();
 
-		if let h3_webtransport::server::AcceptedBi::BidiStream(_session_id, mut control) = stream {
-			let m = setup::Message::decode(&mut control).await?;
+		if let h3_webtransport::server::AcceptedBi::BidiStream(_session_id, mut stream) = stream {
+			let m = setup::Message::decode(&mut stream).await?;
 			let setup = match m {
 				setup::Message::Client(setup) => setup,
 				_ => anyhow::bail!("expected client SETUP"),
@@ -105,7 +107,7 @@ impl Accept {
 
 			Ok(Setup {
 				transport,
-				control,
+				control: stream,
 				setup,
 			})
 		} else {
@@ -161,7 +163,7 @@ impl Session {
 		Ok(())
 	}
 
-	pub async fn receive_data(&mut self) -> anyhow::Result<(object::Header, RecvStream)> {
+	pub async fn receive_data(&self) -> anyhow::Result<(object::Header, RecvStream)> {
 		let (_session_id, mut stream) = self
 			.transport
 			.accept_uni()
@@ -174,7 +176,7 @@ impl Session {
 		Ok((header, stream))
 	}
 
-	pub async fn send_data(&mut self, header: object::Header) -> anyhow::Result<SendStream> {
+	pub async fn send_data(&self, header: object::Header) -> anyhow::Result<SendStream> {
 		let mut stream = self
 			.transport
 			.open_uni(self.transport.session_id())

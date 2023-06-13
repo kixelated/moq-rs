@@ -9,7 +9,7 @@ pub struct Broadcast {
 #[derive(Clone)]
 pub struct Track {
 	// The track ID as stored in the MP4
-	pub id: u32,
+	pub id: u64,
 
 	// A list of segments, which are independently decodable.
 	pub segments: Subscriber<Segment>,

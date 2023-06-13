@@ -3,6 +3,8 @@ use crate::coding::{Decode, Encode};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use std::ops::Deref;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version(pub u64);
 
@@ -34,5 +36,42 @@ impl Decode for Version {
 impl Encode for Version {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.0.encode(w).await
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Versions(pub Vec<Version>);
+
+#[async_trait(?Send)]
+impl Decode for Versions {
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let count = u64::decode(r).await?;
+		let mut vs = Vec::new();
+
+		for _ in 0..count {
+			let v = Version::decode(r).await?;
+			vs.push(v);
+		}
+
+		Ok(Self(vs))
+	}
+}
+
+#[async_trait(?Send)]
+impl Encode for Versions {
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.0.len().encode(w).await?;
+		for v in &self.0 {
+			v.encode(w).await?;
+		}
+		Ok(())
+	}
+}
+
+impl Deref for Versions {
+	type Target = Vec<Version>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
 	}
 }

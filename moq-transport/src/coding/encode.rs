@@ -28,19 +28,6 @@ impl Encode for Vec<u8> {
 }
 
 #[async_trait(?Send)]
-impl<T: Encode> Encode for Vec<T> {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.len().encode(w).await?;
-
-		for item in self {
-			item.encode(w).await?;
-		}
-
-		Ok(())
-	}
-}
-
-#[async_trait(?Send)]
 impl Encode for &[u8] {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.len().encode(w).await?;

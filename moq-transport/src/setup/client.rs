@@ -1,4 +1,4 @@
-use super::{Role, Version};
+use super::{Role, Versions};
 use crate::coding::{Decode, Encode, Params};
 
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ pub struct Client {
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/138
 
 	// The list of supported versions in preferred order.
-	pub versions: Vec<Version>,
+	pub versions: Versions,
 
 	// param: 0x0: Indicate if the client is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
@@ -29,7 +29,7 @@ pub struct Client {
 #[async_trait(?Send)]
 impl Decode for Client {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let versions = Vec::decode(r).await.context("failed to read supported versions")?;
+		let versions = Versions::decode(r).await.context("failed to read supported versions")?;
 		anyhow::ensure!(!versions.is_empty(), "client must support at least one version");
 
 		let mut role = None;

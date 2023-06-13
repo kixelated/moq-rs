@@ -69,7 +69,7 @@ impl Source {
 			let segments = Producer::<Segment>::new();
 
 			tracks.push(Track {
-				id: track_id,
+				id: track_id as u64,
 				segments: segments.subscribe(),
 			});
 

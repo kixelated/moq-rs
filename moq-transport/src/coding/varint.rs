@@ -1,4 +1,4 @@
-// Derived from quinn-proto
+// Based on quinn-proto
 // https://github.com/quinn-rs/quinn/blob/main/quinn-proto/src/varint.rs
 // Licensed via Apache 2.0 and MIT
 
@@ -22,37 +22,6 @@ pub struct BoundsExceeded;
 // discriminants
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) struct VarInt(u64);
-
-impl VarInt {
-	/// The largest representable value
-	pub const MAX: Self = Self((1 << 62) - 1);
-
-	/// The largest encoded value length
-	pub const MAX_SIZE: usize = 8;
-
-	/// Construct a `VarInt` infallibly
-	pub const fn from_u32(x: u32) -> Self {
-		Self(x as u64)
-	}
-
-	/// Succeeds iff `x` < 2^62
-	pub fn from_u64(x: u64) -> Result<Self, BoundsExceeded> {
-		if x < 2u64.pow(62) {
-			Ok(Self(x))
-		} else {
-			Err(BoundsExceeded)
-		}
-	}
-
-	/// Create a VarInt without ensuring it's in range
-	///
-	/// # Safety
-	///
-	/// `x` must be less than 2^62.
-	pub const unsafe fn from_u64_unchecked(x: u64) -> Self {
-		Self(x)
-	}
-}
 
 impl From<VarInt> for u64 {
 	fn from(x: VarInt) -> Self {
@@ -86,17 +55,14 @@ impl From<u32> for VarInt {
 
 impl TryFrom<u64> for VarInt {
 	type Error = BoundsExceeded;
+
 	/// Succeeds iff `x` < 2^62
 	fn try_from(x: u64) -> Result<Self, BoundsExceeded> {
-		Self::from_u64(x)
-	}
-}
-
-impl TryFrom<u128> for VarInt {
-	type Error = BoundsExceeded;
-	/// Succeeds iff `x` < 2^62
-	fn try_from(x: u128) -> Result<Self, BoundsExceeded> {
-		Self::from_u64(x.try_into().map_err(|_| BoundsExceeded)?)
+		if x < 2u64.pow(62) {
+			Ok(Self(x))
+		} else {
+			Err(BoundsExceeded)
+		}
 	}
 }
 
