@@ -82,7 +82,7 @@ impl Session {
 
 	pub async fn serve_segment(&self, track: media::Track, mut segment: media::Segment) -> anyhow::Result<()> {
 		// TODO proper values
-		let header = moq_transport::data::Header {
+		let header = moq_transport::object::Header {
 			track_id: track.id.into(),
 			group_sequence: 0u32.into(),
 			object_sequence: 0u32.into(),

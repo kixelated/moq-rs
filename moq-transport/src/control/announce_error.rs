@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -39,11 +39,5 @@ impl Encode for AnnounceError {
 		self.reason.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for AnnounceError {
-	fn size(&self) -> usize {
-		self.track_namespace.size() + self.code.size() + self.reason.size()
 	}
 }

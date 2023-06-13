@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -20,11 +20,5 @@ impl Decode for GoAway {
 impl Encode for GoAway {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.url.encode(w).await
-	}
-}
-
-impl Size for GoAway {
-	fn size(&self) -> usize {
-		self.url.size()
 	}
 }

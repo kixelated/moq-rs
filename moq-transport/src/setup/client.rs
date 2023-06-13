@@ -1,5 +1,5 @@
 use super::{Role, Version};
-use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use crate::coding::{Decode, Encode, Params, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -83,18 +83,5 @@ impl Encode for Client {
 		self.unknown.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for Client {
-	fn size(&self) -> usize {
-		let mut size = self.versions.size() + self.unknown.size();
-		size += VarInt(0).size() + self.role.size();
-
-		if let Some(path) = &self.path {
-			size += VarInt(1).size() + path.size();
-		}
-
-		size
 	}
 }

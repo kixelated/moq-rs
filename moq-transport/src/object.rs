@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -52,15 +52,5 @@ impl Encode for Header {
 		self.send_order.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for Header {
-	fn size(&self) -> usize {
-		VarInt(0).size()
-			+ self.track_id.size()
-			+ self.group_sequence.size()
-			+ self.object_sequence.size()
-			+ self.send_order.size()
 	}
 }

@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Duration, Encode, Size, VarInt};
+use crate::coding::{Decode, Duration, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -31,11 +31,5 @@ impl Encode for SubscribeOk {
 		self.expires.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for SubscribeOk {
-	fn size(&self) -> usize {
-		self.track_id.size() + self.expires.size()
 	}
 }

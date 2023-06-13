@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -34,11 +34,5 @@ impl Decode for Version {
 impl Encode for Version {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.0.encode(w).await
-	}
-}
-
-impl Size for Version {
-	fn size(&self) -> usize {
-		self.0.size()
 	}
 }

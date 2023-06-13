@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -61,11 +61,5 @@ impl Decode for Role {
 impl Encode for Role {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		VarInt::from(*self).encode(w).await
-	}
-}
-
-impl Size for Role {
-	fn size(&self) -> usize {
-		VarInt::from(*self).size()
 	}
 }

@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use std::collections::HashMap;
 
@@ -32,18 +32,6 @@ impl Encode for Params {
 		}
 
 		Ok(())
-	}
-}
-
-impl Size for Params {
-	fn size(&self) -> usize {
-		let mut size = 0;
-
-		for (id, value) in &self.0 {
-			size += id.size() + value.size();
-		}
-
-		size
 	}
 }
 

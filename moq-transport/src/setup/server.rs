@@ -1,5 +1,5 @@
 use super::{Role, Version};
-use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use crate::coding::{Decode, Encode, Params, VarInt};
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -62,14 +62,5 @@ impl Encode for Server {
 		self.unknown.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for Server {
-	fn size(&self) -> usize {
-		let mut size = self.version.size() + self.unknown.size();
-		size += VarInt(0x0).size() + self.role.size();
-
-		size
 	}
 }

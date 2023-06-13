@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use crate::coding::{Decode, Encode, Params, VarInt};
 use bytes::Bytes;
 
 use anyhow::Context;
@@ -97,25 +97,5 @@ impl Encode for Subscribe {
 		self.unknown.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for Subscribe {
-	fn size(&self) -> usize {
-		let mut size = self.track_id.size() + self.track_name.size() + self.unknown.size();
-
-		if let Some(group_sequence) = &self.group_sequence {
-			size += VarInt(0).size() + group_sequence.size();
-		}
-
-		if let Some(object_sequence) = &self.object_sequence {
-			size += VarInt(1).size() + object_sequence.size();
-		}
-
-		if let Some(auth) = &self.auth {
-			size += VarInt(2).size() + auth.size();
-		}
-
-		size
 	}
 }

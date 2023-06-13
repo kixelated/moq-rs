@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use crate::coding::{Decode, Encode, Params, VarInt};
 use bytes::Bytes;
 
 use async_trait::async_trait;
@@ -62,17 +62,5 @@ impl Encode for Announce {
 		self.unknown.encode(w).await?;
 
 		Ok(())
-	}
-}
-
-impl Size for Announce {
-	fn size(&self) -> usize {
-		let mut size = self.track_namespace.size() + self.unknown.size();
-
-		if let Some(auth) = &self.auth {
-			size += VarInt(2).size() + auth.size();
-		}
-
-		size
 	}
 }

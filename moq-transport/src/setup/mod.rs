@@ -8,11 +8,11 @@ pub use role::*;
 pub use server::*;
 pub use version::*;
 
-use crate::coding::{Decode, Encode, Size, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use anyhow::Context;
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -50,24 +50,13 @@ macro_rules! message_types {
 					$(Self::$name(ref m) => {
 						VarInt($val).encode(w).await.context("failed to encode type")?;
 
-						let size = m.size();
+						let mut buf = Vec::new();
+						m.encode(&mut buf).await.context("failed to encode message")?;
 
-						let size = VarInt::try_from(size).context("size too large")?;
+						let size = VarInt::try_from(buf.len()).context("size too large")?;
 						size.encode(w).await.context("failed to encode size")?;
 
-						// TODO sanity check: make sure we write exactly size bytes
-						m.encode(w).await.context("failed to encode $name")
-					},)*
-				}
-			}
-		}
-
-		impl Size for Message {
-			fn size(&self) -> usize {
-				match self {
-					$(Self::$name(ref m) => {
-						let size = m.size();
-						VarInt($val).size() + VarInt::try_from(size).unwrap().size() + size
+						w.write_all(&buf).await.context("failed to write message")
 					},)*
 				}
 			}

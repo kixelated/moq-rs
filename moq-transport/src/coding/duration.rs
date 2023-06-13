@@ -1,4 +1,4 @@
-use super::{Decode, Encode, Size, VarInt};
+use super::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -23,14 +23,6 @@ impl Decode for Duration {
 		let ms = VarInt::decode(r).await?;
 		let ms = ms.into();
 		Ok(Self(time::Duration::from_millis(ms)))
-	}
-}
-
-impl Size for Duration {
-	fn size(&self) -> usize {
-		let ms = self.0.as_millis();
-		let ms = VarInt::try_from(ms).unwrap();
-		ms.size()
 	}
 }
 

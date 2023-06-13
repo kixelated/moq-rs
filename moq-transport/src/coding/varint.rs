@@ -5,7 +5,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
-use super::{Decode, Encode, Size};
+use super::{Decode, Encode};
 
 use thiserror::Error;
 
@@ -51,6 +51,23 @@ impl VarInt {
 	/// `x` must be less than 2^62.
 	pub const unsafe fn from_u64_unchecked(x: u64) -> Self {
 		Self(x)
+	}
+
+	/// Compute the number of bytes needed to encode this value
+	pub(crate) fn size(&self) -> usize {
+		let x = self.0;
+
+		if x < 2u64.pow(6) {
+			1
+		} else if x < 2u64.pow(14) {
+			2
+		} else if x < 2u64.pow(30) {
+			4
+		} else if x < 2u64.pow(62) {
+			8
+		} else {
+			unreachable!("malformed VarInt");
+		}
 	}
 }
 
@@ -169,24 +186,5 @@ impl Encode for VarInt {
 		}
 
 		Ok(())
-	}
-}
-
-impl Size for VarInt {
-	/// Compute the number of bytes needed to encode this value
-	fn size(&self) -> usize {
-		let x = self.0;
-
-		if x < 2u64.pow(6) {
-			1
-		} else if x < 2u64.pow(14) {
-			2
-		} else if x < 2u64.pow(30) {
-			4
-		} else if x < 2u64.pow(62) {
-			8
-		} else {
-			unreachable!("malformed VarInt");
-		}
 	}
 }

@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Size};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -22,11 +22,5 @@ impl Decode for AnnounceOk {
 impl Encode for AnnounceOk {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.track_namespace.encode(w).await
-	}
-}
-
-impl Size for AnnounceOk {
-	fn size(&self) -> usize {
-		self.track_namespace.size()
 	}
 }
