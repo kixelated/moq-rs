@@ -5,7 +5,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use std::time;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Duration(pub time::Duration);
 
 #[async_trait(?Send)]

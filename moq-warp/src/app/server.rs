@@ -3,13 +3,13 @@ use crate::media;
 
 use std::{fs, io, net, path, sync, time};
 
-use super::WebTransportSession;
-
 use anyhow::Context;
 
+use moq_transport::{server, setup};
+
 pub struct Server {
-	// The QUIC server, yielding new connections and sessions.
-	server: quinn::Endpoint,
+	// The MoQ transport server.
+	server: server::Server,
 
 	// The media source
 	broadcast: media::Broadcast,
@@ -72,16 +72,20 @@ impl Server {
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broadcast = config.broadcast;
 
+		let server = server::Server::new(server);
+
 		Ok(Self { server, broadcast })
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		loop {
-			let conn = self.server.accept().await.context("failed to accept connection")?;
+			let session = self.server.accept().await.context("failed to accept connection")?;
 			let broadcast = self.broadcast.clone();
 
 			tokio::spawn(async move {
-				let session = Self::accept_session(conn).await.context("failed to accept session")?;
+				let session = Self::accept_session(session)
+					.await
+					.context("failed to accept session")?;
 
 				// Use a wrapper run the session.
 				let session = Session::new(session);
@@ -90,36 +94,32 @@ impl Server {
 		}
 	}
 
-	async fn accept_session(conn: quinn::Connecting) -> anyhow::Result<WebTransportSession> {
-		let conn = conn.await.context("failed to accept h3 connection")?;
-
-		let mut conn = h3::server::builder()
-			.enable_webtransport(true)
-			.enable_connect(true)
-			.enable_datagram(true)
-			.max_webtransport_sessions(1)
-			.send_grease(true)
-			.build(h3_quinn::Connection::new(conn))
-			.await
-			.context("failed to create h3 server")?;
-
-		let (req, stream) = conn
+	async fn accept_session(session: server::Accept) -> anyhow::Result<server::Session> {
+		// Accep the WebTransport session.
+		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
+		let session = session
 			.accept()
-			.await
-			.context("failed to accept h3 session")?
-			.context("failed to accept h3 request")?;
-
-		let ext = req.extensions();
-		anyhow::ensure!(req.method() == http::Method::CONNECT, "expected CONNECT request");
-		anyhow::ensure!(
-			ext.get::<h3::ext::Protocol>() == Some(&h3::ext::Protocol::WEB_TRANSPORT),
-			"expected WebTransport CONNECT"
-		);
-
-		let session = WebTransportSession::accept(req, stream, conn)
 			.await
 			.context("failed to accept WebTransport session")?;
 
-		Ok(session)
+		let version = session
+			.setup
+			.versions
+			.iter()
+			.find(|v| **v == setup::Version::DRAFT_00)
+			.context("failed to find supported version")?;
+
+		match session.setup.role {
+			setup::Role::Subscriber => {}
+			_ => anyhow::bail!("TODO publishing not yet supported"),
+		}
+
+		let setup = setup::Server {
+			version: setup::Version::DRAFT_00,
+			role: setup::Role::Publisher,
+			unknown: Default::default(),
+		};
+
+		session.accept(setup).await
 	}
 }

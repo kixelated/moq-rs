@@ -3,6 +3,7 @@ use crate::coding::{Decode, Encode, Size, VarInt};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+#[derive(Debug)]
 pub struct AnnounceError {
 	// Echo back the namespace that was announced.
 	// TODO Propose using an ID to save bytes.

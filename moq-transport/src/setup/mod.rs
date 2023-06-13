@@ -1,10 +1,12 @@
 mod client;
-mod object;
+mod role;
 mod server;
+mod version;
 
 pub use client::*;
-pub use object::*;
+pub use role::*;
 pub use server::*;
+pub use version::*;
 
 use crate::coding::{Decode, Encode, Size, VarInt};
 
@@ -16,6 +18,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 // This implements a decode/encode method that uses the specified type.
 macro_rules! message_types {
     {$($name:ident = $val:expr,)*} => {
+		#[derive(Debug)]
 		pub enum Message {
 			$($name($name)),*
 		}
@@ -85,7 +88,6 @@ macro_rules! message_types {
 
 // Each message is prefixed with the given VarInt type.
 message_types! {
-	Object = 0x00,
 	Client = 0x01,
 	Server = 0x02, // proposal: moq-wg/moq-transport#212
 }

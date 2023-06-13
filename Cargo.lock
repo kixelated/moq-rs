@@ -764,6 +764,7 @@ dependencies = [
  "hex",
  "http",
  "log",
+ "moq-transport",
  "mp4",
  "paste",
  "quinn",

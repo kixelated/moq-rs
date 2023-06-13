@@ -3,21 +3,18 @@ use crate::media;
 use anyhow::Context;
 
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet;
 
-use super::WebTransportSession;
-
-use super::message;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
 pub struct Session {
-	// The underlying transport session
-	transport: Arc<WebTransportSession>,
+	// The underlying MoQ transport session
+	transport: Arc<moq_transport::server::Session>,
 }
 
 impl Session {
-	pub fn new(transport: WebTransportSession) -> Self {
+	pub fn new(transport: moq_transport::server::Session) -> Self {
 		let transport = Arc::new(transport);
 		Self { transport }
 	}
@@ -84,24 +81,15 @@ impl Session {
 	}
 
 	pub async fn serve_segment(&self, track: media::Track, mut segment: media::Segment) -> anyhow::Result<()> {
-		let mut stream = self.transport.open_uni(self.transport.session_id()).await?;
+		// TODO proper values
+		let header = moq_transport::data::Header {
+			track_id: track.id.into(),
+			group_sequence: 0u32.into(),
+			object_sequence: 0u32.into(),
+			send_order: 0u32.into(),
+		};
 
-		// TODO support prioirty
-		// stream.set_priority(0);
-
-		// Encode a JSON header indicating this is a new segment.
-		let mut message: message::Message = message::Message::new();
-
-		// TODO combine init and segment messages into one.
-		if track.id == 0xff {
-			message.init = Some(message::Init {});
-		} else {
-			message.segment = Some(message::Segment { track_id: track.id });
-		}
-
-		// Write the JSON header.
-		let data = message.serialize()?;
-		stream.write_all(data.as_slice()).await?;
+		let mut stream = self.transport.send_data(header).await?;
 
 		// Write each fragment as they are available.
 		while let Some(fragment) = segment.fragments.next().await {

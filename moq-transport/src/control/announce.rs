@@ -4,6 +4,9 @@ use bytes::Bytes;
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use anyhow::Context;
+
+#[derive(Debug)]
 pub struct Announce {
 	// The track namespace
 	pub track_namespace: String,
@@ -21,15 +24,21 @@ impl Decode for Announce {
 		let track_namespace = String::decode(r).await?;
 
 		let mut auth = None;
-		let unknown = Params::new();
+		let mut unknown = Params::new();
 
 		while let Ok(id) = VarInt::decode(r).await {
-			let dup = match u64::from(id) {
-				2 => auth.replace(Bytes::decode(r).await?).is_some(),
-				_ => anyhow::bail!("unknown parameter: {}", id), //unknown.decode_param(r)?,
-			};
-
-			anyhow::ensure!(!dup, "duplicate parameter: {}", id)
+			match id {
+				VarInt(0x2) => {
+					let v = Bytes::decode(r).await.context("failed to decode auth")?;
+					anyhow::ensure!(auth.replace(v).is_none(), "duplicate auth param");
+				}
+				_ => {
+					unknown
+						.decode_one(id, r)
+						.await
+						.context("failed to decode unknown param")?;
+				}
+			}
 		}
 
 		Ok(Self {

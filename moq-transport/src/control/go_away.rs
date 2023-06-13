@@ -3,6 +3,7 @@ use crate::coding::{Decode, Encode, Size};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+#[derive(Debug)]
 pub struct GoAway {
 	pub url: String,
 }

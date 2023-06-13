@@ -1,76 +1,30 @@
 use crate::coding::{Decode, Encode};
-use crate::{control, setup};
-
-use std::{fs, io, net, path, sync, time};
+use crate::{control, data, setup};
 
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::task::JoinSet;
 
+// Reduce typing because the h3 WebTransport library has quite verbose types.
+type Connection = h3::server::Connection<h3_quinn::Connection, Bytes>;
+type RequestStream = h3::server::RequestStream<h3_quinn::BidiStream<Bytes>, Bytes>;
+type WebTransportSession = h3_webtransport::server::WebTransportSession<h3_quinn::Connection, Bytes>;
+pub type BidiStream = h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>;
+pub type SendStream = h3_webtransport::stream::SendStream<h3_quinn::SendStream<Bytes>, Bytes>;
+pub type RecvStream = h3_webtransport::stream::RecvStream<h3_quinn::RecvStream, Bytes>;
+
 pub struct Server {
 	// The QUIC server, yielding new connections and sessions.
-	server: quinn::Endpoint,
+	endpoint: quinn::Endpoint,
 
 	// A list of connections that are completing the WebTransport handshake.
 	handshake: JoinSet<anyhow::Result<Accept>>,
 }
 
-pub struct ServerConfig {
-	pub addr: net::SocketAddr,
-	pub cert: path::PathBuf,
-	pub key: path::PathBuf,
-}
-
 impl Server {
-	// Create a new server
-	pub fn new(config: ServerConfig) -> anyhow::Result<Self> {
-		// Read the PEM certificate chain
-		let certs = fs::File::open(config.cert).context("failed to open cert file")?;
-		let mut certs = io::BufReader::new(certs);
-		let certs = rustls_pemfile::certs(&mut certs)?
-			.into_iter()
-			.map(rustls::Certificate)
-			.collect();
-
-		// Read the PEM private key
-		let keys = fs::File::open(config.key).context("failed to open key file")?;
-		let mut keys = io::BufReader::new(keys);
-		let mut keys = rustls_pemfile::pkcs8_private_keys(&mut keys)?;
-
-		anyhow::ensure!(keys.len() == 1, "expected a single key");
-		let key = rustls::PrivateKey(keys.remove(0));
-
-		let mut tls_config = rustls::ServerConfig::builder()
-			.with_safe_default_cipher_suites()
-			.with_safe_default_kx_groups()
-			.with_protocol_versions(&[&rustls::version::TLS13])
-			.unwrap()
-			.with_no_client_auth()
-			.with_single_cert(certs, key)?;
-
-		tls_config.max_early_data_size = u32::MAX;
-		let alpn: Vec<Vec<u8>> = vec![
-			b"h3".to_vec(),
-			b"h3-32".to_vec(),
-			b"h3-31".to_vec(),
-			b"h3-30".to_vec(),
-			b"h3-29".to_vec(),
-		];
-		tls_config.alpn_protocols = alpn;
-
-		let mut server_config = quinn::ServerConfig::with_crypto(sync::Arc::new(tls_config));
-
-		// Enable BBR congestion control
-		// TODO validate the implementation
-		let mut transport_config = quinn::TransportConfig::default();
-		transport_config.keep_alive_interval(Some(time::Duration::from_secs(2)));
-		transport_config.congestion_controller_factory(sync::Arc::new(quinn::congestion::BbrConfig::default()));
-
-		server_config.transport = sync::Arc::new(transport_config);
-		let server = quinn::Endpoint::server(server_config, config.addr)?;
+	pub fn new(endpoint: quinn::Endpoint) -> Self {
 		let handshake = JoinSet::new();
-
-		Ok(Self { server, handshake })
+		Self { endpoint, handshake }
 	}
 
 	// Accept the next WebTransport session.
@@ -78,7 +32,7 @@ impl Server {
 		loop {
 			tokio::select!(
 				// Accept the connection and start the WebTransport handshake.
-				conn = self.server.accept() => {
+				conn = self.endpoint.accept() => {
 					let conn = conn.context("failed to accept connection")?;
 					self.handshake.spawn(async move { Self::accept_session(conn).await });
 				},
@@ -125,17 +79,14 @@ impl Server {
 
 // The WebTransport handshake is complete, but we need to decide if we accept it or return 404.
 pub struct Accept {
-	conn: h3::server::Connection<h3_quinn::Connection, Bytes>,
-	req: http::Request<()>,
-	stream: h3::server::RequestStream<h3_quinn::BidiStream<Bytes>, Bytes>,
+	// Inspect to decide whether to accept() or reject() the session.
+	pub req: http::Request<()>,
+
+	conn: Connection,
+	stream: RequestStream,
 }
 
 impl Accept {
-	// Expose the URI so the app can decide whether to continue.
-	pub fn uri(&self) -> &http::Uri {
-		self.req.uri()
-	}
-
 	// Accept the WebTransport session.
 	pub async fn accept(self) -> anyhow::Result<Setup> {
 		let transport = h3_webtransport::server::WebTransportSession::accept(self.req, self.stream, self.conn).await?;
@@ -170,17 +121,14 @@ impl Accept {
 }
 
 pub struct Setup {
-	transport: h3_webtransport::server::WebTransportSession<h3_quinn::Connection, bytes::Bytes>,
-	control: h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>,
-	setup: setup::Client,
+	// Inspect to decide if to accept() or reject() the session.
+	pub setup: setup::Client,
+
+	transport: WebTransportSession,
+	control: BidiStream,
 }
 
 impl Setup {
-	// Expose the control message provided by the client.
-	pub fn setup(&self) -> &setup::Client {
-		&self.setup
-	}
-
 	// Accept the session with our own setup message.
 	pub async fn accept(mut self, setup: setup::Server) -> anyhow::Result<Session> {
 		let msg = setup::Message::Server(setup);
@@ -189,8 +137,6 @@ impl Setup {
 		Ok(Session {
 			transport: self.transport,
 			control: self.control,
-			client: self.setup,
-			server: msg.try_into().unwrap(),
 		})
 	}
 
@@ -201,10 +147,8 @@ impl Setup {
 }
 
 pub struct Session {
-	transport: h3_webtransport::server::WebTransportSession<h3_quinn::Connection, bytes::Bytes>,
-	control: h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>,
-	client: setup::Client,
-	server: setup::Server,
+	transport: WebTransportSession,
+	control: BidiStream,
 }
 
 impl Session {
@@ -212,25 +156,33 @@ impl Session {
 		control::Message::decode(&mut self.control).await
 	}
 
-	/*
-	pub async fn receive_data(&mut self) -> anyhow::Result<bytes::Bytes> {
-		let stream = self
-			.transport
-			.accept_uni()
-			.await
-			.context("failed to accept uni stream")?;
-
-		let (session_id, stream) = stream.context("None uni stream")?;
-
-		let msg = control::Message::read(&mut stream);
-		// TODO
-
-		Ok(data)
-	}
-	*/
-
 	pub async fn send_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
 		msg.encode(&mut self.control).await?;
 		Ok(())
+	}
+
+	pub async fn receive_data(&mut self) -> anyhow::Result<(data::Header, RecvStream)> {
+		let (_session_id, mut stream) = self
+			.transport
+			.accept_uni()
+			.await
+			.context("failed to accept uni stream")?
+			.context("no uni stream")?;
+
+		let header = data::Header::decode(&mut stream).await?;
+
+		Ok((header, stream))
+	}
+
+	pub async fn send_data(&mut self, header: data::Header) -> anyhow::Result<SendStream> {
+		let mut stream = self
+			.transport
+			.open_uni(self.transport.session_id())
+			.await
+			.context("failed to open uni stream")?;
+
+		header.encode(&mut stream).await?;
+
+		Ok(stream)
 	}
 }

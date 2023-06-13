@@ -3,7 +3,9 @@ use crate::coding::{Decode, Encode, Size, VarInt};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-pub struct Object {
+// This is the header for a data stream, aka an OBJECT.
+#[derive(Debug)]
+pub struct Header {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
 	pub track_id: VarInt,
@@ -19,8 +21,13 @@ pub struct Object {
 }
 
 #[async_trait(?Send)]
-impl Decode for Object {
+impl Decode for Header {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let typ = VarInt::decode(r).await?;
+		anyhow::ensure!(typ == VarInt(0), "typ must be 0");
+
+		// NOTE: size has been omitted
+
 		let track_id = VarInt::decode(r).await?;
 		let group_sequence = VarInt::decode(r).await?;
 		let object_sequence = VarInt::decode(r).await?;
@@ -36,8 +43,9 @@ impl Decode for Object {
 }
 
 #[async_trait(?Send)]
-impl Encode for Object {
+impl Encode for Header {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		VarInt(0).encode(w).await?;
 		self.track_id.encode(w).await?;
 		self.group_sequence.encode(w).await?;
 		self.object_sequence.encode(w).await?;
@@ -47,9 +55,10 @@ impl Encode for Object {
 	}
 }
 
-impl Size for Object {
+impl Size for Header {
 	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_id.size()?
+		Ok(VarInt(0).size()?
+			+ self.track_id.size()?
 			+ self.group_sequence.size()?
 			+ self.object_sequence.size()?
 			+ self.send_order.size()?)

@@ -1,9 +1,11 @@
 use crate::coding::{Decode, Encode, Params, Size, VarInt};
 use bytes::Bytes;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+#[derive(Debug)]
 pub struct Subscribe {
 	// An ID we choose so we can map to the track_name.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
@@ -34,17 +36,29 @@ impl Decode for Subscribe {
 		let mut group_sequence = None;
 		let mut object_sequence = None;
 		let mut auth = None;
-		let unknown = Params::new();
+		let mut unknown = Params::new();
 
 		while let Ok(id) = VarInt::decode(r).await {
-			let dup = match u64::from(id) {
-				0 => group_sequence.replace(VarInt::decode(r).await?).is_some(),
-				1 => object_sequence.replace(VarInt::decode(r).await?).is_some(),
-				2 => auth.replace(Bytes::decode(r).await?).is_some(),
-				_ => anyhow::bail!("unknown parameter: {}", id), //unknown.decode_param(r)?,
+			match id {
+				VarInt(0x0) => {
+					let v = VarInt::decode(r).await.context("failed to decode group sequence")?;
+					anyhow::ensure!(group_sequence.replace(v).is_none(), "duplicate group sequence");
+				}
+				VarInt(0x1) => {
+					let v = VarInt::decode(r).await.context("failed to decode object sequence")?;
+					anyhow::ensure!(object_sequence.replace(v).is_none(), "duplicate object sequence");
+				}
+				VarInt(0x2) => {
+					let v = Bytes::decode(r).await.context("failed to decode auth")?;
+					anyhow::ensure!(auth.replace(v).is_none(), "duplicate auth");
+				}
+				_ => {
+					unknown
+						.decode_one(id, r)
+						.await
+						.context("failed to decode unknown param")?;
+				}
 			};
-
-			anyhow::ensure!(!dup, "duplicate parameter: {}", id)
 		}
 
 		Ok(Self {
@@ -64,6 +78,7 @@ impl Encode for Subscribe {
 		self.track_id.encode(w).await?;
 		self.track_name.encode(w).await?;
 
+		// TODO this is ugly, figure out how to avoid this duplication.
 		if let Some(group_sequence) = &self.group_sequence {
 			VarInt(0).encode(w).await?;
 			group_sequence.encode(w).await?;

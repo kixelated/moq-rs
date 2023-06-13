@@ -3,7 +3,7 @@ use crate::coding::{Decode, Duration, Encode, Size, VarInt};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct SubscribeOk {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 
