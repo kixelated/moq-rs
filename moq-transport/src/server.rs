@@ -1,3 +1,4 @@
+use crate::coding::{Decode, Encode};
 use crate::{control, setup};
 
 use std::{fs, io, net, path, sync, time};
@@ -145,7 +146,7 @@ impl Accept {
 			.unwrap();
 
 		if let h3_webtransport::server::AcceptedBi::BidiStream(_session_id, mut control) = stream {
-			let m = setup::Message::read(&mut control).await?;
+			let m = setup::Message::decode(&mut control).await?;
 			let setup = match m {
 				setup::Message::Client(setup) => setup,
 				_ => anyhow::bail!("expected client SETUP"),
@@ -183,7 +184,7 @@ impl Setup {
 	// Accept the session with our own setup message.
 	pub async fn accept(mut self, setup: setup::Server) -> anyhow::Result<Session> {
 		let msg = setup::Message::Server(setup);
-		msg.write(&mut self.control).await?;
+		msg.encode(&mut self.control).await?;
 
 		Ok(Session {
 			transport: self.transport,
@@ -208,7 +209,7 @@ pub struct Session {
 
 impl Session {
 	pub async fn receive_message(&mut self) -> anyhow::Result<control::Message> {
-		control::Message::read(&mut self.control).await
+		control::Message::decode(&mut self.control).await
 	}
 
 	/*
@@ -229,7 +230,7 @@ impl Session {
 	*/
 
 	pub async fn send_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
-		msg.write(&mut self.control).await?;
+		msg.encode(&mut self.control).await?;
 		Ok(())
 	}
 }

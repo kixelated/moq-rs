@@ -1,7 +1,8 @@
 use crate::coding::{Decode, Encode, Size, VarInt};
-use bytes::{Buf, BufMut};
 
-#[derive(Default)]
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
+
 pub struct SubscribeError {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 
@@ -15,21 +16,23 @@ pub struct SubscribeError {
 	pub reason: String,
 }
 
+#[async_trait(?Send)]
 impl Decode for SubscribeError {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r)?;
-		let code = VarInt::decode(r)?;
-		let reason = String::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let track_id = VarInt::decode(r).await?;
+		let code = VarInt::decode(r).await?;
+		let reason = String::decode(r).await?;
 
 		Ok(Self { track_id, code, reason })
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for SubscribeError {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.track_id.encode(w)?;
-		self.code.encode(w)?;
-		self.reason.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.track_id.encode(w).await?;
+		self.code.encode(w).await?;
+		self.reason.encode(w).await?;
 
 		Ok(())
 	}

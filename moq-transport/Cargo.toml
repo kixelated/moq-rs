@@ -34,3 +34,4 @@ env_logger = "0.9.3"
 # Utility
 anyhow = "1.0.70"
 thiserror = "1.0.21"
+async-trait = "0.1"

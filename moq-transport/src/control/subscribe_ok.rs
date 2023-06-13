@@ -1,5 +1,7 @@
 use crate::coding::{Decode, Duration, Encode, Size, VarInt};
-use bytes::{Buf, BufMut};
+
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 #[derive(Default)]
 pub struct SubscribeOk {
@@ -12,19 +14,21 @@ pub struct SubscribeOk {
 	pub expires: Duration,
 }
 
+#[async_trait(?Send)]
 impl Decode for SubscribeOk {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r)?;
-		let expires = Duration::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let track_id = VarInt::decode(r).await?;
+		let expires = Duration::decode(r).await?;
 
 		Ok(Self { track_id, expires })
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for SubscribeOk {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.track_id.encode(w)?;
-		self.expires.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.track_id.encode(w).await?;
+		self.expires.encode(w).await?;
 
 		Ok(())
 	}

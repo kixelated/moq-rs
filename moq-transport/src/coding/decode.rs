@@ -1,51 +1,56 @@
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 use std::str;
 
 use super::VarInt;
 
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncReadExt};
+
+#[async_trait(?Send)]
 pub trait Decode: Sized {
-	fn decode<B: Buf>(buf: &mut B) -> anyhow::Result<Self>;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self>;
 }
 
-use thiserror::Error;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-#[error("unexpected end of buffer")]
-pub struct UnexpectedEnd;
-
+#[async_trait(?Send)]
 impl Decode for Bytes {
-	fn decode<B: Buf>(buf: &mut B) -> anyhow::Result<Self> {
-		let len = VarInt::decode(buf)?.into();
-		anyhow::ensure!(buf.remaining() >= len, UnexpectedEnd);
-		Ok(buf.copy_to_bytes(len))
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		Vec::<u8>::decode(r).await.map(Bytes::from)
 	}
 }
 
+#[async_trait(?Send)]
 impl Decode for Vec<u8> {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let len = VarInt::decode(r)?.into();
-		anyhow::ensure!(r.remaining() >= len, UnexpectedEnd);
-		let v = r.copy_to_bytes(len).to_vec();
-		Ok(v)
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let size = VarInt::decode(r).await?.into();
+
+		// NOTE: we don't use with_capacity since size is from an untrusted source
+		let mut buf = Vec::new();
+		r.take(size).read_to_end(&mut buf).await?;
+
+		Ok(buf)
 	}
 }
 
+#[async_trait(?Send)]
 impl<T: Decode> Decode for Vec<T> {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let len = VarInt::decode(r)?.into();
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let count = VarInt::decode(r).await?;
 
-		let mut v = Vec::with_capacity(len);
-		for _ in 0..len {
-			v.push(T::decode(r)?);
+		// NOTE: we don't use with_capacity since count is from an untrusted source
+		let mut v = Vec::new();
+
+		for _ in 0..u64::from(count) {
+			v.push(T::decode(r).await?);
 		}
 
 		Ok(v)
 	}
 }
 
+#[async_trait(?Send)]
 impl Decode for String {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let data = Bytes::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let data = Vec::decode(r).await?;
 		let s = str::from_utf8(&data)?.to_string();
 		Ok(s)
 	}

@@ -1,42 +1,59 @@
-use bytes::{BufMut, Bytes};
-
 use super::VarInt;
 
+use async_trait::async_trait;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+use bytes::Bytes;
+
+#[async_trait(?Send)]
 pub trait Encode: Sized {
-	fn encode<B: BufMut>(&self, buf: &mut B) -> anyhow::Result<()>;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()>;
 }
 
+#[async_trait(?Send)]
 impl Encode for Bytes {
-	fn encode<B: BufMut>(&self, buf: &mut B) -> anyhow::Result<()> {
-		VarInt::try_from(self.len())?.encode(buf)?;
-		buf.put_slice(self);
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		VarInt::try_from(self.len())?.encode(w).await?;
+		w.write_all(self).await?;
 		Ok(())
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for Vec<u8> {
-	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		VarInt::try_from(self.len())?.encode(w)?;
-		w.put_slice(self);
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		VarInt::try_from(self.len())?.encode(w).await?;
+		w.write_all(self).await?;
 		Ok(())
 	}
 }
 
+#[async_trait(?Send)]
 impl<T: Encode> Encode for Vec<T> {
-	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		let len = VarInt::try_from(self.len())?;
-		len.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		let count = VarInt::try_from(self.len())?;
+		count.encode(w).await?;
 
 		for item in self {
-			item.encode(w)?;
+			item.encode(w).await?;
 		}
 
 		Ok(())
 	}
 }
 
+#[async_trait(?Send)]
+impl Encode for &[u8] {
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		VarInt::try_from(self.len())?.encode(w).await?;
+		w.write_all(self).await?;
+		Ok(())
+	}
+}
+
+#[async_trait(?Send)]
 impl Encode for String {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.as_bytes().to_vec().encode(w)
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.as_bytes().encode(w).await
 	}
 }

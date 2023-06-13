@@ -1,6 +1,5 @@
-use super::{Decode, Encode, VarInt};
-use bytes::buf::UninitSlice;
-use bytes::{Buf, BufMut, Bytes};
+use super::VarInt;
+use bytes::Bytes;
 
 pub trait Size {
 	fn size(&self) -> anyhow::Result<usize>;
@@ -34,6 +33,7 @@ impl Size for String {
 	}
 }
 
+/*
 // Helpers to make encoding a size + value easier.
 pub struct WithSize;
 
@@ -89,3 +89,4 @@ where
 		self.buf.chunk_mut()
 	}
 }
+*/

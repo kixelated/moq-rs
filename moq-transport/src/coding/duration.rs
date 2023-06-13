@@ -1,22 +1,26 @@
 use super::{Decode, Encode, Size, VarInt};
-use bytes::{Buf, BufMut};
+
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use std::time;
 
 #[derive(Default)]
 pub struct Duration(pub time::Duration);
 
+#[async_trait(?Send)]
 impl Encode for Duration {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		let ms = self.0.as_millis();
 		let ms = VarInt::try_from(ms)?;
-		ms.encode(w)
+		ms.encode(w).await
 	}
 }
 
+#[async_trait(?Send)]
 impl Decode for Duration {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let ms = VarInt::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let ms = VarInt::decode(r).await?;
 		let ms = ms.into();
 		Ok(Self(time::Duration::from_millis(ms)))
 	}

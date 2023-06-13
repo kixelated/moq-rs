@@ -2,8 +2,8 @@ use crate::coding::{Decode, Encode, Size, VarInt};
 
 use std::collections::HashMap;
 
-use bytes::{Buf, BufMut, Bytes};
-
+use bytes::Bytes;
+/*
 #[derive(Default)]
 pub struct Param<const I: u32, T>(pub Option<T>)
 where
@@ -57,27 +57,38 @@ where
 		Self(None)
 	}
 }
+*/
+
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 #[derive(Default)]
 pub struct Params(pub HashMap<VarInt, Bytes>);
 
+#[async_trait(?Send)]
 impl Decode for Params {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let mut map = Self::new();
+	async fn decode<R: AsyncRead + Unpin>(_r: &mut R) -> anyhow::Result<Self> {
+		let map = Self::new();
 
-		while r.has_remaining() {
-			map.decode_param(r)?;
+		/*
+		loop {
+			let id = VarInt::decode(r).await?;
 		}
+		while r.read(&[]).await? > 0 {
+			map.decode_param(r).await?;
+		}
+		*/
 
 		Ok(map)
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for Params {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		for (id, value) in &self.0 {
-			id.encode(w)?;
-			value.encode(w)?;
+			id.encode(w).await?;
+			value.encode(w).await?;
 		}
 
 		Ok(())
@@ -101,6 +112,7 @@ impl Params {
 		Default::default()
 	}
 
+	/*
 	// Decode a single parameter from the buffer.
 	pub fn decode_param<B: Buf>(&mut self, r: &mut B) -> anyhow::Result<()> {
 		let id = VarInt::decode(r)?;
@@ -110,4 +122,5 @@ impl Params {
 
 		Ok(())
 	}
+	*/
 }

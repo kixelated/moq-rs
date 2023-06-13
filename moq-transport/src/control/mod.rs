@@ -14,8 +14,12 @@ pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
-use crate::coding::{Decode, Encode, Size, VarInt, WithSize};
-use bytes::{Buf, BufMut};
+use crate::coding::{Decode, Encode, Size, VarInt};
+
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+
+use anyhow::Context;
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -25,26 +29,39 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
+		#[async_trait(?Send)]
 		impl Decode for Message {
-			fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-				let t = VarInt::decode(r)?;
+			async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+				let t = VarInt::decode(r).await.context("failed to decode type")?;
+				let size = VarInt::decode(r).await.context("failed to decode size")?;
+				let mut r = r.take(size.into());
 
-				Ok(match t.into() {
-					$(VarInt($val) => {
-						let v = WithSize::decode::<B, $name>(r)?;
-						Self::$name(v)
-					})*
-					_ => anyhow::bail!("invalid message type: {}", t),
-				})
+				let v = match t.into() {
+					$(VarInt($val) => Self::$name($name::decode(&mut r).await.context("failed to decode $name")?),)*
+					_ => anyhow::bail!("invalid type: {}", t),
+				};
+
+				// Sanity check: make sure we decoded the entire message.
+				let mut buf = [0];
+				anyhow::ensure!(r.read(&mut buf).await? == 0, "partial decode");
+
+				Ok(v)
 			}
 		}
 
+		#[async_trait(?Send)]
 		impl Encode for Message {
-			fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
+			async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt($val).encode(w)?;
-						WithSize::encode(w, m)
+						VarInt($val).encode(w).await.context("failed to encode type")?;
+
+						let size = m.size().context("failed to compute size")?;
+						let size = VarInt::try_from(size).context("size too large")?;
+						size.encode(w).await.context("failed to encode size")?;
+
+						// TODO sanity check: make sure we write exactly size bytes
+						m.encode(w).await.context("failed to encode $name")
 					},)*
 				}
 			}
@@ -54,7 +71,8 @@ macro_rules! message_types {
 			fn size(&self) -> anyhow::Result<usize> {
 				Ok(match self {
 					$(Self::$name(ref m) => {
-						VarInt($val).size()? + WithSize::size(m)?
+						let size = m.size()?;
+						VarInt($val).size().unwrap() + VarInt::try_from(size)?.size()? + size
 					},)*
 				})
 			}
@@ -85,30 +103,4 @@ message_types! {
 	AnnounceOk = 0x07,
 	AnnounceError = 0x08,
 	GoAway = 0x10,
-}
-
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-impl Message {
-	pub async fn read<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let size = VarInt::read(r).await?.into();
-		let mut buf = Vec::new();
-
-		// TODO is there a way to avoid this temporary buffer?
-		// I imagine we'll have to change the Decode trait to be AsyncRead
-		let mut r = r.take(size);
-		r.read_buf(&mut buf).await?;
-
-		Self::decode(&mut buf.as_slice())
-	}
-
-	pub async fn write<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
-		// TODO is there a way to avoid this temporary buffer?
-		// I imagine we'll have to change the Encode trait to be AsyncWrite
-		let mut buf = Vec::new();
-		self.encode(&mut buf)?;
-		w.write_all(&buf).await?;
-
-		Ok(())
-	}
 }

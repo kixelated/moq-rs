@@ -1,33 +1,35 @@
-use crate::coding::{Decode, Encode, Param, Params, Size, VarInt};
-use bytes::{Buf, BufMut, Bytes};
+use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use bytes::Bytes;
 
-#[derive(Default)]
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
+
 pub struct Announce {
 	// The track namespace
 	pub track_namespace: String,
 
 	// An authentication token, param 0x02
-	pub auth: Param<2, Bytes>,
+	pub auth: Option<Bytes>,
 
 	// Parameters that we don't recognize.
 	pub unknown: Params,
 }
 
+#[async_trait(?Send)]
 impl Decode for Announce {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let track_namespace = String::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let track_namespace = String::decode(r).await?;
 
-		let mut auth = Param::new();
-		let mut unknown = Params::new();
+		let mut auth = None;
+		let unknown = Params::new();
 
-		while r.has_remaining() {
-			// TODO is there some way to peek at this varint? I would like to enforce the correct ID in decode.
-			let id = VarInt::decode(r)?;
+		while let Ok(id) = VarInt::decode(r).await {
+			let dup = match u64::from(id) {
+				2 => auth.replace(Bytes::decode(r).await?).is_some(),
+				_ => anyhow::bail!("unknown parameter: {}", id), //unknown.decode_param(r)?,
+			};
 
-			match u64::from(id) {
-				2 => auth = Param::decode(r)?,
-				_ => unknown.decode_param(r)?,
-			}
+			anyhow::ensure!(!dup, "duplicate parameter: {}", id)
 		}
 
 		Ok(Self {
@@ -38,11 +40,17 @@ impl Decode for Announce {
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for Announce {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.track_namespace.encode(w)?;
-		self.auth.encode(w)?;
-		self.unknown.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.track_namespace.encode(w).await?;
+
+		if let Some(auth) = &self.auth {
+			VarInt(2).encode(w).await?;
+			auth.encode(w).await?;
+		}
+
+		self.unknown.encode(w).await?;
 
 		Ok(())
 	}
@@ -50,6 +58,12 @@ impl Encode for Announce {
 
 impl Size for Announce {
 	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_namespace.size()? + self.auth.size()? + self.unknown.size()?)
+		let mut size = self.track_namespace.size()? + self.unknown.size()?;
+
+		if let Some(auth) = &self.auth {
+			size += VarInt(2).size()? + auth.size()?;
+		}
+
+		Ok(size)
 	}
 }

@@ -1,8 +1,9 @@
-use crate::coding::{Decode, Encode, Param, Params, Size, VarInt};
+use crate::coding::{Decode, Encode, Params, Size, VarInt};
+use bytes::Bytes;
 
-use bytes::{Buf, BufMut, Bytes};
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
 
-#[derive(Default)]
 pub struct Subscribe {
 	// An ID we choose so we can map to the track_name.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
@@ -12,38 +13,38 @@ pub struct Subscribe {
 	pub track_name: String,
 
 	// The group sequence number, param 0x00
-	pub group_sequence: Param<0, VarInt>,
+	pub group_sequence: Option<VarInt>,
 
 	// The object sequence number, param 0x01
-	pub object_sequence: Param<1, VarInt>,
+	pub object_sequence: Option<VarInt>,
 
 	// An authentication token, param 0x02
-	pub auth: Param<2, Bytes>,
+	pub auth: Option<Bytes>,
 
 	// Parameters that we don't recognize.
 	pub unknown: Params,
 }
 
+#[async_trait(?Send)]
 impl Decode for Subscribe {
-	fn decode<B: Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r)?;
-		let track_name = String::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let track_id = VarInt::decode(r).await?;
+		let track_name = String::decode(r).await?;
 
-		let mut group_sequence = Param::new();
-		let mut object_sequence = Param::new();
-		let mut auth = Param::new();
-		let mut unknown = Params::new();
+		let mut group_sequence = None;
+		let mut object_sequence = None;
+		let mut auth = None;
+		let unknown = Params::new();
 
-		while r.has_remaining() {
-			// TODO is there some way to peek at this varint? I would like to enforce the correct ID in decode.
-			let id = VarInt::decode(r)?;
+		while let Ok(id) = VarInt::decode(r).await {
+			let dup = match u64::from(id) {
+				0 => group_sequence.replace(VarInt::decode(r).await?).is_some(),
+				1 => object_sequence.replace(VarInt::decode(r).await?).is_some(),
+				2 => auth.replace(Bytes::decode(r).await?).is_some(),
+				_ => anyhow::bail!("unknown parameter: {}", id), //unknown.decode_param(r)?,
+			};
 
-			match u64::from(id) {
-				0 => group_sequence = Param::decode(r)?,
-				1 => object_sequence = Param::decode(r)?,
-				2 => auth = Param::decode(r)?,
-				_ => unknown.decode_param(r)?,
-			}
+			anyhow::ensure!(!dup, "duplicate parameter: {}", id)
 		}
 
 		Ok(Self {
@@ -57,15 +58,28 @@ impl Decode for Subscribe {
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for Subscribe {
-	fn encode<B: BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.track_id.encode(w)?;
-		self.track_name.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.track_id.encode(w).await?;
+		self.track_name.encode(w).await?;
 
-		self.group_sequence.encode(w)?;
-		self.object_sequence.encode(w)?;
-		self.auth.encode(w)?;
-		self.unknown.encode(w)?;
+		if let Some(group_sequence) = &self.group_sequence {
+			VarInt(0).encode(w).await?;
+			group_sequence.encode(w).await?;
+		}
+
+		if let Some(object_sequence) = &self.object_sequence {
+			VarInt(1).encode(w).await?;
+			object_sequence.encode(w).await?;
+		}
+
+		if let Some(auth) = &self.auth {
+			VarInt(2).encode(w).await?;
+			auth.encode(w).await?;
+		}
+
+		self.unknown.encode(w).await?;
 
 		Ok(())
 	}
@@ -73,11 +87,20 @@ impl Encode for Subscribe {
 
 impl Size for Subscribe {
 	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_id.size()?
-			+ self.track_name.size()?
-			+ self.group_sequence.size()?
-			+ self.object_sequence.size()?
-			+ self.auth.size()?
-			+ self.unknown.size()?)
+		let mut size = self.track_id.size()? + self.track_name.size()? + self.unknown.size()?;
+
+		if let Some(group_sequence) = &self.group_sequence {
+			size += VarInt(0).size()? + group_sequence.size()?;
+		}
+
+		if let Some(object_sequence) = &self.object_sequence {
+			size += VarInt(1).size()? + object_sequence.size()?;
+		}
+
+		if let Some(auth) = &self.auth {
+			size += VarInt(2).size()? + auth.size()?;
+		}
+
+		Ok(size)
 	}
 }

@@ -1,6 +1,8 @@
 use crate::coding::{Decode, Encode, Size, VarInt};
 
-#[derive(Default)]
+use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
+
 pub struct Object {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
@@ -16,12 +18,13 @@ pub struct Object {
 	pub send_order: VarInt,
 }
 
+#[async_trait(?Send)]
 impl Decode for Object {
-	fn decode<B: bytes::Buf>(r: &mut B) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r)?;
-		let group_sequence = VarInt::decode(r)?;
-		let object_sequence = VarInt::decode(r)?;
-		let send_order = VarInt::decode(r)?;
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		let track_id = VarInt::decode(r).await?;
+		let group_sequence = VarInt::decode(r).await?;
+		let object_sequence = VarInt::decode(r).await?;
+		let send_order = VarInt::decode(r).await?;
 
 		Ok(Self {
 			track_id,
@@ -32,12 +35,13 @@ impl Decode for Object {
 	}
 }
 
+#[async_trait(?Send)]
 impl Encode for Object {
-	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
-		self.track_id.encode(w)?;
-		self.group_sequence.encode(w)?;
-		self.object_sequence.encode(w)?;
-		self.send_order.encode(w)?;
+	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		self.track_id.encode(w).await?;
+		self.group_sequence.encode(w).await?;
+		self.object_sequence.encode(w).await?;
+		self.send_order.encode(w).await?;
 
 		Ok(())
 	}
