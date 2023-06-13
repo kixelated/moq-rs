@@ -174,10 +174,10 @@ impl Encode for VarInt {
 
 impl Size for VarInt {
 	/// Compute the number of bytes needed to encode this value
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		let x = self.0;
 
-		Ok(if x < 2u64.pow(6) {
+		if x < 2u64.pow(6) {
 			1
 		} else if x < 2u64.pow(14) {
 			2
@@ -186,7 +186,7 @@ impl Size for VarInt {
 		} else if x < 2u64.pow(62) {
 			8
 		} else {
-			anyhow::bail!("malformed VarInt");
-		})
+			unreachable!("malformed VarInt");
+		}
 	}
 }

@@ -65,7 +65,7 @@ impl Encode for Role {
 }
 
 impl Size for Role {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		VarInt::from(*self).size()
 	}
 }

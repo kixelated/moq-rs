@@ -101,21 +101,21 @@ impl Encode for Subscribe {
 }
 
 impl Size for Subscribe {
-	fn size(&self) -> anyhow::Result<usize> {
-		let mut size = self.track_id.size()? + self.track_name.size()? + self.unknown.size()?;
+	fn size(&self) -> usize {
+		let mut size = self.track_id.size() + self.track_name.size() + self.unknown.size();
 
 		if let Some(group_sequence) = &self.group_sequence {
-			size += VarInt(0).size()? + group_sequence.size()?;
+			size += VarInt(0).size() + group_sequence.size();
 		}
 
 		if let Some(object_sequence) = &self.object_sequence {
-			size += VarInt(1).size()? + object_sequence.size()?;
+			size += VarInt(1).size() + object_sequence.size();
 		}
 
 		if let Some(auth) = &self.auth {
-			size += VarInt(2).size()? + auth.size()?;
+			size += VarInt(2).size() + auth.size();
 		}
 
-		Ok(size)
+		size
 	}
 }

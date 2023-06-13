@@ -50,7 +50,8 @@ macro_rules! message_types {
 					$(Self::$name(ref m) => {
 						VarInt($val).encode(w).await.context("failed to encode type")?;
 
-						let size = m.size().context("failed to compute size")?;
+						let size = m.size();
+
 						let size = VarInt::try_from(size).context("size too large")?;
 						size.encode(w).await.context("failed to encode size")?;
 
@@ -62,13 +63,13 @@ macro_rules! message_types {
 		}
 
 		impl Size for Message {
-			fn size(&self) -> anyhow::Result<usize> {
-				Ok(match self {
+			fn size(&self) -> usize {
+				match self {
 					$(Self::$name(ref m) => {
-						let size = m.size()?;
-						VarInt($val).size().unwrap() + VarInt::try_from(size)?.size()? + size
+						let size = m.size();
+						VarInt($val).size() + VarInt::try_from(size).unwrap().size() + size
 					},)*
-				})
+				}
 			}
 		}
 

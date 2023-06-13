@@ -26,7 +26,7 @@ impl Encode for AnnounceOk {
 }
 
 impl Size for AnnounceOk {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		self.track_namespace.size()
 	}
 }

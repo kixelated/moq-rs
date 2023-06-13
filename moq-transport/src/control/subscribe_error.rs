@@ -40,7 +40,7 @@ impl Encode for SubscribeError {
 }
 
 impl Size for SubscribeError {
-	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_id.size()? + self.code.size()? + self.reason.size()?)
+	fn size(&self) -> usize {
+		self.track_id.size() + self.code.size() + self.reason.size()
 	}
 }

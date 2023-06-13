@@ -36,14 +36,14 @@ impl Encode for Params {
 }
 
 impl Size for Params {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		let mut size = 0;
 
 		for (id, value) in &self.0 {
-			size += id.size()? + value.size()?;
+			size += id.size() + value.size();
 		}
 
-		Ok(size)
+		size
 	}
 }
 

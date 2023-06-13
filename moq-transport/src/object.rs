@@ -56,11 +56,11 @@ impl Encode for Header {
 }
 
 impl Size for Header {
-	fn size(&self) -> anyhow::Result<usize> {
-		Ok(VarInt(0).size()?
-			+ self.track_id.size()?
-			+ self.group_sequence.size()?
-			+ self.object_sequence.size()?
-			+ self.send_order.size()?)
+	fn size(&self) -> usize {
+		VarInt(0).size()
+			+ self.track_id.size()
+			+ self.group_sequence.size()
+			+ self.object_sequence.size()
+			+ self.send_order.size()
 	}
 }

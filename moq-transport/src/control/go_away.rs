@@ -24,7 +24,7 @@ impl Encode for GoAway {
 }
 
 impl Size for GoAway {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		self.url.size()
 	}
 }

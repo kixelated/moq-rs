@@ -66,13 +66,13 @@ impl Encode for Announce {
 }
 
 impl Size for Announce {
-	fn size(&self) -> anyhow::Result<usize> {
-		let mut size = self.track_namespace.size()? + self.unknown.size()?;
+	fn size(&self) -> usize {
+		let mut size = self.track_namespace.size() + self.unknown.size();
 
 		if let Some(auth) = &self.auth {
-			size += VarInt(2).size()? + auth.size()?;
+			size += VarInt(2).size() + auth.size();
 		}
 
-		Ok(size)
+		size
 	}
 }

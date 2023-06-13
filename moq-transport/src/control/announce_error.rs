@@ -43,7 +43,7 @@ impl Encode for AnnounceError {
 }
 
 impl Size for AnnounceError {
-	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_namespace.size()? + self.code.size()? + self.reason.size()?)
+	fn size(&self) -> usize {
+		self.track_namespace.size() + self.code.size() + self.reason.size()
 	}
 }

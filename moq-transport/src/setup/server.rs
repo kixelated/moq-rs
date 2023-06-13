@@ -66,10 +66,10 @@ impl Encode for Server {
 }
 
 impl Size for Server {
-	fn size(&self) -> anyhow::Result<usize> {
-		let mut size = self.version.size()? + self.unknown.size()?;
-		size += VarInt(0x0).size()? + self.role.size()?;
+	fn size(&self) -> usize {
+		let mut size = self.version.size() + self.unknown.size();
+		size += VarInt(0x0).size() + self.role.size();
 
-		Ok(size)
+		size
 	}
 }

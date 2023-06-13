@@ -35,7 +35,7 @@ impl Encode for SubscribeOk {
 }
 
 impl Size for SubscribeOk {
-	fn size(&self) -> anyhow::Result<usize> {
-		Ok(self.track_id.size()? + self.expires.size()?)
+	fn size(&self) -> usize {
+		self.track_id.size() + self.expires.size()
 	}
 }

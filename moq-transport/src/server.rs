@@ -1,5 +1,5 @@
 use crate::coding::{Decode, Encode};
-use crate::{control, data, setup};
+use crate::{control, object, setup};
 
 use anyhow::Context;
 use bytes::Bytes;
@@ -161,7 +161,7 @@ impl Session {
 		Ok(())
 	}
 
-	pub async fn receive_data(&mut self) -> anyhow::Result<(data::Header, RecvStream)> {
+	pub async fn receive_data(&mut self) -> anyhow::Result<(object::Header, RecvStream)> {
 		let (_session_id, mut stream) = self
 			.transport
 			.accept_uni()
@@ -169,12 +169,12 @@ impl Session {
 			.context("failed to accept uni stream")?
 			.context("no uni stream")?;
 
-		let header = data::Header::decode(&mut stream).await?;
+		let header = object::Header::decode(&mut stream).await?;
 
 		Ok((header, stream))
 	}
 
-	pub async fn send_data(&mut self, header: data::Header) -> anyhow::Result<SendStream> {
+	pub async fn send_data(&mut self, header: object::Header) -> anyhow::Result<SendStream> {
 		let mut stream = self
 			.transport
 			.open_uni(self.transport.session_id())

@@ -27,9 +27,9 @@ impl Decode for Duration {
 }
 
 impl Size for Duration {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		let ms = self.0.as_millis();
-		let ms = VarInt::try_from(ms)?;
+		let ms = VarInt::try_from(ms).unwrap();
 		ms.size()
 	}
 }

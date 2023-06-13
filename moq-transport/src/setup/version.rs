@@ -38,7 +38,7 @@ impl Encode for Version {
 }
 
 impl Size for Version {
-	fn size(&self) -> anyhow::Result<usize> {
+	fn size(&self) -> usize {
 		self.0.size()
 	}
 }

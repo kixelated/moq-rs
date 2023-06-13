@@ -87,14 +87,14 @@ impl Encode for Client {
 }
 
 impl Size for Client {
-	fn size(&self) -> anyhow::Result<usize> {
-		let mut size = self.versions.size()? + self.unknown.size()?;
-		size += VarInt(0).size()? + self.role.size()?;
+	fn size(&self) -> usize {
+		let mut size = self.versions.size() + self.unknown.size();
+		size += VarInt(0).size() + self.role.size();
 
 		if let Some(path) = &self.path {
-			size += VarInt(1).size()? + path.size()?;
+			size += VarInt(1).size() + path.size();
 		}
 
-		Ok(size)
+		size
 	}
 }
