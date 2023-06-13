@@ -1,19 +1,10 @@
-use crate::client;
-use crate::server; // it me
-
-use crate::coding::{Decode, Encode, VarInt};
+use crate::{control, setup};
 
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
-use bytes::{Buf, BufMut, Bytes};
+use bytes::Bytes;
 use tokio::task::JoinSet;
-
-use tokio::io::AsyncReadExt;
-
-// Reuse the amount of typing.
-type WebTransport = h3_webtransport::server::WebTransportSession<h3_quinn::Connection, bytes::Bytes>;
-use h3_webtransport::server::AcceptedBi::BidiStream;
 
 pub struct Server {
 	// The QUIC server, yielding new connections and sessions.
@@ -145,24 +136,26 @@ impl Accept {
 	}
 
 	// Accept the WebTransport session.
-	pub async fn accept(self) -> anyhow::Result<Session> {
-		let transport = WebTransport::accept(self.req, self.stream, self.conn).await?;
+	pub async fn accept(self) -> anyhow::Result<Setup> {
+		let transport = h3_webtransport::server::WebTransportSession::accept(self.req, self.stream, self.conn).await?;
 		let stream = transport
 			.accept_bi()
 			.await
 			.context("failed to accept bidi stream")?
 			.unwrap();
 
-		if let BidiStream(session_id, stream) = stream {
-			let size = VarInt::read(&mut stream).await?;
-			/*
-			let stream = stream.take(size);
-			stream.read_to_end(buf)
+		if let h3_webtransport::server::AcceptedBi::BidiStream(_session_id, mut control) = stream {
+			let m = setup::Message::read(&mut control).await?;
+			let setup = match m {
+				setup::Message::Client(setup) => setup,
+				_ => anyhow::bail!("expected client SETUP"),
+			};
 
-			let setup = client::Setup::decode(&mut stream).await?;
-			*/
-
-			Ok(Session { transport })
+			Ok(Setup {
+				transport,
+				control,
+				setup,
+			})
 		} else {
 			anyhow::bail!("multiple SETUP requests");
 		}
@@ -175,13 +168,68 @@ impl Accept {
 	}
 }
 
+pub struct Setup {
+	transport: h3_webtransport::server::WebTransportSession<h3_quinn::Connection, bytes::Bytes>,
+	control: h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>,
+	setup: setup::Client,
+}
+
+impl Setup {
+	// Expose the control message provided by the client.
+	pub fn setup(&self) -> &setup::Client {
+		&self.setup
+	}
+
+	// Accept the session with our own setup message.
+	pub async fn accept(mut self, setup: setup::Server) -> anyhow::Result<Session> {
+		let msg = setup::Message::Server(setup);
+		msg.write(&mut self.control).await?;
+
+		Ok(Session {
+			transport: self.transport,
+			control: self.control,
+			client: self.setup,
+			server: msg.try_into().unwrap(),
+		})
+	}
+
+	pub async fn reject(self) -> anyhow::Result<()> {
+		// TODO Close the QUIC connection with an error code.
+		Ok(())
+	}
+}
+
 pub struct Session {
-	transport: WebTransport,
+	transport: h3_webtransport::server::WebTransportSession<h3_quinn::Connection, bytes::Bytes>,
+	control: h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>,
+	client: setup::Client,
+	server: setup::Server,
 }
 
 impl Session {
-	pub async fn close(self) -> anyhow::Result<()> {
-		// TODO Close the QUIC connection with an error code.
+	pub async fn receive_message(&mut self) -> anyhow::Result<control::Message> {
+		control::Message::read(&mut self.control).await
+	}
+
+	/*
+	pub async fn receive_data(&mut self) -> anyhow::Result<bytes::Bytes> {
+		let stream = self
+			.transport
+			.accept_uni()
+			.await
+			.context("failed to accept uni stream")?;
+
+		let (session_id, stream) = stream.context("None uni stream")?;
+
+		let msg = control::Message::read(&mut stream);
+		// TODO
+
+		Ok(data)
+	}
+	*/
+
+	pub async fn send_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
+		msg.write(&mut self.control).await?;
 		Ok(())
 	}
 }

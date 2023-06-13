@@ -5,13 +5,13 @@ use bytes::{Buf, BufMut};
 pub struct AnnounceError {
 	// Echo back the namespace that was announced.
 	// TODO Propose using an ID to save bytes.
-	track_namespace: String,
+	pub track_namespace: String,
 
 	// An error code.
-	code: VarInt,
+	pub code: VarInt,
 
 	// An optional, human-readable reason.
-	reason: String,
+	pub reason: String,
 }
 
 impl Decode for AnnounceError {

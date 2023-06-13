@@ -6,22 +6,22 @@ use bytes::{Buf, BufMut, Bytes};
 pub struct Subscribe {
 	// An ID we choose so we can map to the track_name.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
-	track_id: VarInt,
+	pub track_id: VarInt,
 
 	// The track namespace + track name.
-	track_name: String,
+	pub track_name: String,
 
 	// The group sequence number, param 0x00
-	group_sequence: Param<0, VarInt>,
+	pub group_sequence: Param<0, VarInt>,
 
 	// The object sequence number, param 0x01
-	object_sequence: Param<1, VarInt>,
+	pub object_sequence: Param<1, VarInt>,
 
 	// An authentication token, param 0x02
-	auth: Param<2, Bytes>,
+	pub auth: Param<2, Bytes>,
 
 	// Parameters that we don't recognize.
-	unknown: Params,
+	pub unknown: Params,
 }
 
 impl Decode for Subscribe {

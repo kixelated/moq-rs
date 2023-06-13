@@ -1,18 +1,10 @@
-mod announce;
-mod announce_error;
-mod announce_ok;
-mod go_away;
-mod subscribe;
-mod subscribe_error;
-mod subscribe_ok;
+mod client;
+mod object;
+mod server;
 
-pub use announce::*;
-pub use announce_error::*;
-pub use announce_ok::*;
-pub use go_away::*;
-pub use subscribe::*;
-pub use subscribe_error::*;
-pub use subscribe_ok::*;
+pub use client::*;
+pub use object::*;
+pub use server::*;
 
 use crate::coding::{Decode, Encode, Size, VarInt, WithSize};
 use bytes::{Buf, BufMut};
@@ -76,29 +68,36 @@ macro_rules! message_types {
 
 // Each message is prefixed with the given VarInt type.
 message_types! {
-	// NOTE: Object and Setup are in the setup module.
-	// see issues: moq-wg/moq-transport#212 and moq-wg/moq-transport#138
-	Subscribe = 0x03,
-	SubscribeOk = 0x04,
-	SubscribeError = 0x05,
-	Announce = 0x06,
-	AnnounceOk = 0x07,
-	AnnounceError = 0x08,
-	GoAway = 0x10,
+	Object = 0x00,
+	Client = 0x01,
+	Server = 0x02, // proposal: moq-wg/moq-transport#212
 }
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 impl Message {
 	pub async fn read<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let size = VarInt::read(r).await?.into();
-		let mut buf = Vec::new();
+		// Read the type and the size.
+		let ty = VarInt::read(r).await?;
+		let size = VarInt::read(r).await?;
 
+		// Limit the reader to the remaining size of the message.
+		// TODO support 0
+		let mut r: tokio::io::Take<&mut R> = r.take(size.into());
+
+		// Create a new buffer we will use to decode.
 		// TODO is there a way to avoid this temporary buffer?
 		// I imagine we'll have to change the Decode trait to be AsyncRead
-		let mut r = r.take(size);
-		r.read_buf(&mut buf).await?;
+		let mut buf = Vec::new();
 
+		// We have to write the type and size back to the buffer...
+		ty.write(&mut buf).await?;
+		size.write(&mut buf).await?;
+
+		// Read the rest of the message into the buffer.
+		r.read_to_end(&mut buf).await?;
+
+		// Actually decode the message from the buffer.
 		Self::decode(&mut buf.as_slice())
 	}
 

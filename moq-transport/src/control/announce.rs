@@ -4,13 +4,13 @@ use bytes::{Buf, BufMut, Bytes};
 #[derive(Default)]
 pub struct Announce {
 	// The track namespace
-	track_namespace: String,
+	pub track_namespace: String,
 
 	// An authentication token, param 0x02
-	auth: Param<2, Bytes>,
+	pub auth: Param<2, Bytes>,
 
 	// Parameters that we don't recognize.
-	unknown: Params,
+	pub unknown: Params,
 }
 
 impl Decode for Announce {

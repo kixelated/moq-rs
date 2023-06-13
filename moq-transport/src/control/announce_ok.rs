@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut};
 pub struct AnnounceOk {
 	// Echo back the namespace that was announced.
 	// TODO Propose using an ID to save bytes.
-	track_namespace: String,
+	pub track_namespace: String,
 }
 
 impl Decode for AnnounceOk {

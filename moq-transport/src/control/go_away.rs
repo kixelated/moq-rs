@@ -3,7 +3,7 @@ use bytes::{Buf, BufMut};
 
 #[derive(Default)]
 pub struct GoAway {
-	url: String,
+	pub url: String,
 }
 
 impl Decode for GoAway {

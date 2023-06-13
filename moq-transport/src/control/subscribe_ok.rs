@@ -6,10 +6,10 @@ pub struct SubscribeOk {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 
 	// The ID for this track.
-	track_id: VarInt,
+	pub track_id: VarInt,
 
 	// When non-zero, the subscription will end after this duration has elapsed.
-	expires: Duration,
+	pub expires: Duration,
 }
 
 impl Decode for SubscribeOk {

@@ -1,23 +1,22 @@
 use crate::coding::{Decode, Encode, Size, VarInt};
 
-// NOTE: This is an OBJECT in the moq-transport draft.
 #[derive(Default)]
-pub struct Header {
+pub struct Object {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
-	track_id: VarInt,
+	pub track_id: VarInt,
 
 	// The group sequence number.
-	group_sequence: VarInt,
+	pub group_sequence: VarInt,
 
 	// The object sequence number.
-	object_sequence: VarInt,
+	pub object_sequence: VarInt,
 
 	// The priority/send order.
-	send_order: VarInt,
+	pub send_order: VarInt,
 }
 
-impl Decode for Header {
+impl Decode for Object {
 	fn decode<B: bytes::Buf>(r: &mut B) -> anyhow::Result<Self> {
 		let track_id = VarInt::decode(r)?;
 		let group_sequence = VarInt::decode(r)?;
@@ -33,7 +32,7 @@ impl Decode for Header {
 	}
 }
 
-impl Encode for Header {
+impl Encode for Object {
 	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
 		self.track_id.encode(w)?;
 		self.group_sequence.encode(w)?;
@@ -44,7 +43,7 @@ impl Encode for Header {
 	}
 }
 
-impl Size for Header {
+impl Size for Object {
 	fn size(&self) -> anyhow::Result<usize> {
 		Ok(self.track_id.size()?
 			+ self.group_sequence.size()?

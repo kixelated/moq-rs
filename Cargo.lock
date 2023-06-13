@@ -726,6 +726,7 @@ dependencies = [
  "h3",
  "h3-quinn",
  "h3-webtransport",
+ "http",
  "log",
  "quinn",
  "quinn-proto",

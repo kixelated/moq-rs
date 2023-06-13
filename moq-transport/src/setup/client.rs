@@ -1,19 +1,19 @@
-use super::Version;
 use crate::coding::{Decode, Encode, Params, Size};
+use crate::version::Version;
 
 // Sent by the client to setup up the session.
-pub struct Setup {
+pub struct Client {
 	// NOTE: This is not a message type, but rather the control stream header.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/138
 
 	// The list of supported versions in preferred order.
-	supported: Vec<Version>,
+	pub supported: Vec<Version>,
 
 	// A generic list of paramters.
-	params: Params,
+	pub params: Params,
 }
 
-impl Decode for Setup {
+impl Decode for Client {
 	fn decode<B: bytes::Buf>(r: &mut B) -> anyhow::Result<Self> {
 		let supported = Vec::decode(r)?;
 		let params = Params::decode(r)?;
@@ -22,7 +22,7 @@ impl Decode for Setup {
 	}
 }
 
-impl Encode for Setup {
+impl Encode for Client {
 	fn encode<B: bytes::BufMut>(&self, w: &mut B) -> anyhow::Result<()> {
 		self.supported.encode(w)?;
 		self.params.encode(w)?;
@@ -31,7 +31,7 @@ impl Encode for Setup {
 	}
 }
 
-impl Size for SetupClient {
+impl Size for Client {
 	fn size(&self) -> anyhow::Result<usize> {
 		Ok(self.supported.size()? + self.params.size()?)
 	}

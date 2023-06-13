@@ -11,7 +11,7 @@ use super::{Decode, Encode, Size, UnexpectedEnd};
 
 use thiserror::Error;
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value too large for varint encoding")]
@@ -193,7 +193,7 @@ impl Size for VarInt {
 
 impl VarInt {
 	// TODO combine with decode
-	pub async fn read<T: AsyncRead + Unpin>(mut r: T) -> anyhow::Result<Self> {
+	pub async fn read<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
 		let mut buf = [0; 8];
 		r.read_exact(buf[0..1].as_mut()).await?;
 
@@ -218,5 +218,22 @@ impl VarInt {
 		};
 
 		Ok(Self(x))
+	}
+
+	pub async fn write<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+		let x = self.0;
+		if x < 2u64.pow(6) {
+			w.write_u8(x as u8).await?;
+		} else if x < 2u64.pow(14) {
+			w.write_u16(0b01 << 14 | x as u16).await?;
+		} else if x < 2u64.pow(30) {
+			w.write_u32(0b10 << 30 | x as u32).await?;
+		} else if x < 2u64.pow(62) {
+			w.write_u64(0b11 << 62 | x).await?;
+		} else {
+			anyhow::bail!("malformed VarInt");
+		}
+
+		Ok(())
 	}
 }

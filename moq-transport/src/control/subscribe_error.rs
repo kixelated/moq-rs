@@ -6,13 +6,13 @@ pub struct SubscribeError {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 
 	// The ID for this track.
-	track_id: VarInt,
+	pub track_id: VarInt,
 
 	// An error code.
-	code: VarInt,
+	pub code: VarInt,
 
 	// An optional, human-readable reason.
-	reason: String,
+	pub reason: String,
 }
 
 impl Decode for SubscribeError {
