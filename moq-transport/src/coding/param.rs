@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode};
 
 use std::collections::HashMap;
 
@@ -8,14 +8,14 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 #[derive(Default, Debug)]
-pub struct Params(pub HashMap<VarInt, Bytes>);
+pub struct Params(pub HashMap<u64, Bytes>);
 
 #[async_trait(?Send)]
 impl Decode for Params {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
 		let mut map = Self::new();
 
-		while let Ok(id) = VarInt::decode(r).await {
+		while let Ok(id) = u64::decode(r).await {
 			map.decode_one(id, r).await?
 		}
 
@@ -41,7 +41,7 @@ impl Params {
 	}
 
 	// Decode a single parameter from the buffer and insert it.
-	pub async fn decode_one<R: AsyncRead + Unpin>(&mut self, id: VarInt, r: &mut R) -> anyhow::Result<()> {
+	pub async fn decode_one<R: AsyncRead + Unpin>(&mut self, id: u64, r: &mut R) -> anyhow::Result<()> {
 		let value = Bytes::decode(r).await?;
 		let existing = self.0.insert(id, value);
 		anyhow::ensure!(existing.is_none(), "duplicate parameter: {}", id);

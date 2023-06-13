@@ -14,7 +14,7 @@ pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -33,12 +33,12 @@ macro_rules! message_types {
 		#[async_trait(?Send)]
 		impl Decode for Message {
 			async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-				let t = VarInt::decode(r).await.context("failed to decode type")?;
-				let size = VarInt::decode(r).await.context("failed to decode size")?;
-				let mut r = r.take(size.into());
+				let t = u64::decode(r).await.context("failed to decode type")?;
+				let size = u64::decode(r).await.context("failed to decode size")?;
+				let mut r = r.take(size);
 
-				let v = match t.into() {
-					$(VarInt($val) => Self::$name($name::decode(&mut r).await.context("failed to decode $name")?),)*
+				let v = match u64::from(t) {
+					$($val => Self::$name($name::decode(&mut r).await.context("failed to decode $name")?),)*
 					_ => anyhow::bail!("invalid type: {}", t),
 				};
 
@@ -53,15 +53,15 @@ macro_rules! message_types {
 		#[async_trait(?Send)]
 		impl Encode for Message {
 			async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt($val).encode(w).await.context("failed to encode type")?;
+						let id: u64 = $val; // tell the compiler this is a u64
+						id.encode(w).await.context("failed to encode type")?;
 
 						let mut buf = Vec::new();
 						m.encode(&mut buf).await.context("failed to encode message")?;
-
-						let size = VarInt::try_from(buf.len()).context("size too large")?;
-						size.encode(w).await.context("failed to encode size")?;
+						buf.len().encode(w).await.context("failed to encode size")?;
 
 						w.write_all(&buf).await.context("failed to write message")?;
 					},)*
@@ -89,11 +89,11 @@ macro_rules! message_types {
 message_types! {
 	// NOTE: Object and Setup are in the setup module.
 	// see issues: moq-wg/moq-transport#212 and moq-wg/moq-transport#138
-	Subscribe = 0x03,
-	SubscribeOk = 0x04,
-	SubscribeError = 0x05,
-	Announce = 0x06,
-	AnnounceOk = 0x07,
-	AnnounceError = 0x08,
+	Subscribe = 0x3,
+	SubscribeOk = 0x4,
+	SubscribeError = 0x5,
+	Announce = 0x6,
+	AnnounceOk = 0x7,
+	AnnounceError = 0x8,
 	GoAway = 0x10,
 }

@@ -21,7 +21,7 @@ pub struct BoundsExceeded;
 // It would be neat if we could express to Rust that the top two bits are available for use as enum
 // discriminants
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct VarInt(pub u64);
+pub(crate) struct VarInt(u64);
 
 impl VarInt {
 	/// The largest representable value
@@ -51,23 +51,6 @@ impl VarInt {
 	/// `x` must be less than 2^62.
 	pub const unsafe fn from_u64_unchecked(x: u64) -> Self {
 		Self(x)
-	}
-
-	/// Compute the number of bytes needed to encode this value
-	pub(crate) fn size(&self) -> usize {
-		let x = self.0;
-
-		if x < 2u64.pow(6) {
-			1
-		} else if x < 2u64.pow(14) {
-			2
-		} else if x < 2u64.pow(30) {
-			4
-		} else if x < 2u64.pow(62) {
-			8
-		} else {
-			unreachable!("malformed VarInt");
-		}
 	}
 }
 

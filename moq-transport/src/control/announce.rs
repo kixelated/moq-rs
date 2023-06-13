@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, Params, VarInt};
+use crate::coding::{Decode, Encode, Params};
 use bytes::Bytes;
 
 use async_trait::async_trait;
@@ -26,9 +26,9 @@ impl Decode for Announce {
 		let mut auth = None;
 		let mut unknown = Params::new();
 
-		while let Ok(id) = VarInt::decode(r).await {
+		while let Ok(id) = u64::decode(r).await {
 			match id {
-				VarInt(0x2) => {
+				0x2 => {
 					let v = Bytes::decode(r).await.context("failed to decode auth")?;
 					anyhow::ensure!(auth.replace(v).is_none(), "duplicate auth param");
 				}
@@ -55,7 +55,7 @@ impl Encode for Announce {
 		self.track_namespace.encode(w).await?;
 
 		if let Some(auth) = &self.auth {
-			VarInt(2).encode(w).await?;
+			2u64.encode(w).await?;
 			auth.encode(w).await?;
 		}
 

@@ -1,4 +1,4 @@
-use super::{Decode, Encode, VarInt};
+use super::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -12,7 +12,7 @@ pub struct Duration(pub time::Duration);
 impl Encode for Duration {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
 		let ms = self.0.as_millis();
-		let ms = VarInt::try_from(ms)?;
+		let ms = u64::try_from(ms)?;
 		ms.encode(w).await
 	}
 }
@@ -20,8 +20,8 @@ impl Encode for Duration {
 #[async_trait(?Send)]
 impl Decode for Duration {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let ms = VarInt::decode(r).await?;
-		let ms = ms.into();
+		let ms = u64::decode(r).await?;
+		let ms = ms;
 		Ok(Self(time::Duration::from_millis(ms)))
 	}
 }

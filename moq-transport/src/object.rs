@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -8,30 +8,30 @@ use tokio::io::{AsyncRead, AsyncWrite};
 pub struct Header {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
-	pub track_id: VarInt,
+	pub track_id: u64,
 
 	// The group sequence number.
-	pub group_sequence: VarInt,
+	pub group_sequence: u64,
 
 	// The object sequence number.
-	pub object_sequence: VarInt,
+	pub object_sequence: u64,
 
 	// The priority/send order.
-	pub send_order: VarInt,
+	pub send_order: u64,
 }
 
 #[async_trait(?Send)]
 impl Decode for Header {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let typ = VarInt::decode(r).await?;
-		anyhow::ensure!(typ == VarInt(0), "typ must be 0");
+		let typ = u64::decode(r).await?;
+		anyhow::ensure!(typ == 0, "typ must be 0");
 
 		// NOTE: size has been omitted
 
-		let track_id = VarInt::decode(r).await?;
-		let group_sequence = VarInt::decode(r).await?;
-		let object_sequence = VarInt::decode(r).await?;
-		let send_order = VarInt::decode(r).await?;
+		let track_id = u64::decode(r).await?;
+		let group_sequence = u64::decode(r).await?;
+		let object_sequence = u64::decode(r).await?;
+		let send_order = u64::decode(r).await?;
 
 		Ok(Self {
 			track_id,
@@ -45,7 +45,7 @@ impl Decode for Header {
 #[async_trait(?Send)]
 impl Encode for Header {
 	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
-		VarInt(0).encode(w).await?;
+		0u64.encode(w).await?;
 		self.track_id.encode(w).await?;
 		self.group_sequence.encode(w).await?;
 		self.object_sequence.encode(w).await?;

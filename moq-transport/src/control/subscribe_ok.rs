@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Duration, Encode, VarInt};
+use crate::coding::{Decode, Duration, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -8,7 +8,7 @@ pub struct SubscribeOk {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 
 	// The ID for this track.
-	pub track_id: VarInt,
+	pub track_id: u64,
 
 	// When non-zero, the subscription will end after this duration has elapsed.
 	pub expires: Duration,
@@ -17,7 +17,7 @@ pub struct SubscribeOk {
 #[async_trait(?Send)]
 impl Decode for SubscribeOk {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r).await?;
+		let track_id = u64::decode(r).await?;
 		let expires = Duration::decode(r).await?;
 
 		Ok(Self { track_id, expires })

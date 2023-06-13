@@ -1,22 +1,22 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(pub VarInt);
+pub struct Version(pub u64);
 
 impl Version {
-	pub const DRAFT_00: Version = Version(VarInt(0xff00));
+	pub const DRAFT_00: Version = Version(0xff00);
 }
 
-impl From<VarInt> for Version {
-	fn from(v: VarInt) -> Self {
+impl From<u64> for Version {
+	fn from(v: u64) -> Self {
 		Self(v)
 	}
 }
 
-impl From<Version> for VarInt {
+impl From<Version> for u64 {
 	fn from(v: Version) -> Self {
 		v.0
 	}
@@ -25,7 +25,7 @@ impl From<Version> for VarInt {
 #[async_trait(?Send)]
 impl Decode for Version {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let v = VarInt::decode(r).await?;
+		let v = u64::decode(r).await?;
 		Ok(Self(v))
 	}
 }

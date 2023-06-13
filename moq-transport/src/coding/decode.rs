@@ -1,7 +1,6 @@
+use super::VarInt;
 use bytes::Bytes;
 use std::str;
-
-use super::VarInt;
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -21,7 +20,7 @@ impl Decode for Bytes {
 #[async_trait(?Send)]
 impl Decode for Vec<u8> {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let size = VarInt::decode(r).await?.into();
+		let size = u64::decode(r).await?;
 
 		// NOTE: we don't use with_capacity since size is from an untrusted source
 		let mut buf = Vec::new();
@@ -34,12 +33,12 @@ impl Decode for Vec<u8> {
 #[async_trait(?Send)]
 impl<T: Decode> Decode for Vec<T> {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
-		let count = VarInt::decode(r).await?;
+		let count = u64::decode(r).await?;
 
 		// NOTE: we don't use with_capacity since count is from an untrusted source
 		let mut v = Vec::new();
 
-		for _ in 0..u64::from(count) {
+		for _ in 0..count {
 			v.push(T::decode(r).await?);
 		}
 
@@ -53,5 +52,19 @@ impl Decode for String {
 		let data = Vec::decode(r).await?;
 		let s = str::from_utf8(&data)?.to_string();
 		Ok(s)
+	}
+}
+
+#[async_trait(?Send)]
+impl Decode for u64 {
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		VarInt::decode(r).await.map(Into::into)
+	}
+}
+
+#[async_trait(?Send)]
+impl Decode for usize {
+	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+		VarInt::decode(r).await.map(Into::into)
 	}
 }

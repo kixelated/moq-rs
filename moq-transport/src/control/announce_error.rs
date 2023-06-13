@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -10,7 +10,7 @@ pub struct AnnounceError {
 	pub track_namespace: String,
 
 	// An error code.
-	pub code: VarInt,
+	pub code: u64,
 
 	// An optional, human-readable reason.
 	pub reason: String,
@@ -20,7 +20,7 @@ pub struct AnnounceError {
 impl Decode for AnnounceError {
 	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
 		let track_namespace = String::decode(r).await?;
-		let code = VarInt::decode(r).await?;
+		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
 
 		Ok(Self {
