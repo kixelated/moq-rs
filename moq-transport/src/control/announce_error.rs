@@ -16,9 +16,9 @@ pub struct AnnounceError {
 	pub reason: String,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for AnnounceError {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let track_namespace = String::decode(r).await?;
 		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
@@ -31,9 +31,9 @@ impl Decode for AnnounceError {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for AnnounceError {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.track_namespace.encode(w).await?;
 		self.code.encode(w).await?;
 		self.reason.encode(w).await?;

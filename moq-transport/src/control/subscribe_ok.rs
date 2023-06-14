@@ -1,4 +1,6 @@
-use crate::coding::{Decode, Duration, Encode};
+use crate::coding::{Decode, Encode};
+
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -10,25 +12,27 @@ pub struct SubscribeOk {
 	// The ID for this track.
 	pub track_id: u64,
 
-	// When non-zero, the subscription will end after this duration has elapsed.
-	pub expires: Duration,
+	// The subscription will end after this duration has elapsed.
+	// A value of zero is invalid.
+	pub expires: Option<Duration>,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for SubscribeOk {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let track_id = u64::decode(r).await?;
 		let expires = Duration::decode(r).await?;
+		let expires = if expires == Duration::ZERO { None } else { Some(expires) };
 
 		Ok(Self { track_id, expires })
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for SubscribeOk {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.track_id.encode(w).await?;
-		self.expires.encode(w).await?;
+		self.expires.unwrap_or_default().encode(w).await?;
 
 		Ok(())
 	}

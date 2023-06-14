@@ -2,6 +2,7 @@ mod announce;
 mod announce_error;
 mod announce_ok;
 mod go_away;
+mod stream;
 mod subscribe;
 mod subscribe_error;
 mod subscribe_ok;
@@ -10,6 +11,7 @@ pub use announce::*;
 pub use announce_error::*;
 pub use announce_ok::*;
 pub use go_away::*;
+pub use stream::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
@@ -30,9 +32,9 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-		#[async_trait(?Send)]
+		#[async_trait]
 		impl Decode for Message {
-			async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+			async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 				let t = u64::decode(r).await.context("failed to decode type")?;
 				let size = u64::decode(r).await.context("failed to decode size")?;
 				let mut r = r.take(size);
@@ -50,9 +52,9 @@ macro_rules! message_types {
 			}
 		}
 
-		#[async_trait(?Send)]
+		#[async_trait]
 		impl Encode for Message {
-			async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+			async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 
 				match self {
 					$(Self::$name(ref m) => {
@@ -80,6 +82,12 @@ macro_rules! message_types {
 					Message::$name(m) => Ok(m),
 					_ => anyhow::bail!("invalid message type"),
 				}
+			}
+		})*
+
+		$(impl From<$name> for Message {
+			fn from(m: $name) -> Self {
+				Message::$name(m)
 			}
 		})*
     }

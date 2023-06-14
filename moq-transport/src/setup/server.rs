@@ -1,5 +1,5 @@
 use super::{Role, Version};
-use crate::coding::{Decode, Encode, Params};
+use crate::coding::{Decode, Encode};
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -16,18 +16,14 @@ pub struct Server {
 	// param: 0x0: Indicate if the server is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
-
-	// A list of unknown paramters.
-	pub unknown: Params,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Server {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let version = Version::decode(r).await?;
 
 		let mut role = None;
-		let mut unknown = Params::new();
 
 		while let Ok(id) = u64::decode(r).await {
 			match id {
@@ -39,27 +35,23 @@ impl Decode for Server {
 					anyhow::bail!("server must not send path parameter");
 				}
 				_ => {
-					unknown
-						.decode_one(id, r)
-						.await
-						.context("failed to decode unknown param")?;
+					anyhow::bail!("unknown param: {}", id);
 				}
 			};
 		}
 
 		let role = role.context("missing role parameter")?;
 
-		Ok(Self { version, role, unknown })
+		Ok(Self { version, role })
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Server {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.version.encode(w).await?;
 		0u64.encode(w).await?;
 		self.role.encode(w).await?;
-		self.unknown.encode(w).await?;
 
 		Ok(())
 	}

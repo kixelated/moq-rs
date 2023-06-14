@@ -24,17 +24,17 @@ impl From<Version> for u64 {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Version {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let v = u64::decode(r).await?;
 		Ok(Self(v))
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Version {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.0.encode(w).await
 	}
 }
@@ -42,9 +42,9 @@ impl Encode for Version {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Versions(pub Vec<Version>);
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Versions {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let count = u64::decode(r).await?;
 		let mut vs = Vec::new();
 
@@ -57,9 +57,9 @@ impl Decode for Versions {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Versions {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.0.len().encode(w).await?;
 		for v in &self.0 {
 			v.encode(w).await?;

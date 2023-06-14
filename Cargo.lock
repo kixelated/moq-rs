@@ -439,13 +439,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "h3"
+version = "0.0.2"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
+dependencies = [
+ "bytes",
+ "fastrand",
+ "futures-util",
+ "http",
+ "pin-project-lite",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "h3-quinn"
 version = "0.0.2"
 source = "git+https://github.com/security-union/h3?branch=add-webtransport#db5c723f653911a476bfd8ffcfebf0f8f2eb980d"
 dependencies = [
  "bytes",
  "futures",
- "h3",
+ "h3 0.0.2 (git+https://github.com/security-union/h3?branch=add-webtransport)",
+ "quinn",
+ "quinn-proto",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "h3-quinn"
+version = "0.0.3"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
+dependencies = [
+ "bytes",
+ "futures",
+ "h3 0.0.2 (git+https://github.com/hyperium/h3?branch=master)",
  "quinn",
  "quinn-proto",
  "tokio",
@@ -459,7 +487,21 @@ source = "git+https://github.com/security-union/h3?branch=add-webtransport#db5c7
 dependencies = [
  "bytes",
  "futures-util",
- "h3",
+ "h3 0.0.2 (git+https://github.com/security-union/h3?branch=add-webtransport)",
+ "http",
+ "pin-project-lite",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "h3-webtransport"
+version = "0.1.0"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "h3 0.0.2 (git+https://github.com/hyperium/h3?branch=master)",
  "http",
  "pin-project-lite",
  "tokio",
@@ -735,9 +777,9 @@ dependencies = [
  "clap",
  "env_logger",
  "futures",
- "h3",
- "h3-quinn",
- "h3-webtransport",
+ "h3 0.0.2 (git+https://github.com/security-union/h3?branch=add-webtransport)",
+ "h3-quinn 0.0.2",
+ "h3-webtransport 0.1.0 (git+https://github.com/security-union/h3?branch=add-webtransport)",
  "http",
  "log",
  "quinn",
@@ -758,9 +800,9 @@ dependencies = [
  "clap",
  "env_logger",
  "futures",
- "h3",
- "h3-quinn",
- "h3-webtransport",
+ "h3 0.0.2 (git+https://github.com/hyperium/h3?branch=master)",
+ "h3-quinn 0.0.3",
+ "h3-webtransport 0.1.0 (git+https://github.com/hyperium/h3?branch=master)",
  "hex",
  "http",
  "log",

@@ -49,17 +49,17 @@ impl TryFrom<u64> for Role {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Role {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let v = u64::decode(r).await?;
 		v.try_into()
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Role {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		u64::from(*self).encode(w).await
 	}
 }

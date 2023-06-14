@@ -23,9 +23,9 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-		#[async_trait(?Send)]
+		#[async_trait]
 		impl Decode for Message {
-			async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+			async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 				let t = u64::decode(r).await.context("failed to decode type")?;
 				let size = u64::decode(r).await.context("failed to decode size")?;
 				let mut r = r.take(size);
@@ -43,9 +43,9 @@ macro_rules! message_types {
 			}
 		}
 
-		#[async_trait(?Send)]
+		#[async_trait]
 		impl Encode for Message {
-			async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+			async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 				match self {
 					$(Self::$name(ref m) => {
 						let id: u64 = $val; // tell the compiler this is a u64

@@ -20,9 +20,9 @@ pub struct Header {
 	pub send_order: u64,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Header {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let typ = u64::decode(r).await?;
 		anyhow::ensure!(typ == 0, "typ must be 0");
 
@@ -42,9 +42,9 @@ impl Decode for Header {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Header {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		0u64.encode(w).await?;
 		self.track_id.encode(w).await?;
 		self.group_sequence.encode(w).await?;

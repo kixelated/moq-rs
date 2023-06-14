@@ -1,5 +1,5 @@
 use super::{Role, Versions};
-use crate::coding::{Decode, Encode, Params};
+use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -21,20 +21,16 @@ pub struct Client {
 
 	// param 0x1: The path, sent ONLY when not using WebTransport.
 	pub path: Option<String>,
-
-	// A generic list of paramters.
-	pub unknown: Params,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for Client {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let versions = Versions::decode(r).await.context("failed to read supported versions")?;
 		anyhow::ensure!(!versions.is_empty(), "client must support at least one version");
 
 		let mut role = None;
 		let mut path = None;
-		let mut unknown = Params::new();
 
 		while let Ok(id) = u64::decode(r).await {
 			match id {
@@ -47,28 +43,20 @@ impl Decode for Client {
 					anyhow::ensure!(path.replace(v).is_none(), "duplicate path");
 				}
 				_ => {
-					unknown
-						.decode_one(id, r)
-						.await
-						.context("failed to decode unknown param")?;
+					anyhow::bail!("unknown param: {}", id);
 				}
 			};
 		}
 
 		let role = role.context("missing role")?;
 
-		Ok(Self {
-			versions,
-			role,
-			path,
-			unknown,
-		})
+		Ok(Self { versions, role, path })
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for Client {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		anyhow::ensure!(!self.versions.is_empty(), "client must support at least one version");
 		self.versions.encode(w).await?;
 
@@ -79,8 +67,6 @@ impl Encode for Client {
 			1u64.encode(w).await?;
 			path.encode(w).await?;
 		}
-
-		self.unknown.encode(w).await?;
 
 		Ok(())
 	}

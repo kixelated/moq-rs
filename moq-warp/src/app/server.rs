@@ -1,18 +1,19 @@
 use super::session::Session;
 use crate::media;
 
+
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
 
-use moq_transport::{server, setup};
+use moq_transport::{server};
 
 pub struct Server {
 	// The MoQ transport server.
-	server: server::Server,
+	server: server::Endpoint,
 
 	// The media source
-	broadcast: media::Broadcast,
+	broadcasts: media::Broadcasts,
 }
 
 pub struct ServerConfig {
@@ -20,7 +21,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcast: media::Broadcast,
+	pub broadcasts: media::Broadcasts,
 }
 
 impl Server {
@@ -70,56 +71,26 @@ impl Server {
 
 		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broadcast = config.broadcast;
+		let broadcasts = config.broadcasts;
 
-		let server = server::Server::new(server);
+		let server = server::Endpoint::new(server);
 
-		Ok(Self { server, broadcast })
+		Ok(Self { server, broadcasts })
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		loop {
 			let session = self.server.accept().await.context("failed to accept connection")?;
-			let broadcast = self.broadcast.clone();
+			let broadcasts = self.broadcasts.clone();
 
 			tokio::spawn(async move {
-				let session = Self::accept_session(session)
+				let session = Session::accept(session, broadcasts)
 					.await
 					.context("failed to accept session")?;
 
 				// Use a wrapper run the session.
-				let session = Session::new(session);
-				session.serve_broadcast(broadcast).await
+				session.serve().await
 			});
 		}
-	}
-
-	async fn accept_session(session: server::Accept) -> anyhow::Result<server::Session> {
-		// Accep the WebTransport session.
-		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
-		let session = session
-			.accept()
-			.await
-			.context("failed to accept WebTransport session")?;
-
-		let version = session
-			.setup
-			.versions
-			.iter()
-			.find(|v| **v == setup::Version::DRAFT_00)
-			.context("failed to find supported version")?;
-
-		match session.setup.role {
-			setup::Role::Subscriber => {}
-			_ => anyhow::bail!("TODO publishing not yet supported"),
-		}
-
-		let setup = setup::Server {
-			version: setup::Version::DRAFT_00,
-			role: setup::Role::Publisher,
-			unknown: Default::default(),
-		};
-
-		session.accept(setup).await
 	}
 }

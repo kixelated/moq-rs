@@ -88,9 +88,9 @@ impl fmt::Display for VarInt {
 
 use async_trait::async_trait;
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for VarInt {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let mut buf = [0; 8];
 		r.read_exact(buf[0..1].as_mut()).await?;
 
@@ -118,9 +118,9 @@ impl Decode for VarInt {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for VarInt {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
 			w.write_u8(x as u8).await?;

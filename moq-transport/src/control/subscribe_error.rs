@@ -17,9 +17,9 @@ pub struct SubscribeError {
 	pub reason: String,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for SubscribeError {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let track_id = u64::decode(r).await?;
 		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
@@ -28,9 +28,9 @@ impl Decode for SubscribeError {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for SubscribeError {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.track_id.encode(w).await?;
 		self.code.encode(w).await?;
 		self.reason.encode(w).await?;

@@ -10,17 +10,17 @@ pub struct AnnounceOk {
 	pub track_namespace: String,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Decode for AnnounceOk {
-	async fn decode<R: AsyncRead + Unpin>(r: &mut R) -> anyhow::Result<Self> {
+	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let track_namespace = String::decode(r).await?;
 		Ok(Self { track_namespace })
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Encode for AnnounceOk {
-	async fn encode<W: AsyncWrite + Unpin>(&self, w: &mut W) -> anyhow::Result<()> {
+	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.track_namespace.encode(w).await
 	}
 }
