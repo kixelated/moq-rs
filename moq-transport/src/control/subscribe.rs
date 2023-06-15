@@ -1,7 +1,7 @@
 use crate::coding::{Decode, Encode};
-use bytes::Bytes;
 
-use anyhow::Context;
+
+
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -16,15 +16,6 @@ pub struct Subscribe {
 
 	// The track name.
 	pub track_name: String,
-
-	// The group sequence number, param 0x00
-	pub group_sequence: Option<u64>,
-
-	// The object sequence number, param 0x01
-	pub object_sequence: Option<u64>,
-
-	// An authentication token, param 0x02
-	pub auth: Option<Bytes>,
 }
 
 #[async_trait]
@@ -34,37 +25,10 @@ impl Decode for Subscribe {
 		let track_namespace = String::decode(r).await?;
 		let track_name = String::decode(r).await?;
 
-		let mut group_sequence = None;
-		let mut object_sequence = None;
-		let mut auth = None;
-
-		while let Ok(id) = u64::decode(r).await {
-			match id {
-				0x0 => {
-					let v = u64::decode(r).await.context("failed to decode group sequence")?;
-					anyhow::ensure!(group_sequence.replace(v).is_none(), "duplicate group sequence");
-				}
-				0x1 => {
-					let v = u64::decode(r).await.context("failed to decode object sequence")?;
-					anyhow::ensure!(object_sequence.replace(v).is_none(), "duplicate object sequence");
-				}
-				0x2 => {
-					let v = Bytes::decode(r).await.context("failed to decode auth")?;
-					anyhow::ensure!(auth.replace(v).is_none(), "duplicate auth");
-				}
-				_ => {
-					anyhow::bail!("unknown param: {}", id);
-				}
-			};
-		}
-
 		Ok(Self {
 			track_id,
 			track_namespace,
 			track_name,
-			group_sequence,
-			object_sequence,
-			auth,
 		})
 	}
 }
@@ -75,22 +39,6 @@ impl Encode for Subscribe {
 		self.track_id.encode(w).await?;
 		self.track_namespace.encode(w).await?;
 		self.track_name.encode(w).await?;
-
-		// TODO this is ugly, figure out how to avoid this duplication.
-		if let Some(group_sequence) = &self.group_sequence {
-			0u64.encode(w).await?;
-			group_sequence.encode(w).await?;
-		}
-
-		if let Some(object_sequence) = &self.object_sequence {
-			1u64.encode(w).await?;
-			object_sequence.encode(w).await?;
-		}
-
-		if let Some(auth) = &self.auth {
-			2u64.encode(w).await?;
-			auth.encode(w).await?;
-		}
 
 		Ok(())
 	}

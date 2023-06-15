@@ -24,7 +24,7 @@ pub struct Header {
 impl Decode for Header {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 		let typ = u64::decode(r).await?;
-		anyhow::ensure!(typ == 0, "typ must be 0");
+		anyhow::ensure!(typ == 0, "OBJECT type must be 0");
 
 		// NOTE: size has been omitted
 

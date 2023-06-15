@@ -62,17 +62,18 @@ impl Session {
 	}
 
 	pub async fn serve(mut self) -> anyhow::Result<()> {
+		// TODO fix lazy: make a copy of the strings to avoid the borrow checker on self.
+		let broadcasts: Vec<String> = self.media.keys().cloned().collect();
+
+		// Announce each available broadcast immediately.
+		for name in broadcasts {
+			self.send_message(control::Announce {
+				track_namespace: name.clone(),
+			})
+			.await?;
+		}
+
 		loop {
-			for name in self.media.keys() {
-				// Announce each available broadcast.
-				let msg = control::Announce {
-					track_namespace: name.clone(),
-					auth: None,
-				};
-
-				self.control.send(msg.into()).await?;
-			}
-
 			tokio::select! {
 				msg = self.control.recv() => {
 					let msg = msg.context("failed to receive control message")?;
@@ -89,46 +90,49 @@ impl Session {
 	}
 
 	async fn handle_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
+		log::info!("received message: {:?}", msg);
+
 		// TODO implement publish and subscribe halves of the protocol.
 		match msg {
-			control::Message::Announce(_) => anyhow::bail!("publishing not supported"),
-			control::Message::AnnounceOk(ref _ok) => {
-				// noop
-			}
+			control::Message::Announce(_) => anyhow::bail!("ANNOUNCE not supported"),
+			control::Message::AnnounceOk(ref _ok) => Ok(()), // noop
 			control::Message::AnnounceError(ref err) => {
-				anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", err.code, err.reason);
+				anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", err.code, err.reason)
 			}
-			control::Message::Subscribe(ref sub) => match self.subscribe(sub) {
-				Ok(()) => {
-					let msg = control::SubscribeOk {
-						track_id: sub.track_id,
-						expires: None,
-					};
-
-					self.control.send(msg.into()).await?;
-				}
-				Err(e) => {
-					let msg = control::SubscribeError {
-						track_id: sub.track_id,
-						code: 1,
-						reason: e.to_string(),
-					};
-
-					self.control.send(msg.into()).await?;
-				}
-			},
-			control::Message::SubscribeOk(_) => anyhow::bail!("publishing not supported"),
-			control::Message::SubscribeError(_) => anyhow::bail!("publishing not supported"),
+			control::Message::Subscribe(ref sub) => self.receive_subscribe(sub).await,
+			control::Message::SubscribeOk(_) => anyhow::bail!("SUBSCRIBE OK not supported"),
+			control::Message::SubscribeError(_) => anyhow::bail!("SUBSCRIBE ERROR not supported"),
 			control::Message::GoAway(_) => anyhow::bail!("goaway not supported"),
 		}
+	}
 
-		Ok(())
+	async fn send_message<T: Into<control::Message>>(&mut self, msg: T) -> anyhow::Result<()> {
+		let msg = msg.into();
+		log::info!("sending message: {:?}", msg);
+		self.control.send(msg).await
+	}
+
+	async fn receive_subscribe(&mut self, sub: &control::Subscribe) -> anyhow::Result<()> {
+		match self.subscribe(sub) {
+			Ok(()) => {
+				self.send_message(control::SubscribeOk {
+					track_id: sub.track_id,
+					expires: None,
+				})
+				.await
+			}
+			Err(e) => {
+				self.send_message(control::SubscribeError {
+					track_id: sub.track_id,
+					code: 1,
+					reason: e.to_string(),
+				})
+				.await
+			}
+		}
 	}
 
 	fn subscribe(&mut self, sub: &control::Subscribe) -> anyhow::Result<()> {
-		anyhow::ensure!(sub.group_sequence.is_none(), "group sequence not supported");
-		anyhow::ensure!(sub.object_sequence.is_none(), "object sequence not supported");
-
 		let broadcast = self
 			.media
 			.get(&sub.track_namespace)
@@ -175,11 +179,9 @@ impl Subscription {
 								track_id: self.track_id,
 							};
 
-							tasks.spawn(async move {
-								group.serve().await
-							});
+							tasks.spawn(async move { group.serve().await });
 						},
-						None => done = true,
+						None => done = true, // no more segments in the track
 					}
 				},
 				// Poll any pending segments until they exit.
@@ -187,7 +189,7 @@ impl Subscription {
 					let res = res.expect("no tasks").expect("task aborted");
 					res.context("failed serve segment")?
 				},
-				else => return Ok(()),
+				else => return Ok(()), // all segments received and finished serving
 			}
 		}
 	}
@@ -204,9 +206,9 @@ impl Group {
 		// TODO proper values
 		let header = moq_transport::data::Header {
 			track_id: self.track_id,
-			group_sequence: 0,
-			object_sequence: 0,
-			send_order: 0,
+			group_sequence: 0,  // TODO
+			object_sequence: 0, // Always zero since we send an entire group as an object
+			send_order: 0,      // TODO
 		};
 
 		let mut stream = self.transport.send(header).await?;

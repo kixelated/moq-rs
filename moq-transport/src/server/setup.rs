@@ -14,14 +14,9 @@ impl RecvSetup {
 	}
 
 	pub async fn recv(mut self) -> anyhow::Result<SendSetup> {
-		let msg = setup::Message::decode(&mut self.stream)
+		let setup = setup::Client::decode(&mut self.stream)
 			.await
-			.context("failed to read setup message")?;
-
-		let setup = match msg {
-			setup::Message::Client(setup) => setup,
-			_ => anyhow::bail!("expected client SETUP"),
-		};
+			.context("failed to read client SETUP message")?;
 
 		Ok(SendSetup::new(self.stream, setup))
 	}
@@ -41,9 +36,7 @@ impl SendSetup {
 	}
 
 	pub async fn send(mut self, setup: setup::Server) -> anyhow::Result<control::Stream> {
-		let msg = setup::Message::Server(setup);
-		msg.encode(&mut self.stream).await?;
-
+		setup.encode(&mut self.stream).await?;
 		Ok(control::Stream::new(self.stream))
 	}
 }

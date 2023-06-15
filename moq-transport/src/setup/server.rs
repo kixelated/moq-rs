@@ -21,26 +21,11 @@ pub struct Server {
 #[async_trait]
 impl Decode for Server {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let version = Version::decode(r).await?;
+		let typ = u64::decode(r).await.context("failed to read type")?;
+		anyhow::ensure!(typ == 2, "server SETUP must be type 2");
 
-		let mut role = None;
-
-		while let Ok(id) = u64::decode(r).await {
-			match id {
-				0 => {
-					let v = Role::decode(r).await.context("failed to decode role")?;
-					anyhow::ensure!(role.replace(v).is_none(), "duplicate role parameter");
-				}
-				1 => {
-					anyhow::bail!("server must not send path parameter");
-				}
-				_ => {
-					anyhow::bail!("unknown param: {}", id);
-				}
-			};
-		}
-
-		let role = role.context("missing role parameter")?;
+		let version = Version::decode(r).await.context("failed to read version")?;
+		let role = Role::decode(r).await.context("failed to read role")?;
 
 		Ok(Self { version, role })
 	}
@@ -49,8 +34,9 @@ impl Decode for Server {
 #[async_trait]
 impl Encode for Server {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
+		2u64.encode(w).await?; // setup type
+
 		self.version.encode(w).await?;
-		0u64.encode(w).await?;
 		self.role.encode(w).await?;
 
 		Ok(())

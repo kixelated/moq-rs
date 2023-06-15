@@ -19,7 +19,8 @@ pub use subscribe_ok::*;
 use crate::coding::{Decode, Encode};
 
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use std::fmt;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use anyhow::Context;
 
@@ -27,7 +28,6 @@ use anyhow::Context;
 // This implements a decode/encode method that uses the specified type.
 macro_rules! message_types {
     {$($name:ident = $val:expr,)*} => {
-		#[derive(Debug)]
 		pub enum Message {
 			$($name($name)),*
 		}
@@ -36,40 +36,27 @@ macro_rules! message_types {
 		impl Decode for Message {
 			async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
 				let t = u64::decode(r).await.context("failed to decode type")?;
-				let size = u64::decode(r).await.context("failed to decode size")?;
-				let mut r = r.take(size);
 
-				let v = match u64::from(t) {
-					$($val => Self::$name($name::decode(&mut r).await.context("failed to decode $name")?),)*
+				Ok(match u64::from(t) {
+					$($val => {
+						let msg = $name::decode(r).await.context(concat!("failed to decode ", stringify!($name)))?;
+						Self::$name(msg)
+					})*
 					_ => anyhow::bail!("invalid type: {}", t),
-				};
-
-				// Sanity check: make sure we decoded the entire message.
-				let mut buf = [0];
-				anyhow::ensure!(r.read(&mut buf).await? == 0, "partial decode");
-
-				Ok(v)
+				})
 			}
 		}
 
 		#[async_trait]
 		impl Encode for Message {
 			async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-
 				match self {
 					$(Self::$name(ref m) => {
 						let id: u64 = $val; // tell the compiler this is a u64
 						id.encode(w).await.context("failed to encode type")?;
-
-						let mut buf = Vec::new();
-						m.encode(&mut buf).await.context("failed to encode message")?;
-						buf.len().encode(w).await.context("failed to encode size")?;
-
-						w.write_all(&buf).await.context("failed to write message")?;
+						m.encode(w).await.context("failed to encode message")
 					},)*
 				}
-
-				Ok(())
 			}
 		}
 
@@ -90,13 +77,29 @@ macro_rules! message_types {
 				Message::$name(m)
 			}
 		})*
+
+		impl fmt::Debug for Message {
+			// Delegate to the message formatter
+			fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+				match self {
+					$(Self::$name(ref m) => m.fmt(f),)*
+				}
+			}
+		}
     }
 }
 
+// NOTE: These messages are forked from moq-transport-00.
+//   1. subscribe specifies the track_id, not subscribe_ok
+//   2. messages lack a specified length
+//   3. optional parameters are not supported (announce, subscribe)
+//   4. not allowed on undirectional streams; only after SETUP on the bidirectional stream
+
 // Each message is prefixed with the given VarInt type.
 message_types! {
-	// NOTE: Object and Setup are in the setup module.
-	// see issues: moq-wg/moq-transport#212 and moq-wg/moq-transport#138
+	// NOTE: Object and Setup are in other modules.
+	// Object = 0x0
+	// Setup  = 0x1
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,
