@@ -24,11 +24,17 @@ impl Endpoint {
 				// Accept the connection and start the WebTransport handshake.
 				conn = self.endpoint.accept() => {
 					let conn = conn.context("failed to accept connection")?;
-					self.handshake.spawn(async move { Connecting::new(conn).accept().await });
+					self.handshake.spawn(async move {
+						Connecting::new(conn).accept().await
+					});
 				},
 				// Return any mostly finished WebTransport handshakes.
-				session = self.handshake.join_next(), if !self.handshake.is_empty() => {
-					let _session = session.context("failed to accept session")?;
+				res = self.handshake.join_next(), if !self.handshake.is_empty() => {
+					let res = res.expect("no tasks").expect("task aborted");
+					match res {
+						Ok(session) => return Ok(session),
+						Err(err) => log::warn!("failed to accept session: {:?}", err),
+					}
 				},
 			)
 		}

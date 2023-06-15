@@ -64,6 +64,7 @@ impl Accept {
 	// Accept the WebTransport session.
 	pub async fn accept(self) -> anyhow::Result<Setup> {
 		let transport = h3_webtransport::server::WebTransportSession::accept(self.req, self.stream, self.conn).await?;
+
 		let stream = transport
 			.accept_bi()
 			.await
@@ -72,12 +73,14 @@ impl Accept {
 
 		let transport = data::Transport::new(transport);
 
-		if let h3_webtransport::server::AcceptedBi::BidiStream(_session_id, stream) = stream {
-			let setup = RecvSetup::new(stream).recv().await?;
-			Ok(Setup { transport, setup })
-		} else {
-			anyhow::bail!("multiple SETUP requests");
-		}
+		let stream = match stream {
+			h3_webtransport::server::AcceptedBi::BidiStream(_session_id, stream) => stream,
+			h3_webtransport::server::AcceptedBi::Request(..) => anyhow::bail!("additional http requests not supported"),
+		};
+
+		let setup = RecvSetup::new(stream).recv().await?;
+
+		Ok(Setup { transport, setup })
 	}
 
 	// Reject the WebTransport session with a HTTP response.

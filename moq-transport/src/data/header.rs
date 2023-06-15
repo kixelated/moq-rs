@@ -3,7 +3,7 @@ use crate::coding::{Decode, Encode};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-// This is the header for a data stream, aka an OBJECT.
+// Another name for OBJECT, sent as a header for data streams.
 #[derive(Debug)]
 pub struct Header {
 	// An ID for this track.

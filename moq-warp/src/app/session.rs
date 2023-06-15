@@ -18,6 +18,9 @@ pub struct Session {
 
 	// The list of available broadcasts for the session.
 	media: media::Broadcasts,
+
+	// The list of active subscriptions.
+	tasks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Session {
@@ -52,6 +55,7 @@ impl Session {
 			transport: Arc::new(transport),
 			control,
 			media,
+			tasks: JoinSet::new(),
 		};
 
 		Ok(session)
@@ -69,40 +73,56 @@ impl Session {
 				self.control.send(msg.into()).await?;
 			}
 
-			// TODO implement publish and subscribe halves of the protocol.
-			let msg = self.control.recv().await?;
-			match msg {
-				control::Message::Announce(_) => anyhow::bail!("publishing not supported"),
-				control::Message::AnnounceOk(ref _ok) => {
-					// noop
-				}
-				control::Message::AnnounceError(ref err) => {
-					anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", err.code, err.reason);
-				}
-				control::Message::Subscribe(ref sub) => match self.subscribe(sub) {
-					Ok(()) => {
-						let msg = control::SubscribeOk {
-							track_id: sub.track_id,
-							expires: None,
-						};
-
-						self.control.send(msg.into()).await?;
-					}
-					Err(e) => {
-						let msg = control::SubscribeError {
-							track_id: sub.track_id,
-							code: 1,
-							reason: e.to_string(),
-						};
-
-						self.control.send(msg.into()).await?;
-					}
+			tokio::select! {
+				msg = self.control.recv() => {
+					let msg = msg.context("failed to receive control message")?;
+					self.handle_message(msg).await?;
 				},
-				control::Message::SubscribeOk(_) => anyhow::bail!("publishing not supported"),
-				control::Message::SubscribeError(_) => anyhow::bail!("publishing not supported"),
-				control::Message::GoAway(_) => anyhow::bail!("goaway not supported"),
+				res = self.tasks.join_next(), if !self.tasks.is_empty() => {
+					let res = res.expect("no tasks").expect("task aborted");
+					if let Err(err) = res {
+						log::warn!("failed to serve subscription: {:?}", err);
+					}
+				}
 			}
 		}
+	}
+
+	async fn handle_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
+		// TODO implement publish and subscribe halves of the protocol.
+		match msg {
+			control::Message::Announce(_) => anyhow::bail!("publishing not supported"),
+			control::Message::AnnounceOk(ref _ok) => {
+				// noop
+			}
+			control::Message::AnnounceError(ref err) => {
+				anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", err.code, err.reason);
+			}
+			control::Message::Subscribe(ref sub) => match self.subscribe(sub) {
+				Ok(()) => {
+					let msg = control::SubscribeOk {
+						track_id: sub.track_id,
+						expires: None,
+					};
+
+					self.control.send(msg.into()).await?;
+				}
+				Err(e) => {
+					let msg = control::SubscribeError {
+						track_id: sub.track_id,
+						code: 1,
+						reason: e.to_string(),
+					};
+
+					self.control.send(msg.into()).await?;
+				}
+			},
+			control::Message::SubscribeOk(_) => anyhow::bail!("publishing not supported"),
+			control::Message::SubscribeError(_) => anyhow::bail!("publishing not supported"),
+			control::Message::GoAway(_) => anyhow::bail!("goaway not supported"),
+		}
+
+		Ok(())
 	}
 
 	fn subscribe(&mut self, sub: &control::Subscribe) -> anyhow::Result<()> {
@@ -125,7 +145,8 @@ impl Session {
 			track_id: sub.track_id,
 			transport: self.transport.clone(),
 		};
-		tokio::spawn(async move { sub.serve().await });
+
+		self.tasks.spawn(async move { sub.serve().await });
 
 		Ok(())
 	}
@@ -163,8 +184,7 @@ impl Subscription {
 				},
 				// Poll any pending segments until they exit.
 				res = tasks.join_next(), if !tasks.is_empty() => {
-					let res = res.context("no tasks running")?;
-					let res = res.context("failed to run segment")?;
+					let res = res.expect("no tasks").expect("task aborted");
 					res.context("failed serve segment")?
 				},
 				else => return Ok(()),

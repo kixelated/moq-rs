@@ -1,19 +1,22 @@
 use super::session::Session;
 use crate::media;
 
-
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
 
-use moq_transport::{server};
+use moq_transport::server;
+use tokio::task::JoinSet;
 
 pub struct Server {
 	// The MoQ transport server.
 	server: server::Endpoint,
 
-	// The media source
+	// The media source.
 	broadcasts: media::Broadcasts,
+
+	// Sessions actively being run.
+	sessions: JoinSet<anyhow::Result<()>>,
 }
 
 pub struct ServerConfig {
@@ -74,23 +77,35 @@ impl Server {
 		let broadcasts = config.broadcasts;
 
 		let server = server::Endpoint::new(server);
+		let sessions = JoinSet::new();
 
-		Ok(Self { server, broadcasts })
+		Ok(Self {
+			server,
+			broadcasts,
+			sessions,
+		})
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		loop {
-			let session = self.server.accept().await.context("failed to accept connection")?;
-			let broadcasts = self.broadcasts.clone();
+			tokio::select! {
+				res = self.server.accept() => {
+					let session = res.context("failed to accept connection")?;
+					let broadcasts = self.broadcasts.clone();
 
-			tokio::spawn(async move {
-				let session = Session::accept(session, broadcasts)
-					.await
-					.context("failed to accept session")?;
+					self.sessions.spawn(async move {
+						let session: Session = Session::accept(session, broadcasts).await?;
+						session.serve().await
+					});
+				},
+				res = self.sessions.join_next(), if !self.sessions.is_empty() => {
+					let res = res.expect("no tasks").expect("task aborted");
 
-				// Use a wrapper run the session.
-				session.serve().await
-			});
+					if let Err(err) = res {
+						log::error!("session terminated: {:?}", err);
+					}
+				},
+			}
 		}
 	}
 }
