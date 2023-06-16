@@ -21,7 +21,22 @@ pub struct BoundsExceeded;
 // It would be neat if we could express to Rust that the top two bits are available for use as enum
 // discriminants
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub(crate) struct VarInt(u64);
+pub struct VarInt(u64);
+
+impl VarInt {
+	pub const MAX: Self = Self((1 << 62) - 1);
+
+	/// Construct a `VarInt` infallibly using the largest available type.
+	/// Larger values need to use `try_from` instead.
+	pub const fn from_u32(x: u32) -> Self {
+		Self(x as u64)
+	}
+
+	/// Extract the integer value
+	pub const fn into_inner(self) -> u64 {
+		self.0
+	}
+}
 
 impl From<VarInt> for u64 {
 	fn from(x: VarInt) -> Self {
@@ -32,6 +47,12 @@ impl From<VarInt> for u64 {
 impl From<VarInt> for usize {
 	fn from(x: VarInt) -> Self {
 		x.0 as usize
+	}
+}
+
+impl From<VarInt> for u128 {
+	fn from(x: VarInt) -> Self {
+		x.0 as u128
 	}
 }
 
@@ -58,8 +79,21 @@ impl TryFrom<u64> for VarInt {
 
 	/// Succeeds iff `x` < 2^62
 	fn try_from(x: u64) -> Result<Self, BoundsExceeded> {
-		if x < 2u64.pow(62) {
+		if x <= Self::MAX.into_inner() {
 			Ok(Self(x))
+		} else {
+			Err(BoundsExceeded)
+		}
+	}
+}
+
+impl TryFrom<u128> for VarInt {
+	type Error = BoundsExceeded;
+
+	/// Succeeds iff `x` < 2^62
+	fn try_from(x: u128) -> Result<Self, BoundsExceeded> {
+		if x <= Self::MAX.into() {
+			Ok(Self(x as u64))
 		} else {
 			Err(BoundsExceeded)
 		}

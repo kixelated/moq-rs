@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use moq_transport::coding::VarInt;
+
 // Map from track namespace to broadcast.
 // TODO support updates
 pub type Broadcasts = Arc<HashMap<String, Broadcast>>;
@@ -22,10 +24,10 @@ pub struct Track {
 #[derive(Clone)]
 pub struct Segment {
 	// The sequence number of the segment within the track.
-	pub sequence: u64,
+	pub sequence: VarInt,
 
 	// The priority of the segment within the BROADCAST.
-	pub send_order: u64,
+	pub send_order: VarInt,
 
 	// The time at which the segment expires for cache purposes.
 	pub expires: Option<Instant>,

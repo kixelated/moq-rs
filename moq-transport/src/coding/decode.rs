@@ -20,11 +20,11 @@ impl Decode for Bytes {
 #[async_trait]
 impl Decode for Vec<u8> {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let size = u64::decode(r).await?;
+		let size = VarInt::decode(r).await?;
 
 		// NOTE: we don't use with_capacity since size is from an untrusted source
 		let mut buf = Vec::new();
-		r.take(size).read_to_end(&mut buf).await?;
+		r.take(size.into()).read_to_end(&mut buf).await?;
 
 		Ok(buf)
 	}
@@ -36,19 +36,5 @@ impl Decode for String {
 		let data = Vec::decode(r).await?;
 		let s = str::from_utf8(&data)?.to_string();
 		Ok(s)
-	}
-}
-
-#[async_trait]
-impl Decode for u64 {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		VarInt::decode(r).await.map(Into::into)
-	}
-}
-
-#[async_trait]
-impl Decode for usize {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		VarInt::decode(r).await.map(Into::into)
 	}
 }

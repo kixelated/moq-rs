@@ -16,7 +16,7 @@ pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use std::fmt;
@@ -35,9 +35,9 @@ macro_rules! message_types {
 		#[async_trait]
 		impl Decode for Message {
 			async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-				let t = u64::decode(r).await.context("failed to decode type")?;
+				let t = VarInt::decode(r).await.context("failed to decode type")?;
 
-				Ok(match u64::from(t) {
+				Ok(match t.into_inner() {
 					$($val => {
 						let msg = $name::decode(r).await.context(concat!("failed to decode ", stringify!($name)))?;
 						Self::$name(msg)
@@ -52,8 +52,7 @@ macro_rules! message_types {
 			async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 				match self {
 					$(Self::$name(ref m) => {
-						let id: u64 = $val; // tell the compiler this is a u64
-						id.encode(w).await.context("failed to encode type")?;
+						VarInt::from_u32($val).encode(w).await.context("failed to encode type")?;
 						m.encode(w).await.context("failed to encode message")
 					},)*
 				}

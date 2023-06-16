@@ -1,5 +1,5 @@
 use super::{Role, Version};
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, Encode, VarInt};
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -21,8 +21,8 @@ pub struct Server {
 #[async_trait]
 impl Decode for Server {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let typ = u64::decode(r).await.context("failed to read type")?;
-		anyhow::ensure!(typ == 2, "server SETUP must be type 2");
+		let typ = VarInt::decode(r).await.context("failed to read type")?;
+		anyhow::ensure!(typ.into_inner() == 2, "server SETUP must be type 2");
 
 		let version = Version::decode(r).await.context("failed to read version")?;
 		let role = Role::decode(r).await.context("failed to read role")?;
@@ -34,7 +34,7 @@ impl Decode for Server {
 #[async_trait]
 impl Encode for Server {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		2u64.encode(w).await?; // setup type
+		VarInt::from_u32(2).encode(w).await?; // setup type
 
 		self.version.encode(w).await?;
 		self.role.encode(w).await?;
