@@ -121,7 +121,7 @@ impl<T: Clone> Subscriber<T> {
 			// Return None if we've consumed all entries and the queue is closed.
 			None
 		} else {
-			panic!("impossible subscriber state")
+			unreachable!("impossible subscriber state")
 		}
 	}
 }

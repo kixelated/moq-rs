@@ -1,5 +1,8 @@
-use moq::{app, media};
+use moq_warp::{app, media};
 use std::{fs, io, net, path, sync};
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
@@ -38,12 +41,15 @@ async fn main() -> anyhow::Result<()> {
 	// Create a fake media source from disk.
 	let mut media = media::Source::new(args.media).context("failed to open fragmented.mp4")?;
 
+	let mut broadcasts = HashMap::new();
+	broadcasts.insert("demo".to_string(), media.broadcast());
+
 	// Create a server to actually serve the media
 	let config = app::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broadcast: media.broadcast(),
+		broadcasts: Arc::new(broadcasts),
 	};
 
 	let mut server = app::Server::new(config).context("failed to create server")?;

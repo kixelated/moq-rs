@@ -1,0 +1,48 @@
+[package]
+name = "moq-warp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# WebTransport support: TODO pin a version when released
+h3 = { git = "https://github.com/hyperium/h3", branch = "master" }
+h3-quinn = { git = "https://github.com/hyperium/h3", branch = "master" }
+h3-webtransport = { git = "https://github.com/hyperium/h3", branch = "master" }
+quinn = { version = "0.10", default-features = false, features = ["runtime-tokio", "tls-rustls", "ring"] }
+quinn-proto = "0.10"
+
+# Crypto dependencies
+ring = "0.16"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+rustls-pemfile = "1.0.2"
+
+# Async stuff
+tokio = { version = "1.27", features = ["full"] }
+futures = "0.3"
+
+# Media
+mp4 = "0.13.0"
+
+# Encoding
+bytes = "1"
+serde = "1.0.160"
+serde_json = "1.0"
+
+# Web server to serve the fingerprint
+http = "0.2"
+warp = { version = "0.3.3", features = ["tls"] }
+hex = "0.4.3"
+
+# Logging
+clap = { version = "4.0", features = [ "derive" ] }
+log = { version = "0.4", features = ["std"] }
+env_logger = "0.9.3"
+
+# Utility
+anyhow = "1.0.70"
+thiserror = "1.0.21"
+paste = "1.0"
+
+moq-transport = { path = "../moq-transport" }

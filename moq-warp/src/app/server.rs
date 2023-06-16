@@ -3,16 +3,20 @@ use crate::media;
 
 use std::{fs, io, net, path, sync, time};
 
-use super::WebTransportSession;
-
 use anyhow::Context;
 
-pub struct Server {
-	// The QUIC server, yielding new connections and sessions.
-	server: quinn::Endpoint,
+use moq_transport::server;
+use tokio::task::JoinSet;
 
-	// The media source
-	broadcast: media::Broadcast,
+pub struct Server {
+	// The MoQ transport server.
+	server: server::Endpoint,
+
+	// The media source.
+	broadcasts: media::Broadcasts,
+
+	// Sessions actively being run.
+	sessions: JoinSet<anyhow::Result<()>>,
 }
 
 pub struct ServerConfig {
@@ -20,7 +24,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcast: media::Broadcast,
+	pub broadcasts: media::Broadcasts,
 }
 
 impl Server {
@@ -70,56 +74,38 @@ impl Server {
 
 		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broadcast = config.broadcast;
+		let broadcasts = config.broadcasts;
 
-		Ok(Self { server, broadcast })
+		let server = server::Endpoint::new(server);
+		let sessions = JoinSet::new();
+
+		Ok(Self {
+			server,
+			broadcasts,
+			sessions,
+		})
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		loop {
-			let conn = self.server.accept().await.context("failed to accept connection")?;
-			let broadcast = self.broadcast.clone();
+			tokio::select! {
+				res = self.server.accept() => {
+					let session = res.context("failed to accept connection")?;
+					let broadcasts = self.broadcasts.clone();
 
-			tokio::spawn(async move {
-				let session = Self::accept_session(conn).await.context("failed to accept session")?;
+					self.sessions.spawn(async move {
+						let session: Session = Session::accept(session, broadcasts).await?;
+						session.serve().await
+					});
+				},
+				res = self.sessions.join_next(), if !self.sessions.is_empty() => {
+					let res = res.expect("no tasks").expect("task aborted");
 
-				// Use a wrapper run the session.
-				let session = Session::new(session);
-				session.serve_broadcast(broadcast).await
-			});
+					if let Err(err) = res {
+						log::error!("session terminated: {:?}", err);
+					}
+				},
+			}
 		}
-	}
-
-	async fn accept_session(conn: quinn::Connecting) -> anyhow::Result<WebTransportSession> {
-		let conn = conn.await.context("failed to accept h3 connection")?;
-
-		let mut conn = h3::server::builder()
-			.enable_webtransport(true)
-			.enable_connect(true)
-			.enable_datagram(true)
-			.max_webtransport_sessions(1)
-			.send_grease(true)
-			.build(h3_quinn::Connection::new(conn))
-			.await
-			.context("failed to create h3 server")?;
-
-		let (req, stream) = conn
-			.accept()
-			.await
-			.context("failed to accept h3 session")?
-			.context("failed to accept h3 request")?;
-
-		let ext = req.extensions();
-		anyhow::ensure!(req.method() == http::Method::CONNECT, "expected CONNECT request");
-		anyhow::ensure!(
-			ext.get::<h3::ext::Protocol>() == Some(&h3::ext::Protocol::WEB_TRANSPORT),
-			"expected WebTransport CONNECT"
-		);
-
-		let session = WebTransportSession::accept(req, stream, conn)
-			.await
-			.context("failed to accept WebTransport session")?;
-
-		Ok(session)
 	}
 }

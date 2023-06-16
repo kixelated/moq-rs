@@ -9,6 +9,7 @@ use mp4::ReadBox;
 
 use anyhow::Context;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::{Broadcast, Fragment, Producer, Segment, Track};
 
@@ -16,7 +17,7 @@ pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
-	// The tracks we're producing
+	// The subscribable broadcast.
 	broadcast: Broadcast,
 
 	// The tracks we're producing.
@@ -45,20 +46,15 @@ impl Source {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		// Create a producer to populate the tracks.
-		let mut tracks = Producer::<Track>::new();
-
-		let broadcast = Broadcast {
-			tracks: tracks.subscribe(),
-		};
+		let mut tracks = HashMap::new();
 
 		// Create the init track
 		let init_track = Self::create_init_track(init);
-		tracks.push(init_track);
+		tracks.insert("catalog".to_string(), init_track);
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
-		let mut lookup = HashMap::new();
+		let mut sources = HashMap::new();
 
 		for trak in &moov.traks {
 			let track_id = trak.tkhd.track_id;
@@ -68,20 +64,29 @@ impl Source {
 
 			let segments = Producer::<Segment>::new();
 
-			tracks.push(Track {
-				id: track_id,
-				segments: segments.subscribe(),
-			});
+			// Insert the subscribable track for consumerts.
+			// The track_name is just the integer track ID.
+			let track_name = track_id.to_string();
+			tracks.insert(
+				track_name,
+				Track {
+					segments: segments.subscribe(),
+				},
+			);
 
 			// Store the track publisher in a map so we can update it later.
-			let track = SourceTrack::new(segments, timescale);
-			lookup.insert(track_id, track);
+			let source = SourceTrack::new(segments, timescale);
+			sources.insert(track_id, source);
 		}
+
+		let broadcast = Broadcast {
+			tracks: Arc::new(tracks),
+		};
 
 		Ok(Self {
 			reader,
 			broadcast,
-			tracks: lookup,
+			tracks: sources,
 		})
 	}
 
@@ -98,7 +103,6 @@ impl Source {
 		});
 
 		Track {
-			id: 0xff,
 			segments: segments.subscribe(),
 		}
 	}
