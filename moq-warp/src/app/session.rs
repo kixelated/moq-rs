@@ -206,9 +206,9 @@ impl Group {
 		// TODO proper values
 		let header = moq_transport::data::Header {
 			track_id: self.track_id,
-			group_sequence: 0,  // TODO
+			group_sequence: self.segment.sequence,
 			object_sequence: 0, // Always zero since we send an entire group as an object
-			send_order: 0,      // TODO
+			send_order: self.segment.send_order,
 		};
 
 		let mut stream = self.transport.send(header).await?;

@@ -98,8 +98,10 @@ impl Source {
 		fragments.push(raw.into());
 
 		segments.push(Segment {
+			sequence: 0,   // first and only segment
+			send_order: 0, // highest priority
+			expires: None, // never delete from the cache
 			fragments: fragments.subscribe(),
-			timestamp: time::Duration::ZERO,
 		});
 
 		Track {
@@ -170,12 +172,16 @@ struct SourceTrack {
 
 	// The number of units per second.
 	timescale: u64,
+
+	// The number of segments produced.
+	sequence: u64,
 }
 
 impl SourceTrack {
 	fn new(segments: Producer<Segment>, timescale: u64) -> Self {
 		Self {
 			segments,
+			sequence: 0,
 			fragments: None,
 			timescale,
 		}
@@ -189,19 +195,38 @@ impl SourceTrack {
 
 		// Get or create the current segment.
 		let fragments = self.fragments.get_or_insert_with(|| {
-			// Compute the timestamp in seconds.
-			let timestamp = fragment.timestamp(self.timescale);
+			let now = time::Instant::now();
+
+			// Compute the timestamp in milliseconds.
+			// Overflows after 583 million years, so we're fine.
+			let timestamp = fragment
+				.timestamp(self.timescale)
+				.as_millis()
+				.try_into()
+				.expect("timestamp too large");
+
+			// The send order is simple; newer timestamps are higher priority.
+			// TODO give audio a boost?
+			let send_order = u64::MAX.checked_sub(timestamp).expect("timestamp too large");
+
+			// Delete segments after 10s.
+			let expires = Some(now + time::Duration::from_secs(10));
+			let sequence = self.sequence;
+
+			self.sequence += 1;
 
 			// Create a new segment, and save the fragments producer so we can push to it.
 			let fragments = Producer::<Fragment>::new();
 			self.segments.push(Segment {
-				timestamp,
+				sequence,
+				expires,
+				send_order,
 				fragments: fragments.subscribe(),
 			});
 
 			// Remove any segments older than 10s.
-			let expires = timestamp.saturating_sub(time::Duration::from_secs(10));
-			self.segments.drain(|segment| segment.timestamp < expires);
+			// TODO This can only drain from the FRONT of the queue, so don't get clever with expirations.
+			self.segments.drain(|segment| segment.expires.unwrap() < now);
 
 			fragments
 		});
