@@ -19,25 +19,13 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 h3 = { git = "https://github.com/hyperium/h3", branch = "master" }
 h3-quinn = { git = "https://github.com/hyperium/h3", branch = "master" }
 h3-webtransport = { git = "https://github.com/hyperium/h3", branch = "master" }
-quinn = { version = "0.10", default-features = false, features = ["runtime-tokio", "tls-rustls", "ring"] }
-quinn-proto = "0.10"
+quinn = "0.10"
 http = "0.2"
 
-# Crypto dependencies
-ring = "0.16"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-
-# Async stuff
-tokio = { version = "1.27", features = ["full"] }
-futures = "0.3"
-
-# Encoding
+tokio = { version = "1.27", features = ["macros"] }
 bytes = "1"
 
-# Logging
-log = { version = "0.4", features = ["std"] }
-
-# Utility
+log = "0.4"
 anyhow = "1.0.70"
 thiserror = "1.0.21"
 async-trait = "0.1"

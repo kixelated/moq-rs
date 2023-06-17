@@ -19,7 +19,7 @@ moq-transport = { path = "../moq-transport" }
 moq-warp = { path = "../moq-warp" }
 
 # QUIC
-quinn = { version = "0.10", default-features = false, features = ["runtime-tokio", "tls-rustls", "ring"] }
+quinn = "0.10"
 
 # Crypto
 ring = "0.16.20"
@@ -37,6 +37,4 @@ hex = "0.4.3"
 clap = { version = "4.0", features = [ "derive" ] }
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9.3"
-
-# Utility
 anyhow = "1.0.70"
