@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -6,19 +6,19 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(pub u64);
+pub struct Version(pub VarInt);
 
 impl Version {
-	pub const DRAFT_00: Version = Version(0xff00);
+	pub const DRAFT_00: Version = Version(VarInt::from_u32(0xff00));
 }
 
-impl From<u64> for Version {
-	fn from(v: u64) -> Self {
+impl From<VarInt> for Version {
+	fn from(v: VarInt) -> Self {
 		Self(v)
 	}
 }
 
-impl From<Version> for u64 {
+impl From<Version> for VarInt {
 	fn from(v: Version) -> Self {
 		v.0
 	}
@@ -27,7 +27,7 @@ impl From<Version> for u64 {
 #[async_trait]
 impl Decode for Version {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let v = u64::decode(r).await?;
+		let v = VarInt::decode(r).await?;
 		Ok(Self(v))
 	}
 }
@@ -45,7 +45,7 @@ pub struct Versions(pub Vec<Version>);
 #[async_trait]
 impl Decode for Versions {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let count = u64::decode(r).await?;
+		let count = VarInt::decode(r).await?.into_inner();
 		let mut vs = Vec::new();
 
 		for _ in 0..count {
@@ -60,7 +60,8 @@ impl Decode for Versions {
 #[async_trait]
 impl Encode for Versions {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.0.len().encode(w).await?;
+		let size: VarInt = self.0.len().try_into()?;
+		size.encode(w).await?;
 		for v in &self.0 {
 			v.encode(w).await?;
 		}

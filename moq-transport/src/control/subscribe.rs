@@ -1,4 +1,4 @@
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 pub struct Subscribe {
 	// An ID we choose so we can map to the track_name.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
-	pub track_id: u64,
+	pub track_id: VarInt,
 
 	// The track namespace.
 	pub track_namespace: String,
@@ -19,7 +19,7 @@ pub struct Subscribe {
 #[async_trait]
 impl Decode for Subscribe {
 	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let track_id = u64::decode(r).await?;
+		let track_id = VarInt::decode(r).await?;
 		let track_namespace = String::decode(r).await?;
 		let track_name = String::decode(r).await?;
 

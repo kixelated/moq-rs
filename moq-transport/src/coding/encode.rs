@@ -12,25 +12,22 @@ pub trait Encode: Sized {
 #[async_trait]
 impl Encode for Bytes {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.len().encode(w).await?;
-		w.write_all(self).await?;
-		Ok(())
+		self.as_ref().encode(w).await
 	}
 }
 
 #[async_trait]
 impl Encode for Vec<u8> {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.len().encode(w).await?;
-		w.write_all(self).await?;
-		Ok(())
+		self.as_slice().encode(w).await
 	}
 }
 
 #[async_trait]
 impl Encode for &[u8] {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.len().encode(w).await?;
+		let size: VarInt = self.len().try_into()?;
+		size.encode(w).await?;
 		w.write_all(self).await?;
 		Ok(())
 	}
@@ -40,19 +37,5 @@ impl Encode for &[u8] {
 impl Encode for String {
 	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
 		self.as_bytes().encode(w).await
-	}
-}
-
-#[async_trait]
-impl Encode for u64 {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		VarInt::try_from(*self)?.encode(w).await
-	}
-}
-
-#[async_trait]
-impl Encode for usize {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		VarInt::try_from(*self)?.encode(w).await
 	}
 }

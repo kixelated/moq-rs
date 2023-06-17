@@ -1,7 +1,9 @@
 use super::Subscriber;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::Instant;
+
+use moq_transport::coding::VarInt;
 
 // Map from track namespace to broadcast.
 // TODO support updates
@@ -21,8 +23,14 @@ pub struct Track {
 
 #[derive(Clone)]
 pub struct Segment {
-	// The timestamp of the segment.
-	pub timestamp: Duration,
+	// The sequence number of the segment within the track.
+	pub sequence: VarInt,
+
+	// The priority of the segment within the BROADCAST.
+	pub send_order: VarInt,
+
+	// The time at which the segment expires for cache purposes.
+	pub expires: Option<Instant>,
 
 	// A list of fragments that make up the segment.
 	pub fragments: Subscriber<Fragment>,

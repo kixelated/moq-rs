@@ -7,6 +7,7 @@ use tokio::task::JoinSet;
 
 use std::sync::Arc;
 
+use moq_transport::coding::VarInt;
 use moq_transport::{control, data, server, setup};
 
 pub struct Session {
@@ -82,7 +83,7 @@ impl Session {
 				res = self.tasks.join_next(), if !self.tasks.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
-						log::warn!("failed to serve subscription: {:?}", err);
+						log::error!("failed to serve subscription: {:?}", err);
 					}
 				}
 			}
@@ -124,7 +125,7 @@ impl Session {
 			Err(e) => {
 				self.send_message(control::SubscribeError {
 					track_id: sub.track_id,
-					code: 1,
+					code: VarInt::from_u32(1),
 					reason: e.to_string(),
 				})
 				.await
@@ -144,9 +145,11 @@ impl Session {
 			.context("unknown track name")?
 			.clone();
 
+		let track_id = sub.track_id;
+
 		let sub = Subscription {
 			track,
-			track_id: sub.track_id,
+			track_id,
 			transport: self.transport.clone(),
 		};
 
@@ -158,7 +161,7 @@ impl Session {
 
 pub struct Subscription {
 	transport: Arc<data::Transport>,
-	track_id: u64,
+	track_id: VarInt,
 	track: media::Track,
 }
 
@@ -197,18 +200,17 @@ impl Subscription {
 
 struct Group {
 	transport: Arc<data::Transport>,
-	track_id: u64,
+	track_id: VarInt,
 	segment: media::Segment,
 }
 
 impl Group {
 	pub async fn serve(mut self) -> anyhow::Result<()> {
-		// TODO proper values
 		let header = moq_transport::data::Header {
 			track_id: self.track_id,
-			group_sequence: 0,  // TODO
-			object_sequence: 0, // Always zero since we send an entire group as an object
-			send_order: 0,      // TODO
+			group_sequence: self.segment.sequence,
+			object_sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
+			send_order: self.segment.send_order,
 		};
 
 		let mut stream = self.transport.send(header).await?;

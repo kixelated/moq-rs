@@ -11,6 +11,8 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use moq_transport::coding::VarInt;
+
 use super::{Broadcast, Fragment, Producer, Segment, Track};
 
 pub struct Source {
@@ -98,8 +100,10 @@ impl Source {
 		fragments.push(raw.into());
 
 		segments.push(Segment {
+			sequence: VarInt::from_u32(0),   // first and only segment
+			send_order: VarInt::from_u32(0), // highest priority
+			expires: None,                   // never delete from the cache
 			fragments: fragments.subscribe(),
-			timestamp: time::Duration::ZERO,
 		});
 
 		Track {
@@ -170,44 +174,74 @@ struct SourceTrack {
 
 	// The number of units per second.
 	timescale: u64,
+
+	// The number of segments produced.
+	sequence: u64,
 }
 
 impl SourceTrack {
 	fn new(segments: Producer<Segment>, timescale: u64) -> Self {
 		Self {
 			segments,
+			sequence: 0,
 			fragments: None,
 			timescale,
 		}
 	}
 
 	pub fn header(&mut self, raw: Vec<u8>, fragment: SourceFragment) -> anyhow::Result<()> {
-		// Close the current segment if we have a new keyframe.
-		if fragment.keyframe {
-			self.fragments.take();
+		if let Some(fragments) = self.fragments.as_mut() {
+			if !fragment.keyframe {
+				// Use the existing segment
+				fragments.push(raw.into());
+				return Ok(());
+			}
 		}
 
-		// Get or create the current segment.
-		let fragments = self.fragments.get_or_insert_with(|| {
-			// Compute the timestamp in seconds.
-			let timestamp = fragment.timestamp(self.timescale);
+		// Otherwise make a new segment
+		let now = time::Instant::now();
 
-			// Create a new segment, and save the fragments producer so we can push to it.
-			let fragments = Producer::<Fragment>::new();
-			self.segments.push(Segment {
-				timestamp,
-				fragments: fragments.subscribe(),
-			});
+		// Compute the timestamp in milliseconds.
+		// Overflows after 583 million years, so we're fine.
+		let timestamp = fragment
+			.timestamp(self.timescale)
+			.as_millis()
+			.try_into()
+			.context("timestamp too large")?;
 
-			// Remove any segments older than 10s.
-			let expires = timestamp.saturating_sub(time::Duration::from_secs(10));
-			self.segments.drain(|segment| segment.timestamp < expires);
+		// The send order is simple; newer timestamps are higher priority.
+		// TODO give audio a boost?
+		let send_order = VarInt::MAX
+			.into_inner()
+			.checked_sub(timestamp)
+			.context("timestamp too large")?
+			.try_into()
+			.unwrap();
 
-			fragments
+		// Delete segments after 10s.
+		let expires = Some(now + time::Duration::from_secs(10));
+		let sequence = self.sequence.try_into().context("sequence too large")?;
+
+		self.sequence += 1;
+
+		// Create a new segment, and save the fragments producer so we can push to it.
+		let mut fragments = Producer::<Fragment>::new();
+		self.segments.push(Segment {
+			sequence,
+			expires,
+			send_order,
+			fragments: fragments.subscribe(),
 		});
+
+		// Remove any segments older than 10s.
+		// TODO This can only drain from the FRONT of the queue, so don't get clever with expirations.
+		self.segments.drain(|segment| segment.expires.unwrap() < now);
 
 		// Insert the raw atom into the segment.
 		fragments.push(raw.into());
+
+		// Save for the next iteration
+		self.fragments = Some(fragments);
 
 		Ok(())
 	}
