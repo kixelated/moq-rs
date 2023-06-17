@@ -730,29 +730,16 @@ name = "moq-demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "bytes",
  "clap",
  "env_logger",
- "futures",
- "h3",
- "h3-quinn",
- "h3-webtransport",
  "hex",
- "http",
  "log",
  "moq-transport",
  "moq-warp",
- "mp4",
- "paste",
  "quinn",
- "quinn-proto",
  "ring",
  "rustls 0.21.2",
  "rustls-pemfile",
- "serde",
- "serde_json",
- "thiserror",
  "tokio",
  "warp",
 ]
@@ -764,27 +751,18 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
- "clap",
- "env_logger",
  "futures",
  "h3",
  "h3-quinn",
  "h3-webtransport",
- "hex",
  "http",
  "log",
- "mp4",
- "paste",
  "quinn",
  "quinn-proto",
  "ring",
  "rustls 0.21.2",
- "rustls-pemfile",
- "serde",
- "serde_json",
  "thiserror",
  "tokio",
- "warp",
 ]
 
 [[package]]
@@ -794,28 +772,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
- "clap",
- "env_logger",
  "futures",
- "h3",
- "h3-quinn",
- "h3-webtransport",
- "hex",
- "http",
- "log",
  "moq-transport",
  "mp4",
- "paste",
- "quinn",
- "quinn-proto",
- "ring",
- "rustls 0.21.2",
- "rustls-pemfile",
- "serde",
- "serde_json",
  "thiserror",
  "tokio",
- "warp",
 ]
 
 [[package]]
@@ -931,12 +892,6 @@ dependencies = [
  "smallvec",
  "windows-targets",
 ]
-
-[[package]]
-name = "paste"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f746c4065a8fa3fe23974dd82f15431cc8d40779821001404d10d2e79ca7d79"
 
 [[package]]
 name = "percent-encoding"
