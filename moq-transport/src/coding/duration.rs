@@ -1,4 +1,4 @@
-use super::{Decode, Encode, VarInt};
+use crate::coding::{Decode, Encode, VarInt};
 
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};

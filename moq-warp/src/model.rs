@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use moq_transport::coding::VarInt;
+use moq_transport::VarInt;
 
 // Map from track namespace to broadcast.
 // TODO support updates

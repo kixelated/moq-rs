@@ -1,6 +1,6 @@
 use super::session::Session;
 
-use moq_transport::server;
+use moq_transport::server::Endpoint;
 use moq_warp::Broadcasts;
 
 use std::{fs, io, net, path, sync, time};
@@ -11,7 +11,7 @@ use tokio::task::JoinSet;
 
 pub struct Server {
 	// The MoQ transport server.
-	server: server::Endpoint,
+	server: Endpoint,
 
 	// The media source.
 	broadcasts: Broadcasts,
@@ -77,7 +77,7 @@ impl Server {
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broadcasts = config.broadcasts;
 
-		let server = server::Endpoint::new(server);
+		let server = Endpoint::new(server);
 		let sessions = JoinSet::new();
 
 		Ok(Self {

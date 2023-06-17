@@ -8,7 +8,7 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use moq_transport::coding::VarInt;
+use moq_transport::VarInt;
 
 use super::{Broadcast, Fragment, Producer, Segment, Track};
 
