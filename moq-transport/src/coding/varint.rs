@@ -5,7 +5,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
-use super::{Decode, Encode};
+use crate::coding::{Decode, Encode};
 
 use thiserror::Error;
 

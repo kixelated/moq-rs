@@ -1,5 +1,3 @@
-use crate::media;
-
 use anyhow::Context;
 
 use tokio::io::AsyncWriteExt;
@@ -9,6 +7,7 @@ use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
 use moq_transport::{control, data, server, setup};
+use moq_warp::{Broadcasts, Segment, Track};
 
 pub struct Session {
 	// Used to send/receive data streams.
@@ -18,14 +17,14 @@ pub struct Session {
 	control: control::Stream,
 
 	// The list of available broadcasts for the session.
-	media: media::Broadcasts,
+	media: Broadcasts,
 
 	// The list of active subscriptions.
 	tasks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Session {
-	pub async fn accept(session: server::Accept, media: media::Broadcasts) -> anyhow::Result<Session> {
+	pub async fn accept(session: server::Accept, media: Broadcasts) -> anyhow::Result<Session> {
 		// Accep the WebTransport session.
 		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
 		let session = session
@@ -162,7 +161,7 @@ impl Session {
 pub struct Subscription {
 	transport: Arc<data::Transport>,
 	track_id: VarInt,
-	track: media::Track,
+	track: Track,
 }
 
 impl Subscription {
@@ -201,12 +200,12 @@ impl Subscription {
 struct Group {
 	transport: Arc<data::Transport>,
 	track_id: VarInt,
-	segment: media::Segment,
+	segment: Segment,
 }
 
 impl Group {
 	pub async fn serve(mut self) -> anyhow::Result<()> {
-		let header = moq_transport::data::Header {
+		let header = data::Header {
 			track_id: self.track_id,
 			group_sequence: self.segment.sequence,
 			object_sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object

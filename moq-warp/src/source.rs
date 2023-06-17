@@ -2,16 +2,13 @@ use std::io::Read;
 
 use std::{fs, io, path, time};
 
-use anyhow;
-
-use mp4;
 use mp4::ReadBox;
 
 use anyhow::Context;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use moq_transport::coding::VarInt;
+use moq_transport::VarInt;
 
 use super::{Broadcast, Fragment, Producer, Segment, Track};
 

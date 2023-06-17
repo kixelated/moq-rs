@@ -1,19 +1,20 @@
 use super::session::Session;
-use crate::media;
+
+use moq_transport::server::Endpoint;
+use moq_warp::Broadcasts;
 
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
 
-use moq_transport::server;
 use tokio::task::JoinSet;
 
 pub struct Server {
 	// The MoQ transport server.
-	server: server::Endpoint,
+	server: Endpoint,
 
 	// The media source.
-	broadcasts: media::Broadcasts,
+	broadcasts: Broadcasts,
 
 	// Sessions actively being run.
 	sessions: JoinSet<anyhow::Result<()>>,
@@ -24,7 +25,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcasts: media::Broadcasts,
+	pub broadcasts: Broadcasts,
 }
 
 impl Server {
@@ -76,7 +77,7 @@ impl Server {
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broadcasts = config.broadcasts;
 
-		let server = server::Endpoint::new(server);
+		let server = Endpoint::new(server);
 		let sessions = JoinSet::new();
 
 		Ok(Self {

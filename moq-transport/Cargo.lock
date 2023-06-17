@@ -67,6 +67,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c7d0618f0e0b7e8ff11427422b64564d5fb0be1940354bfe2e0529b18a9d9b8"
 
 [[package]]
+name = "async-trait"
+version = "0.1.68"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9ccdd8f2a161be9bd5c023df56f1b2a0bd1d83872ae53b71a84a12c9bf6e842"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,7 +427,7 @@ dependencies = [
 [[package]]
 name = "h3"
 version = "0.0.2"
-source = "git+https://github.com/security-union/h3?branch=add-webtransport#db5c723f653911a476bfd8ffcfebf0f8f2eb980d"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
 dependencies = [
  "bytes",
  "fastrand",
@@ -429,8 +440,8 @@ dependencies = [
 
 [[package]]
 name = "h3-quinn"
-version = "0.0.2"
-source = "git+https://github.com/security-union/h3?branch=add-webtransport#db5c723f653911a476bfd8ffcfebf0f8f2eb980d"
+version = "0.0.3"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
 dependencies = [
  "bytes",
  "futures",
@@ -444,7 +455,7 @@ dependencies = [
 [[package]]
 name = "h3-webtransport"
 version = "0.1.0"
-source = "git+https://github.com/security-union/h3?branch=add-webtransport#db5c723f653911a476bfd8ffcfebf0f8f2eb980d"
+source = "git+https://github.com/hyperium/h3?branch=master#3ef7c1a37b635e8446322d8f8d3a68580a208ad8"
 dependencies = [
  "bytes",
  "futures-util",
@@ -723,6 +734,7 @@ name = "moq"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "clap",
  "env_logger",

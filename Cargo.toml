@@ -1,6 +1,6 @@
 [workspace]
-
 members = [
     "moq-transport",
-	"moq-warp"
+    "moq-demo",
+    "moq-warp",
 ]
