@@ -1,8 +1,3 @@
-mod server;
-mod session;
-
-use server::*;
-
 use std::{fs, io, net, path, sync};
 
 use anyhow::Context;
@@ -10,7 +5,7 @@ use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::{broadcasts, Source};
+use moq_warp::{broadcasts, relay, Source};
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
@@ -48,14 +43,14 @@ async fn main() -> anyhow::Result<()> {
 	broadcasts.lock().unwrap().insert("demo".to_string(), media.broadcast());
 
 	// Create a server to actually serve the media
-	let config = ServerConfig {
+	let config = relay::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
 		broadcasts,
 	};
 
-	let mut server = Server::new(config).context("failed to create server")?;
+	let mut server = relay::Server::new(config).context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {

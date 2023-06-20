@@ -785,6 +785,10 @@ dependencies = [
  "log",
  "moq-transport",
  "mp4",
+ "quinn",
+ "ring",
+ "rustls 0.21.2",
+ "rustls-pemfile",
  "tokio",
 ]
 
