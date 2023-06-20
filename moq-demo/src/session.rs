@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
 use moq_transport::{control, data, server, setup};
-use moq_warp::{broadcasts, Broadcast, Broadcasts, Segment, Track};
+use moq_warp::{broadcasts, Broadcast, Segment, Track};
 
 pub struct Session {
 	// Used to send/receive data streams.
@@ -17,14 +17,14 @@ pub struct Session {
 	control: control::Stream,
 
 	// The list of available broadcasts for the session.
-	broadcasts: Broadcasts,
+	broadcasts: broadcasts::Shared,
 
 	// Active tasks being run.
 	tasks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Session {
-	pub async fn accept(session: server::Accept, broadcasts: Broadcasts) -> anyhow::Result<Session> {
+	pub async fn accept(session: server::Accept, broadcasts: broadcasts::Shared) -> anyhow::Result<Session> {
 		// Accep the WebTransport session.
 		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
 		let session = session
@@ -62,6 +62,8 @@ impl Session {
 	}
 
 	pub async fn serve(mut self) -> anyhow::Result<()> {
+		let mut broadcasts = self.broadcasts.lock().unwrap().updates();
+
 		loop {
 			tokio::select! {
 				msg = self.control.recv() => {
@@ -74,8 +76,8 @@ impl Session {
 						log::error!("failed to serve subscription: {:?}", err);
 					}
 				},
-				delta = self.broadcasts.subscribe.next() => {
-					log::info!("broadcast delta: {:?}", delta);
+				delta = broadcasts.next() => {
+					let delta = delta.expect("no more broadcasts");
 					self.handle_broadcast(delta).await?;
 				},
 			}
@@ -182,18 +184,21 @@ impl Session {
 	fn announce(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
 		let broadcast = Broadcast::default();
 
-		self.broadcasts
-			.publish
-			.insert(msg.track_namespace.clone(), broadcast)
-			.context("failed to publish broadcast")
+		let mut broadcasts = self.broadcasts.lock().unwrap();
+
+		if broadcasts.contains_key(&msg.track_namespace) {
+			anyhow::bail!("duplicate broadcast: {}", msg.track_namespace);
+		}
+
+		broadcasts.insert(msg.track_namespace.clone(), broadcast);
+
+		Ok(())
 	}
 
 	fn subscribe(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
-		log::info!("{:?}", self.broadcasts.subscribe.current());
-		let broadcast = self
-			.broadcasts
-			.subscribe
-			.current()
+		let broadcasts = self.broadcasts.lock().unwrap();
+
+		let broadcast = broadcasts
 			.get(&msg.track_namespace)
 			.context("unknown track namespace")?;
 

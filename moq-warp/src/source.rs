@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use moq_transport::VarInt;
 
-use super::{Broadcast, Fragment, Producer, Segment, Track};
+use super::{Broadcast, Fragment, Publisher, Segment, Track};
 
 pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
@@ -61,7 +61,7 @@ impl Source {
 
 			let timescale = track_timescale(&moov, track_id);
 
-			let segments = Producer::<Segment>::new();
+			let segments = Publisher::<Segment>::new();
 
 			// Insert the subscribable track for consumerts.
 			// The track_name is just the integer track ID.
@@ -91,8 +91,8 @@ impl Source {
 
 	// Create an init track
 	fn create_init_track(raw: Vec<u8>) -> Track {
-		let mut fragments = Producer::new();
-		let mut segments = Producer::new();
+		let mut fragments = Publisher::new();
+		let mut segments = Publisher::new();
 
 		fragments.push(raw.into());
 
@@ -164,10 +164,10 @@ impl Source {
 
 struct SourceTrack {
 	// The track we're producing
-	segments: Producer<Segment>,
+	segments: Publisher<Segment>,
 
 	// The current segment's fragments
-	fragments: Option<Producer<Fragment>>,
+	fragments: Option<Publisher<Fragment>>,
 
 	// The number of units per second.
 	timescale: u64,
@@ -177,7 +177,7 @@ struct SourceTrack {
 }
 
 impl SourceTrack {
-	fn new(segments: Producer<Segment>, timescale: u64) -> Self {
+	fn new(segments: Publisher<Segment>, timescale: u64) -> Self {
 		Self {
 			segments,
 			sequence: 0,
@@ -222,7 +222,7 @@ impl SourceTrack {
 		self.sequence += 1;
 
 		// Create a new segment, and save the fragments producer so we can push to it.
-		let mut fragments = Producer::<Fragment>::new();
+		let mut fragments = Publisher::<Fragment>::new();
 		self.segments.push(Segment {
 			sequence,
 			expires,

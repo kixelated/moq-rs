@@ -6,9 +6,6 @@ mod model;
 pub use model::*;
 
 mod watch;
-use watch::{Producer, Subscriber};
+pub use watch::*;
 
 pub mod broadcasts;
-pub use broadcasts::Broadcasts;
-
-mod update;

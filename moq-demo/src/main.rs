@@ -10,7 +10,7 @@ use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::{Broadcasts, Source};
+use moq_warp::{broadcasts, Source};
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
@@ -44,11 +44,8 @@ async fn main() -> anyhow::Result<()> {
 	// Create a fake media source from disk.
 	let mut media = Source::new(args.media).context("failed to open fragmented.mp4")?;
 
-	let mut broadcasts = Broadcasts::new();
-	broadcasts
-		.publish
-		.insert("demo".to_string(), media.broadcast())
-		.expect("failed to publish demo broadcast");
+	let broadcasts = broadcasts::Shared::default();
+	broadcasts.lock().unwrap().insert("demo".to_string(), media.broadcast());
 
 	// Create a server to actually serve the media
 	let config = ServerConfig {

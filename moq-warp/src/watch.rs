@@ -42,11 +42,11 @@ impl<T> State<T> {
 	}
 }
 
-pub struct Producer<T: Clone> {
+pub struct Publisher<T: Clone> {
 	sender: watch::Sender<State<T>>,
 }
 
-impl<T: Clone> Producer<T> {
+impl<T: Clone> Publisher<T> {
 	pub fn new() -> Self {
 		let state = State::new();
 		let (sender, _) = watch::channel(state);
@@ -75,13 +75,13 @@ impl<T: Clone> Producer<T> {
 	}
 }
 
-impl<T: Clone> Default for Producer<T> {
+impl<T: Clone> Default for Publisher<T> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: Clone> Drop for Producer<T> {
+impl<T: Clone> Drop for Publisher<T> {
 	fn drop(&mut self) {
 		self.sender.send_modify(|state| state.closed = true);
 	}

@@ -1,7 +1,7 @@
 use super::session::Session;
 
 use moq_transport::server::Endpoint;
-use moq_warp::Broadcasts;
+use moq_warp::broadcasts;
 
 use std::{fs, io, net, path, sync, time};
 
@@ -14,7 +14,7 @@ pub struct Server {
 	server: Endpoint,
 
 	// The media source.
-	broadcasts: Broadcasts,
+	broadcasts: broadcasts::Shared,
 
 	// Sessions actively being run.
 	sessions: JoinSet<anyhow::Result<()>>,
@@ -25,7 +25,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcasts: Broadcasts,
+	pub broadcasts: broadcasts::Shared,
 }
 
 impl Server {

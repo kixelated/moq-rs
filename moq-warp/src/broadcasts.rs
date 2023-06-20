@@ -1,28 +1,52 @@
-use super::{update, Broadcast};
+use super::{watch, Broadcast};
 
-pub type Publisher = update::map::Publisher<String, Broadcast>;
-pub type Subscriber = update::map::Subscriber<String, Broadcast>;
-pub type Delta = update::map::Delta<String, Broadcast>;
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 
-#[derive(Clone)]
-pub struct Broadcasts {
-	pub publish: Publisher,
-	pub subscribe: Subscriber,
+#[derive(Clone, Debug)]
+pub enum Delta {
+	// Pair was added
+	Insert(String, Broadcast),
+
+	// Pair was removed
+	Remove(String),
 }
 
-impl Broadcasts {
-	pub fn new() -> Self {
-		Self::default()
+pub type Shared = Arc<Mutex<Publisher>>;
+
+// Wrapper around a HashMap that publishes updates to a watch::Publisher.
+#[derive(Default)]
+pub struct Publisher {
+	map: HashMap<String, Broadcast>,
+	updates: watch::Publisher<Delta>,
+}
+
+impl Publisher {
+	pub fn updates(&self) -> watch::Subscriber<Delta> {
+		self.updates.subscribe()
+	}
+
+	pub fn insert(&mut self, k: String, v: Broadcast) {
+		let existing = self.map.insert(k.clone(), v.clone());
+		if existing.is_some() {
+			self.updates.push(Delta::Remove(k.clone()));
+		}
+		self.updates.push(Delta::Insert(k, v));
+	}
+
+	pub fn remove(&mut self, k: &String) {
+		let existing = self.map.remove(k);
+		if existing.is_some() {
+			self.updates.push(Delta::Remove(k.clone()));
+		}
 	}
 }
 
-impl Default for Broadcasts {
-	fn default() -> Self {
-		let state = update::Shared::default();
+impl Deref for Publisher {
+	type Target = HashMap<String, Broadcast>;
 
-		Self {
-			publish: Publisher::new(state.clone()),
-			subscribe: Subscriber::new(state),
-		}
+	fn deref(&self) -> &Self::Target {
+		&self.map
 	}
 }
