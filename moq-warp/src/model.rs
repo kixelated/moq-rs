@@ -1,18 +1,23 @@
 use super::Subscriber;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 
 use moq_transport::VarInt;
 
-// Map from track namespace to broadcast.
-// TODO support updates
-pub type Broadcasts = Arc<HashMap<String, Broadcast>>;
-
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Broadcast {
 	// TODO support updates.
 	pub tracks: Arc<HashMap<String, Track>>,
+}
+
+impl fmt::Debug for Broadcast {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Broadcast")
+			.field("tracks", &self.tracks.keys())
+			.finish()
+	}
 }
 
 #[derive(Clone)]

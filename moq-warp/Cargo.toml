@@ -20,3 +20,4 @@ moq-transport = { path = "../moq-transport" }
 tokio = "1.27"
 mp4 = "0.13.0"
 anyhow = "1.0.70"
+log = "0.4" # TODO remove

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
 use moq_transport::{control, data, server, setup};
-use moq_warp::{Broadcasts, Segment, Track};
+use moq_warp::{broadcasts, Broadcast, Broadcasts, Segment, Track};
 
 pub struct Session {
 	// Used to send/receive data streams.
@@ -17,14 +17,14 @@ pub struct Session {
 	control: control::Stream,
 
 	// The list of available broadcasts for the session.
-	media: Broadcasts,
+	broadcasts: Broadcasts,
 
-	// The list of active subscriptions.
+	// Active tasks being run.
 	tasks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Session {
-	pub async fn accept(session: server::Accept, media: Broadcasts) -> anyhow::Result<Session> {
+	pub async fn accept(session: server::Accept, broadcasts: Broadcasts) -> anyhow::Result<Session> {
 		// Accep the WebTransport session.
 		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
 		let session = session
@@ -54,7 +54,7 @@ impl Session {
 		let session = Self {
 			transport: Arc::new(transport),
 			control,
-			media,
+			broadcasts: broadcasts.clone(),
 			tasks: JoinSet::new(),
 		};
 
@@ -62,17 +62,6 @@ impl Session {
 	}
 
 	pub async fn serve(mut self) -> anyhow::Result<()> {
-		// TODO fix lazy: make a copy of the strings to avoid the borrow checker on self.
-		let broadcasts: Vec<String> = self.media.keys().cloned().collect();
-
-		// Announce each available broadcast immediately.
-		for name in broadcasts {
-			self.send_message(control::Announce {
-				track_namespace: name.clone(),
-			})
-			.await?;
-		}
-
 		loop {
 			tokio::select! {
 				msg = self.control.recv() => {
@@ -84,7 +73,30 @@ impl Session {
 					if let Err(err) = res {
 						log::error!("failed to serve subscription: {:?}", err);
 					}
-				}
+				},
+				delta = self.broadcasts.subscribe.next() => {
+					log::info!("broadcast delta: {:?}", delta);
+					self.handle_broadcast(delta).await?;
+				},
+			}
+		}
+	}
+
+	async fn handle_broadcast(&mut self, delta: broadcasts::Delta) -> anyhow::Result<()> {
+		match delta {
+			broadcasts::Delta::Insert(name, _broadcast) => {
+				self.send_message(control::Announce {
+					track_namespace: name.clone(),
+				})
+				.await
+			}
+			broadcasts::Delta::Remove(name) => {
+				self.send_message(control::AnnounceError {
+					track_namespace: name,
+					code: VarInt::from_u32(0),
+					reason: "broadcast closed".to_string(),
+				})
+				.await
 			}
 		}
 	}
@@ -94,15 +106,13 @@ impl Session {
 
 		// TODO implement publish and subscribe halves of the protocol.
 		match msg {
-			control::Message::Announce(_) => anyhow::bail!("ANNOUNCE not supported"),
-			control::Message::AnnounceOk(ref _ok) => Ok(()), // noop
-			control::Message::AnnounceError(ref err) => {
-				anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", err.code, err.reason)
-			}
-			control::Message::Subscribe(ref sub) => self.receive_subscribe(sub).await,
-			control::Message::SubscribeOk(_) => anyhow::bail!("SUBSCRIBE OK not supported"),
-			control::Message::SubscribeError(_) => anyhow::bail!("SUBSCRIBE ERROR not supported"),
-			control::Message::GoAway(_) => anyhow::bail!("goaway not supported"),
+			control::Message::Announce(msg) => self.receive_announce(msg).await,
+			control::Message::AnnounceOk(msg) => self.receive_announce_ok(msg),
+			control::Message::AnnounceError(msg) => self.receive_announce_error(msg),
+			control::Message::Subscribe(msg) => self.receive_subscribe(msg).await,
+			control::Message::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
+			control::Message::SubscribeError(msg) => self.receive_subscribe_error(msg),
+			control::Message::GoAway(_) => anyhow::bail!("client can't send GOAWAY u nerd"),
 		}
 	}
 
@@ -112,18 +122,17 @@ impl Session {
 		self.control.send(msg).await
 	}
 
-	async fn receive_subscribe(&mut self, sub: &control::Subscribe) -> anyhow::Result<()> {
-		match self.subscribe(sub) {
+	async fn receive_announce(&mut self, msg: control::Announce) -> anyhow::Result<()> {
+		match self.announce(&msg) {
 			Ok(()) => {
-				self.send_message(control::SubscribeOk {
-					track_id: sub.track_id,
-					expires: None,
+				self.send_message(control::AnnounceOk {
+					track_namespace: msg.track_namespace,
 				})
 				.await
 			}
 			Err(e) => {
-				self.send_message(control::SubscribeError {
-					track_id: sub.track_id,
+				self.send_message(control::AnnounceError {
+					track_namespace: msg.track_namespace,
 					code: VarInt::from_u32(1),
 					reason: e.to_string(),
 				})
@@ -132,19 +141,69 @@ impl Session {
 		}
 	}
 
-	fn subscribe(&mut self, sub: &control::Subscribe) -> anyhow::Result<()> {
+	fn receive_announce_ok(&mut self, _msg: control::AnnounceOk) -> anyhow::Result<()> {
+		Ok(())
+	}
+
+	fn receive_announce_error(&mut self, msg: control::AnnounceError) -> anyhow::Result<()> {
+		// TODO make sure we sent this announce
+		anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", msg.code, msg.reason)
+	}
+
+	async fn receive_subscribe(&mut self, msg: control::Subscribe) -> anyhow::Result<()> {
+		match self.subscribe(&msg) {
+			Ok(()) => {
+				self.send_message(control::SubscribeOk {
+					track_id: msg.track_id,
+					expires: None,
+				})
+				.await
+			}
+			Err(e) => {
+				self.send_message(control::SubscribeError {
+					track_id: msg.track_id,
+					code: VarInt::from_u32(1),
+					reason: e.to_string(),
+				})
+				.await
+			}
+		}
+	}
+
+	fn receive_subscribe_ok(&mut self, _msg: control::SubscribeOk) -> anyhow::Result<()> {
+		Ok(())
+	}
+
+	fn receive_subscribe_error(&mut self, msg: control::SubscribeError) -> anyhow::Result<()> {
+		// TODO make sure we sent this subscribe
+		anyhow::bail!("received SUBSCRIBE_ERROR({:?}): {}", msg.code, msg.reason)
+	}
+
+	fn announce(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
+		let broadcast = Broadcast::default();
+
+		self.broadcasts
+			.publish
+			.insert(msg.track_namespace.clone(), broadcast)
+			.context("failed to publish broadcast")
+	}
+
+	fn subscribe(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
+		log::info!("{:?}", self.broadcasts.subscribe.current());
 		let broadcast = self
-			.media
-			.get(&sub.track_namespace)
+			.broadcasts
+			.subscribe
+			.current()
+			.get(&msg.track_namespace)
 			.context("unknown track namespace")?;
 
 		let track = broadcast
 			.tracks
-			.get(&sub.track_name)
+			.get(&msg.track_name)
 			.context("unknown track name")?
 			.clone();
 
-		let track_id = sub.track_id;
+		let track_id = msg.track_id;
 
 		let sub = Subscription {
 			track,

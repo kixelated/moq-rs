@@ -5,15 +5,12 @@ use server::*;
 
 use std::{fs, io, net, path, sync};
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use anyhow::Context;
 use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::Source;
+use moq_warp::{Broadcasts, Source};
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
@@ -47,15 +44,18 @@ async fn main() -> anyhow::Result<()> {
 	// Create a fake media source from disk.
 	let mut media = Source::new(args.media).context("failed to open fragmented.mp4")?;
 
-	let mut broadcasts = HashMap::new();
-	broadcasts.insert("demo".to_string(), media.broadcast());
+	let mut broadcasts = Broadcasts::new();
+	broadcasts
+		.publish
+		.insert("demo".to_string(), media.broadcast())
+		.expect("failed to publish demo broadcast");
 
 	// Create a server to actually serve the media
 	let config = ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broadcasts: Arc::new(broadcasts),
+		broadcasts,
 	};
 
 	let mut server = Server::new(config).context("failed to create server")?;
