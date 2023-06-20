@@ -1,5 +1,5 @@
 use super::setup::{RecvSetup, SendSetup};
-use crate::{control, data, setup};
+use crate::{control, object, setup};
 
 use anyhow::Context;
 use bytes::Bytes;
@@ -71,7 +71,7 @@ impl Accept {
 			.context("failed to accept bidi stream")?
 			.unwrap();
 
-		let transport = data::Transport::new(transport);
+		let transport = object::Transport::new(transport);
 
 		let stream = match stream {
 			h3_webtransport::server::AcceptedBi::BidiStream(_session_id, stream) => stream,
@@ -92,7 +92,7 @@ impl Accept {
 
 pub struct Setup {
 	setup: SendSetup,
-	transport: data::Transport,
+	transport: object::Transport,
 }
 
 impl Setup {
@@ -102,7 +102,7 @@ impl Setup {
 	}
 
 	// Accept the session with our own setup message.
-	pub async fn accept(self, setup: setup::Server) -> anyhow::Result<(data::Transport, control::Stream)> {
+	pub async fn accept(self, setup: setup::Server) -> anyhow::Result<(object::Transport, control::Stream)> {
 		let control = self.setup.send(setup).await?;
 		Ok((self.transport, control))
 	}

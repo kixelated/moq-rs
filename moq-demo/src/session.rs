@@ -6,12 +6,12 @@ use tokio::task::JoinSet;
 use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
-use moq_transport::{control, data, server, setup};
+use moq_transport::{control, object, server, setup};
 use moq_warp::{broadcasts, Broadcast, Segment, Track};
 
 pub struct Session {
 	// Used to send/receive data streams.
-	transport: Arc<data::Transport>,
+	transport: Arc<object::Transport>,
 
 	// Used to send/receive control messages.
 	control: control::Stream,
@@ -223,7 +223,7 @@ impl Session {
 }
 
 pub struct Subscription {
-	transport: Arc<data::Transport>,
+	transport: Arc<object::Transport>,
 	track_id: VarInt,
 	track: Track,
 }
@@ -262,14 +262,14 @@ impl Subscription {
 }
 
 struct Group {
-	transport: Arc<data::Transport>,
+	transport: Arc<object::Transport>,
 	track_id: VarInt,
 	segment: Segment,
 }
 
 impl Group {
 	pub async fn serve(mut self) -> anyhow::Result<()> {
-		let header = data::Header {
+		let header = object::Header {
 			track_id: self.track_id,
 			group_sequence: self.segment.sequence,
 			object_sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
