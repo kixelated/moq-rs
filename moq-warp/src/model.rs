@@ -1,30 +1,8 @@
 use super::Subscriber;
-use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 
 use moq_transport::VarInt;
-
-#[derive(Clone, Default)]
-pub struct Broadcast {
-	// TODO support updates.
-	pub tracks: Arc<HashMap<String, Track>>,
-}
-
-impl fmt::Debug for Broadcast {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Broadcast")
-			.field("tracks", &self.tracks.keys())
-			.finish()
-	}
-}
-
-#[derive(Clone)]
-pub struct Track {
-	// A list of segments, which are independently decodable.
-	pub segments: Subscriber<Segment>,
-}
 
 #[derive(Clone)]
 pub struct Segment {

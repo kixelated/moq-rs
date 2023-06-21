@@ -95,8 +95,8 @@ impl Server {
 					let broadcasts = self.broadcasts.clone();
 
 					self.sessions.spawn(async move {
-						let session: Session = Session::accept(session, broadcasts).await?;
-						session.serve().await
+						let mut session: Session = Session::accept(session, broadcasts).await?;
+						session.run().await
 					});
 				},
 				res = self.sessions.join_next(), if !self.sessions.is_empty() => {

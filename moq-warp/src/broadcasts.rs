@@ -1,24 +1,26 @@
-use super::{watch, Broadcast};
+use super::{broadcast, watch};
 
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Delta {
 	// Pair was added
-	Insert(String, Broadcast),
+	Insert(String, broadcast::Subscriber),
 
 	// Pair was removed
 	Remove(String),
 }
 
+// TODO why does this need to be a tokio Mutex?
 pub type Shared = Arc<Mutex<Publisher>>;
 
 // Wrapper around a HashMap that publishes updates to a watch::Publisher.
 #[derive(Default)]
 pub struct Publisher {
-	map: HashMap<String, Broadcast>,
+	broadcasts: HashMap<String, broadcast::Subscriber>,
 	updates: watch::Publisher<Delta>,
 }
 
@@ -27,8 +29,8 @@ impl Publisher {
 		self.updates.subscribe()
 	}
 
-	pub fn insert(&mut self, k: String, v: Broadcast) {
-		let existing = self.map.insert(k.clone(), v.clone());
+	pub fn insert(&mut self, k: String, v: broadcast::Subscriber) {
+		let existing = self.broadcasts.insert(k.clone(), v.clone());
 		if existing.is_some() {
 			self.updates.push(Delta::Remove(k.clone()));
 		}
@@ -36,7 +38,7 @@ impl Publisher {
 	}
 
 	pub fn remove(&mut self, k: &String) {
-		let existing = self.map.remove(k);
+		let existing = self.broadcasts.remove(k);
 		if existing.is_some() {
 			self.updates.push(Delta::Remove(k.clone()));
 		}
@@ -44,9 +46,9 @@ impl Publisher {
 }
 
 impl Deref for Publisher {
-	type Target = HashMap<String, Broadcast>;
+	type Target = HashMap<String, broadcast::Subscriber>;
 
 	fn deref(&self) -> &Self::Target {
-		&self.map
+		&self.broadcasts
 	}
 }

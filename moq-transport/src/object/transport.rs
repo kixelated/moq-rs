@@ -20,6 +20,7 @@ impl Transport {
 		Self { transport }
 	}
 
+	// TODO This should be &mut self to prevent multiple threads trying to read objects
 	pub async fn recv(&self) -> anyhow::Result<(Header, RecvStream)> {
 		let (_session_id, mut stream) = self
 			.transport
@@ -33,6 +34,7 @@ impl Transport {
 		Ok((header, stream))
 	}
 
+	// This can be &self since threads can create streams in parallel.
 	pub async fn send(&self, header: Header) -> anyhow::Result<SendStream> {
 		let mut stream = self
 			.transport

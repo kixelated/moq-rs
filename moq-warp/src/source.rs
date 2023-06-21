@@ -10,14 +10,11 @@ use std::sync::Arc;
 
 use moq_transport::VarInt;
 
-use super::{Broadcast, Fragment, Publisher, Segment, Track};
+use super::{broadcast, track, Fragment, Publisher, Segment};
 
 pub struct Source {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
-
-	// The subscribable broadcast.
-	broadcast: Broadcast,
 
 	// The tracks we're producing.
 	tracks: HashMap<u32, SourceTrack>,
@@ -78,34 +75,29 @@ impl Source {
 			sources.insert(track_id, source);
 		}
 
-		let broadcast = Broadcast {
-			tracks: Arc::new(tracks),
-		};
-
 		Ok(Self {
 			reader,
-			broadcast,
 			tracks: sources,
 		})
 	}
 
 	// Create an init track
-	fn create_init_track(raw: Vec<u8>) -> Track {
+	fn create_init_track(raw: Vec<u8>) -> track::Subscriber {
+		let (mut publisher, subscriber) = track::new("catalog".to_string());
+
 		let mut fragments = Publisher::new();
 		let mut segments = Publisher::new();
 
 		fragments.push(raw.into());
 
-		segments.push(Segment {
+		publisher.segments.push(Segment {
 			sequence: VarInt::from_u32(0),   // first and only segment
 			send_order: VarInt::from_u32(0), // highest priority
 			expires: None,                   // never delete from the cache
 			fragments: fragments.subscribe(),
 		});
 
-		Track {
-			segments: segments.subscribe(),
-		}
+		subscriber
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -155,10 +147,6 @@ impl Source {
 				}
 			}
 		}
-	}
-
-	pub fn broadcast(&self) -> Broadcast {
-		self.broadcast.clone()
 	}
 }
 
@@ -249,6 +237,8 @@ impl SourceTrack {
 
 		Ok(())
 	}
+
+	pub fn subscribe() -> broadcast::Subscriber {}
 }
 
 struct SourceFragment {

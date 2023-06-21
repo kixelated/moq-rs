@@ -27,3 +27,5 @@ quinn = "0.10"
 ring = "0.16.20"
 rustls = "0.21.2"
 rustls-pemfile = "1.0.2"
+
+async-trait = "0.1"
