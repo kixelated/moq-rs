@@ -19,7 +19,7 @@ pub struct File {
 	broadcast: broadcast::Publisher,
 
 	// The tracks we're producing.
-	tracks: HashMap<u32, SourceTrack>,
+	tracks: HashMap<u32, Track>,
 }
 
 impl File {
@@ -66,7 +66,7 @@ impl File {
 			broadcast.tracks.push(track.subscribe());
 
 			// Store the track publisher in a map so we can update it later.
-			let source = SourceTrack::new(track, timescale);
+			let source = Track::new(track, timescale);
 			tracks.insert(track_id, source);
 		}
 
@@ -150,7 +150,7 @@ impl File {
 	}
 }
 
-struct SourceTrack {
+struct Track {
 	// The track we're producing
 	track: track::Publisher,
 
@@ -164,7 +164,7 @@ struct SourceTrack {
 	sequence: u64,
 }
 
-impl SourceTrack {
+impl Track {
 	fn new(track: track::Publisher, timescale: u64) -> Self {
 		Self {
 			track,

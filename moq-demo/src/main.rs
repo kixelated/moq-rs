@@ -5,7 +5,7 @@ use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::{broadcasts, relay, Source};
+use moq_warp::{relay, source};
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
@@ -37,17 +37,17 @@ async fn main() -> anyhow::Result<()> {
 	let serve = serve_http(args.clone());
 
 	// Create a fake media source from disk.
-	let mut media = Source::new(args.media).context("failed to open fragmented.mp4")?;
+	let mut media = source::File::new(args.media).context("failed to open fragmented.mp4")?;
 
-	let broadcasts = broadcasts::Shared::default();
-	broadcasts.lock().unwrap().insert("demo".to_string(), media.broadcast());
+	let broker = relay::broker::Broadcasts::new();
+	let _publisher = broker.publish("demo").context("failed to create publisher")?;
 
 	// Create a server to actually serve the media
 	let config = relay::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broadcasts,
+		broker,
 	};
 
 	let mut server = relay::Server::new(config).context("failed to create server")?;

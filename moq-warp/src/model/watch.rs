@@ -70,8 +70,14 @@ impl<T: Clone> Publisher<T> {
 		});
 	}
 
+	// Subscribe for all NEW updates.
 	pub fn subscribe(&self) -> Subscriber<T> {
-		Subscriber::new(self.sender.subscribe())
+		let index = self.sender.borrow().queue.len();
+
+		Subscriber {
+			state: self.sender.subscribe(),
+			index,
+		}
 	}
 }
 
@@ -94,10 +100,6 @@ pub struct Subscriber<T: Clone> {
 }
 
 impl<T: Clone> Subscriber<T> {
-	fn new(state: watch::Receiver<State<T>>) -> Self {
-		Self { state, index: 0 }
-	}
-
 	pub async fn next(&mut self) -> Option<T> {
 		// Wait until the queue has a new element or if it's closed.
 		let state = self

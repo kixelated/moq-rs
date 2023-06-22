@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex as StdMutex;
+use std::sync::{Arc, Mutex};
 use std::time;
 
 use tokio::io::AsyncReadExt;
@@ -11,7 +10,8 @@ use moq_transport::{control, object};
 
 use anyhow::Context;
 
-use crate::model::{broadcast, broadcasts, segment, track};
+use super::broker;
+use crate::model::{segment, track};
 
 pub struct Contribute {
 	// Used to receive objects.
@@ -22,10 +22,13 @@ pub struct Contribute {
 	control: control::SendShared,
 
 	// Globally announced namespaces, which we can add ourselves to.
-	broadcasts: broadcasts::Shared,
+	broker: broker::Broadcasts,
 
-	// Active subscriptions based on the subscription ID.
-	subscriptions: Arc<StdMutex<Subscriptions>>,
+	// Active tracks being produced by this session.
+	publishers: Publishers,
+
+	// Active tracks being consumed by other sessions, used to deduplicate.
+	subscribers: Subscribers,
 
 	// Tasks we are currently serving.
 	run_broadcasts: JoinSet<anyhow::Result<()>>, // receiving subscriptions
@@ -33,16 +36,13 @@ pub struct Contribute {
 }
 
 impl Contribute {
-	pub fn new(
-		transport: Arc<object::Transport>,
-		control: control::SendShared,
-		broadcasts: broadcasts::Shared,
-	) -> Self {
+	pub fn new(transport: Arc<object::Transport>, control: control::SendShared, broker: broker::Broadcasts) -> Self {
 		Self {
 			transport,
 			control,
-			broadcasts,
-			subscriptions: Default::default(),
+			broker,
+			publishers: Default::default(),
+			subscribers: Default::default(),
 			run_broadcasts: JoinSet::new(),
 			run_segments: JoinSet::new(),
 		}
@@ -82,10 +82,7 @@ impl Contribute {
 	}
 
 	async fn receive_object(&mut self, header: object::Header, stream: object::RecvStream) -> anyhow::Result<()> {
-		let id = header.track_id.into_inner();
-
-		let mut subscriptions = self.subscriptions.lock().unwrap();
-		let track = subscriptions.get(id).context("no subscription with that ID")?;
+		let id = header.track_id;
 
 		let segment = segment::Info {
 			sequence: header.object_sequence,
@@ -94,7 +91,10 @@ impl Contribute {
 		};
 
 		let segment = segment::Publisher::new(segment);
-		track.segments.push(segment.subscribe());
+
+		self.publishers
+			.push(id, segment.subscribe())
+			.context("failed to publish segment")?;
 
 		// TODO implement a timeout
 
@@ -141,32 +141,19 @@ impl Contribute {
 	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
 		let namespace = msg.track_namespace.clone();
 
-		let broadcast = broadcast::Publisher::new(namespace.clone());
+		let broker = self
+			.broker
+			.publish(&namespace)
+			.context("failed to register broadcast")?;
 
-		// Check if this broadcast already exists globally.
-		let mut broadcasts = self.broadcasts.lock().await;
-		if broadcasts.contains_key(&namespace) {
-			anyhow::bail!("duplicate broadcast: {}", namespace);
-		}
-
-		// Insert the subscriber into the global list of broadcasts.
-		broadcasts.insert(namespace.clone(), broadcast.subscribe());
-
-		// Create copies to send to the task.
-		let broadcasts = self.broadcasts.clone();
-		let subscriptions = self.subscriptions.clone();
+		let subscribers = self.subscribers.clone();
+		let publishers = self.publishers.clone();
 		let control = self.control.clone();
 
-		self.run_broadcasts.spawn(async move {
-			// Serve the
-			let res = Self::run_broadcast(control, subscriptions, broadcast).await;
+		// Check if this broadcast already exists globally.
 
-			// Remove the broadcast on completion.
-			let mut broadcasts = broadcasts.lock().await;
-			broadcasts.remove(&namespace);
-
-			res
-		});
+		self.run_broadcasts
+			.spawn(async move { Self::run_broadcast(broker, control, subscribers, publishers).await });
 
 		Ok(())
 	}
@@ -176,61 +163,98 @@ impl Contribute {
 	}
 
 	fn receive_subscribe_error(&mut self, msg: control::SubscribeError) -> anyhow::Result<()> {
-		// TODO make sure we sent this subscribe
+		// TODO return the error to the subscriber
+		self.publishers.remove(msg.track_id)?;
+
 		anyhow::bail!("received SUBSCRIBE_ERROR({:?}): {}", msg.code, msg.reason)
 	}
 
 	async fn run_broadcast(
-		_control: control::SendShared,
-		_subscriptions: Arc<StdMutex<Subscriptions>>,
-		_broadcast: broadcast::Publisher,
+		mut broker: broker::Publisher,
+		mut control: control::SendShared,
+		mut subscribers: Subscribers,
+		mut publishers: Publishers,
 	) -> anyhow::Result<()> {
-		/*
-		// Get the next track that somebody wants to subscribe to.
-		while let Some(track) = broadcast.requested().await {
-			let name = track.name.clone();
-			let id = subscriptions.lock().unwrap().add(track);
+		while let Some(request) = broker.request().await {
+			if let Some(track) = subscribers.get(&request.name) {
+				request.respond(Ok(track));
+				continue;
+			}
 
+			let name = request.name.clone();
+			let track = track::Publisher::new(name.clone());
+
+			// Reply to the request with the subscriber
+			request.respond(Ok(track.subscribe()));
+
+			// Tell all other subscribers to use this subscription
+			subscribers.set(&name, track.subscribe());
+
+			// Get a unique ID for the publisher.
+			let id = publishers.insert(track);
+
+			// TODO close the publisher if this fails
 			control
 				.send(control::Subscribe {
-					track_id: VarInt::try_from(id)?,
-					track_namespace: broadcast.namespace.clone(),
+					track_id: id,
+					track_namespace: broker.namespace.clone(),
 					track_name: name,
 				})
 				.await
-				.context("failed to send subscription")?
+				.context("failed to send subscription")?;
 		}
-		*/
 
 		Ok(())
 	}
 }
 
-#[derive(Default)]
-pub struct Subscriptions {
-	// A lookup from subscription ID (varint) to a track being produced.
-	lookup: HashMap<u64, track::Publisher>,
-
-	// The next subscription ID
-	sequence: u64,
+#[derive(Clone, Default)]
+pub struct Subscribers {
+	// A lookup from name to an existing subscription (new subscribers)
+	lookup: Arc<Mutex<HashMap<String, track::Subscriber>>>,
 }
 
-impl Subscriptions {
-	pub fn add(&mut self, track: track::Publisher) -> u64 {
-		let id = self.sequence;
-		self.sequence += 1;
+impl Subscribers {
+	// Duplicates subscriptions, returning a new subscription ID if this is the first subscription.
+	pub fn get(&mut self, name: &str) -> Option<track::Subscriber> {
+		self.lookup.lock().unwrap().get(name).cloned()
+	}
 
-		let _track_name = track.name.clone();
+	pub fn set(&mut self, name: &str, track: track::Subscriber) {
+		let existing = self.lookup.lock().unwrap().insert(name.into(), track);
+		assert!(existing.is_none(), "duplicate track name");
+	}
+}
 
-		self.lookup.insert(id, track);
+#[derive(Clone, Default)]
+pub struct Publishers {
+	// A lookup from subscription ID to a track being produced (new publishers)
+	lookup: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
+
+	// The next subscription ID
+	next: Arc<Mutex<u64>>,
+}
+
+impl Publishers {
+	pub fn insert(&mut self, track: track::Publisher) -> VarInt {
+		let mut next = self.next.lock().unwrap();
+		let id = VarInt::try_from(*next).unwrap();
+		*next += 1;
+
+		self.lookup.lock().unwrap().insert(id, track);
 		id
 	}
 
-	pub fn get(&mut self, id: u64) -> Option<&mut track::Publisher> {
-		self.lookup.get_mut(&id)
+	pub fn push(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
+		let mut lookup = self.lookup.lock().unwrap();
+		let publisher = lookup.get_mut(&id).context("no track with that ID")?;
+		publisher.segments.push(segment);
+		Ok(())
 	}
 
-	pub fn remove(&mut self, id: u64) {
-		self.lookup.remove(&id);
+	pub fn remove(&mut self, id: VarInt) -> anyhow::Result<()> {
+		let mut lookup = self.lookup.lock().unwrap();
+		lookup.remove(&id).context("no track with that ID")?;
+		Ok(())
 	}
 }

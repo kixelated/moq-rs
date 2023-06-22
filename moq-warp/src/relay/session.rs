@@ -2,15 +2,11 @@ use anyhow::Context;
 
 use std::sync::Arc;
 
-use moq_transport::{control, object, server, setup};
+use moq_transport::{control, server, setup};
 
-use super::{Contribute, Distribute};
-use crate::model::broadcasts;
+use super::{broker, Contribute, Distribute};
 
 pub struct Session {
-	// Used to send/receive data streams.
-	transport: Arc<object::Transport>,
-
 	// Used to receive control messages.
 	control: control::RecvStream,
 
@@ -20,13 +16,13 @@ pub struct Session {
 }
 
 impl Session {
-	pub async fn accept(session: server::Accept, broadcasts: broadcasts::Shared) -> anyhow::Result<Session> {
+	pub async fn accept(session: server::Accept, broker: broker::Broadcasts) -> anyhow::Result<Session> {
 		// Accep the WebTransport session.
 		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
 		let session = session
 			.accept()
 			.await
-			.context("failed to accept WebTransport session")?;
+			.context(": server::Setupfailed to accept WebTransport session")?;
 
 		session
 			.setup()
@@ -52,11 +48,10 @@ impl Session {
 		let (sender, receiver) = control.split();
 		let sender = sender.share(); // wrap in an arc/mutex
 
-		let contribute = Contribute::new(transport.clone(), sender.clone(), broadcasts.clone());
-		let distribute = Distribute::new(transport.clone(), sender, broadcasts);
+		let contribute = Contribute::new(transport.clone(), sender.clone(), broker.clone());
+		let distribute = Distribute::new(transport, sender, broker);
 
 		let session = Self {
-			transport,
 			control: receiver,
 			contribute,
 			distribute,

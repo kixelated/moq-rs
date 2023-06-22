@@ -3,13 +3,14 @@ use anyhow::Context;
 use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
-use std::collections::HashMap;
+
 use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
 use moq_transport::{control, object};
 
-use crate::model::{broadcasts, segment, track};
+use super::broker;
+use crate::model::{segment, track};
 
 pub struct Distribute {
 	// Objects are sent to the client using this transport.
@@ -19,44 +20,40 @@ pub struct Distribute {
 	control: control::SendShared,
 
 	// Globally announced namespaces, which can be subscribed to.
-	broadcasts: broadcasts::Shared,
-
-	// Active subscriptions based on the track ID.
-	tracks: HashMap<VarInt, track::Subscriber>,
+	broker: broker::Broadcasts,
 
 	// A list of tasks that are currently running.
-	run_tracks: JoinSet<anyhow::Result<()>>,
+	run_subscribes: JoinSet<anyhow::Result<()>>,
 }
 
 impl Distribute {
-	pub fn new(
-		transport: Arc<object::Transport>,
-		control: control::SendShared,
-		broadcasts: broadcasts::Shared,
-	) -> Self {
+	pub fn new(transport: Arc<object::Transport>, control: control::SendShared, broker: broker::Broadcasts) -> Self {
 		Self {
 			transport,
 			control,
-			broadcasts,
-			tracks: HashMap::new(),
-			run_tracks: JoinSet::new(),
+			broker,
+			run_subscribes: JoinSet::new(),
 		}
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		let mut broadcasts = self.broadcasts.lock().await.updates();
+		// Announce all available tracks and get a stream of updates.
+		let (available, mut updates) = self.broker.available();
+		for namespace in available {
+			self.on_available(broker::Update::Insert(namespace)).await?;
+		}
 
 		loop {
 			tokio::select! {
-				res = self.run_tracks.join_next(), if !self.run_tracks.is_empty() => {
+				res = self.run_subscribes.join_next(), if !self.run_subscribes.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
 						log::error!("failed to serve track: {:?}", err);
 					}
 				},
-				delta = broadcasts.next() => {
+				delta = updates.next() => {
 					let delta = delta.expect("no more broadcasts");
-					self.on_broadcast(delta).await?;
+					self.on_available(delta).await?;
 				},
 			}
 		}
@@ -107,26 +104,24 @@ impl Distribute {
 	}
 
 	async fn receive_subscribe_inner(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
-		let broadcasts = self.broadcasts.lock().await;
+		let broadcast = self
+			.broker
+			.subscribe(&msg.track_namespace)
+			.context("could not find broadcast")?;
 
-		let _broadcast = broadcasts
-			.get(&msg.track_namespace)
-			.context("unknown track namespace")?;
-
-		/*
-		let track = broadcast.subscribe(msg.track_name.clone()).await?;
+		// TODO make this synchronous instead of relying on a channel
+		let track = broadcast.track(&msg.track_name).await.context("could not find track")?;
 
 		let track_id = msg.track_id;
 		let transport = self.transport.clone();
 
-		self.run_tracks
-			.spawn(async move { Self::run_track(transport, track_id, track).await });
-		*/
+		self.run_subscribes
+			.spawn(async move { Self::run_subscribe(transport, track_id, track).await });
 
 		Ok(())
 	}
 
-	async fn run_track(
+	async fn run_subscribe(
 		transport: Arc<object::Transport>,
 		track_id: VarInt,
 		mut track: track::Subscriber,
@@ -182,16 +177,16 @@ impl Distribute {
 		Ok(())
 	}
 
-	async fn on_broadcast(&mut self, delta: broadcasts::Delta) -> anyhow::Result<()> {
+	async fn on_available(&mut self, delta: broker::Update) -> anyhow::Result<()> {
 		match delta {
-			broadcasts::Delta::Insert(name, _broadcast) => {
+			broker::Update::Insert(name) => {
 				self.control
 					.send(control::Announce {
 						track_namespace: name.clone(),
 					})
 					.await
 			}
-			broadcasts::Delta::Remove(name) => {
+			broker::Update::Remove(name) => {
 				self.control
 					.send(control::AnnounceError {
 						track_namespace: name,

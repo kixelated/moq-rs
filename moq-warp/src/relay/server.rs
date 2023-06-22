@@ -1,5 +1,4 @@
-use super::Session;
-use crate::model::broadcasts;
+use super::{broker, Session};
 
 use moq_transport::server::Endpoint;
 
@@ -13,8 +12,8 @@ pub struct Server {
 	// The MoQ transport server.
 	server: Endpoint,
 
-	// The media source.
-	broadcasts: broadcasts::Shared,
+	// The media sources.
+	broker: broker::Broadcasts,
 
 	// Sessions actively being run.
 	sessions: JoinSet<anyhow::Result<()>>,
@@ -25,7 +24,7 @@ pub struct ServerConfig {
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
 
-	pub broadcasts: broadcasts::Shared,
+	pub broker: broker::Broadcasts,
 }
 
 impl Server {
@@ -75,14 +74,14 @@ impl Server {
 
 		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broadcasts = config.broadcasts;
+		let broker = config.broker;
 
 		let server = Endpoint::new(server);
 		let sessions = JoinSet::new();
 
 		Ok(Self {
 			server,
-			broadcasts,
+			broker,
 			sessions,
 		})
 	}
@@ -92,10 +91,10 @@ impl Server {
 			tokio::select! {
 				res = self.server.accept() => {
 					let session = res.context("failed to accept connection")?;
-					let broadcasts = self.broadcasts.clone();
+					let broker = self.broker.clone();
 
 					self.sessions.spawn(async move {
-						let mut session: Session = Session::accept(session, broadcasts).await?;
+						let mut session: Session = Session::accept(session, broker).await?;
 						session.run().await
 					});
 				},
