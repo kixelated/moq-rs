@@ -4,10 +4,8 @@ use std::sync::Arc;
 
 use moq_transport::{control, object, server, setup};
 
-use tokio::sync::Mutex;
-
 use super::{Contribute, Distribute};
-use crate::broadcasts;
+use crate::model::broadcasts;
 
 pub struct Session {
 	// Used to send/receive data streams.
@@ -50,15 +48,16 @@ impl Session {
 		let (transport, control) = session.accept(setup).await?;
 		let transport = Arc::new(transport);
 
-		let (control_sender, control_receiver) = control.split();
-		let control_sender = Arc::new(Mutex::new(control_sender));
+		// Split the control stream into send/receive halves.
+		let (sender, receiver) = control.split();
+		let sender = sender.share(); // wrap in an arc/mutex
 
-		let contribute = Contribute::new(transport.clone(), control_sender.clone(), broadcasts.clone());
-		let distribute = Distribute::new(transport.clone(), control_sender, broadcasts);
+		let contribute = Contribute::new(transport.clone(), sender.clone(), broadcasts.clone());
+		let distribute = Distribute::new(transport.clone(), sender, broadcasts);
 
 		let session = Self {
 			transport,
-			control: control_receiver,
+			control: receiver,
 			contribute,
 			distribute,
 		};

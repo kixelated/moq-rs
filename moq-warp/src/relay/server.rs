@@ -1,5 +1,5 @@
 use super::Session;
-use crate::broadcasts;
+use crate::model::broadcasts;
 
 use moq_transport::server::Endpoint;
 

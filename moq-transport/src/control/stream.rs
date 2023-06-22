@@ -4,6 +4,8 @@ use crate::control::Message;
 use bytes::Bytes;
 
 use h3::quic::BidiStream;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct Stream {
 	sender: SendStream,
@@ -13,8 +15,8 @@ pub struct Stream {
 impl Stream {
 	pub(crate) fn new(stream: h3_webtransport::stream::BidiStream<h3_quinn::BidiStream<Bytes>, Bytes>) -> Self {
 		let (sender, recver) = stream.split();
-		let sender = SendStream::new(sender);
-		let recver = RecvStream::new(recver);
+		let sender = SendStream { stream: sender };
+		let recver = RecvStream { stream: recver };
 
 		Self { sender, recver }
 	}
@@ -37,12 +39,28 @@ pub struct SendStream {
 }
 
 impl SendStream {
-	pub(crate) fn new(stream: h3_webtransport::stream::SendStream<h3_quinn::SendStream<Bytes>, Bytes>) -> Self {
-		Self { stream }
+	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
+		msg.into().encode(&mut self.stream).await
 	}
 
-	pub async fn send(&mut self, msg: Message) -> anyhow::Result<()> {
-		msg.encode(&mut self.stream).await
+	// Helper that lets multiple threads send control messages.
+	pub fn share(self) -> SendShared {
+		SendShared {
+			stream: Arc::new(Mutex::new(self)),
+		}
+	}
+}
+
+// Helper that allows multiple threads to send control messages.
+#[derive(Clone)]
+pub struct SendShared {
+	stream: Arc<Mutex<SendStream>>,
+}
+
+impl SendShared {
+	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
+		let mut stream = self.stream.lock().await;
+		stream.send(msg).await
 	}
 }
 
@@ -51,10 +69,6 @@ pub struct RecvStream {
 }
 
 impl RecvStream {
-	pub(crate) fn new(stream: h3_webtransport::stream::RecvStream<h3_quinn::RecvStream, Bytes>) -> Self {
-		Self { stream }
-	}
-
 	pub async fn recv(&mut self) -> anyhow::Result<Message> {
 		Message::decode(&mut self.stream).await
 	}

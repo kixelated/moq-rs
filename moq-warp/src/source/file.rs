@@ -6,21 +6,23 @@ use mp4::ReadBox;
 
 use anyhow::Context;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use moq_transport::VarInt;
 
-use super::{broadcast, track, Fragment, Publisher, Segment};
+use crate::model::{broadcast, segment, track};
 
-pub struct Source {
+pub struct File {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
+
+	// The broadcast we're producing.
+	broadcast: broadcast::Publisher,
 
 	// The tracks we're producing.
 	tracks: HashMap<u32, SourceTrack>,
 }
 
-impl Source {
+impl File {
 	pub fn new(path: path::PathBuf) -> anyhow::Result<Self> {
 		let f = fs::File::open(path)?;
 		let mut reader = io::BufReader::new(f);
@@ -42,15 +44,16 @@ impl Source {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		let mut tracks = HashMap::new();
+		// TODO use the file name.
+		let mut broadcast = broadcast::Publisher::new("demo".into());
 
 		// Create the init track
-		let init_track = Self::create_init_track(init);
-		tracks.insert("catalog".to_string(), init_track);
+		let init = Self::create_init(init);
+		broadcast.tracks.push(init.subscribe());
 
 		// Create a map with the current segment for each track.
 		// NOTE: We don't add the init track to this, since it's not part of the MP4.
-		let mut sources = HashMap::new();
+		let mut tracks = HashMap::new();
 
 		for trak in &moov.traks {
 			let track_id = trak.tkhd.track_id;
@@ -58,46 +61,39 @@ impl Source {
 
 			let timescale = track_timescale(&moov, track_id);
 
-			let segments = Publisher::<Segment>::new();
-
-			// Insert the subscribable track for consumerts.
 			// The track_name is just the integer track ID.
-			let track_name = track_id.to_string();
-			tracks.insert(
-				track_name,
-				Track {
-					segments: segments.subscribe(),
-				},
-			);
+			let track = track::Publisher::new(track_id.to_string());
+			broadcast.tracks.push(track.subscribe());
 
 			// Store the track publisher in a map so we can update it later.
-			let source = SourceTrack::new(segments, timescale);
-			sources.insert(track_id, source);
+			let source = SourceTrack::new(track, timescale);
+			tracks.insert(track_id, source);
 		}
 
 		Ok(Self {
+			broadcast,
 			reader,
-			tracks: sources,
+			tracks,
 		})
 	}
 
-	// Create an init track
-	fn create_init_track(raw: Vec<u8>) -> track::Subscriber {
-		let (mut publisher, subscriber) = track::new("catalog".to_string());
+	fn create_init(raw: Vec<u8>) -> track::Publisher {
+		// Create a track with a single segment containing the init data.
+		let mut track = track::Publisher::new("catalog".into());
 
-		let mut fragments = Publisher::new();
-		let mut segments = Publisher::new();
-
-		fragments.push(raw.into());
-
-		publisher.segments.push(Segment {
+		let segment = segment::Info {
 			sequence: VarInt::from_u32(0),   // first and only segment
 			send_order: VarInt::from_u32(0), // highest priority
 			expires: None,                   // never delete from the cache
-			fragments: fragments.subscribe(),
-		});
+		};
 
-		subscriber
+		let mut segment = segment::Publisher::new(segment);
+
+		// Add the segment and add the fragment.
+		track.segments.push(segment.subscribe());
+		segment.fragments.push(raw.into());
+
+		track
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -148,14 +144,18 @@ impl Source {
 			}
 		}
 	}
+
+	pub fn subscribe(&self) -> broadcast::Subscriber {
+		self.broadcast.subscribe()
+	}
 }
 
 struct SourceTrack {
 	// The track we're producing
-	segments: Publisher<Segment>,
+	track: track::Publisher,
 
-	// The current segment's fragments
-	fragments: Option<Publisher<Fragment>>,
+	// The current segment
+	segment: Option<segment::Publisher>,
 
 	// The number of units per second.
 	timescale: u64,
@@ -165,20 +165,20 @@ struct SourceTrack {
 }
 
 impl SourceTrack {
-	fn new(segments: Publisher<Segment>, timescale: u64) -> Self {
+	fn new(track: track::Publisher, timescale: u64) -> Self {
 		Self {
-			segments,
+			track,
 			sequence: 0,
-			fragments: None,
+			segment: None,
 			timescale,
 		}
 	}
 
 	pub fn header(&mut self, raw: Vec<u8>, fragment: SourceFragment) -> anyhow::Result<()> {
-		if let Some(fragments) = self.fragments.as_mut() {
+		if let Some(segment) = self.segment.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				fragments.push(raw.into());
+				segment.fragments.push(raw.into());
 				return Ok(());
 			}
 		}
@@ -209,36 +209,35 @@ impl SourceTrack {
 
 		self.sequence += 1;
 
-		// Create a new segment, and save the fragments producer so we can push to it.
-		let mut fragments = Publisher::<Fragment>::new();
-		self.segments.push(Segment {
+		// Create a new segment.
+		let segment = segment::Info {
 			sequence,
 			expires,
 			send_order,
-			fragments: fragments.subscribe(),
-		});
+		};
+
+		let mut segment = segment::Publisher::new(segment);
+
+		// Insert the raw atom into the segment.
+		segment.fragments.push(raw.into());
+		self.track.segments.push(segment.subscribe());
+
+		// Save for the next iteration
+		self.segment = Some(segment);
 
 		// Remove any segments older than 10s.
 		// TODO This can only drain from the FRONT of the queue, so don't get clever with expirations.
-		self.segments.drain(|segment| segment.expires.unwrap() < now);
-
-		// Insert the raw atom into the segment.
-		fragments.push(raw.into());
-
-		// Save for the next iteration
-		self.fragments = Some(fragments);
+		self.track.segments.drain(|segment| segment.expires.unwrap() < now);
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		let fragments = self.fragments.as_mut().context("missing keyframe")?;
-		fragments.push(raw.into());
+		let segment = self.segment.as_mut().context("missing segment")?;
+		segment.fragments.push(raw.into());
 
 		Ok(())
 	}
-
-	pub fn subscribe() -> broadcast::Subscriber {}
 }
 
 struct SourceFragment {

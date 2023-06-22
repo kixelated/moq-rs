@@ -1,7 +1,6 @@
 use anyhow::Context;
 
 use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 use tokio::task::JoinSet; // allows locking across await
 
 use std::collections::HashMap;
@@ -10,14 +9,14 @@ use std::sync::Arc;
 use moq_transport::coding::VarInt;
 use moq_transport::{control, object};
 
-use crate::{broadcasts, track, Segment};
+use crate::model::{broadcasts, segment, track};
 
 pub struct Distribute {
 	// Objects are sent to the client using this transport.
 	transport: Arc<object::Transport>,
 
 	// Use a tokio mutex so we can hold the lock while trying to write a control message.
-	control: Arc<Mutex<control::SendStream>>,
+	control: control::SendShared,
 
 	// Globally announced namespaces, which can be subscribed to.
 	broadcasts: broadcasts::Shared,
@@ -26,13 +25,13 @@ pub struct Distribute {
 	tracks: HashMap<VarInt, track::Subscriber>,
 
 	// A list of tasks that are currently running.
-	tasks: JoinSet<anyhow::Result<()>>,
+	run_tracks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Distribute {
 	pub fn new(
 		transport: Arc<object::Transport>,
-		control: Arc<Mutex<control::SendStream>>,
+		control: control::SendShared,
 		broadcasts: broadcasts::Shared,
 	) -> Self {
 		Self {
@@ -40,7 +39,7 @@ impl Distribute {
 			control,
 			broadcasts,
 			tracks: HashMap::new(),
-			tasks: JoinSet::new(),
+			run_tracks: JoinSet::new(),
 		}
 	}
 
@@ -49,10 +48,10 @@ impl Distribute {
 
 		loop {
 			tokio::select! {
-				res = self.tasks.join_next(), if !self.tasks.is_empty() => {
+				res = self.run_tracks.join_next(), if !self.run_tracks.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
-						log::error!("failed to serve subscription: {:?}", err);
+						log::error!("failed to serve track: {:?}", err);
 					}
 				},
 				delta = broadcasts.next() => {
@@ -88,19 +87,21 @@ impl Distribute {
 	async fn receive_subscribe(&mut self, msg: control::Subscribe) -> anyhow::Result<()> {
 		match self.receive_subscribe_inner(&msg).await {
 			Ok(()) => {
-				self.send_message(control::SubscribeOk {
-					track_id: msg.track_id,
-					expires: None,
-				})
-				.await
+				self.control
+					.send(control::SubscribeOk {
+						track_id: msg.track_id,
+						expires: None,
+					})
+					.await
 			}
 			Err(e) => {
-				self.send_message(control::SubscribeError {
-					track_id: msg.track_id,
-					code: VarInt::from_u32(1),
-					reason: e.to_string(),
-				})
-				.await
+				self.control
+					.send(control::SubscribeError {
+						track_id: msg.track_id,
+						code: VarInt::from_u32(1),
+						reason: e.to_string(),
+					})
+					.await
 			}
 		}
 	}
@@ -108,22 +109,24 @@ impl Distribute {
 	async fn receive_subscribe_inner(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
 		let broadcasts = self.broadcasts.lock().await;
 
-		let broadcast = broadcasts
+		let _broadcast = broadcasts
 			.get(&msg.track_namespace)
 			.context("unknown track namespace")?;
 
+		/*
 		let track = broadcast.subscribe(msg.track_name.clone()).await?;
 
 		let track_id = msg.track_id;
 		let transport = self.transport.clone();
 
-		self.tasks
-			.spawn(async move { Self::serve_track(transport, track_id, track).await });
+		self.run_tracks
+			.spawn(async move { Self::run_track(transport, track_id, track).await });
+		*/
 
 		Ok(())
 	}
 
-	async fn serve_track(
+	async fn run_track(
 		transport: Arc<object::Transport>,
 		track_id: VarInt,
 		mut track: track::Subscriber,
@@ -158,7 +161,7 @@ impl Distribute {
 	async fn serve_group(
 		transport: Arc<object::Transport>,
 		track_id: VarInt,
-		mut segment: Segment,
+		mut segment: segment::Subscriber,
 	) -> anyhow::Result<()> {
 		let header = object::Header {
 			track_id,
@@ -182,28 +185,21 @@ impl Distribute {
 	async fn on_broadcast(&mut self, delta: broadcasts::Delta) -> anyhow::Result<()> {
 		match delta {
 			broadcasts::Delta::Insert(name, _broadcast) => {
-				self.send_message(control::Announce {
-					track_namespace: name.clone(),
-				})
-				.await
+				self.control
+					.send(control::Announce {
+						track_namespace: name.clone(),
+					})
+					.await
 			}
 			broadcasts::Delta::Remove(name) => {
-				self.send_message(control::AnnounceError {
-					track_namespace: name,
-					code: VarInt::from_u32(0),
-					reason: "broadcast closed".to_string(),
-				})
-				.await
+				self.control
+					.send(control::AnnounceError {
+						track_namespace: name,
+						code: VarInt::from_u32(0),
+						reason: "broadcast closed".to_string(),
+					})
+					.await
 			}
 		}
-	}
-
-	async fn send_message<T: Into<control::Message>>(&mut self, msg: T) -> anyhow::Result<()> {
-		// We use a tokio mutex so we can hold the lock across await (when control stream is full).
-		let mut control = self.control.lock().await;
-
-		let msg = msg.into();
-		log::info!("sending message: {:?}", msg);
-		control.send(msg).await
 	}
 }
