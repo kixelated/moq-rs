@@ -1,10 +1,8 @@
 use crate::model::{track, watch};
+use crate::source::Source;
 
 use std::collections::hash_map::{Entry, HashMap};
-use std::fmt;
 use std::sync::{Arc, Mutex};
-
-use tokio::sync::{mpsc, oneshot};
 
 use anyhow::Context;
 
@@ -16,7 +14,7 @@ pub struct Broadcasts {
 
 #[derive(Default)]
 struct BroadcastsInner {
-	lookup: HashMap<String, Subscriber>,
+	lookup: HashMap<String, Arc<Mutex<dyn Source + Send + Sync>>>,
 	updates: watch::Publisher<Update>,
 }
 
@@ -48,7 +46,7 @@ impl Broadcasts {
 		(keys, updates)
 	}
 
-	pub fn publish(&self, namespace: &str) -> anyhow::Result<Publisher> {
+	pub fn publish<T: Source + Send + Sync + 'static>(&self, namespace: &str, source: T) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
 		let entry = match this.lookup.entry(namespace.into()) {
@@ -56,96 +54,21 @@ impl Broadcasts {
 			Entry::Vacant(entry) => entry,
 		};
 
-		let (tx, rx) = mpsc::channel(16);
-
-		// Wrapper that automatically calls deregister on drop
-		let publisher = Publisher {
-			broker: self.clone(),
-			namespace: namespace.to_string(),
-			requests: rx,
-		};
-
-		let subscriber = Subscriber {
-			namespace: namespace.to_string(),
-			chan: tx,
-		};
-
-		entry.insert(subscriber);
-
-		Ok(publisher)
+		entry.insert(Arc::new(Mutex::new(source)));
+		Ok(())
 	}
 
-	pub fn subscribe(&self, namespace: &str) -> anyhow::Result<Subscriber> {
-		let this = self.inner.lock().unwrap();
-		let subscriber = this.lookup.get(namespace).context("failed to find namespace")?.clone();
-		Ok(subscriber)
-	}
-
-	// Called automatically on drop
-	fn unpublish(&self, namespace: &str) {
+	pub fn unpublish(&self, namespace: &str) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
-		this.lookup.remove(namespace).expect("namespace was not published");
+		this.lookup.remove(namespace).context("namespace was not published")?;
+		Ok(())
 	}
-}
 
-pub struct Publisher {
-	broker: Broadcasts,
-
-	pub namespace: String,
-	requests: mpsc::Receiver<Request>,
-}
-
-impl Publisher {
-	pub async fn request(&mut self) -> Option<Request> {
-		self.requests.recv().await
-	}
-}
-
-impl Drop for Publisher {
-	fn drop(&mut self) {
-		self.broker.unpublish(&self.namespace);
-	}
-}
-
-// Ask for a track, providing a oneshot channel to receive the result.
-pub struct Request {
-	pub name: String,
-	respond: oneshot::Sender<Response>,
-}
-
-impl Request {
-	pub fn respond(self, response: Response) {
-		self.respond.send(response).ok();
-	}
-}
-
-impl fmt::Debug for Request {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Request").field("name", &self.name).finish()
-	}
-}
-
-// Get a response back, with a subscriber object we can poll for segments.
-pub type Response = anyhow::Result<track::Subscriber>;
-
-#[derive(Clone)]
-pub struct Subscriber {
-	pub namespace: String,
-	chan: mpsc::Sender<Request>,
-}
-
-impl Subscriber {
-	// Get the track by name.
-	pub async fn track(&self, name: &str) -> Response {
-		// Create a request for the publisher to respond to
-		let (tx, rx) = oneshot::channel();
-
-		let request = Request {
-			name: name.into(),
-			respond: tx,
-		};
-
-		self.chan.send(request).await.context("publisher was dropped")?;
-		rx.await.context("failed to read response")?
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Option<track::Subscriber> {
+		let mut this = self.inner.lock().unwrap();
+		match this.lookup.get_mut(namespace) {
+			Some(source) => source.lock().unwrap().subscribe(name),
+			None => None,
+		}
 	}
 }

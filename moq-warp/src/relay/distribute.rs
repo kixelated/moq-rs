@@ -104,13 +104,10 @@ impl Distribute {
 	}
 
 	async fn receive_subscribe_inner(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
-		let broadcast = self
+		let track = self
 			.broker
-			.subscribe(&msg.track_namespace)
+			.subscribe(&msg.track_namespace, &msg.track_name)
 			.context("could not find broadcast")?;
-
-		// TODO make this synchronous instead of relying on a channel
-		let track = broadcast.track(&msg.track_name).await.context("could not find track")?;
 
 		let track_id = msg.track_id;
 		let transport = self.transport.clone();

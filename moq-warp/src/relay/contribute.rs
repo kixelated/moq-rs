@@ -12,6 +12,7 @@ use anyhow::Context;
 
 use super::broker;
 use crate::model::{segment, track};
+use crate::source::Source;
 
 pub struct Contribute {
 	// Used to receive objects.
@@ -141,19 +142,19 @@ impl Contribute {
 	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
 		let namespace = msg.track_namespace.clone();
 
-		let broker = self
-			.broker
-			.publish(&namespace)
+		let broadcast = Broadcast {
+			subscribers: self.subscribers.clone(),
+			publishers: self.publishers.clone(),
+		};
+
+		self.broker
+			.publish(&namespace, broadcast)
 			.context("failed to register broadcast")?;
 
-		let subscribers = self.subscribers.clone();
-		let publishers = self.publishers.clone();
-		let control = self.control.clone();
-
-		// Check if this broadcast already exists globally.
-
+		/*
 		self.run_broadcasts
 			.spawn(async move { Self::run_broadcast(broker, control, subscribers, publishers).await });
+		*/
 
 		Ok(())
 	}
@@ -169,6 +170,7 @@ impl Contribute {
 		anyhow::bail!("received SUBSCRIBE_ERROR({:?}): {}", msg.code, msg.reason)
 	}
 
+	/*
 	async fn run_broadcast(
 		mut broker: broker::Publisher,
 		mut control: control::SendShared,
@@ -206,6 +208,29 @@ impl Contribute {
 
 		Ok(())
 	}
+	*/
+}
+
+struct Broadcast {
+	subscribers: Subscribers,
+	publishers: Publishers,
+}
+
+impl Source for Broadcast {
+	fn subscribe(&mut self, name: &str) -> Option<track::Subscriber> {
+		if let Some(subscriber) = self.subscribers.get(name) {
+			return Some(subscriber);
+		}
+
+		//let subscriber = self.publishers.create(name);
+		let subscriber = track::Publisher::new(name).subscribe();
+
+		// Save the subscriber for duplication.
+		self.subscribers.set(name, subscriber.clone());
+
+		// Use the subscription ourselves
+		Some(subscriber)
+	}
 }
 
 #[derive(Clone, Default)]
@@ -228,15 +253,24 @@ impl Subscribers {
 
 #[derive(Clone, Default)]
 pub struct Publishers {
+	this: Arc<Mutex<PublishersInner>>,
+}
+
+#[derive(Default)]
+struct PublishersInner {
+	// A list of tracks that we need to populate.
+	//pending: Vec<track::Publisher>,
+
 	// A lookup from subscription ID to a track being produced (new publishers)
-	lookup: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
+	lookup: HashMap<VarInt, track::Publisher>,
 
 	// The next subscription ID
-	next: Arc<Mutex<u64>>,
+	next: u64,
 }
 
 impl Publishers {
-	pub fn insert(&mut self, track: track::Publisher) -> VarInt {
+	/*
+	pub fn create(&mut self, track: track::Publisher) -> (VarInt) {
 		let mut next = self.next.lock().unwrap();
 		let id = VarInt::try_from(*next).unwrap();
 		*next += 1;
@@ -244,17 +278,19 @@ impl Publishers {
 		self.lookup.lock().unwrap().insert(id, track);
 		id
 	}
+	*/
 
 	pub fn push(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
-		let mut lookup = self.lookup.lock().unwrap();
-		let publisher = lookup.get_mut(&id).context("no track with that ID")?;
+		let mut this = self.this.lock().unwrap();
+
+		let publisher = this.lookup.get_mut(&id).context("no track with that ID")?;
 		publisher.segments.push(segment);
 		Ok(())
 	}
 
 	pub fn remove(&mut self, id: VarInt) -> anyhow::Result<()> {
-		let mut lookup = self.lookup.lock().unwrap();
-		lookup.remove(&id).context("no track with that ID")?;
+		let mut this = self.this.lock().unwrap();
+		this.lookup.remove(&id).context("no track with that ID")?;
 		Ok(())
 	}
 }

@@ -7,9 +7,9 @@ pub struct Publisher {
 }
 
 impl Publisher {
-	pub fn new(namespace: String) -> Self {
+	pub fn new(namespace: &str) -> Self {
 		Self {
-			namespace,
+			namespace: namespace.to_string(),
 			tracks: watch::Publisher::new(),
 		}
 	}

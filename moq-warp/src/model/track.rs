@@ -7,9 +7,9 @@ pub struct Publisher {
 }
 
 impl Publisher {
-	pub fn new(name: String) -> Publisher {
+	pub fn new(name: &str) -> Publisher {
 		Self {
-			name,
+			name: name.to_string(),
 			segments: watch::Publisher::new(),
 		}
 	}
