@@ -27,7 +27,7 @@ pub struct Contribute {
 	broker: broker::Broadcasts,
 
 	// The names of active broadcasts being produced.
-	broadcasts: HashMap<String, Broadcast>,
+	broadcasts: HashMap<String, Arc<Broadcast>>,
 
 	//  Active tracks being produced by this session.
 	publishers: Publishers,
@@ -137,8 +137,12 @@ impl Contribute {
 	}
 
 	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
-		let broadcast = Broadcast::new(&msg.track_namespace, &self.publishers);
-		self.broker.announce(&msg.track_namespace, broadcast)
+		let broadcast = Arc::new(Broadcast::new(&msg.track_namespace, &self.publishers));
+		self.broker.announce(&msg.track_namespace, broadcast.clone())?;
+
+		self.broadcasts.insert(msg.track_namespace.clone(), broadcast);
+
+		Ok(())
 	}
 
 	fn receive_subscribe_ok(&mut self, _msg: control::SubscribeOk) -> anyhow::Result<()> {
@@ -163,6 +167,7 @@ impl Contribute {
 impl Drop for Contribute {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
+		// TODO make this automatic so we can't screw up?
 		for broadcast in self.broadcasts.values() {
 			self.broker.unannounce(&broadcast.namespace).unwrap();
 		}
@@ -193,7 +198,7 @@ impl Broadcast {
 }
 
 impl Source for Broadcast {
-	fn subscribe(&mut self, name: &str) -> Option<track::Subscriber> {
+	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
 		let mut subscriptions = self.subscriptions.lock().unwrap();
 
 		// Check if there's an existing subscription.

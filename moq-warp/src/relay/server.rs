@@ -16,7 +16,7 @@ pub struct Server {
 	broker: broker::Broadcasts,
 
 	// Sessions actively being run.
-	sessions: JoinSet<anyhow::Result<()>>,
+	tasks: JoinSet<anyhow::Result<()>>,
 }
 
 pub struct ServerConfig {
@@ -77,13 +77,9 @@ impl Server {
 		let broker = config.broker;
 
 		let server = Endpoint::new(server);
-		let sessions = JoinSet::new();
+		let tasks = JoinSet::new();
 
-		Ok(Self {
-			server,
-			broker,
-			sessions,
-		})
+		Ok(Self { server, broker, tasks })
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -93,12 +89,12 @@ impl Server {
 					let session = res.context("failed to accept connection")?;
 					let broker = self.broker.clone();
 
-					self.sessions.spawn(async move {
+					self.tasks.spawn(async move {
 						let mut session: Session = Session::accept(session, broker).await?;
 						session.run().await
 					});
 				},
-				res = self.sessions.join_next(), if !self.sessions.is_empty() => {
+				res = self.tasks.join_next(), if !self.tasks.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 
 					if let Err(err) = res {

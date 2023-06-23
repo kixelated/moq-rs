@@ -1,7 +1,7 @@
 use crate::model::{track, watch};
 use crate::source::Source;
 
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::hash_map::{HashMap};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -14,7 +14,8 @@ pub struct Broadcasts {
 
 #[derive(Default)]
 struct BroadcastsInner {
-	lookup: HashMap<String, Arc<Mutex<dyn Source + Send + Sync>>>,
+	// TODO Automatically reclaim dropped sources.
+	lookup: HashMap<String, Arc<dyn Source + Send + Sync>>,
 	updates: watch::Publisher<Update>,
 }
 
@@ -46,15 +47,15 @@ impl Broadcasts {
 		(keys, updates)
 	}
 
-	pub fn announce<T: Source + Send + Sync + 'static>(&self, namespace: &str, source: T) -> anyhow::Result<()> {
+	pub fn announce(&self, namespace: &str, source: Arc<dyn Source + Send + Sync>) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
-		let entry = match this.lookup.entry(namespace.into()) {
-			Entry::Occupied(_) => anyhow::bail!("namespace already registered"),
-			Entry::Vacant(entry) => entry,
-		};
+		if let Some(_existing) = this.lookup.get(namespace) {
+			anyhow::bail!("namespace already registered");
+		}
 
-		entry.insert(Arc::new(Mutex::new(source)));
+		this.lookup.insert(namespace.to_string(), source);
+
 		Ok(())
 	}
 
@@ -65,10 +66,8 @@ impl Broadcasts {
 	}
 
 	pub fn subscribe(&self, namespace: &str, name: &str) -> Option<track::Subscriber> {
-		let mut this = self.inner.lock().unwrap();
-		match this.lookup.get_mut(namespace) {
-			Some(source) => source.lock().unwrap().subscribe(name),
-			None => None,
-		}
+		let this = self.inner.lock().unwrap();
+
+		this.lookup.get(namespace).and_then(|v| v.subscribe(name))
 	}
 }

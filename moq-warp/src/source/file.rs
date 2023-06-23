@@ -139,7 +139,7 @@ impl File {
 }
 
 impl Source for File {
-	fn subscribe(&mut self, name: &str) -> Option<track::Subscriber> {
+	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
 		if name == "catalog" {
 			Some(self.catalog.clone())
 		} else {
