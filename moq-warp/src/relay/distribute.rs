@@ -3,7 +3,6 @@ use anyhow::Context;
 use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
-
 use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
@@ -106,17 +105,20 @@ impl Distribute {
 			.subscribe(&msg.track_namespace, &msg.track_name)
 			.context("could not find broadcast")?;
 
-		let track_id = msg.track_id;
+		// TODO can we just clone self?
 		let transport = self.transport.clone();
+		let control = self.control.clone();
+		let track_id = msg.track_id;
 
 		self.run_subscribes
-			.spawn(async move { Self::run_subscribe(transport, track_id, track).await });
+			.spawn(async move { Self::run_subscribe(transport, control, track_id, track).await });
 
 		Ok(())
 	}
 
 	async fn run_subscribe(
 		transport: Arc<object::Transport>,
+		mut control: control::SendShared,
 		track_id: VarInt,
 		mut track: track::Subscriber,
 	) -> anyhow::Result<()> {
@@ -126,15 +128,22 @@ impl Distribute {
 		loop {
 			tokio::select! {
 				// Accept new segments added to the track.
-				segment = track.segments.next(), if !done => {
+				segment = track.next_segment(), if !done => {
 					match segment {
-						Some(segment) => {
+						Ok(segment) => {
 							let transport = transport.clone();
 							//let track_id = track_id;
-
 							tasks.spawn(async move { Self::serve_group(transport, track_id, segment).await });
 						},
-						None => done = true, // no more segments in the track
+						Err(e) => {
+							control.send(control::SubscribeError {
+								track_id,
+								code: e.code,
+								reason: e.reason,
+							}).await?;
+
+							done = true
+						},
 					}
 				},
 				// Poll any pending segments until they exit.
@@ -142,7 +151,7 @@ impl Distribute {
 					let res = res.expect("no tasks").expect("task aborted");
 					res.context("failed serve segment")?
 				},
-				else => return Ok(()), // all segments received and finished serving
+				else => return Ok(())
 			}
 		}
 	}

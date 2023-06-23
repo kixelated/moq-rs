@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::{fmt, time};
+use std::{time};
 
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
@@ -93,7 +93,7 @@ impl Contribute {
 		let segment = segment::Publisher::new(segment);
 
 		self.publishers
-			.segment(id, segment.subscribe())
+			.push_segment(id, segment.subscribe())
 			.context("failed to publish segment")?;
 
 		// TODO implement a timeout
@@ -151,9 +151,9 @@ impl Contribute {
 	}
 
 	fn receive_subscribe_error(&mut self, msg: control::SubscribeError) -> anyhow::Result<()> {
-		let error = UpstreamError {
+		let error = track::Error {
 			code: msg.code,
-			reason: msg.reason,
+			reason: format!("upstream error: {}", msg.reason),
 		};
 
 		self.publishers
@@ -247,21 +247,19 @@ impl Publishers {
 		}
 	}
 
-	pub fn segment(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
+	pub fn push_segment(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
 		let track = self.tracks.get_mut(&id).context("no track with that ID")?;
 		let track = track.as_mut().context("track closed")?; // TODO don't make fatal
 
-		track.segments.push(segment);
+		track.push_segment(segment);
 
 		Ok(())
 	}
 
-	pub fn close<E: track::Error>(&mut self, id: VarInt, _error: E) -> anyhow::Result<()> {
-		let track = self.tracks.get(&id).context("no track with that ID")?;
-		let _track = track.as_ref().context("track closed")?;
-
-		// TODO implement
-		//track.close(error)
+	pub fn close(&mut self, id: VarInt, err: track::Error) -> anyhow::Result<()> {
+		let track = self.tracks.get_mut(&id).context("no track with that ID")?;
+		let track = track.take().context("track closed")?;
+		track.close(err);
 
 		Ok(())
 	}
@@ -279,51 +277,5 @@ impl Publishers {
 		self.next += 1;
 
 		Ok(msg)
-	}
-
-	/*
-
-	pub fn push(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
-		let mut this = self.this.lock().unwrap();
-
-		let publisher = this.lookup.get_mut(&id).context("no track with that ID")?;
-		publisher.segments.push(segment);
-		Ok(())
-	}
-
-	pub fn remove(&mut self, id: VarInt) -> anyhow::Result<()> {
-		let mut this = self.this.lock().unwrap();
-		this.lookup.remove(&id).context("no track with that ID")?;
-		Ok(())
-	}
-	*/
-}
-
-struct UpstreamError {
-	code: VarInt,
-	reason: String,
-}
-
-impl track::Error for UpstreamError {
-	fn code(&self) -> VarInt {
-		self.code
-	}
-}
-
-impl std::error::Error for UpstreamError {}
-
-impl fmt::Display for UpstreamError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "upstream error")
-	}
-}
-
-impl fmt::Debug for UpstreamError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"upstream error {{ code: {:?}, reason: {:?} }}",
-			self.code, self.reason
-		)
 	}
 }

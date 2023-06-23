@@ -5,7 +5,6 @@ use tokio::sync::watch;
 struct State<T> {
 	queue: VecDeque<T>,
 	drained: usize,
-	closed: bool,
 }
 
 impl<T> State<T> {
@@ -13,7 +12,6 @@ impl<T> State<T> {
 		Self {
 			queue: VecDeque::new(),
 			drained: 0,
-			closed: false,
 		}
 	}
 
@@ -87,12 +85,6 @@ impl<T: Clone> Default for Publisher<T> {
 	}
 }
 
-impl<T: Clone> Drop for Publisher<T> {
-	fn drop(&mut self) {
-		self.sender.send_modify(|state| state.closed = true);
-	}
-}
-
 #[derive(Clone)]
 pub struct Subscriber<T: Clone> {
 	state: watch::Receiver<State<T>>,
@@ -104,9 +96,13 @@ impl<T: Clone> Subscriber<T> {
 		// Wait until the queue has a new element or if it's closed.
 		let state = self
 			.state
-			.wait_for(|state| state.closed || self.index < state.drained + state.queue.len())
-			.await
-			.expect("publisher dropped without close");
+			.wait_for(|state| self.index < state.drained + state.queue.len())
+			.await;
+
+		let state = match state {
+			Ok(state) => state,
+			Err(_) => return None, // publisher was dropped
+		};
 
 		// If our index is smaller than drained, skip past those elements we missed.
 		let index = self.index.saturating_sub(state.drained);
@@ -119,9 +115,6 @@ impl<T: Clone> Subscriber<T> {
 			self.index = index + state.drained + 1;
 
 			Some(element)
-		} else if state.closed {
-			// Return None if we've consumed all entries and the queue is closed.
-			None
 		} else {
 			unreachable!("impossible subscriber state")
 		}

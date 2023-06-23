@@ -1,12 +1,12 @@
 use super::{segment, watch};
-use std::{error, fmt};
+use std::{error, fmt, time};
 
 use moq_transport::VarInt;
 
 pub struct Publisher {
 	pub name: String,
 
-	pub segments: watch::Publisher<segment::Subscriber>,
+	segments: watch::Publisher<Result<segment::Subscriber, Error>>,
 }
 
 impl Publisher {
@@ -15,6 +15,26 @@ impl Publisher {
 			name: name.to_string(),
 			segments: watch::Publisher::new(),
 		}
+	}
+
+	pub fn push_segment(&mut self, segment: segment::Subscriber) {
+		self.segments.push(Ok(segment))
+	}
+
+	pub fn drain_segments(&mut self, before: time::Instant) {
+		self.segments.drain(|segment| {
+			if let Ok(segment) = segment {
+				if let Some(expires) = segment.expires {
+					return expires < before;
+				}
+			}
+
+			false
+		})
+	}
+
+	pub fn close(mut self, err: Error) {
+		self.segments.push(Err(err))
 	}
 
 	pub fn subscribe(&self) -> Subscriber {
@@ -36,7 +56,20 @@ pub struct Subscriber {
 	pub name: String,
 
 	// A list of segments, which are independently decodable.
-	pub segments: watch::Subscriber<segment::Subscriber>,
+	segments: watch::Subscriber<Result<segment::Subscriber, Error>>,
+}
+
+impl Subscriber {
+	pub async fn next_segment(&mut self) -> Result<segment::Subscriber, Error> {
+		let res = self.segments.next().await;
+		match res {
+			None => Err(Error {
+				code: VarInt::from_u32(1),
+				reason: String::from("unexpected close"),
+			}),
+			Some(res) => res,
+		}
+	}
 }
 
 impl fmt::Debug for Subscriber {
@@ -45,9 +78,30 @@ impl fmt::Debug for Subscriber {
 	}
 }
 
-pub trait Error: error::Error {
-	// Default to error code 1 for unknown errors.
-	fn code(&self) -> VarInt {
-		VarInt::from_u32(1)
+#[derive(Clone)]
+pub struct Error {
+	pub code: VarInt,
+	pub reason: String,
+}
+
+impl error::Error for Error {}
+
+impl fmt::Debug for Error {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if !self.reason.is_empty() {
+			write!(f, "track error ({}): {}", self.code, self.reason)
+		} else {
+			write!(f, "track error ({})", self.code)
+		}
+	}
+}
+
+impl fmt::Display for Error {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if !self.reason.is_empty() {
+			write!(f, "track error ({}): {}", self.code, self.reason)
+		} else {
+			write!(f, "track error ({})", self.code)
+		}
 	}
 }

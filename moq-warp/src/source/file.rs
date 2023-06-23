@@ -81,7 +81,7 @@ impl File {
 		let mut segment = segment::Publisher::new(segment);
 
 		// Add the segment and add the fragment.
-		track.segments.push(segment.subscribe());
+		track.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
 		track.subscribe()
@@ -220,14 +220,14 @@ impl Track {
 
 		// Insert the raw atom into the segment.
 		segment.fragments.push(raw.into());
-		self.track.segments.push(segment.subscribe());
+		self.track.push_segment(segment.subscribe());
 
 		// Save for the next iteration
 		self.segment = Some(segment);
 
 		// Remove any segments older than 10s.
 		// TODO This can only drain from the FRONT of the queue, so don't get clever with expirations.
-		self.track.segments.drain(|segment| segment.expires.unwrap() < now);
+		self.track.drain_segments(now);
 
 		Ok(())
 	}
