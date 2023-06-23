@@ -1,5 +1,9 @@
 use super::{track, watch};
 
+use std::error;
+
+use moq_transport::VarInt;
+
 pub struct Publisher {
 	pub namespace: String,
 
@@ -27,4 +31,11 @@ pub struct Subscriber {
 	pub namespace: String,
 
 	pub tracks: watch::Subscriber<track::Subscriber>,
+}
+
+pub trait Error: error::Error {
+	// Default to error code 1 for unknown errors.
+	fn code(&self) -> VarInt {
+		VarInt::from_u32(1)
+	}
 }

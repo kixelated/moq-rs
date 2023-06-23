@@ -46,7 +46,7 @@ impl Broadcasts {
 		(keys, updates)
 	}
 
-	pub fn publish<T: Source + Send + Sync + 'static>(&self, namespace: &str, source: T) -> anyhow::Result<()> {
+	pub fn announce<T: Source + Send + Sync + 'static>(&self, namespace: &str, source: T) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
 		let entry = match this.lookup.entry(namespace.into()) {
@@ -58,7 +58,7 @@ impl Broadcasts {
 		Ok(())
 	}
 
-	pub fn unpublish(&self, namespace: &str) -> anyhow::Result<()> {
+	pub fn unannounce(&self, namespace: &str) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 		this.lookup.remove(namespace).context("namespace was not published")?;
 		Ok(())

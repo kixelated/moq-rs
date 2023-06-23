@@ -61,14 +61,11 @@ impl Distribute {
 
 	// Called by the session when it receives a control message.
 	pub async fn receive_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
-		log::info!("received message: {:?}", msg);
-
 		match msg {
 			control::Message::AnnounceOk(msg) => self.receive_announce_ok(msg),
 			control::Message::AnnounceError(msg) => self.receive_announce_error(msg),
 			control::Message::Subscribe(msg) => self.receive_subscribe(msg).await,
-			// TODO make this type safe
-			_ => anyhow::bail!("invalid message for distrubution: {:?}", msg),
+			_ => Ok(()), // ignore unknown messages
 		}
 	}
 

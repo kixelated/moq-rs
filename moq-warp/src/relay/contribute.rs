@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time;
+use std::{fmt, time};
 
 use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::coding::VarInt;
@@ -25,15 +26,14 @@ pub struct Contribute {
 	// Globally announced namespaces, which we can add ourselves to.
 	broker: broker::Broadcasts,
 
-	// Active tracks being produced by this session.
+	// The names of active broadcasts being produced.
+	broadcasts: HashMap<String, Broadcast>,
+
+	//  Active tracks being produced by this session.
 	publishers: Publishers,
 
-	// Active tracks being consumed by other sessions, used to deduplicate.
-	subscribers: Subscribers,
-
 	// Tasks we are currently serving.
-	run_broadcasts: JoinSet<anyhow::Result<()>>, // receiving subscriptions
-	run_segments: JoinSet<anyhow::Result<()>>,   // receiving objects
+	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
 }
 
 impl Contribute {
@@ -42,9 +42,8 @@ impl Contribute {
 			transport,
 			control,
 			broker,
-			publishers: Default::default(),
-			subscribers: Default::default(),
-			run_broadcasts: JoinSet::new(),
+			broadcasts: HashMap::new(),
+			publishers: Publishers::new(),
 			run_segments: JoinSet::new(),
 		}
 	}
@@ -52,12 +51,6 @@ impl Contribute {
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
-				res = self.run_broadcasts.join_next(), if !self.run_broadcasts.is_empty() => {
-					let res = res.expect("no tasks").expect("task aborted");
-					if let Err(err) = res {
-						log::error!("failed to produce broadcast: {:?}", err);
-					}
-				},
 				res = self.run_segments.join_next(), if !self.run_segments.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
@@ -66,7 +59,14 @@ impl Contribute {
 				},
 				object = self.transport.recv() => {
 					let (header, stream )= object.context("failed to receive object")?;
-					self.receive_object(header, stream).await?;
+					let res = self.receive_object(header, stream).await;
+					if let Err(err) = res {
+						log::error!("failed to receive object: {:?}", err);
+					}
+				},
+				subscribe = self.publishers.incoming() => {
+					let msg = subscribe.context("failed to receive subscription")?;
+					self.control.send(msg).await?;
 				},
 			}
 		}
@@ -77,8 +77,7 @@ impl Contribute {
 			control::Message::Announce(msg) => self.receive_announce(msg).await,
 			control::Message::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
 			control::Message::SubscribeError(msg) => self.receive_subscribe_error(msg),
-			// TODO make this type safe
-			_ => anyhow::bail!("invalid message for contribution: {:?}", msg),
+			_ => Ok(()), // ignore unknown messages
 		}
 	}
 
@@ -94,7 +93,7 @@ impl Contribute {
 		let segment = segment::Publisher::new(segment);
 
 		self.publishers
-			.push(id, segment.subscribe())
+			.segment(id, segment.subscribe())
 			.context("failed to publish segment")?;
 
 		// TODO implement a timeout
@@ -121,164 +120,163 @@ impl Contribute {
 	async fn receive_announce(&mut self, msg: control::Announce) -> anyhow::Result<()> {
 		match self.receive_announce_inner(&msg).await {
 			Ok(()) => {
-				self.control
-					.send(control::AnnounceOk {
-						track_namespace: msg.track_namespace,
-					})
-					.await
+				let msg = control::AnnounceOk {
+					track_namespace: msg.track_namespace,
+				};
+				self.control.send(msg).await
 			}
 			Err(e) => {
-				self.control
-					.send(control::AnnounceError {
-						track_namespace: msg.track_namespace,
-						code: VarInt::from_u32(1),
-						reason: e.to_string(),
-					})
-					.await
+				let msg = control::AnnounceError {
+					track_namespace: msg.track_namespace,
+					code: VarInt::from_u32(1),
+					reason: e.to_string(),
+				};
+				self.control.send(msg).await
 			}
 		}
 	}
 
 	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
-		let namespace = msg.track_namespace.clone();
-
-		let broadcast = Broadcast {
-			subscribers: self.subscribers.clone(),
-			publishers: self.publishers.clone(),
-		};
-
-		self.broker
-			.publish(&namespace, broadcast)
-			.context("failed to register broadcast")?;
-
-		/*
-		self.run_broadcasts
-			.spawn(async move { Self::run_broadcast(broker, control, subscribers, publishers).await });
-		*/
-
-		Ok(())
+		let broadcast = Broadcast::new(&msg.track_namespace, &self.publishers);
+		self.broker.announce(&msg.track_namespace, broadcast)
 	}
 
 	fn receive_subscribe_ok(&mut self, _msg: control::SubscribeOk) -> anyhow::Result<()> {
+		// TODO make sure this is for a track we are subscribed to
 		Ok(())
 	}
 
 	fn receive_subscribe_error(&mut self, msg: control::SubscribeError) -> anyhow::Result<()> {
-		// TODO return the error to the subscriber
-		self.publishers.remove(msg.track_id)?;
+		let error = UpstreamError {
+			code: msg.code,
+			reason: msg.reason,
+		};
 
-		anyhow::bail!("received SUBSCRIBE_ERROR({:?}): {}", msg.code, msg.reason)
-	}
-
-	/*
-	async fn run_broadcast(
-		mut broker: broker::Publisher,
-		mut control: control::SendShared,
-		mut subscribers: Subscribers,
-		mut publishers: Publishers,
-	) -> anyhow::Result<()> {
-		while let Some(request) = broker.request().await {
-			if let Some(track) = subscribers.get(&request.name) {
-				request.respond(Ok(track));
-				continue;
-			}
-
-			let name = request.name.clone();
-			let track = track::Publisher::new(name.clone());
-
-			// Reply to the request with the subscriber
-			request.respond(Ok(track.subscribe()));
-
-			// Tell all other subscribers to use this subscription
-			subscribers.set(&name, track.subscribe());
-
-			// Get a unique ID for the publisher.
-			let id = publishers.insert(track);
-
-			// TODO close the publisher if this fails
-			control
-				.send(control::Subscribe {
-					track_id: id,
-					track_namespace: broker.namespace.clone(),
-					track_name: name,
-				})
-				.await
-				.context("failed to send subscription")?;
-		}
+		self.publishers
+			.close(msg.track_id, error)
+			.context("failed to close track")?;
 
 		Ok(())
 	}
-	*/
 }
 
-struct Broadcast {
-	subscribers: Subscribers,
-	publishers: Publishers,
+impl Drop for Contribute {
+	fn drop(&mut self) {
+		// Unannounce all broadcasts we have announced.
+		for broadcast in self.broadcasts.values() {
+			self.broker.unannounce(&broadcast.namespace).unwrap();
+		}
+	}
+}
+
+// A list of subscriptions for a broadcast.
+#[derive(Clone)]
+pub struct Broadcast {
+	// Our namespace
+	namespace: String,
+
+	// A lookup from name to a subscription (duplicate subscribers)
+	subscriptions: Arc<Mutex<HashMap<String, track::Subscriber>>>,
+
+	// Issue a SUBSCRIBE message for a new subscription (new subscriber)
+	queue: mpsc::UnboundedSender<(String, track::Publisher)>,
+}
+
+impl Broadcast {
+	pub fn new(namespace: &str, publishers: &Publishers) -> Self {
+		Self {
+			namespace: namespace.to_string(),
+			subscriptions: Default::default(),
+			queue: publishers.sender.clone(),
+		}
+	}
 }
 
 impl Source for Broadcast {
 	fn subscribe(&mut self, name: &str) -> Option<track::Subscriber> {
-		if let Some(subscriber) = self.subscribers.get(name) {
+		let mut subscriptions = self.subscriptions.lock().unwrap();
+
+		// Check if there's an existing subscription.
+		if let Some(subscriber) = subscriptions.get(name).cloned() {
 			return Some(subscriber);
 		}
 
-		//let subscriber = self.publishers.create(name);
-		let subscriber = track::Publisher::new(name).subscribe();
+		// Otherwise, make a new track and tell the publisher to fufill it.
+		let track = track::Publisher::new(name);
+		let subscriber = track.subscribe();
 
 		// Save the subscriber for duplication.
-		self.subscribers.set(name, subscriber.clone());
+		subscriptions.insert(name.to_string(), subscriber.clone());
 
-		// Use the subscription ourselves
+		// Send the publisher to another thread to actually subscribe.
+		self.queue.send((self.namespace.clone(), track)).unwrap();
+
+		// Return the subscriber we created.
 		Some(subscriber)
 	}
 }
 
-#[derive(Clone, Default)]
-pub struct Subscribers {
-	// A lookup from name to an existing subscription (new subscribers)
-	lookup: Arc<Mutex<HashMap<String, track::Subscriber>>>,
-}
-
-impl Subscribers {
-	// Duplicates subscriptions, returning a new subscription ID if this is the first subscription.
-	pub fn get(&mut self, name: &str) -> Option<track::Subscriber> {
-		self.lookup.lock().unwrap().get(name).cloned()
-	}
-
-	pub fn set(&mut self, name: &str, track: track::Subscriber) {
-		let existing = self.lookup.lock().unwrap().insert(name.into(), track);
-		assert!(existing.is_none(), "duplicate track name");
-	}
-}
-
-#[derive(Clone, Default)]
 pub struct Publishers {
-	this: Arc<Mutex<PublishersInner>>,
-}
-
-#[derive(Default)]
-struct PublishersInner {
-	// A list of tracks that we need to populate.
-	//pending: Vec<track::Publisher>,
-
-	// A lookup from subscription ID to a track being produced (new publishers)
-	lookup: HashMap<VarInt, track::Publisher>,
+	// A lookup from subscription ID to a track being produced, or none if it's been closed.
+	tracks: HashMap<VarInt, Option<track::Publisher>>,
 
 	// The next subscription ID
 	next: u64,
+
+	// A queue of subscriptions that we need to fulfill
+	receiver: mpsc::UnboundedReceiver<(String, track::Publisher)>,
+
+	// A clonable queue, so other threads can issue subscriptions.
+	sender: mpsc::UnboundedSender<(String, track::Publisher)>,
 }
 
 impl Publishers {
-	/*
-	pub fn create(&mut self, track: track::Publisher) -> (VarInt) {
-		let mut next = self.next.lock().unwrap();
-		let id = VarInt::try_from(*next).unwrap();
-		*next += 1;
+	pub fn new() -> Self {
+		let (sender, receiver) = mpsc::unbounded_channel();
 
-		self.lookup.lock().unwrap().insert(id, track);
-		id
+		Self {
+			tracks: Default::default(),
+			next: 0,
+			sender,
+			receiver,
+		}
 	}
-	*/
+
+	pub fn segment(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
+		let track = self.tracks.get_mut(&id).context("no track with that ID")?;
+		let track = track.as_mut().context("track closed")?; // TODO don't make fatal
+
+		track.segments.push(segment);
+
+		Ok(())
+	}
+
+	pub fn close<E: track::Error>(&mut self, id: VarInt, _error: E) -> anyhow::Result<()> {
+		let track = self.tracks.get(&id).context("no track with that ID")?;
+		let _track = track.as_ref().context("track closed")?;
+
+		// TODO implement
+		//track.close(error)
+
+		Ok(())
+	}
+
+	// Returns the next subscribe message we need to issue.
+	pub async fn incoming(&mut self) -> anyhow::Result<control::Subscribe> {
+		let (namespace, track) = self.receiver.recv().await.context("no more subscriptions")?;
+
+		let msg = control::Subscribe {
+			track_id: VarInt::try_from(self.next)?,
+			track_namespace: namespace,
+			track_name: track.name,
+		};
+
+		self.next += 1;
+
+		Ok(msg)
+	}
+
+	/*
 
 	pub fn push(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {
 		let mut this = self.this.lock().unwrap();
@@ -292,5 +290,35 @@ impl Publishers {
 		let mut this = self.this.lock().unwrap();
 		this.lookup.remove(&id).context("no track with that ID")?;
 		Ok(())
+	}
+	*/
+}
+
+struct UpstreamError {
+	code: VarInt,
+	reason: String,
+}
+
+impl track::Error for UpstreamError {
+	fn code(&self) -> VarInt {
+		self.code
+	}
+}
+
+impl std::error::Error for UpstreamError {}
+
+impl fmt::Display for UpstreamError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "upstream error")
+	}
+}
+
+impl fmt::Debug for UpstreamError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"upstream error {{ code: {:?}, reason: {:?} }}",
+			self.code, self.reason
+		)
 	}
 }
