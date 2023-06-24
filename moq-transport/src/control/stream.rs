@@ -40,7 +40,9 @@ pub struct SendStream {
 
 impl SendStream {
 	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
-		msg.into().encode(&mut self.stream).await
+		let msg = msg.into();
+		log::info!("sending message: {:?}", msg);
+		msg.encode(&mut self.stream).await
 	}
 
 	// Helper that lets multiple threads send control messages.
@@ -70,6 +72,8 @@ pub struct RecvStream {
 
 impl RecvStream {
 	pub async fn recv(&mut self) -> anyhow::Result<Message> {
-		Message::decode(&mut self.stream).await
+		let msg = Message::decode(&mut self.stream).await?;
+		log::info!("received message: {:?}", msg);
+		Ok(msg)
 	}
 }

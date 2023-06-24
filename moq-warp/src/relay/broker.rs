@@ -1,7 +1,7 @@
-use crate::model::{track, watch};
+use crate::model::{broadcast, track, watch};
 use crate::source::Source;
 
-use std::collections::hash_map::{HashMap};
+use std::collections::hash_map::HashMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -22,10 +22,10 @@ struct BroadcastsInner {
 #[derive(Clone)]
 pub enum Update {
 	// Broadcast was announced
-	Insert(String),
+	Insert(String), // TODO include source?
 
 	// Broadcast was unannounced
-	Remove(String),
+	Remove(String, broadcast::Error),
 }
 
 impl Broadcasts {
@@ -41,7 +41,7 @@ impl Broadcasts {
 		// Get the list of all available tracks.
 		let keys = this.lookup.keys().cloned().collect();
 
-		// Get a subscriber that will return updates.
+		// Get a subscriber that will return future updates.
 		let updates = this.updates.subscribe();
 
 		(keys, updates)
@@ -55,13 +55,17 @@ impl Broadcasts {
 		}
 
 		this.lookup.insert(namespace.to_string(), source);
+		this.updates.push(Update::Insert(namespace.to_string()));
 
 		Ok(())
 	}
 
-	pub fn unannounce(&self, namespace: &str) -> anyhow::Result<()> {
+	pub fn unannounce(&self, namespace: &str, error: broadcast::Error) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
+
 		this.lookup.remove(namespace).context("namespace was not published")?;
+		this.updates.push(Update::Remove(namespace.to_string(), error));
+
 		Ok(())
 	}
 

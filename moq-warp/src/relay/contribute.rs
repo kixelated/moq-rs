@@ -1,27 +1,27 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::{time};
+use std::time;
 
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::coding::VarInt;
-use moq_transport::{control, object};
+use moq_transport::object;
 
 use anyhow::Context;
 
-use super::broker;
-use crate::model::{segment, track};
+use super::{broker, control};
+use crate::model::{broadcast, segment, track};
 use crate::source::Source;
 
-pub struct Contribute {
+pub struct Session {
 	// Used to receive objects.
 	// TODO split into send/receive halves.
 	transport: Arc<object::Transport>,
 
-	// Used to send control messages.
-	control: control::SendShared,
+	// Used to send and receive control messages.
+	control: control::Component<control::Contribute>,
 
 	// Globally announced namespaces, which we can add ourselves to.
 	broker: broker::Broadcasts,
@@ -36,8 +36,12 @@ pub struct Contribute {
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
 }
 
-impl Contribute {
-	pub fn new(transport: Arc<object::Transport>, control: control::SendShared, broker: broker::Broadcasts) -> Self {
+impl Session {
+	pub fn new(
+		transport: Arc<object::Transport>,
+		control: control::Component<control::Contribute>,
+		broker: broker::Broadcasts,
+	) -> Self {
 		Self {
 			transport,
 			control,
@@ -68,16 +72,19 @@ impl Contribute {
 					let msg = subscribe.context("failed to receive subscription")?;
 					self.control.send(msg).await?;
 				},
+				msg = self.control.recv() => {
+					let msg = msg.context("failed to receive control message")?;
+					self.receive_message(msg).await?;
+				},
 			}
 		}
 	}
 
-	pub async fn receive_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
+	async fn receive_message(&mut self, msg: control::Contribute) -> anyhow::Result<()> {
 		match msg {
-			control::Message::Announce(msg) => self.receive_announce(msg).await,
-			control::Message::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
-			control::Message::SubscribeError(msg) => self.receive_subscribe_error(msg),
-			_ => Ok(()), // ignore unknown messages
+			control::Contribute::Announce(msg) => self.receive_announce(msg).await,
+			control::Contribute::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
+			control::Contribute::SubscribeError(msg) => self.receive_subscribe_error(msg),
 		}
 	}
 
@@ -137,9 +144,11 @@ impl Contribute {
 	}
 
 	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
+		// Create a broadcast and announce it.
+		// We don't actually start producing the broadcast until we receive a subscription.
 		let broadcast = Arc::new(Broadcast::new(&msg.track_namespace, &self.publishers));
-		self.broker.announce(&msg.track_namespace, broadcast.clone())?;
 
+		self.broker.announce(&msg.track_namespace, broadcast.clone())?;
 		self.broadcasts.insert(msg.track_namespace.clone(), broadcast);
 
 		Ok(())
@@ -156,6 +165,7 @@ impl Contribute {
 			reason: format!("upstream error: {}", msg.reason),
 		};
 
+		// Stop producing the track.
 		self.publishers
 			.close(msg.track_id, error)
 			.context("failed to close track")?;
@@ -164,12 +174,18 @@ impl Contribute {
 	}
 }
 
-impl Drop for Contribute {
+impl Drop for Session {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?
-		for broadcast in self.broadcasts.values() {
-			self.broker.unannounce(&broadcast.namespace).unwrap();
+		// TOOD Implement UNANNOUNCE so we can return good errors.
+		for broadcast in self.broadcasts.keys() {
+			let error = broadcast::Error {
+				code: VarInt::from_u32(1),
+				reason: "connection closed".to_string(),
+			};
+
+			self.broker.unannounce(broadcast, error).unwrap();
 		}
 	}
 }

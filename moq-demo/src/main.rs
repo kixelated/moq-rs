@@ -37,10 +37,12 @@ async fn main() -> anyhow::Result<()> {
 	let serve = serve_http(args.clone());
 
 	// Create a fake media source from disk.
-	let mut media = source::File::new(args.media).context("failed to open fragmented.mp4")?;
+	let media = source::File::new(args.media).context("failed to open file source")?;
 
 	let broker = relay::broker::Broadcasts::new();
-	let _publisher = broker.publish("demo").context("failed to create publisher")?;
+	broker
+		.announce("demo", media.source())
+		.context("failed to announce file source")?;
 
 	// Create a server to actually serve the media
 	let config = relay::ServerConfig {
@@ -50,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 		broker,
 	};
 
-	let mut server = relay::Server::new(config).context("failed to create server")?;
+	let server = relay::Server::new(config).context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {

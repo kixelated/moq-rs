@@ -82,7 +82,7 @@ impl Server {
 		Ok(Self { server, broker, tasks })
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
 				res = self.server.accept() => {
@@ -90,7 +90,7 @@ impl Server {
 					let broker = self.broker.clone();
 
 					self.tasks.spawn(async move {
-						let mut session: Session = Session::accept(session, broker).await?;
+						let session: Session = Session::accept(session, broker).await?;
 						session.run().await
 					});
 				},

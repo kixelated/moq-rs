@@ -64,8 +64,8 @@ impl Subscriber {
 		let res = self.segments.next().await;
 		match res {
 			None => Err(Error {
-				code: VarInt::from_u32(1),
-				reason: String::from("unexpected close"),
+				code: VarInt::from_u32(0),
+				reason: String::from("closed"),
 			}),
 			Some(res) => res,
 		}

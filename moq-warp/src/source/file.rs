@@ -6,21 +6,25 @@ use mp4::ReadBox;
 
 use anyhow::Context;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use moq_transport::VarInt;
 
-use super::Source;
+use super::MapSource;
 use crate::model::{segment, track};
 
 pub struct File {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
-	// A track that lists the other tracks (ftyp+moov)
-	catalog: track::Subscriber,
+	// The catalog for the broadcast, held just so it's closed when the broadcast is over.
+	_catalog: track::Publisher,
 
 	// The tracks we're producing.
 	tracks: HashMap<String, Track>,
+
+	// A subscribable source.
+	source: Arc<MapSource>,
 }
 
 impl File {
@@ -45,8 +49,12 @@ impl File {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		// Create the init track
-		let catalog = Self::create_catalog(init);
+		// Create a source that can be subscribed to.
+		let mut source = HashMap::default();
+
+		// Create the catalog track
+		let (_catalog, subscriber) = Self::create_catalog(init);
+		source.insert("catalog".to_string(), subscriber);
 
 		let mut tracks = HashMap::new();
 
@@ -58,36 +66,43 @@ impl File {
 
 			// Store the track publisher in a map so we can update it later.
 			let track = Track::new(&name, timescale);
+			source.insert(name.to_string(), track.subscribe());
+
 			tracks.insert(name, track);
 		}
 
+		let source = Arc::new(MapSource(source));
+
 		Ok(Self {
 			reader,
-			catalog,
+			_catalog,
 			tracks,
+			source,
 		})
 	}
 
-	fn create_catalog(raw: Vec<u8>) -> track::Subscriber {
+	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
-		let mut track = track::Publisher::new("catalog");
+		let mut catalog = track::Publisher::new("catalog");
 
-		let segment = segment::Info {
+		// Subscribe to the catalog before we push the segment.
+		let subscriber = catalog.subscribe();
+
+		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0),   // first and only segment
 			send_order: VarInt::from_u32(0), // highest priority
 			expires: None,                   // never delete from the cache
-		};
-
-		let mut segment = segment::Publisher::new(segment);
+		});
 
 		// Add the segment and add the fragment.
-		track.push_segment(segment.subscribe());
+		catalog.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
-		track.subscribe()
+		// Return the catalog
+		(catalog, subscriber)
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		// The timestamp when the broadcast "started", so we can sleep to simulate a live stream.
 		let start = tokio::time::Instant::now();
 
@@ -136,15 +151,9 @@ impl File {
 			}
 		}
 	}
-}
 
-impl Source for File {
-	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
-		if name == "catalog" {
-			Some(self.catalog.clone())
-		} else {
-			self.tracks.get(name).map(|t| t.track.subscribe())
-		}
+	pub fn source(&self) -> Arc<MapSource> {
+		self.source.clone()
 	}
 }
 
@@ -217,10 +226,10 @@ impl Track {
 		};
 
 		let mut segment = segment::Publisher::new(segment);
+		self.track.push_segment(segment.subscribe());
 
 		// Insert the raw atom into the segment.
 		segment.fragments.push(raw.into());
-		self.track.push_segment(segment.subscribe());
 
 		// Save for the next iteration
 		self.segment = Some(segment);
@@ -237,6 +246,10 @@ impl Track {
 		segment.fragments.push(raw.into());
 
 		Ok(())
+	}
+
+	pub fn subscribe(&self) -> track::Subscriber {
+		self.track.subscribe()
 	}
 }
 

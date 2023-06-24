@@ -1,9 +1,10 @@
-use super::{track, watch};
-
-use std::error;
+use std::{error, fmt};
 
 use moq_transport::VarInt;
 
+// TODO generialize broker::Broadcasts and source::Source into this module.
+
+/*
 pub struct Publisher {
 	pub namespace: String,
 
@@ -32,10 +33,32 @@ pub struct Subscriber {
 
 	pub tracks: watch::Subscriber<track::Subscriber>,
 }
+*/
 
-pub trait Error: error::Error {
-	// Default to error code 1 for unknown errors.
-	fn code(&self) -> VarInt {
-		VarInt::from_u32(1)
+#[derive(Clone)]
+pub struct Error {
+	pub code: VarInt,
+	pub reason: String,
+}
+
+impl error::Error for Error {}
+
+impl fmt::Debug for Error {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if !self.reason.is_empty() {
+			write!(f, "broadcast error ({}): {}", self.code, self.reason)
+		} else {
+			write!(f, "broadcast error ({})", self.code)
+		}
+	}
+}
+
+impl fmt::Display for Error {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		if !self.reason.is_empty() {
+			write!(f, "broadcast error ({}): {}", self.code, self.reason)
+		} else {
+			write!(f, "broadcast error ({})", self.code)
+		}
 	}
 }

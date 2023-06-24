@@ -2,17 +2,17 @@ use anyhow::Context;
 
 use std::sync::Arc;
 
-use moq_transport::{control, server, setup};
+use moq_transport::{server, setup};
 
-use super::{broker, Contribute, Distribute};
+use super::{broker, contribute, control, distribute};
 
 pub struct Session {
-	// Used to receive control messages.
-	control: control::RecvStream,
-
 	// Split logic into contribution/distribution to reduce the problem space.
-	contribute: Contribute,
-	distribute: Distribute,
+	contribute: contribute::Session,
+	distribute: distribute::Session,
+
+	// Used to receive control messages and forward to contribute/distribute.
+	control: control::Main,
 }
 
 impl Session {
@@ -44,15 +44,13 @@ impl Session {
 		let (transport, control) = session.accept(setup).await?;
 		let transport = Arc::new(transport);
 
-		// Split the control stream into send/receive halves.
-		let (sender, receiver) = control.split();
-		let sender = sender.share(); // wrap in an arc/mutex
+		let (control, contribute, distribute) = control::split(control);
 
-		let contribute = Contribute::new(transport.clone(), sender.clone(), broker.clone());
-		let distribute = Distribute::new(transport, sender, broker);
+		let contribute = contribute::Session::new(transport.clone(), contribute, broker.clone());
+		let distribute = distribute::Session::new(transport, distribute, broker);
 
 		let session = Self {
-			control: receiver,
+			control,
 			contribute,
 			distribute,
 		};
@@ -60,33 +58,13 @@ impl Session {
 		Ok(session)
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
-		loop {
-			tokio::select! {
-				msg = self.control.recv() => {
-					let msg = msg.context("failed to receive control message")?;
-					self.receive_message(msg).await?;
-				},
-				res = self.contribute.run() => {
-					res.context("failed to run contribution")?;
-				},
-				res = self.distribute.run() => {
-					res.context("failed to run contribution")?;
-				},
-			}
-		}
-	}
+	pub async fn run(mut self) -> anyhow::Result<()> {
+		let control = self.control.run();
+		let contribute = self.contribute.run();
+		let distribute = self.distribute.run();
 
-	async fn receive_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
-		// TODO split messages into contribution/distribution types to make this safer.
-		match msg {
-			control::Message::Announce(_) | control::Message::SubscribeOk(_) | control::Message::SubscribeError(_) => {
-				self.contribute.receive_message(msg).await
-			}
-			control::Message::AnnounceOk(_) | control::Message::AnnounceError(_) | control::Message::Subscribe(_) => {
-				self.distribute.receive_message(msg).await
-			}
-			control::Message::GoAway(_) => anyhow::bail!("client can't send GOAWAY u nerd"),
-		}
+		tokio::try_join!(control, contribute, distribute)?;
+
+		Ok(())
 	}
 }

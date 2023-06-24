@@ -6,27 +6,31 @@ use tokio::task::JoinSet; // allows locking across await
 use std::sync::Arc;
 
 use moq_transport::coding::VarInt;
-use moq_transport::{control, object};
+use moq_transport::object;
 
-use super::broker;
+use super::{broker, control};
 use crate::model::{segment, track};
 
-pub struct Distribute {
+pub struct Session {
 	// Objects are sent to the client using this transport.
 	transport: Arc<object::Transport>,
 
-	// Use a tokio mutex so we can hold the lock while trying to write a control message.
-	control: control::SendShared,
+	// Used to send and receive control messages.
+	control: control::Component<control::Distribute>,
 
 	// Globally announced namespaces, which can be subscribed to.
 	broker: broker::Broadcasts,
 
 	// A list of tasks that are currently running.
-	run_subscribes: JoinSet<anyhow::Result<()>>,
+	run_subscribes: JoinSet<control::SubscribeError>, // run subscriptions, sending the returned error if they fail
 }
 
-impl Distribute {
-	pub fn new(transport: Arc<object::Transport>, control: control::SendShared, broker: broker::Broadcasts) -> Self {
+impl Session {
+	pub fn new(
+		transport: Arc<object::Transport>,
+		control: control::Component<control::Distribute>,
+		broker: broker::Broadcasts,
+	) -> Self {
 		Self {
 			transport,
 			control,
@@ -35,7 +39,7 @@ impl Distribute {
 		}
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		// Announce all available tracks and get a stream of updates.
 		let (available, mut updates) = self.broker.available();
 		for namespace in available {
@@ -46,34 +50,36 @@ impl Distribute {
 			tokio::select! {
 				res = self.run_subscribes.join_next(), if !self.run_subscribes.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
-					if let Err(err) = res {
-						log::error!("failed to serve track: {:?}", err);
-					}
+					self.control.send(res).await?;
 				},
 				delta = updates.next() => {
 					let delta = delta.expect("no more broadcasts");
 					self.on_available(delta).await?;
 				},
+				msg = self.control.recv() => {
+					let msg = msg.context("failed to receive control message")?;
+					self.receive_message(msg).await?;
+				},
 			}
 		}
 	}
 
-	// Called by the session when it receives a control message.
-	pub async fn receive_message(&mut self, msg: control::Message) -> anyhow::Result<()> {
+	async fn receive_message(&mut self, msg: control::Distribute) -> anyhow::Result<()> {
 		match msg {
-			control::Message::AnnounceOk(msg) => self.receive_announce_ok(msg),
-			control::Message::AnnounceError(msg) => self.receive_announce_error(msg),
-			control::Message::Subscribe(msg) => self.receive_subscribe(msg).await,
-			_ => Ok(()), // ignore unknown messages
+			control::Distribute::AnnounceOk(msg) => self.receive_announce_ok(msg),
+			control::Distribute::AnnounceError(msg) => self.receive_announce_error(msg),
+			control::Distribute::Subscribe(msg) => self.receive_subscribe(msg).await,
 		}
 	}
 
 	fn receive_announce_ok(&mut self, _msg: control::AnnounceOk) -> anyhow::Result<()> {
+		// TODO make sure we sent this announce
 		Ok(())
 	}
 
 	fn receive_announce_error(&mut self, msg: control::AnnounceError) -> anyhow::Result<()> {
 		// TODO make sure we sent this announce
+		// TODO remove this from the list of subscribable broadcasts.
 		anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", msg.code, msg.reason)
 	}
 
@@ -107,51 +113,48 @@ impl Distribute {
 
 		// TODO can we just clone self?
 		let transport = self.transport.clone();
-		let control = self.control.clone();
 		let track_id = msg.track_id;
 
 		self.run_subscribes
-			.spawn(async move { Self::run_subscribe(transport, control, track_id, track).await });
+			.spawn(async move { Self::run_subscribe(transport, track_id, track).await });
 
 		Ok(())
 	}
 
 	async fn run_subscribe(
 		transport: Arc<object::Transport>,
-		mut control: control::SendShared,
 		track_id: VarInt,
 		mut track: track::Subscriber,
-	) -> anyhow::Result<()> {
+	) -> control::SubscribeError {
 		let mut tasks = JoinSet::new();
-		let mut done = false;
+		let mut result = None;
 
 		loop {
 			tokio::select! {
 				// Accept new segments added to the track.
-				segment = track.next_segment(), if !done => {
+				segment = track.next_segment(), if result.is_none() => {
 					match segment {
 						Ok(segment) => {
 							let transport = transport.clone();
-							//let track_id = track_id;
 							tasks.spawn(async move { Self::serve_group(transport, track_id, segment).await });
 						},
 						Err(e) => {
-							control.send(control::SubscribeError {
+							result = Some(control::SubscribeError {
 								track_id,
 								code: e.code,
 								reason: e.reason,
-							}).await?;
-
-							done = true
+							})
 						},
 					}
 				},
 				// Poll any pending segments until they exit.
 				res = tasks.join_next(), if !tasks.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
-					res.context("failed serve segment")?
+					if let Err(err) = res {
+						log::error!("failed to serve segment: {:?}", err);
+					}
 				},
-				else => return Ok(())
+				else => return result.unwrap()
 			}
 		}
 	}
@@ -189,12 +192,12 @@ impl Distribute {
 					})
 					.await
 			}
-			broker::Update::Remove(name) => {
+			broker::Update::Remove(name, error) => {
 				self.control
 					.send(control::AnnounceError {
 						track_namespace: name,
-						code: VarInt::from_u32(0),
-						reason: "broadcast closed".to_string(),
+						code: error.code,
+						reason: error.reason,
 					})
 					.await
 			}
