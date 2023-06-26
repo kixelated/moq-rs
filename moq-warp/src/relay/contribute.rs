@@ -15,6 +15,7 @@ use super::{broker, control};
 use crate::model::{broadcast, segment, track};
 use crate::source::Source;
 
+// TODO experiment with making this Clone, so every task can have its own copy.
 pub struct Session {
 	// Used to receive objects.
 	// TODO split into send/receive halves.
@@ -52,7 +53,7 @@ impl Session {
 		}
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
 				res = self.run_segments.join_next(), if !self.run_segments.is_empty() => {

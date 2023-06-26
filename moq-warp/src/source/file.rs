@@ -17,7 +17,7 @@ pub struct File {
 	// We read the file once, in order, and don't seek backwards.
 	reader: io::BufReader<fs::File>,
 
-	// The catalog for the broadcast, held just so it's closed when the broadcast is over.
+	// The catalog for the broadcast, held just so it's closed only when the broadcast is over.
 	_catalog: track::Publisher,
 
 	// The tracks we're producing.

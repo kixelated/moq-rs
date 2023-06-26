@@ -58,7 +58,7 @@ impl Session {
 		Ok(session)
 	}
 
-	pub async fn run(mut self) -> anyhow::Result<()> {
+	pub async fn run(self) -> anyhow::Result<()> {
 		let control = self.control.run();
 		let contribute = self.contribute.run();
 		let distribute = self.distribute.run();
