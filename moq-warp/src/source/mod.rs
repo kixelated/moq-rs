@@ -5,7 +5,6 @@ use crate::model::track;
 
 use std::collections::HashMap;
 
-
 // TODO move to model::Broadcast?
 pub trait Source {
 	fn subscribe(&self, name: &str) -> Option<track::Subscriber>;
