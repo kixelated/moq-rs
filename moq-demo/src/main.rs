@@ -1,19 +1,11 @@
-mod server;
-mod session;
-
-use server::*;
-
 use std::{fs, io, net, path, sync};
-
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::Source;
+use moq_warp::{relay, source};
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
@@ -45,20 +37,22 @@ async fn main() -> anyhow::Result<()> {
 	let serve = serve_http(args.clone());
 
 	// Create a fake media source from disk.
-	let mut media = Source::new(args.media).context("failed to open fragmented.mp4")?;
+	let media = source::File::new(args.media).context("failed to open file source")?;
 
-	let mut broadcasts = HashMap::new();
-	broadcasts.insert("demo".to_string(), media.broadcast());
+	let broker = relay::broker::Broadcasts::new();
+	broker
+		.announce("demo", media.source())
+		.context("failed to announce file source")?;
 
 	// Create a server to actually serve the media
-	let config = ServerConfig {
+	let config = relay::ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broadcasts: Arc::new(broadcasts),
+		broker,
 	};
 
-	let mut server = Server::new(config).context("failed to create server")?;
+	let server = relay::Server::new(config).context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {
