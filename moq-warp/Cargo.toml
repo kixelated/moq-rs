@@ -3,7 +3,7 @@ name = "moq-warp"
 description = "Media over QUIC"
 authors = [ "Luke Curley" ]
 repository = "https://github.com/kixelated/moq-rs"
-license = "Apache-2.0"
+license = "MIT"
 
 version = "0.1.0"
 edition = "2021"
