@@ -3,7 +3,7 @@ name = "moq-transport"
 description = "Media over QUIC"
 authors = [ "Luke Curley" ]
 repository = "https://github.com/kixelated/moq-rs"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 version = "0.1.0"
 edition = "2021"
