@@ -12,8 +12,8 @@ pub enum DecodeError {
 	#[error("invalid string")]
 	InvalidString(#[from] str::Utf8Error),
 
-	#[error("invalid type")]
-	InvalidType,
+	#[error("invalid type: {0:?}")]
+	InvalidType(VarInt),
 
 	#[error("unknown error")]
 	Unknown,

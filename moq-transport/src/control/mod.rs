@@ -53,7 +53,7 @@ macro_rules! message_types {
 						let msg = $name::decode(r)?;
 						Ok(Self::$name(msg))
 					})*
-					_ => Err(DecodeError::InvalidType),
+					_ => Err(DecodeError::InvalidType(t)),
 				}
 			}
 		}
@@ -69,18 +69,6 @@ macro_rules! message_types {
 				}
 			}
 		}
-
-		// Unwrap the enum into the specified type.
-		$(impl TryFrom<Message> for $name {
-			type Error = DecodeError;
-
-			fn try_from(m: Message) -> Result<Self, Self::Error> {
-				match m {
-					Message::$name(m) => Ok(m),
-					_ => Err(DecodeError::InvalidType),
-				}
-			}
-		})*
 
 		$(impl From<$name> for Message {
 			fn from(m: $name) -> Self {
@@ -103,9 +91,8 @@ macro_rules! message_types {
 message_types! {
 	// NOTE: Object and Setup are in other modules.
 	// Object = 0x0
-	// Setup  = 0x1
-	SetupServer = 0x1,
-	SetupClient = 0x2,
+	SetupClient = 0x1,
+	SetupServer = 0x2,
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,

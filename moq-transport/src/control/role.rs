@@ -43,7 +43,7 @@ impl TryFrom<VarInt> for Role {
 			0x0 => Ok(Self::Publisher),
 			0x1 => Ok(Self::Subscriber),
 			0x2 => Ok(Self::Both),
-			_ => Err(DecodeError::InvalidType),
+			_ => Err(DecodeError::InvalidType(v)),
 		}
 	}
 }

@@ -22,7 +22,7 @@ impl Decode for Object {
 	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r)?;
 		if typ.into_inner() != 0 {
-			return Err(DecodeError::InvalidType);
+			return Err(DecodeError::InvalidType(typ));
 		}
 
 		// NOTE: size has been omitted

@@ -17,3 +17,4 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 [dependencies]
 bytes = "1"
 thiserror = "1.0.21"
+log = "0.4"

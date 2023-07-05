@@ -1,7 +1,7 @@
 use anyhow::Context;
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use moq_transport::{Decode, DecodeError, Encode, Object};
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -116,18 +116,17 @@ impl RecvObjects {
 		};
 
 		loop {
-			// TODO verify this works.
-			// Split the buffer so we can peek at it without consuming it.
-			let mut peek = self.buf.split_off(0);
+			// Read the contents of the buffer
+			let mut peek = Cursor::new(&self.buf);
 
 			match Object::decode(&mut peek) {
 				Ok(header) => {
 					let stream = self.stream.take().unwrap();
+					self.buf.advance(peek.position() as usize);
 					return Ok((header, stream));
 				}
 				Err(DecodeError::UnexpectedEnd) => {
 					// The decode failed, so we need to append more data.
-					self.buf.unsplit(peek);
 					stream.read_buf(&mut self.buf).await?;
 				}
 				Err(e) => return Err(e.into()),

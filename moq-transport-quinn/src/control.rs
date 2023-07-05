@@ -1,8 +1,9 @@
 use moq_transport::{Decode, DecodeError, Encode, Message};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 
 use h3::quic::BidiStream;
+use std::io::Cursor;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -99,18 +100,19 @@ impl ControlRecv {
 	// Read the next full message from the stream.
 	pub async fn recv(&mut self) -> anyhow::Result<Message> {
 		loop {
-			// TODO verify this works.
-			// Split the buffer so we can peek at it without consuming it.
-			let mut peek = self.buf.split_off(0);
+			// Read the contents of the buffer
+			let mut peek = Cursor::new(&self.buf);
 
 			match Message::decode(&mut peek) {
 				Ok(msg) => {
+					// We've successfully decoded a message, so we can advance the buffer.
+					self.buf.advance(peek.position() as usize);
+
 					log::info!("received message: {:?}", msg);
 					return Ok(msg);
 				}
 				Err(DecodeError::UnexpectedEnd) => {
 					// The decode failed, so we need to append more data.
-					self.buf.unsplit(peek);
 					self.stream.read_buf(&mut self.buf).await?;
 				}
 				Err(e) => return Err(e.into()),

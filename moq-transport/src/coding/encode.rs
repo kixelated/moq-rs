@@ -8,7 +8,7 @@ pub enum EncodeError {
 	#[error("unexpected end of buffer")]
 	UnexpectedEnd,
 
-	#[error("value too large for varint encoding")]
+	#[error("varint too large")]
 	BoundsExceeded(#[from] BoundsExceeded),
 
 	#[error("unknown error")]
