@@ -47,3 +47,12 @@ cargo run
 
 This listens for WebTransport connections on `https://localhost:4443` by default.
 Use a [MoQ client](https://github.com/kixelated/moq-js) to connect to the server.
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
