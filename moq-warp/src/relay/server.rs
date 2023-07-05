@@ -1,7 +1,5 @@
 use super::{broker, Session};
 
-use moq_transport::server::Endpoint;
-
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
@@ -10,7 +8,7 @@ use tokio::task::JoinSet;
 
 pub struct Server {
 	// The MoQ transport server.
-	server: Endpoint,
+	server: moq_transport_quinn::Server,
 
 	// The media sources.
 	broker: broker::Broadcasts,
@@ -76,7 +74,7 @@ impl Server {
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broker = config.broker;
 
-		let server = Endpoint::new(server);
+		let server = moq_transport_quinn::Server::new(server);
 		let tasks = JoinSet::new();
 
 		Ok(Self { server, broker, tasks })

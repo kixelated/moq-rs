@@ -1,7 +1,6 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
 use std::ops::Deref;
 
@@ -24,32 +23,29 @@ impl From<Version> for VarInt {
 	}
 }
 
-#[async_trait]
 impl Decode for Version {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let v = VarInt::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = VarInt::decode(r)?;
 		Ok(Self(v))
 	}
 }
 
-#[async_trait]
 impl Encode for Version {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.0.encode(w).await
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.0.encode(w)
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Versions(pub Vec<Version>);
 
-#[async_trait]
 impl Decode for Versions {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let count = VarInt::decode(r).await?.into_inner();
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let count = VarInt::decode(r)?.into_inner();
 		let mut vs = Vec::new();
 
 		for _ in 0..count {
-			let v = Version::decode(r).await?;
+			let v = Version::decode(r)?;
 			vs.push(v);
 		}
 
@@ -57,14 +53,15 @@ impl Decode for Versions {
 	}
 }
 
-#[async_trait]
 impl Encode for Versions {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let size: VarInt = self.0.len().try_into()?;
-		size.encode(w).await?;
+		size.encode(w)?;
+
 		for v in &self.0 {
-			v.encode(w).await?;
+			v.encode(w)?;
 		}
+
 		Ok(())
 	}
 }

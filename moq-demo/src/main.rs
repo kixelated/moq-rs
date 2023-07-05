@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let broker = relay::broker::Broadcasts::new();
 	broker
-		.announce("demo", media.source())
+		.announce("quic.video/demo", media.source())
 		.context("failed to announce file source")?;
 
 	// Create a server to actually serve the media

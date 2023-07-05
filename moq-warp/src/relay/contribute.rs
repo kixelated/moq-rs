@@ -6,8 +6,8 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
-use moq_transport::coding::VarInt;
-use moq_transport::object;
+use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
+use moq_transport_quinn::{RecvObjects, RecvStream};
 
 use anyhow::Context;
 
@@ -18,8 +18,7 @@ use crate::source::Source;
 // TODO experiment with making this Clone, so every task can have its own copy.
 pub struct Session {
 	// Used to receive objects.
-	// TODO split into send/receive halves.
-	transport: Arc<object::Transport>,
+	objects: RecvObjects,
 
 	// Used to send and receive control messages.
 	control: control::Component<control::Contribute>,
@@ -39,12 +38,12 @@ pub struct Session {
 
 impl Session {
 	pub fn new(
-		transport: Arc<object::Transport>,
+		objects: RecvObjects,
 		control: control::Component<control::Contribute>,
 		broker: broker::Broadcasts,
 	) -> Self {
 		Self {
-			transport,
+			objects,
 			control,
 			broker,
 			broadcasts: HashMap::new(),
@@ -62,9 +61,9 @@ impl Session {
 						log::error!("failed to produce segment: {:?}", err);
 					}
 				},
-				object = self.transport.recv() => {
-					let (header, stream )= object.context("failed to receive object")?;
-					let res = self.receive_object(header, stream).await;
+				object = self.objects.recv() => {
+					let (object, stream) = object.context("failed to receive object")?;
+					let res = self.receive_object(object, stream).await;
 					if let Err(err) = res {
 						log::error!("failed to receive object: {:?}", err);
 					}
@@ -89,19 +88,19 @@ impl Session {
 		}
 	}
 
-	async fn receive_object(&mut self, header: object::Header, stream: object::RecvStream) -> anyhow::Result<()> {
-		let id = header.track_id;
+	async fn receive_object(&mut self, object: Object, stream: RecvStream) -> anyhow::Result<()> {
+		let track = object.track;
 
 		let segment = segment::Info {
-			sequence: header.object_sequence,
-			send_order: header.send_order,
+			sequence: object.sequence,
+			send_order: object.send_order,
 			expires: Some(time::Instant::now() + time::Duration::from_secs(10)),
 		};
 
 		let segment = segment::Publisher::new(segment);
 
 		self.publishers
-			.push_segment(id, segment.subscribe())
+			.push_segment(track, segment.subscribe())
 			.context("failed to publish segment")?;
 
 		// TODO implement a timeout
@@ -112,7 +111,7 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_segment(mut segment: segment::Publisher, mut stream: object::RecvStream) -> anyhow::Result<()> {
+	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
 		let mut buf = [0u8; 32 * 1024];
 		loop {
 			let size = stream.read(&mut buf).await.context("failed to read from stream")?;
@@ -125,16 +124,16 @@ impl Session {
 		}
 	}
 
-	async fn receive_announce(&mut self, msg: control::Announce) -> anyhow::Result<()> {
+	async fn receive_announce(&mut self, msg: Announce) -> anyhow::Result<()> {
 		match self.receive_announce_inner(&msg).await {
 			Ok(()) => {
-				let msg = control::AnnounceOk {
+				let msg = AnnounceOk {
 					track_namespace: msg.track_namespace,
 				};
 				self.control.send(msg).await
 			}
 			Err(e) => {
-				let msg = control::AnnounceError {
+				let msg = AnnounceError {
 					track_namespace: msg.track_namespace,
 					code: VarInt::from_u32(1),
 					reason: e.to_string(),
@@ -144,7 +143,7 @@ impl Session {
 		}
 	}
 
-	async fn receive_announce_inner(&mut self, msg: &control::Announce) -> anyhow::Result<()> {
+	async fn receive_announce_inner(&mut self, msg: &Announce) -> anyhow::Result<()> {
 		// Create a broadcast and announce it.
 		// We don't actually start producing the broadcast until we receive a subscription.
 		let broadcast = Arc::new(Broadcast::new(&msg.track_namespace, &self.publishers));
@@ -155,12 +154,12 @@ impl Session {
 		Ok(())
 	}
 
-	fn receive_subscribe_ok(&mut self, _msg: control::SubscribeOk) -> anyhow::Result<()> {
+	fn receive_subscribe_ok(&mut self, _msg: SubscribeOk) -> anyhow::Result<()> {
 		// TODO make sure this is for a track we are subscribed to
 		Ok(())
 	}
 
-	fn receive_subscribe_error(&mut self, msg: control::SubscribeError) -> anyhow::Result<()> {
+	fn receive_subscribe_error(&mut self, msg: SubscribeError) -> anyhow::Result<()> {
 		let error = track::Error {
 			code: msg.code,
 			reason: format!("upstream error: {}", msg.reason),
@@ -282,10 +281,10 @@ impl Publishers {
 	}
 
 	// Returns the next subscribe message we need to issue.
-	pub async fn incoming(&mut self) -> anyhow::Result<control::Subscribe> {
+	pub async fn incoming(&mut self) -> anyhow::Result<Subscribe> {
 		let (namespace, track) = self.receiver.recv().await.context("no more subscriptions")?;
 
-		let msg = control::Subscribe {
+		let msg = Subscribe {
 			track_id: VarInt::try_from(self.next)?,
 			track_namespace: namespace,
 			track_name: track.name,

@@ -3,17 +3,15 @@ use anyhow::Context;
 use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
-use std::sync::Arc;
-
-use moq_transport::coding::VarInt;
-use moq_transport::object;
+use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
+use moq_transport_quinn::SendObjects;
 
 use super::{broker, control};
 use crate::model::{segment, track};
 
 pub struct Session {
-	// Objects are sent to the client using this transport.
-	transport: Arc<object::Transport>,
+	// Objects are sent to the client
+	objects: SendObjects,
 
 	// Used to send and receive control messages.
 	control: control::Component<control::Distribute>,
@@ -22,17 +20,17 @@ pub struct Session {
 	broker: broker::Broadcasts,
 
 	// A list of tasks that are currently running.
-	run_subscribes: JoinSet<control::SubscribeError>, // run subscriptions, sending the returned error if they fail
+	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
 }
 
 impl Session {
 	pub fn new(
-		transport: Arc<object::Transport>,
+		objects: SendObjects,
 		control: control::Component<control::Distribute>,
 		broker: broker::Broadcasts,
 	) -> Self {
 		Self {
-			transport,
+			objects,
 			control,
 			broker,
 			run_subscribes: JoinSet::new(),
@@ -72,22 +70,22 @@ impl Session {
 		}
 	}
 
-	fn receive_announce_ok(&mut self, _msg: control::AnnounceOk) -> anyhow::Result<()> {
+	fn receive_announce_ok(&mut self, _msg: AnnounceOk) -> anyhow::Result<()> {
 		// TODO make sure we sent this announce
 		Ok(())
 	}
 
-	fn receive_announce_error(&mut self, msg: control::AnnounceError) -> anyhow::Result<()> {
+	fn receive_announce_error(&mut self, msg: AnnounceError) -> anyhow::Result<()> {
 		// TODO make sure we sent this announce
 		// TODO remove this from the list of subscribable broadcasts.
 		anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", msg.code, msg.reason)
 	}
 
-	async fn receive_subscribe(&mut self, msg: control::Subscribe) -> anyhow::Result<()> {
+	async fn receive_subscribe(&mut self, msg: Subscribe) -> anyhow::Result<()> {
 		match self.receive_subscribe_inner(&msg).await {
 			Ok(()) => {
 				self.control
-					.send(control::SubscribeOk {
+					.send(SubscribeOk {
 						track_id: msg.track_id,
 						expires: None,
 					})
@@ -95,7 +93,7 @@ impl Session {
 			}
 			Err(e) => {
 				self.control
-					.send(control::SubscribeError {
+					.send(SubscribeError {
 						track_id: msg.track_id,
 						code: VarInt::from_u32(1),
 						reason: e.to_string(),
@@ -105,27 +103,23 @@ impl Session {
 		}
 	}
 
-	async fn receive_subscribe_inner(&mut self, msg: &control::Subscribe) -> anyhow::Result<()> {
+	async fn receive_subscribe_inner(&mut self, msg: &Subscribe) -> anyhow::Result<()> {
 		let track = self
 			.broker
 			.subscribe(&msg.track_namespace, &msg.track_name)
 			.context("could not find broadcast")?;
 
 		// TODO can we just clone self?
-		let transport = self.transport.clone();
+		let objects = self.objects.clone();
 		let track_id = msg.track_id;
 
 		self.run_subscribes
-			.spawn(async move { Self::run_subscribe(transport, track_id, track).await });
+			.spawn(async move { Self::run_subscribe(objects, track_id, track).await });
 
 		Ok(())
 	}
 
-	async fn run_subscribe(
-		transport: Arc<object::Transport>,
-		track_id: VarInt,
-		mut track: track::Subscriber,
-	) -> control::SubscribeError {
+	async fn run_subscribe(objects: SendObjects, track_id: VarInt, mut track: track::Subscriber) -> SubscribeError {
 		let mut tasks = JoinSet::new();
 		let mut result = None;
 
@@ -135,11 +129,11 @@ impl Session {
 				segment = track.next_segment(), if result.is_none() => {
 					match segment {
 						Ok(segment) => {
-							let transport = transport.clone();
-							tasks.spawn(async move { Self::serve_group(transport, track_id, segment).await });
+							let objects = objects.clone();
+							tasks.spawn(async move { Self::serve_group(objects, track_id, segment).await });
 						},
 						Err(e) => {
-							result = Some(control::SubscribeError {
+							result = Some(SubscribeError {
 								track_id,
 								code: e.code,
 								reason: e.reason,
@@ -160,18 +154,18 @@ impl Session {
 	}
 
 	async fn serve_group(
-		transport: Arc<object::Transport>,
+		mut objects: SendObjects,
 		track_id: VarInt,
 		mut segment: segment::Subscriber,
 	) -> anyhow::Result<()> {
-		let header = object::Header {
-			track_id,
-			group_sequence: segment.sequence,
-			object_sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
+		let object = Object {
+			track: track_id,
+			group: segment.sequence,
+			sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
 			send_order: segment.send_order,
 		};
 
-		let mut stream = transport.send(header).await?;
+		let mut stream = objects.send(object).await?;
 
 		// Write each fragment as they are available.
 		while let Some(fragment) = segment.fragments.next().await {
@@ -187,14 +181,14 @@ impl Session {
 		match delta {
 			broker::Update::Insert(name) => {
 				self.control
-					.send(control::Announce {
+					.send(Announce {
 						track_namespace: name.clone(),
 					})
 					.await
 			}
 			broker::Update::Remove(name, error) => {
 				self.control
-					.send(control::AnnounceError {
+					.send(AnnounceError {
 						track_namespace: name,
 						code: error.code,
 						reason: error.reason,
