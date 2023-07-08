@@ -30,11 +30,16 @@ impl Session {
 			.find(|v| **v == Version::DRAFT_00)
 			.context("failed to find supported version")?;
 
-		// TODO use the role to decide if we can publish or subscribe
+		// Choose our role based on the client's role.
+		let role = match session.setup().role {
+			Role::Publisher => Role::Subscriber,
+			Role::Subscriber => Role::Publisher,
+			Role::Both => Role::Both,
+		};
 
 		let setup = SetupServer {
 			version: Version::DRAFT_00,
-			role: Role::Publisher,
+			role,
 		};
 
 		let session = session.accept(setup).await?;

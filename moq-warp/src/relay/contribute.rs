@@ -94,7 +94,7 @@ impl Session {
 		let segment = segment::Info {
 			sequence: object.sequence,
 			send_order: object.send_order,
-			expires: Some(time::Instant::now() + time::Duration::from_secs(10)),
+			expires: Some(time::Instant::now() + time::Duration::from_secs(2)), // TODO increase this once send_order is implemented
 		};
 
 		let segment = segment::Publisher::new(segment);
@@ -162,7 +162,7 @@ impl Session {
 	fn receive_subscribe_error(&mut self, msg: SubscribeError) -> anyhow::Result<()> {
 		let error = track::Error {
 			code: msg.code,
-			reason: format!("upstream error: {}", msg.reason),
+			reason: msg.reason,
 		};
 
 		// Stop producing the track.
@@ -284,13 +284,16 @@ impl Publishers {
 	pub async fn incoming(&mut self) -> anyhow::Result<Subscribe> {
 		let (namespace, track) = self.receiver.recv().await.context("no more subscriptions")?;
 
+		let id = VarInt::try_from(self.next)?;
+		self.next += 1;
+
 		let msg = Subscribe {
-			track_id: VarInt::try_from(self.next)?,
+			track_id: id,
 			track_namespace: namespace,
-			track_name: track.name,
+			track_name: track.name.clone(),
 		};
 
-		self.next += 1;
+		self.tracks.insert(id, Some(track));
 
 		Ok(msg)
 	}

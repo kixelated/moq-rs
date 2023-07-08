@@ -54,7 +54,7 @@ impl File {
 
 		// Create the catalog track
 		let (_catalog, subscriber) = Self::create_catalog(init);
-		source.insert("catalog".to_string(), subscriber);
+		source.insert("0".to_string(), subscriber);
 
 		let mut tracks = HashMap::new();
 
@@ -83,7 +83,7 @@ impl File {
 
 	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
-		let mut catalog = track::Publisher::new("catalog");
+		let mut catalog = track::Publisher::new("0");
 
 		// Subscribe to the catalog before we push the segment.
 		let subscriber = catalog.subscribe();
@@ -213,7 +213,7 @@ impl Track {
 			.unwrap();
 
 		// Delete segments after 10s.
-		let expires = Some(now + time::Duration::from_secs(10));
+		let expires = Some(now + time::Duration::from_secs(2)); // TODO increase this once send order is implemented
 		let sequence = self.sequence.try_into().context("sequence too large")?;
 
 		self.sequence += 1;
