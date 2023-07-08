@@ -1,7 +1,6 @@
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
 #[derive(Debug)]
 pub struct Announce {
@@ -9,18 +8,16 @@ pub struct Announce {
 	pub track_namespace: String,
 }
 
-#[async_trait]
 impl Decode for Announce {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let track_namespace = String::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let track_namespace = String::decode(r)?;
 		Ok(Self { track_namespace })
 	}
 }
 
-#[async_trait]
 impl Encode for Announce {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.track_namespace.encode(w).await?;
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.track_namespace.encode(w)?;
 		Ok(())
 	}
 }

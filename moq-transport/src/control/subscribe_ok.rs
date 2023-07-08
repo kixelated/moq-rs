@@ -1,9 +1,8 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 use std::time::Duration;
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
 #[derive(Debug)]
 pub struct SubscribeOk {
@@ -17,22 +16,20 @@ pub struct SubscribeOk {
 	pub expires: Option<Duration>,
 }
 
-#[async_trait]
 impl Decode for SubscribeOk {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r).await?;
-		let expires = Duration::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let track_id = VarInt::decode(r)?;
+		let expires = Duration::decode(r)?;
 		let expires = if expires == Duration::ZERO { None } else { Some(expires) };
 
 		Ok(Self { track_id, expires })
 	}
 }
 
-#[async_trait]
 impl Encode for SubscribeOk {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.track_id.encode(w).await?;
-		self.expires.unwrap_or_default().encode(w).await?;
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.track_id.encode(w)?;
+		self.expires.unwrap_or_default().encode(w)?;
 
 		Ok(())
 	}

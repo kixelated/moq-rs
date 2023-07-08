@@ -1,10 +1,9 @@
 use anyhow::Context;
 
-use std::sync::Arc;
-
-use moq_transport::{server, setup};
-
 use super::{broker, contribute, control, distribute};
+
+use moq_transport::{Role, SetupServer, Version};
+use moq_transport_quinn::Connect;
 
 pub struct Session {
 	// Split logic into contribution/distribution to reduce the problem space.
@@ -16,7 +15,7 @@ pub struct Session {
 }
 
 impl Session {
-	pub async fn accept(session: server::Accept, broker: broker::Broadcasts) -> anyhow::Result<Session> {
+	pub async fn accept(session: Connect, broker: broker::Broadcasts) -> anyhow::Result<Session> {
 		// Accep the WebTransport session.
 		// OPTIONAL validate the conn.uri() otherwise call conn.reject()
 		let session = session
@@ -28,26 +27,25 @@ impl Session {
 			.setup()
 			.versions
 			.iter()
-			.find(|v| **v == setup::Version::DRAFT_00)
+			.find(|v| **v == Version::DRAFT_00)
 			.context("failed to find supported version")?;
 
-		match session.setup().role {
-			setup::Role::Subscriber => {}
-			_ => anyhow::bail!("TODO publishing not yet supported"),
-		}
+		// TODO use the role to decide if we can publish or subscribe
 
-		let setup = setup::Server {
-			version: setup::Version::DRAFT_00,
-			role: setup::Role::Publisher,
+		let setup = SetupServer {
+			version: Version::DRAFT_00,
+			role: Role::Publisher,
 		};
 
-		let (transport, control) = session.accept(setup).await?;
-		let transport = Arc::new(transport);
+		let session = session.accept(setup).await?;
+
+		let (control, objects) = session.split();
+		let (objects_send, objects_recv) = objects.split();
 
 		let (control, contribute, distribute) = control::split(control);
 
-		let contribute = contribute::Session::new(transport.clone(), contribute, broker.clone());
-		let distribute = distribute::Session::new(transport, distribute, broker);
+		let contribute = contribute::Session::new(objects_recv, contribute, broker.clone());
+		let distribute = distribute::Session::new(objects_send, distribute, broker);
 
 		let session = Self {
 			control,

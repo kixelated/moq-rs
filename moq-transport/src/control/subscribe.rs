@@ -1,7 +1,6 @@
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
 #[derive(Debug)]
 pub struct Subscribe {
@@ -16,12 +15,11 @@ pub struct Subscribe {
 	pub track_name: String,
 }
 
-#[async_trait]
 impl Decode for Subscribe {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let track_id = VarInt::decode(r).await?;
-		let track_namespace = String::decode(r).await?;
-		let track_name = String::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let track_id = VarInt::decode(r)?;
+		let track_namespace = String::decode(r)?;
+		let track_name = String::decode(r)?;
 
 		Ok(Self {
 			track_id,
@@ -31,12 +29,11 @@ impl Decode for Subscribe {
 	}
 }
 
-#[async_trait]
 impl Encode for Subscribe {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.track_id.encode(w).await?;
-		self.track_namespace.encode(w).await?;
-		self.track_name.encode(w).await?;
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.track_id.encode(w)?;
+		self.track_namespace.encode(w)?;
+		self.track_name.encode(w)?;
 
 		Ok(())
 	}

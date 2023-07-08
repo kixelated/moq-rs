@@ -2,27 +2,38 @@ mod announce;
 mod announce_error;
 mod announce_ok;
 mod go_away;
-mod stream;
+mod role;
+mod setup_client;
+mod setup_server;
 mod subscribe;
 mod subscribe_error;
 mod subscribe_ok;
+mod version;
 
 pub use announce::*;
 pub use announce_error::*;
 pub use announce_ok::*;
 pub use go_away::*;
-pub use stream::*;
+pub use role::*;
+pub use setup_client::*;
+pub use setup_server::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
+pub use version::*;
 
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
-use async_trait::async_trait;
+use bytes::{Buf, BufMut};
 use std::fmt;
-use tokio::io::{AsyncRead, AsyncWrite};
 
-use anyhow::Context;
+// NOTE: This is forked from moq-transport-00.
+//   1. SETUP role indicates local support ("I can subscribe"), not remote support ("server must publish")
+//   2. SETUP_SERVER is id=2 to disambiguate
+//   3. messages do not have a specified length.
+//   4. messages are sent over a single bidrectional stream (after SETUP), not unidirectional streams.
+//   5. SUBSCRIBE specifies the track_id, not SUBSCRIBE_OK
+//   6. optional parameters are written in order, and zero when unset (setup, announce, subscribe)
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -32,44 +43,32 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-		#[async_trait]
-		impl Decode for Message {
-			async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-				let t = VarInt::decode(r).await.context("failed to decode type")?;
 
-				Ok(match t.into_inner() {
+		impl Decode for Message {
+			fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = VarInt::decode(r)?;
+
+				match t.into_inner() {
 					$($val => {
-						let msg = $name::decode(r).await.context(concat!("failed to decode ", stringify!($name)))?;
-						Self::$name(msg)
+						let msg = $name::decode(r)?;
+						Ok(Self::$name(msg))
 					})*
-					_ => anyhow::bail!("invalid type: {}", t),
-				})
+					_ => Err(DecodeError::InvalidType(t)),
+				}
 			}
 		}
 
-		#[async_trait]
+
 		impl Encode for Message {
-			async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
+			fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w).await.context("failed to encode type")?;
-						m.encode(w).await.context("failed to encode message")
+						VarInt::from_u32($val).encode(w)?;
+						m.encode(w)
 					},)*
 				}
 			}
 		}
-
-		// Unwrap the enum into the specified type.
-		$(impl TryFrom<Message> for $name {
-			type Error = anyhow::Error;
-
-			fn try_from(m: Message) -> Result<Self, Self::Error> {
-				match m {
-					Message::$name(m) => Ok(m),
-					_ => anyhow::bail!("invalid message type"),
-				}
-			}
-		})*
 
 		$(impl From<$name> for Message {
 			fn from(m: $name) -> Self {
@@ -88,17 +87,12 @@ macro_rules! message_types {
     }
 }
 
-// NOTE: These messages are forked from moq-transport-00.
-//   1. subscribe specifies the track_id, not subscribe_ok
-//   2. messages lack a specified length
-//   3. optional parameters are not supported (announce, subscribe)
-//   4. not allowed on undirectional streams; only after SETUP on the bidirectional stream
-
 // Each message is prefixed with the given VarInt type.
 message_types! {
 	// NOTE: Object and Setup are in other modules.
 	// Object = 0x0
-	// Setup  = 0x1
+	SetupClient = 0x1,
+	SetupServer = 0x2,
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,

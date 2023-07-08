@@ -15,17 +15,6 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# WebTransport support: TODO pin a version when released
-h3 = { git = "https://github.com/hyperium/h3", branch = "master" }
-h3-quinn = { git = "https://github.com/hyperium/h3", branch = "master" }
-h3-webtransport = { git = "https://github.com/hyperium/h3", branch = "master" }
-quinn = "0.10"
-http = "0.2"
-
-tokio = { version = "1.27", features = ["macros"] }
 bytes = "1"
-
-log = "0.4"
-anyhow = "1.0.70"
 thiserror = "1.0.21"
-async-trait = "0.1"
+log = "0.4"

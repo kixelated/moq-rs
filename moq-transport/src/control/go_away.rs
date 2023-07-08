@@ -1,24 +1,21 @@
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
 #[derive(Debug)]
 pub struct GoAway {
 	pub url: String,
 }
 
-#[async_trait]
 impl Decode for GoAway {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let url = String::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let url = String::decode(r)?;
 		Ok(Self { url })
 	}
 }
 
-#[async_trait]
 impl Encode for GoAway {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		self.url.encode(w).await
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.url.encode(w)
 	}
 }

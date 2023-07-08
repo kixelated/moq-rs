@@ -5,11 +5,10 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
-use crate::coding::{Decode, Encode};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
+use bytes::{Buf, BufMut};
 use thiserror::Error;
-
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value too large for varint encoding")]
@@ -102,6 +101,7 @@ impl TryFrom<u128> for VarInt {
 
 impl TryFrom<usize> for VarInt {
 	type Error = BoundsExceeded;
+
 	/// Succeeds iff `x` < 2^62
 	fn try_from(x: usize) -> Result<Self, BoundsExceeded> {
 		Self::try_from(x as u64)
@@ -120,13 +120,15 @@ impl fmt::Display for VarInt {
 	}
 }
 
-use async_trait::async_trait;
-
-#[async_trait]
 impl Decode for VarInt {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let mut buf = [0; 8];
-		r.read_exact(buf[0..1].as_mut()).await?;
+
+		if r.remaining() < 1 {
+			return Err(DecodeError::UnexpectedEnd);
+		}
+
+		buf[0] = r.get_u8();
 
 		let tag = buf[0] >> 6;
 		buf[0] &= 0b0011_1111;
@@ -134,15 +136,27 @@ impl Decode for VarInt {
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				r.read_exact(buf[1..2].as_mut()).await?;
+				if r.remaining() < 1 {
+					return Err(DecodeError::UnexpectedEnd);
+				}
+
+				r.copy_to_slice(buf[1..2].as_mut());
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				r.read_exact(buf[1..4].as_mut()).await?;
+				if r.remaining() < 3 {
+					return Err(DecodeError::UnexpectedEnd);
+				}
+
+				r.copy_to_slice(buf[1..4].as_mut());
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				r.read_exact(buf[1..8].as_mut()).await?;
+				if r.remaining() < 7 {
+					return Err(DecodeError::UnexpectedEnd);
+				}
+
+				r.copy_to_slice(buf[1..8].as_mut());
 				u64::from_be_bytes(buf)
 			}
 			_ => unreachable!(),
@@ -152,22 +166,19 @@ impl Decode for VarInt {
 	}
 }
 
-#[async_trait]
 impl Encode for VarInt {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
-			w.write_u8(x as u8).await?;
+			(x as u8).encode(w)
 		} else if x < 2u64.pow(14) {
-			w.write_u16(0b01 << 14 | x as u16).await?;
+			(0b01 << 14 | x as u16).encode(w)
 		} else if x < 2u64.pow(30) {
-			w.write_u32(0b10 << 30 | x as u32).await?;
+			(0b10 << 30 | x as u32).encode(w)
 		} else if x < 2u64.pow(62) {
-			w.write_u64(0b11 << 62 | x).await?;
+			(0b11 << 62 | x).encode(w)
 		} else {
-			anyhow::bail!("malformed VarInt");
+			unreachable!("malformed VarInt");
 		}
-
-		Ok(())
 	}
 }

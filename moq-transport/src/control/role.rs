@@ -1,7 +1,6 @@
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BufMut};
 
-use crate::coding::{Decode, Encode, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -37,29 +36,27 @@ impl From<Role> for VarInt {
 }
 
 impl TryFrom<VarInt> for Role {
-	type Error = anyhow::Error;
+	type Error = DecodeError;
 
 	fn try_from(v: VarInt) -> Result<Self, Self::Error> {
-		Ok(match v.into_inner() {
-			0x0 => Self::Publisher,
-			0x1 => Self::Subscriber,
-			0x2 => Self::Both,
-			_ => anyhow::bail!("invalid role: {}", v),
-		})
+		match v.into_inner() {
+			0x0 => Ok(Self::Publisher),
+			0x1 => Ok(Self::Subscriber),
+			0x2 => Ok(Self::Both),
+			_ => Err(DecodeError::InvalidType(v)),
+		}
 	}
 }
 
-#[async_trait]
 impl Decode for Role {
-	async fn decode<R: AsyncRead + Unpin + Send>(r: &mut R) -> anyhow::Result<Self> {
-		let v = VarInt::decode(r).await?;
+	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = VarInt::decode(r)?;
 		v.try_into()
 	}
 }
 
-#[async_trait]
 impl Encode for Role {
-	async fn encode<W: AsyncWrite + Unpin + Send>(&self, w: &mut W) -> anyhow::Result<()> {
-		VarInt::from(*self).encode(w).await
+	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		VarInt::from(*self).encode(w)
 	}
 }
