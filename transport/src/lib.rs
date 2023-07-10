@@ -23,8 +23,6 @@ pub trait Connection<B: Buf> {
         RecvStream = Self::RecvStream,
         BidiStream = Self::BidiStream,
     >;
-    /// Error type yielded by this trait methods
-    type Error: Into<Box<Error>>;
 
     /// Accept an incoming unidirectional stream
     ///
@@ -32,7 +30,7 @@ pub trait Connection<B: Buf> {
     fn poll_accept_recv(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::RecvStream>, Self::Error>>;
+    ) -> Poll<Result<Option<Self::RecvStream>, Error>>;
 
     /// Accept an incoming bidirectional stream
     ///
@@ -40,41 +38,25 @@ pub trait Connection<B: Buf> {
     fn poll_accept_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::BidiStream>, Self::Error>>;
+    ) -> Poll<Result<Option<Self::BidiStream>, Error>>;
 
     /// Poll the connection to create a new bidirectional stream.
     fn poll_open_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::Error>>;
+    ) -> Poll<Result<Self::BidiStream, Error>>;
 
     /// Poll the connection to create a new unidirectional stream.
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::Error>>;
+    ) -> Poll<Result<Self::SendStream, Error>>;
 
     /// Get an object to open outgoing streams.
     fn opener(&self) -> Self::OpenStreams;
 
     /// Close the connection immediately
     fn close(&mut self, code: ErrorCode, reason: &[u8]);
-}
-
-/// Extends the `Connection` trait for receiving datagrams
-///
-/// See: <https://www.rfc-editor.org/rfc/rfc9297>
-pub trait RecvDatagramExt {
-    /// The type of `Buf` for *raw* datagrams (without the stream_id decoded)
-    type Buf: Buf;
-    /// The error type that can occur when receiving a datagram
-    type Error: Into<Box<Error>>;
-
-    /// Poll the connection for incoming datagrams.
-    fn poll_accept_datagram(
-        &mut self,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::Buf>, Self::Error>>;
 }
 
 /// Trait for opening outgoing streams
@@ -85,20 +67,18 @@ pub trait OpenStreams<B: Buf> {
     type SendStream: SendStream;
     /// The type of the receiving part of `BidiStream`
     type RecvStream: RecvStream;
-    /// Error type yielded by these trait methods
-    type Error: Into<Box<Error>>;
 
     /// Poll the connection to create a new bidirectional stream.
     fn poll_open_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::Error>>;
+    ) -> Poll<Result<Self::BidiStream, Error>>;
 
     /// Poll the connection to create a new unidirectional stream.
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::Error>>;
+    ) -> Poll<Result<Self::SendStream, Error>>;
 
     /// Close the connection immediately
     fn close(&mut self, code: ErrorCode, reason: &[u8]);
@@ -106,17 +86,15 @@ pub trait OpenStreams<B: Buf> {
 
 /// A trait describing the "send" actions of a QUIC stream.
 pub trait SendStream {
-    /// The error type returned by fallible send methods.
-    type Error: Into<Box<Error>>;
 
     /// Polls if the stream can send more data.
-    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>>;
+    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Error>>;
 
     /// Send more data on the stream.
-    fn send_data<T: Buf>(&mut self, data: T) -> Result<(), Self::Error>;
+    fn send_data<T: Buf>(&mut self, data: T) -> Result<(), Error>;
 
     /// Poll to finish the sending side of the stream.
-    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>>;
+    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Error>>;
 
     /// Send a QUIC reset code.
     fn reset(&mut self, reset_code: u64);
@@ -136,7 +114,7 @@ pub trait SendStreamUnframed<B: Buf>: SendStream {
         &mut self,
         cx: &mut task::Context<'_>,
         buf: &mut D,
-    ) -> Poll<Result<usize, Self::Error>>;
+    ) -> Poll<Result<usize, Error>>;
 }
 
 /// A trait describing the "receive" actions of a QUIC stream.
@@ -153,7 +131,7 @@ pub trait RecvStream {
     fn poll_data(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::Buf>, Self::Error>>;
+    ) -> Poll<Result<Option<Self::Buf>, Error>>;
 
     /// Send a `STOP_SENDING` QUIC code.
     fn stop_sending(&mut self, error_code: u64);
