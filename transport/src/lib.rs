@@ -60,7 +60,7 @@ pub trait Connection<B: Buf> {
 }
 
 /// Trait for opening outgoing streams
-pub trait OpenStreams<B: Buf> {
+pub trait OpenStreams {
     /// The type produced by `poll_open_bidi()`
     type BidiStream: SendStream + RecvStream;
     /// The type produced by `poll_open_send()`
