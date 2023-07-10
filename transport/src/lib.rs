@@ -18,7 +18,6 @@ pub trait Connection<B: Buf> {
     type RecvStream: RecvStream;
     /// A producer of outgoing Unidirectional and Bidirectional streams.
     type OpenStreams: OpenStreams<
-        B,
         SendStream = Self::SendStream,
         RecvStream = Self::RecvStream,
         BidiStream = Self::BidiStream,
