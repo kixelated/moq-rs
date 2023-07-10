@@ -16,12 +16,6 @@ pub trait Connection {
     type SendStream: SendStream;
     /// The type produced by `poll_accept_recv()`
     type RecvStream: RecvStream;
-    /// A producer of outgoing Unidirectional and Bidirectional streams.
-    type OpenStreams: OpenStreams<
-        SendStream = Self::SendStream,
-        RecvStream = Self::RecvStream,
-        BidiStream = Self::BidiStream,
-    >;
 
     /// Accept an incoming unidirectional stream
     ///
@@ -50,9 +44,6 @@ pub trait Connection {
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Self::SendStream, Error>>;
-
-    /// Get an object to open outgoing streams.
-    fn opener(&self) -> Self::OpenStreams;
 
     /// Close the connection immediately
     fn close(&mut self, code: ErrorCode, reason: &[u8]);
