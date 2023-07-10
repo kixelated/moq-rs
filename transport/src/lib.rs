@@ -9,7 +9,7 @@ type ErrorCode = u64;
 type StreamId = u64;
 
 /// Trait representing a QUIC connection.
-pub trait Connection<B: Buf> {
+pub trait Connection {
     /// The type produced by `poll_accept_bidi()`
     type BidiStream: SendStream + RecvStream;
     /// The type of the sending part of `BidiStream`
