@@ -90,9 +90,6 @@ pub trait SendStream {
     /// Polls if the stream can send more data.
     fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Error>>;
 
-    /// Send more data on the stream.
-    fn send_data<T: Buf>(&mut self, data: T) -> Result<(), Error>;
-
     /// Poll to finish the sending side of the stream.
     fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Error>>;
 
