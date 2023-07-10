@@ -2,7 +2,7 @@
 // do a PR with the changes afterwards
 
 use std::task::{self, Poll};
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use anyhow::Error;
 
 type ErrorCode = u64;
@@ -125,10 +125,50 @@ pub trait RecvStream {
 
     /// Get QUIC send stream id
     fn recv_id(&self) -> StreamId;
+
 }
 
+pub async fn accept_recv<C: Connection<RecvStream = R>, R: RecvStream>(conn: &mut C) -> anyhow::Result<Option<R>, Error> {
+    Ok(std::future::poll_fn(|cx| conn.poll_accept_recv(cx)).await?)
+
+}
+
+pub async fn accept_bidi<C: Connection<BidiStream = B>, B: BidiStream>(conn: &mut C) -> anyhow::Result<Option<B>, Error> {
+    Ok(std::future::poll_fn(|cx| conn.poll_accept_bidi(cx)).await?)
+
+}
+
+pub async fn open_send<C: Connection<SendStream = S>, S: SendStream>(conn: &mut C) -> anyhow::Result<S, Error> {
+    Ok(std::future::poll_fn(|cx| conn.poll_open_send(cx)).await?)
+
+}
+
+pub async fn open_bidi<C: Connection<BidiStream = B>, B: BidiStream>(conn: &mut C) -> anyhow::Result<B, Error> {
+    Ok(std::future::poll_fn(|cx| conn.poll_open_bidi(cx)).await?)
+
+}
+
+
+
+pub async fn recv<B: Buf, BM: BufMut, R: RecvStream<Buf = B, Error = anyhow::Error>>(recv: &mut R , outbuf: &mut BM) -> anyhow::Result<bool> {
+    let buf = std::future::poll_fn(|cx| recv.poll_data(cx)).await?;
+    match buf {
+        Some(buf) => {
+            outbuf.put(buf);
+            Ok(true)
+        }
+        None => Ok(false)   // stream finished
+    }
+}
+
+pub async fn send<B: Buf, S: SendStreamUnframed<B>>(send: &mut S, buf: &mut B) -> anyhow::Result<usize> {
+    Ok(std::future::poll_fn(|cx| send.poll_send(cx, buf)).await?)
+}
+
+
+
 /// Optional trait to allow "splitting" a bidirectional stream into two sides.
-pub trait BidiStream<B: Buf>: SendStream + RecvStream {
+pub trait BidiStream: SendStream + RecvStream {
     /// The type for the send half.
     type SendStream: SendStream;
     /// The type for the receive half.
