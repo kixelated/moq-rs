@@ -107,7 +107,7 @@ pub trait SendStreamUnframed: SendStream {
 /// A trait describing the "receive" actions of a QUIC stream.
 pub trait RecvStream {
     /// The type of `Buf` for data received on this stream.
-    type Buf: Buf;
+    type Buf: Buf + Send;
 
     /// Poll the stream for more data.
     ///
