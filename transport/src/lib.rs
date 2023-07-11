@@ -91,7 +91,7 @@ pub trait SendStream {
 }
 
 /// Allows sending unframed pure bytes to a stream. Similar to [`AsyncWrite`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWrite.html)
-pub trait SendStreamUnframed<B: Buf>: SendStream {
+pub trait SendStreamUnframed: SendStream {
     /// Attempts write data into the stream.
     ///
     /// Returns the number of bytes written.
@@ -108,8 +108,6 @@ pub trait SendStreamUnframed<B: Buf>: SendStream {
 pub trait RecvStream {
     /// The type of `Buf` for data received on this stream.
     type Buf: Buf;
-    /// The error type that can occur when receiving data.
-    type Error: Into<Box<Error>>;
 
     /// Poll the stream for more data.
     ///
@@ -118,7 +116,7 @@ pub trait RecvStream {
     fn poll_data(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::Buf>, Error>>;
+    ) -> Poll<Result<Option<Self::Buf>, anyhow::Error>>;
 
     /// Send a `STOP_SENDING` QUIC code.
     fn stop_sending(&mut self, error_code: u64);
@@ -128,29 +126,29 @@ pub trait RecvStream {
 
 }
 
-pub async fn accept_recv<C: Connection<RecvStream = R>, R: RecvStream>(conn: &mut C) -> anyhow::Result<Option<R>, Error> {
+pub async fn accept_recv<C: Connection>(conn: &mut C) -> anyhow::Result<Option<C::RecvStream>, Error> {
     Ok(std::future::poll_fn(|cx| conn.poll_accept_recv(cx)).await?)
 
 }
 
-pub async fn accept_bidi<C: Connection<BidiStream = B>, B: BidiStream>(conn: &mut C) -> anyhow::Result<Option<B>, Error> {
+pub async fn accept_bidi<C: Connection>(conn: &mut C) -> anyhow::Result<Option<C::BidiStream>, Error> {
     Ok(std::future::poll_fn(|cx| conn.poll_accept_bidi(cx)).await?)
 
 }
 
-pub async fn open_send<C: Connection<SendStream = S>, S: SendStream>(conn: &mut C) -> anyhow::Result<S, Error> {
+pub async fn open_send<C: Connection>(conn: &mut C) -> anyhow::Result<C::SendStream, Error> {
     Ok(std::future::poll_fn(|cx| conn.poll_open_send(cx)).await?)
 
 }
 
-pub async fn open_bidi<C: Connection<BidiStream = B>, B: BidiStream>(conn: &mut C) -> anyhow::Result<B, Error> {
+pub async fn open_bidi<C: Connection>(conn: &mut C) -> anyhow::Result<C::BidiStream, Error> {
     Ok(std::future::poll_fn(|cx| conn.poll_open_bidi(cx)).await?)
 
 }
 
 
 
-pub async fn recv<B: Buf, BM: BufMut, R: RecvStream<Buf = B, Error = anyhow::Error>>(recv: &mut R , outbuf: &mut BM) -> anyhow::Result<bool> {
+pub async fn recv<B: Buf, BM: BufMut, R: RecvStream<Buf = B>>(recv: &mut R , outbuf: &mut BM) -> anyhow::Result<bool> {
     let buf = std::future::poll_fn(|cx| recv.poll_data(cx)).await?;
     match buf {
         Some(buf) => {
@@ -161,7 +159,7 @@ pub async fn recv<B: Buf, BM: BufMut, R: RecvStream<Buf = B, Error = anyhow::Err
     }
 }
 
-pub async fn send<B: Buf, S: SendStreamUnframed<B>>(send: &mut S, buf: &mut B) -> anyhow::Result<usize> {
+pub async fn send<B: Buf, S: SendStreamUnframed>(send: &mut S, buf: &mut B) -> anyhow::Result<usize> {
     Ok(std::future::poll_fn(|cx| send.poll_send(cx, buf)).await?)
 }
 
