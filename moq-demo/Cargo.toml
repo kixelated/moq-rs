@@ -27,7 +27,7 @@ rustls = "0.21.2"
 rustls-pemfile = "1.0.2"
 
 # Async stuff
-tokio = { version = "1.27", features = ["full"] }
+tokio = { version = "1.29.1", features = ["full"] }
 
 # Web server to serve the fingerprint
 warp = { version = "0.3.3", features = ["tls"] }
@@ -38,3 +38,9 @@ clap = { version = "4.0", features = [ "derive" ] }
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9.3"
 anyhow = "1.0.70"
+
+moq-transport-trait = { path = "../moq-transport-trait" }
+# moq-generic-transport = { path = "../transport" }
+moq-generic-transport = {git = "https://github.com/francoismichel/moq-rs-quiche", branch = "generic-transport-trait"}
+webtransport_quiche = { git = "ssh://git@github.com/francoismichel/webtransport-quiche.git" }
+async_webtransport = { git = "ssh://git@github.com/francoismichel/webtransport-quiche.git" }

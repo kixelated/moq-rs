@@ -5,4 +5,5 @@ members = [
     "moq-demo",
     "moq-warp",
     "transport",
+    "moq-transport-trait",
 ]

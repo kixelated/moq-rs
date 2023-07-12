@@ -1,17 +1,19 @@
 use anyhow::Context;
 
+use bytes::Buf;
+use moq_generic_transport::{SendStream, SendStreamUnframed, BidiStream, Connection};
 use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_quinn::SendObjects;
+use moq_transport_trait::SendObjects;
 
 use super::{broker, control};
 use crate::model::{segment, track};
 
-pub struct Session {
+pub struct Session<S: SendStream + SendStreamUnframed + Send, B: BidiStream<SendStream = S>, C: Connection<SendStream = S, BidiStream = B> + Send> {
 	// Objects are sent to the client
-	objects: SendObjects,
+	objects: SendObjects<C>,
 
 	// Used to send and receive control messages.
 	control: control::Component<control::Distribute>,
@@ -23,9 +25,9 @@ pub struct Session {
 	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
 }
 
-impl Session {
+impl<S: SendStream + SendStreamUnframed + Send, B: BidiStream<SendStream = S>, C: Connection<SendStream = S, BidiStream = B> + Send + 'static> Session<S, B, C> {
 	pub fn new(
-		objects: SendObjects,
+		objects: SendObjects<C>,
 		control: control::Component<control::Distribute>,
 		broker: broker::Broadcasts,
 	) -> Self {
@@ -119,7 +121,7 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_subscribe(objects: SendObjects, track_id: VarInt, mut track: track::Subscriber) -> SubscribeError {
+	async fn run_subscribe(objects: SendObjects<C>, track_id: VarInt, mut track: track::Subscriber) -> SubscribeError {
 		let mut tasks = JoinSet::new();
 		let mut result = None;
 
@@ -154,7 +156,7 @@ impl Session {
 	}
 
 	async fn serve_group(
-		mut objects: SendObjects,
+		mut objects: SendObjects<C>,
 		track_id: VarInt,
 		mut segment: segment::Subscriber,
 	) -> anyhow::Result<()> {
@@ -169,7 +171,11 @@ impl Session {
 
 		// Write each fragment as they are available.
 		while let Some(fragment) = segment.fragments.next().await {
-			stream.write_all(fragment.as_slice()).await?;
+			let mut buf = bytes::Bytes::copy_from_slice(fragment.as_slice());
+			while buf.has_remaining() {
+				moq_generic_transport::send(&mut stream, &mut buf).await?;
+			}
+			// stream.write_all(fragment.as_slice()).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped

@@ -2,12 +2,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time;
 
+use bytes::Buf;
+use moq_generic_transport::{Connection, RecvStream, SendStream, SendStreamUnframed, BidiStream};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_quinn::{RecvObjects, RecvStream};
+use moq_transport_trait::{RecvObjects};
+
 
 use anyhow::Context;
 
@@ -16,9 +19,9 @@ use crate::model::{broadcast, segment, track};
 use crate::source::Source;
 
 // TODO experiment with making this Clone, so every task can have its own copy.
-pub struct Session {
+pub struct Session<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> {
 	// Used to receive objects.
-	objects: RecvObjects,
+	objects: RecvObjects<C>,
 
 	// Used to send and receive control messages.
 	control: control::Component<control::Contribute>,
@@ -36,9 +39,9 @@ pub struct Session {
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
 }
 
-impl Session {
+impl<Bu: Buf + Send, S: SendStream + SendStreamUnframed, R: RecvStream<Buf = Bu> + Send + 'static, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> Session<S, R, B, C> {
 	pub fn new(
-		objects: RecvObjects,
+		objects: RecvObjects<C>,
 		control: control::Component<control::Contribute>,
 		broker: broker::Broadcasts,
 	) -> Self {
@@ -63,7 +66,7 @@ impl Session {
 				},
 				object = self.objects.recv() => {
 					let (object, stream) = object.context("failed to receive object")?;
-					let res = self.receive_object(object, stream).await;
+					let res = self.receive_object(object, Box::new(stream)).await;
 					if let Err(err) = res {
 						log::error!("failed to receive object: {:?}", err);
 					}
@@ -88,7 +91,7 @@ impl Session {
 		}
 	}
 
-	async fn receive_object(&mut self, object: Object, stream: RecvStream) -> anyhow::Result<()> {
+	async fn receive_object<Buu: Buf + Send, Re: RecvStream<Buf = Buu> + Send + 'static>(&mut self, object: Object, stream: Box<Re>) -> anyhow::Result<()> {
 		let track = object.track;
 
 		let segment = segment::Info {
@@ -111,16 +114,18 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
-		let mut buf = [0u8; 32 * 1024];
+	async fn run_segment<Buu: Buf + Send, Re: RecvStream<Buf = Buu> + Send + 'static>(mut segment: segment::Publisher, mut stream: Box<Re>) -> anyhow::Result<()> {
+		// let mut buf = [0u8; 32 * 1024];
 		loop {
-			let size = stream.read(&mut buf).await.context("failed to read from stream")?;
-			if size == 0 {
+			let mut b = bytes::BytesMut::new();
+			let stream_finished = !moq_generic_transport::recv(stream.as_mut(), &mut b).await?;
+			// let size = stream.read(&mut buf).await.context("failed to read from stream")?;
+			if stream_finished {
 				return Ok(());
 			}
 
-			let chunk = buf[..size].to_vec();
-			segment.fragments.push(chunk.into())
+			// let chunk = buf[..size].to_vec();
+			segment.fragments.push(b.chunk().to_vec().into())
 		}
 	}
 
@@ -174,7 +179,7 @@ impl Session {
 	}
 }
 
-impl Drop for Session {
+impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S, RecvStream = R>, R: RecvStream + Send, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> Drop for Session<S, R, B, C> {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?
