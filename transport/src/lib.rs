@@ -11,9 +11,9 @@ type StreamId = u64;
 /// Trait representing a QUIC connection.
 pub trait Connection {
     /// The type produced by `poll_accept_bidi()`
-    type BidiStream: SendStream + RecvStream;
+    type BidiStream: BidiStream;
     /// The type of the sending part of `BidiStream`
-    type SendStream: SendStream;
+    type SendStream: SendStream + SendStreamUnframed;
     /// The type produced by `poll_accept_recv()`
     type RecvStream: RecvStream;
 
@@ -52,9 +52,9 @@ pub trait Connection {
 /// Trait for opening outgoing streams
 pub trait OpenStreams {
     /// The type produced by `poll_open_bidi()`
-    type BidiStream: SendStream + RecvStream;
+    type BidiStream: BidiStream;
     /// The type produced by `poll_open_send()`
-    type SendStream: SendStream;
+    type SendStream: SendStream + SendStreamUnframed;
     /// The type of the receiving part of `BidiStream`
     type RecvStream: RecvStream;
 
@@ -188,7 +188,7 @@ pub async fn send<B: Buf, S: SendStreamUnframed>(send: &mut S, buf: &mut B) -> a
 /// Optional trait to allow "splitting" a bidirectional stream into two sides.
 pub trait BidiStream: SendStream + RecvStream {
     /// The type for the send half.
-    type SendStream: SendStream;
+    type SendStream: SendStream + SendStreamUnframed;
     /// The type for the receive half.
     type RecvStream: RecvStream;
 
