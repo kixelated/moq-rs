@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use anyhow::Context;
 use moq_generic_transport::{SendStream, SendStreamUnframed, BidiStream, Connection, RecvStream};
 
@@ -6,16 +8,23 @@ use super::{broker, contribute, control, distribute};
 use moq_transport::{Role, SetupServer, Version};
 use moq_transport_quinn::Connect;
 
-pub struct Session<S: SendStream + SendStreamUnframed + Send, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> {
+pub struct Session<R: RecvStream + Send, S: SendStream + SendStreamUnframed + Send, C: Connection + Send> {
 	// Split logic into contribution/distribution to reduce the problem space.
-	contribute: contribute::Session<S, R, B, C>,
-	distribute: distribute::Session<S, B, C>,
+	contribute: contribute::Session<R, C>,
+	distribute: distribute::Session<S, C>,
 
 	// Used to receive control messages and forward to contribute/distribute.
-	control: control::Main<S, B>,
+	control: control::Main<C::BidiStream>,
+	_marker: PhantomData<S>,
+	_marker_r: PhantomData<R>,
 }
 
-impl<S: SendStream + SendStreamUnframed + Send + 'static, B: BidiStream<SendStream = S, RecvStream = R>, R: RecvStream + Send + 'static, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send + 'static> Session<S, R, B, C> {
+// impl<R: RecvStream + Send + 'static, S: SendStream + SendStreamUnframed + Send, C: Connection<RecvStream = R, SendStream = S> + Send + 'static> Session<R, S, C> {
+impl<R, S, C> Session<R, S, C> where
+	R: RecvStream + Send + 'static,
+	S: SendStream + SendStreamUnframed + Send,
+	C: Connection<RecvStream = R, SendStream = S> + Send + 'static
+{
 	// pub async fn accept(session: Connect, broker: broker::Broadcasts) -> anyhow::Result<Session<S, R, B, C>> {
 	// 	// Accep the WebTransport session.
 	// 	// OPTIONAL validate the conn.uri() otherwise call conn.reject()
@@ -63,9 +72,9 @@ impl<S: SendStream + SendStreamUnframed + Send + 'static, B: BidiStream<SendStre
 	// }
 
 	pub async fn from_session(
-		session: moq_transport_trait::Session<S, R, B, C>,
+		session: moq_transport_trait::Session<C>,
 		broker: broker::Broadcasts,
-	) -> anyhow::Result<Session<S, R, B, C>> {
+	) -> anyhow::Result<Session<R, S, C>> {
 		let (control, objects) = session.split();
 		let (objects_send, objects_recv) = objects.split();
 
@@ -78,6 +87,8 @@ impl<S: SendStream + SendStreamUnframed + Send + 'static, B: BidiStream<SendStre
 			control,
 			contribute,
 			distribute,
+    		_marker: PhantomData,
+    		_marker_r: PhantomData,
 		};
 
 		Ok(session)

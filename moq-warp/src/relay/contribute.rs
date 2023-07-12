@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time;
 
@@ -19,7 +20,7 @@ use crate::model::{broadcast, segment, track};
 use crate::source::Source;
 
 // TODO experiment with making this Clone, so every task can have its own copy.
-pub struct Session<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> {
+pub struct Session<R: RecvStream + Send, C: Connection + Send> {
 	// Used to receive objects.
 	objects: RecvObjects<C>,
 
@@ -37,9 +38,10 @@ pub struct Session<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: 
 
 	// Tasks we are currently serving.
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
+	_marker: PhantomData<R>,
 }
 
-impl<Bu: Buf + Send, S: SendStream + SendStreamUnframed, R: RecvStream<Buf = Bu> + Send + 'static, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> Session<S, R, B, C> {
+impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Session<R, C> {
 	pub fn new(
 		objects: RecvObjects<C>,
 		control: control::Component<control::Contribute>,
@@ -52,6 +54,7 @@ impl<Bu: Buf + Send, S: SendStream + SendStreamUnframed, R: RecvStream<Buf = Bu>
 			broadcasts: HashMap::new(),
 			publishers: Publishers::new(),
 			run_segments: JoinSet::new(),
+    		_marker: PhantomData,
 		}
 	}
 
@@ -179,7 +182,7 @@ impl<Bu: Buf + Send, S: SendStream + SendStreamUnframed, R: RecvStream<Buf = Bu>
 	}
 }
 
-impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S, RecvStream = R>, R: RecvStream + Send, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> Drop for Session<S, R, B, C> {
+impl<R: RecvStream + Send, C: Connection + Send> Drop for Session<R, C> {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?

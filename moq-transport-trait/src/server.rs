@@ -42,14 +42,14 @@ use super::{Control, Objects};
 // }
 
 
-pub struct Session<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> {
-	pub control: Control<S, C::BidiStream>,
+pub struct Session<C: Connection + Send> {
+	pub control: Control<C::BidiStream>,
 	pub objects: Objects<C>,
 }
 
-impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S, RecvStream = R>, R: RecvStream + Send + 'static, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> Session<S, R, B, C> {
+impl<R: RecvStream + 'static, C: Connection<RecvStream = R> + Send> Session<C> {
 
-	pub async fn accept(control_stream: Box<C::BidiStream>, connection: Box<C>) -> anyhow::Result<AcceptSetup<S, R, B, C>> {
+	pub async fn accept(control_stream: Box<C::BidiStream>, connection: Box<C>) -> anyhow::Result<AcceptSetup<C>> {
 		let mut control = Control::new(control_stream);
 		let objects = Objects::new(std::sync::Arc::new(std::sync::Mutex::new(connection)));
 
@@ -60,26 +60,26 @@ impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S, RecvStrea
 		Ok(AcceptSetup { setup_client, control, objects })
 
 	}
-	pub fn split(self) -> (Control<B::SendStream, C::BidiStream>, Objects<C>) {
+	pub fn split(self) -> (Control<C::BidiStream>, Objects<C>) {
 		(self.control, self.objects)
 	}
 }
 
 
-pub struct AcceptSetup<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> {
+pub struct AcceptSetup<C: Connection + Send> {
 	setup_client: SetupClient,
-	control: Control<S, C::BidiStream>,
+	control: Control<C::BidiStream>,
 	objects: Objects<C>,
 }
 
-impl<S: SendStream + SendStreamUnframed, R: RecvStream + Send, B: BidiStream<SendStream = S, RecvStream = R>, C: Connection<SendStream = S, RecvStream = R, BidiStream = B> + Send> AcceptSetup<S, R, B, C> {
+impl<C: Connection + Send> AcceptSetup<C> {
 	// Return the setup message we received.
 	pub fn setup(&self) -> &SetupClient {
 		&self.setup_client
 	}
 
 	// Accept the session with our own setup message.
-	pub async fn accept(mut self, setup_server: SetupServer) -> anyhow::Result<Session<S, R, B, C>> {
+	pub async fn accept(mut self, setup_server: SetupServer) -> anyhow::Result<Session<C>> {
 		self.control.send(setup_server).await?;
 		Ok(Session {
 			control: self.control,

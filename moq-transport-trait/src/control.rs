@@ -1,4 +1,4 @@
-use moq_generic_transport::{SendStream, RecvStream, BidiStream, SendStreamUnframed};
+use moq_generic_transport::{SendStream, RecvStream, BidiStream, SendStreamUnframed, Connection};
 use moq_transport::{Decode, DecodeError, Encode, Message};
 
 use bytes::{Buf, BytesMut};
@@ -9,12 +9,12 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 
-pub struct Control<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> {
-	sender: ControlSend<B::SendStream>,
+pub struct Control<B: BidiStream> {
+	sender: ControlSend<B>,
 	recver: ControlRecv<B::RecvStream>,
 }
 
-impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> Control<S, B> {
+impl<B: BidiStream> Control<B>{
 	pub(crate) fn new(stream: Box<B>) -> Self {
 		let (sender, recver) = stream.split();
 		let sender = ControlSend::new(Box::new(sender));
@@ -23,7 +23,7 @@ impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> Control<
 		Self { sender, recver }
 	}
 
-	pub fn split(self) -> (ControlSend<B::SendStream>, ControlRecv<B::RecvStream>) {
+	pub fn split(self) -> (ControlSend<B>, ControlRecv<B::RecvStream>) {
 		(self.sender, self.recver)
 	}
 
@@ -36,13 +36,13 @@ impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> Control<
 	}
 }
 
-pub struct ControlSend<S> {
-	stream: Box<S>,
+pub struct ControlSend<B: BidiStream> {
+	stream: Box<B::SendStream>,
 	buf: BytesMut, // reuse a buffer to encode messages.
 }
 
-impl<S: SendStream + SendStreamUnframed> ControlSend<S> {
-	pub fn new(inner: Box<S>) -> Self {
+impl<B: BidiStream> ControlSend<B> {
+	pub fn new(inner: Box<B::SendStream>) -> Self {
 		Self {
 			buf: BytesMut::new(),
 			stream: inner,
@@ -63,10 +63,9 @@ impl<S: SendStream + SendStreamUnframed> ControlSend<S> {
 	}
 
 	// Helper that lets multiple threads send control messages.
-	pub fn share(self) -> ControlShared<S> {
+	pub fn share(self) -> ControlShared<B> {
 		ControlShared {
 			stream: Arc::new(Mutex::new(self)),
-    		_marker: PhantomData,
 		}
 	}
 }
@@ -74,12 +73,11 @@ impl<S: SendStream + SendStreamUnframed> ControlSend<S> {
 // Helper that allows multiple threads to send control messages.
 // There's no equivalent for receiving since only one thread should be receiving at a time.
 #[derive(Clone)]
-pub struct ControlShared<S: SendStream + SendStreamUnframed> {
-	stream: Arc<Mutex<ControlSend<S>>>,
-	_marker: PhantomData<S>
+pub struct ControlShared<B: BidiStream> {
+	stream: Arc<Mutex<ControlSend<B>>>,
 }
 
-impl<S: SendStream + SendStreamUnframed> ControlShared<S> {
+impl<B: BidiStream> ControlShared<B> {
 	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
 		let mut stream = self.stream.lock().await;
 		stream.send(msg).await

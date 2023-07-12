@@ -4,15 +4,15 @@ use tokio::sync::mpsc;
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Message, Subscribe, SubscribeError, SubscribeOk};
 use moq_transport_trait::Control;
 
-pub struct Main<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> {
-	control: Control<S, B>,
+pub struct Main<B: BidiStream> {
+	control: Control<B>,
 	outgoing: mpsc::Receiver<Message>,
 
 	contribute: mpsc::Sender<Contribute>,
 	distribute: mpsc::Sender<Distribute>,
 }
 
-impl<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>> Main <S, B> {
+impl<B: BidiStream> Main <B> {
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
@@ -52,7 +52,7 @@ impl<T> Component<T> {
 }
 
 // Splits a control stream into two components, based on if it's a message for contribution or distribution.
-pub fn split<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>>(control: Control<S, B>) -> (Main<S, B>, Component<Contribute>, Component<Distribute>) {
+pub fn split<S: SendStream + SendStreamUnframed, B: BidiStream<SendStream = S>>(control: Control<B>) -> (Main<B>, Component<Contribute>, Component<Distribute>) {
 	let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
 	let (contribute_tx, contribute_rx) = mpsc::channel(1);
 	let (distribute_tx, distribute_rx) = mpsc::channel(1);

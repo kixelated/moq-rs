@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use anyhow::Context;
 
 use bytes::Buf;
@@ -11,7 +13,7 @@ use moq_transport_trait::SendObjects;
 use super::{broker, control};
 use crate::model::{segment, track};
 
-pub struct Session<S: SendStream + SendStreamUnframed + Send, B: BidiStream<SendStream = S>, C: Connection<SendStream = S, BidiStream = B> + Send> {
+pub struct Session<S: SendStream + SendStreamUnframed + Send, C: Connection + Send> {
 	// Objects are sent to the client
 	objects: SendObjects<C>,
 
@@ -23,9 +25,13 @@ pub struct Session<S: SendStream + SendStreamUnframed + Send, B: BidiStream<Send
 
 	// A list of tasks that are currently running.
 	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
+
+	_marker: PhantomData<S>,
 }
 
-impl<S: SendStream + SendStreamUnframed + Send, B: BidiStream<SendStream = S>, C: Connection<SendStream = S, BidiStream = B> + Send + 'static> Session<S, B, C> {
+impl<S, C> Session<S, C> where
+	S: SendStream + SendStreamUnframed + Send,
+	C: Connection<SendStream = S> + Send + 'static {
 	pub fn new(
 		objects: SendObjects<C>,
 		control: control::Component<control::Distribute>,
@@ -36,6 +42,7 @@ impl<S: SendStream + SendStreamUnframed + Send, B: BidiStream<SendStream = S>, C
 			control,
 			broker,
 			run_subscribes: JoinSet::new(),
+    		_marker: PhantomData,
 		}
 	}
 
