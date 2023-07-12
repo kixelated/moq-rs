@@ -131,7 +131,7 @@ pub async fn accept_recv<C: Connection>(conn: &mut C) -> anyhow::Result<Option<C
 
 }
 
-pub async fn accept_recv_shared<C: Connection>(conn: Arc<std::sync::Mutex<C>>) -> anyhow::Result<Option<C::RecvStream>, Error> {
+pub async fn accept_recv_shared<C: Connection>(conn: Arc<std::sync::Mutex<Box<C>>>) -> anyhow::Result<Option<C::RecvStream>, Error> {
     Ok(std::future::poll_fn(|cx| conn.lock().unwrap().poll_accept_recv(cx)).await?)
 
 }
@@ -141,7 +141,7 @@ pub async fn accept_bidi<C: Connection>(conn: &mut C) -> anyhow::Result<Option<C
 
 }
 
-pub async fn accept_bidi_shared<C: Connection>(conn: Arc<std::sync::Mutex<C>>) -> anyhow::Result<Option<C::BidiStream>, Error> {
+pub async fn accept_bidi_shared<C: Connection>(conn: Arc<std::sync::Mutex<Box<C>>>) -> anyhow::Result<Option<C::BidiStream>, Error> {
     Ok(std::future::poll_fn(|cx| conn.lock().unwrap().poll_accept_bidi(cx)).await?)
 
 }
@@ -151,7 +151,7 @@ pub async fn open_send<C: Connection>(conn: &mut C) -> anyhow::Result<C::SendStr
 
 }
 
-pub async fn open_send_shared<C: Connection>(conn: Arc<std::sync::Mutex<C>>) -> anyhow::Result<C::SendStream, Error> {
+pub async fn open_send_shared<C: Connection>(conn: Arc<std::sync::Mutex<Box<C>>>) -> anyhow::Result<C::SendStream, Error> {
     Ok(std::future::poll_fn(|cx| conn.lock().unwrap().poll_open_send(cx)).await?)
 
 }
@@ -161,7 +161,7 @@ pub async fn open_bidi<C: Connection>(conn: &mut C) -> anyhow::Result<C::BidiStr
 
 }
 
-pub async fn open_bidi_shared<C: Connection>(conn: Arc<std::sync::Mutex<C>>) -> anyhow::Result<C::BidiStream, Error> {
+pub async fn open_bidi_shared<C: Connection>(conn: Arc<std::sync::Mutex<Box<C>>>) -> anyhow::Result<C::BidiStream, Error> {
     Ok(std::future::poll_fn(|cx| conn.lock().unwrap().poll_open_bidi(cx)).await?)
 
 }
