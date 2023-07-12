@@ -1,5 +1,5 @@
 [package]
-name = "moq-demo"
+name = "moq-demo-quinn"
 description = "Media over QUIC"
 authors = [ "Luke Curley" ]
 repository = "https://github.com/kixelated/moq-rs"
@@ -16,7 +16,12 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
+moq-transport-quinn = { path = "../moq-transport-quinn" }
 moq-warp = { path = "../moq-warp" }
+
+h3 = { git = "https://github.com/hyperium/h3", branch = "master" }
+h3-quinn = { git = "https://github.com/hyperium/h3", branch = "master" }
+h3-webtransport = { git = "https://github.com/hyperium/h3", branch = "master" }
 
 # QUIC
 quinn = "0.10"
@@ -39,7 +44,9 @@ log = { version = "0.4", features = ["std"] }
 env_logger = "0.9.3"
 anyhow = "1.0.70"
 
-moq-transport-trait = { path = "../moq-transport-trait" }
+bytes= "1"
+
+moq-transport-generic = { path = "../moq-transport-generic" }
 # moq-generic-transport = { path = "../transport" }
 moq-generic-transport = {git = "https://github.com/francoismichel/moq-rs-quiche", branch = "generic-transport-trait"}
 webtransport_quiche = { git = "ssh://git@github.com/francoismichel/webtransport-quiche.git" }

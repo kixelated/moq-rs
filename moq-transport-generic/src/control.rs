@@ -1,10 +1,9 @@
-use moq_generic_transport::{SendStream, RecvStream, BidiStream, SendStreamUnframed, Connection};
+use moq_generic_transport::{RecvStream, BidiStream};
 use moq_transport::{Decode, DecodeError, Encode, Message};
 
 use bytes::{Buf, BytesMut};
 
 use std::io::Cursor;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

@@ -1,47 +1,10 @@
 
 use anyhow::Context;
-use moq_generic_transport::{Connection, BidiStream, SendStream, SendStreamUnframed, RecvStream};
+use moq_generic_transport::{Connection, RecvStream};
 use moq_transport::{Message, SetupClient, SetupServer};
 
-use crate::SharedConnection;
 
 use super::{Control, Objects};
-// pub struct Server<C: Connection> {
-// 	// The Webtransport/QUIC server, with an already established session/connection.
-// 	endpoint: Box<C>,
-// }
-
-// impl<C: Connection> Server<C> {
-// 	pub fn new(endpoint: Box<C>) -> Self {
-// 		let handshake = JoinSet::new();
-// 		Self { endpoint }
-// 	}
-
-// 	// Accept the next WebTransport session.
-// 	pub async fn accept(&mut self) -> anyhow::Result<Connect> {
-// 		loop {
-// 			tokio::select!(
-// 				// Accept the connection and start the WebTransport handshake.
-// 				conn = self.endpoint.accept() => {
-// 					let conn = conn.context("failed to accept connection")?;
-// 					self.handshake.spawn(async move {
-// 						Connecting::new(conn).accept().await
-// 					});
-// 				},
-// 				// Return any mostly finished WebTransport handshakes.
-// 				res = self.handshake.join_next(), if !self.handshake.is_empty() => {
-// 					let res = res.expect("no tasks").expect("task aborted");
-// 					match res {
-// 						Ok(session) => return Ok(session),
-// 						Err(err) => log::warn!("failed to accept session: {:?}", err),
-// 					}
-// 				},
-// 			)
-// 		}
-// 	}
-// }
-
-
 pub struct Session<C: Connection + Send> {
 	pub control: Control<C::BidiStream>,
 	pub objects: Objects<C>,

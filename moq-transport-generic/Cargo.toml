@@ -1,5 +1,5 @@
 [package]
-name = "moq-transport-trait"
+name = "moq-transport-generic"
 description = "Media over QUIC"
 authors = [ "Luke Curley" ]
 repository = "https://github.com/kixelated/moq-rs"

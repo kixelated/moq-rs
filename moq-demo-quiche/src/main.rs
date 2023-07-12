@@ -120,92 +120,67 @@ async fn main() -> anyhow::Result<()> {
 		broker: broker.clone(),
 	};
 
-	if args.quiche {
-		let (server, socket, regexes) = new_quiche(config).unwrap();
-		let server = Arc::new(std::sync::Mutex::new(server));
-		let socket = Arc::new(socket);
-		let mut buf = vec![0; 10000];
-		let mut tasks = JoinSet::new();
-		'mainloop: loop {
-			println!("listen...");
-			let cid = {
-				// let mut server = endpoint.quiche_server.lock().await;
-				let ret = async_webtransport_handler::AsyncWebTransportServer::listen_ref(server.clone(), socket.clone(), &mut buf).await?;
-				println!("listen returned {:?}", ret);
-				match ret {
-					Some(cid) => cid,
-					None => continue 'mainloop,
-				}
-			};
-			
-			loop {
-				println!("poll");
-				match server.lock().unwrap().poll(&cid, &regexes[..]) {
-					Ok(async_webtransport_handler::Event::NewSession(path, session_id, _regex_index)) => {
+	let (server, socket, regexes) = new_quiche(config).unwrap();
+	let server = Arc::new(std::sync::Mutex::new(server));
+	let socket = Arc::new(socket);
+	let mut buf = vec![0; 10000];
+	let mut tasks = JoinSet::new();
+	'mainloop: loop {
+		println!("listen...");
+		let cid = {
+			// let mut server = endpoint.quiche_server.lock().await;
+			let ret = async_webtransport_handler::AsyncWebTransportServer::listen_ref(server.clone(), socket.clone(), &mut buf).await?;
+			println!("listen returned {:?}", ret);
+			match ret {
+				Some(cid) => cid,
+				None => continue 'mainloop,
+			}
+		};
+		
+		loop {
+			println!("poll");
+			match server.lock().unwrap().poll(&cid, &regexes[..]) {
+				Ok(async_webtransport_handler::Event::NewSession(path, session_id, _regex_index)) => {
 
-						let server = server.clone();
-						let cid = cid.clone();
-						let broker = broker.clone();
-						tasks.spawn(async move {
-							// let control_stream = async_webtransport_handler::ServerBidiStream::new(server.clone(), cid.clone(), session_id, session_id);
-							let mut webtransport_session = async_webtransport_handler::WebTransportSession::new(server.clone(), cid.clone(), session_id);
-							let control_stream = moq_generic_transport::accept_bidi(&mut webtransport_session).await.unwrap().unwrap();
-							// let control_stream = async_webtransport_handler::ServerBidiStream::new(server.clone(), cid.clone(), session_id, control_stream_id);
-							// let session = moq_transport_trait::Session::new(Box::new(control_stream), Box::new(webtransport_session));
-							let received_client_setup = moq_transport_trait::Session::accept(Box::new(control_stream), Box::new(webtransport_session)).await.unwrap();
-							// TODO: maybe reject setup
-							let role = match received_client_setup.setup().role {
-								Role::Publisher => Role::Subscriber,
-								Role::Subscriber => Role::Publisher,
-								Role::Both => Role::Both,
-							};
-							let setup_server = SetupServer {
-								version: Version::DRAFT_00,
-								role,
-							};
-						
-							let session = received_client_setup.accept(setup_server).await.unwrap();
-							let session = relay::Session::from_session(session, broker.clone()).await.unwrap();
-							session.run().await
-						});
-					},
-					Ok(async_webtransport_handler::Event::StreamData(session_id, stream_id)) => {
-						log::trace!("new data!");
-					},
-					Ok(async_webtransport_handler::Event::Done) => {
-						println!("H3 Done");
-						break;
-					},
-					Ok(async_webtransport_handler::Event::GoAway) => {
-						println!("GOAWAY");
-						break;
-					},
+					let server = server.clone();
+					let cid = cid.clone();
+					let broker = broker.clone();
+					tasks.spawn(async move {
+						let mut webtransport_session = async_webtransport_handler::WebTransportSession::new(server.clone(), cid.clone(), session_id);
+						let control_stream = moq_generic_transport::accept_bidi(&mut webtransport_session).await.unwrap().unwrap();
+						let received_client_setup = moq_transport_generic::Session::accept(Box::new(control_stream), Box::new(webtransport_session)).await.unwrap();
+						// TODO: maybe reject setup
+						let role = match received_client_setup.setup().role {
+							Role::Publisher => Role::Subscriber,
+							Role::Subscriber => Role::Publisher,
+							Role::Both => Role::Both,
+						};
+						let setup_server = SetupServer {
+							version: Version::DRAFT_00,
+							role,
+						};
+					
+						let session = received_client_setup.accept(setup_server).await.unwrap();
+						let session = relay::Session::from_transport_session(session, broker.clone()).await.unwrap();
+						session.run().await
+					});
+				},
+				Ok(async_webtransport_handler::Event::StreamData(session_id, stream_id)) => {
+					log::trace!("new data!");
+				},
+				Ok(async_webtransport_handler::Event::Done) => {
+					println!("H3 Done");
+					break;
+				},
+				Ok(async_webtransport_handler::Event::GoAway) => {
+					println!("GOAWAY");
+					break;
+				},
 
-					Err(_) => todo!(),
-				}
+				Err(_) => todo!(),
 			}
 		}
-
-		// let session = moq_transport_trait::Session::new(control_stream, connection)
-		// let server = relay::Server::new(config).context("failed to create server")?;
-		// // Run all of the above
-		// tokio::select! {
-		// 	res = server.run() => res.context("failed to run server"),
-		// 	res = media.run() => res.context("failed to run media source"),
-		// 	res = serve => res.context("failed to run HTTP server"),
-		// }
-	} else {
-		// let server = relay::Server::new(config).context("failed to create server")?;
-	
-		// Run all of the above
-		// tokio::select! {
-		// 	res = server.run() => res.context("failed to run server"),
-		// 	res = media.run() => res.context("failed to run media source"),
-		// 	res = serve => res.context("failed to run HTTP server"),
-		// }
-
 	}
-	Ok(())
 }
 
 // Run a HTTP server using Warp

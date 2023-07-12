@@ -2,7 +2,7 @@ use moq_generic_transport::{SendStream, SendStreamUnframed, BidiStream};
 use tokio::sync::mpsc;
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Message, Subscribe, SubscribeError, SubscribeOk};
-use moq_transport_trait::Control;
+use moq_transport_generic::Control;
 
 pub struct Main<B: BidiStream> {
 	control: Control<B>,
