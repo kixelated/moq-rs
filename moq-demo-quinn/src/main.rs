@@ -104,17 +104,6 @@ async fn main() -> anyhow::Result<()> {
 		}
 	}
 
-
-
-
-		// let server = relay::Server::new(config).context("failed to create server")?;
-	
-		// Run all of the above
-		// tokio::select! {
-		// 	res = server.run() => res.context("failed to run server"),
-		// 	res = media.run() => res.context("failed to run media source"),
-		// 	res = serve => res.context("failed to run HTTP server"),
-		// }
 }
 
 // Run a HTTP server using Warp
