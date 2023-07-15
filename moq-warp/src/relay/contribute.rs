@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time;
 
@@ -18,7 +17,7 @@ use crate::model::{broadcast, segment, track};
 use crate::source::Source;
 
 // TODO experiment with making this Clone, so every task can have its own copy.
-pub struct Session<R: RecvStream + Send, C: Connection + Send> {
+pub struct Session<C: Connection + Send> {
 	// Used to receive objects.
 	objects: RecvObjects<C>,
 
@@ -36,10 +35,9 @@ pub struct Session<R: RecvStream + Send, C: Connection + Send> {
 
 	// Tasks we are currently serving.
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
-	_marker: PhantomData<R>,
 }
 
-impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Session<R, C> {
+impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Session<C> {
 	pub fn new(
 		objects: RecvObjects<C>,
 		control: control::Component<control::Contribute>,
@@ -52,7 +50,6 @@ impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Sessi
 			broadcasts: HashMap::new(),
 			publishers: Publishers::new(),
 			run_segments: JoinSet::new(),
-    		_marker: PhantomData,
 		}
 	}
 
@@ -180,7 +177,7 @@ impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Sessi
 	}
 }
 
-impl<R: RecvStream + Send, C: Connection + Send> Drop for Session<R, C> {
+impl<C: Connection + Send> Drop for Session<C> {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?

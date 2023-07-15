@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use anyhow::Context;
 
 use bytes::Buf;
@@ -11,7 +9,7 @@ use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, Subs
 use super::{broker, control};
 use crate::model::{segment, track};
 
-pub struct Session<S: SendStream + Send, C: Connection + Send> {
+pub struct Session<C: Connection + Send> {
 	// Objects are sent to the client
 	objects: SendObjects<C>,
 
@@ -23,11 +21,9 @@ pub struct Session<S: SendStream + Send, C: Connection + Send> {
 
 	// A list of tasks that are currently running.
 	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
-
-	_marker: PhantomData<S>,
 }
 
-impl<S, C> Session<S, C> where
+impl<S, C> Session<C> where
 	S: SendStream + Send,
 	C: Connection<SendStream = S> + Send + 'static {
 	pub fn new(
@@ -40,7 +36,6 @@ impl<S, C> Session<S, C> where
 			control,
 			broker,
 			run_subscribes: JoinSet::new(),
-    		_marker: PhantomData,
 		}
 	}
 

@@ -1,22 +1,18 @@
-use std::marker::PhantomData;
-
 use webtransport_generic::{SendStream, Connection, RecvStream};
 
 use super::{broker, contribute, control, distribute};
 
 
-pub struct Session<R: RecvStream + Send, S: SendStream + Send, C: Connection + Send> {
+pub struct Session<C: Connection + Send> {
 	// Split logic into contribution/distribution to reduce the problem space.
-	contribute: contribute::Session<R, C>,
-	distribute: distribute::Session<S, C>,
+	contribute: contribute::Session<C>,
+	distribute: distribute::Session<C>,
 
 	// Used to receive control messages and forward to contribute/distribute.
-	control: control::Main<S, R>,
-	_marker: PhantomData<S>,
-	_marker_r: PhantomData<R>,
+	control: control::Main<C::SendStream, C::RecvStream>,
 }
 
-impl<R, S, C> Session<R, S, C> where
+impl<R, S, C> Session<C> where
 	R: RecvStream + Send + 'static,
 	S: SendStream + Send,
 	C: Connection<RecvStream = R, SendStream = S> + Send + 'static
@@ -24,7 +20,7 @@ impl<R, S, C> Session<R, S, C> where
 	pub async fn from_transport_session(
 		session: moq_transport::Session<C>,
 		broker: broker::Broadcasts,
-	) -> anyhow::Result<Session<R, S, C>> {
+	) -> anyhow::Result<Session<C>> {
 		let (control, objects) = session.split();
 		let (objects_send, objects_recv) = objects.split();
 
@@ -37,8 +33,6 @@ impl<R, S, C> Session<R, S, C> where
 			control,
 			contribute,
 			distribute,
-    		_marker: PhantomData,
-    		_marker_r: PhantomData,
 		};
 
 		Ok(session)
