@@ -16,7 +16,6 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
-moq-transport-quinn = { path = "../moq-transport-quinn" }
 webtransport-generic = {git = "https://github.com/kixelated/webtransport-rs"}
 
 bytes = "1"
@@ -26,7 +25,6 @@ anyhow = "1.0.70"
 log = "0.4" # TODO remove
 
 # QUIC stuff
-quinn = "0.10"
 ring = "0.16.20"
 rustls = "0.21.2"
 rustls-pemfile = "1.0.2"
