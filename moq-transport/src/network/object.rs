@@ -1,22 +1,21 @@
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use moq_generic_transport::{Connection, SendStream, SendStreamUnframed, RecvStream};
-use moq_transport::{Decode, DecodeError, Encode, Object};
+use webtransport_generic::{Connection, SendStream, RecvStream};
+use crate::{Decode, DecodeError, Encode, Object};
 use std::{io::Cursor, marker::PhantomData};
 
-use crate::SharedConnection;
+use crate::network::SharedConnection;
+
+use super::stream::{open_uni_shared, send, recv, accept_uni_shared};
 
 // TODO support clients
 
-// We could replace this generic soup by just <C: Connection> if we forced Connection's SendStream
-// to provide SendStreamUnframes's send() method. Without that, we have to make Connection's
-// SendStream type more specific and force it to implement SendStreamUnframes as well.
 pub struct Objects<C: Connection> {
 	send: SendObjects<C>,
 	recv: RecvObjects<C>,
 }
 
-impl<S: SendStream + SendStreamUnframed, R: RecvStream + 'static, C: Connection<SendStream = S, RecvStream = R> + Send> Objects<C> {
+impl<S: SendStream, R: RecvStream + 'static, C: Connection<SendStream = S, RecvStream = R> + Send> Objects<C> {
 	pub fn new(session: SharedConnection<C>) -> Self {
 		let send = SendObjects::new(session.clone());
 		let recv = RecvObjects::new(session);
@@ -44,7 +43,7 @@ pub struct SendObjects<C: Connection> {
 	_marker: PhantomData<C>,
 }
 
-impl<S: SendStream + SendStreamUnframed, C: Connection<SendStream = S>> SendObjects<C> {
+impl<S: SendStream, C: Connection<SendStream = S>> SendObjects<C> {
 	pub fn new(session: SharedConnection<C>) -> Self {
 		Self {
 			session,
@@ -58,17 +57,21 @@ impl<S: SendStream + SendStreamUnframed, C: Connection<SendStream = S>> SendObje
 		header.encode(&mut self.buf).unwrap();
 
 		// TODO support select! without making a new stream.
-		let mut stream = moq_generic_transport::open_send_shared(self.session.clone())
+		let mut stream = open_uni_shared(self.session.clone())
 			.await
+			.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
 			.context("failed to open uni stream")?;
 
-		moq_generic_transport::send(&mut stream, &mut self.buf).await?;
+		send(&mut stream, &mut self.buf)
+			.await
+			.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+			.context("failed to send data on stream")?;
 
 		Ok(stream)
 	}
 }
 
-impl<S: SendStream + SendStreamUnframed, C: Connection<SendStream = S>> Clone for SendObjects<C> {
+impl<S: SendStream, C: Connection<SendStream = S>> Clone for SendObjects<C> {
 	fn clone(&self) -> Self {
 		Self {
 			session: self.session.clone(),
@@ -104,8 +107,9 @@ impl<R: RecvStream + 'static, C: Connection<RecvStream = R>> RecvObjects<C> {
 		let stream = match self.stream.as_mut() {
 			Some(stream) => stream,
 			None => {
-				let stream = moq_generic_transport::accept_recv_shared(self.session.clone())
+				let stream = accept_uni_shared(self.session.clone())
 				.await
+				.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
 				.context("failed to accept uni stream")?
 				.context("no uni stream")?;
 
@@ -126,7 +130,10 @@ impl<R: RecvStream + 'static, C: Connection<RecvStream = R>> RecvObjects<C> {
 				}
 				Err(DecodeError::UnexpectedEnd) => {
 					// The decode failed, so we need to append more data.
-					moq_generic_transport::recv(stream.as_mut(), &mut self.buf).await?;
+					recv(stream.as_mut(), &mut self.buf)
+						.await
+						.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+						.context("failed to recv data on stream")?;
 				}
 				Err(e) => return Err(e.into()),
 			}

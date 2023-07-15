@@ -4,12 +4,11 @@ use std::sync::{Arc, Mutex};
 use std::time;
 
 use bytes::Buf;
-use moq_generic_transport::{Connection, RecvStream};
+use webtransport_generic::{Connection, RecvStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
-use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_generic::RecvObjects;
+use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt, RecvObjects};
 
 
 use anyhow::Context;
@@ -93,7 +92,7 @@ impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Sessi
 		}
 	}
 
-	async fn receive_object<Buu: Buf + Send, Re: RecvStream<Buf = Buu> + Send + 'static>(&mut self, object: Object, stream: Box<Re>) -> anyhow::Result<()> {
+	async fn receive_object(&mut self, object: Object, stream: Box<R>) -> anyhow::Result<()> {
 		let track = object.track;
 
 		let segment = segment::Info {
@@ -116,17 +115,17 @@ impl<R: RecvStream + Send + 'static, C: Connection<RecvStream = R> + Send> Sessi
 		Ok(())
 	}
 
-	async fn run_segment<Buu: Buf + Send, Re: RecvStream<Buf = Buu> + Send + 'static>(mut segment: segment::Publisher, mut stream: Box<Re>) -> anyhow::Result<()> {
-		// let mut buf = [0u8; 32 * 1024];
+	async fn run_segment(mut segment: segment::Publisher, mut stream: Box<R>) -> anyhow::Result<()> {
 		loop {
 			let mut b = bytes::BytesMut::new();
-			let stream_finished = !moq_generic_transport::recv(stream.as_mut(), &mut b).await?;
-			// let size = stream.read(&mut buf).await.context("failed to read from stream")?;
+			let stream_finished = !moq_transport::recv(stream.as_mut(), &mut b)
+				.await
+				.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+				.context("error receiving control message")?;
 			if stream_finished {
 				return Ok(());
 			}
 
-			// let chunk = buf[..size].to_vec();
 			segment.fragments.push(b.chunk().to_vec().into())
 		}
 	}

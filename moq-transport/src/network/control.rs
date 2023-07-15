@@ -1,5 +1,6 @@
-use moq_generic_transport::{RecvStream, BidiStream};
-use moq_transport::{Decode, DecodeError, Encode, Message};
+use webtransport_generic::{RecvStream, SendStream};
+use crate::{Decode, DecodeError, Encode, Message};
+use crate::network::stream::{recv, send};
 
 use bytes::{Buf, BytesMut};
 
@@ -7,27 +8,31 @@ use std::io::Cursor;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use anyhow::Context;
 
-pub struct Control<B: BidiStream> {
-	sender: ControlSend<B>,
-	recver: ControlRecv<B::RecvStream>,
+
+pub struct Control<S: SendStream, R: RecvStream> {
+	sender: ControlSend<S>,
+	recver: ControlRecv<R>,
 }
 
-impl<B: BidiStream> Control<B>{
-	pub(crate) fn new(stream: Box<B>) -> Self {
-		let (sender, recver) = stream.split();
-		let sender = ControlSend::new(Box::new(sender));
-		let recver = ControlRecv::new(Box::new(recver));
+impl<S: SendStream, R: RecvStream> Control<S, R>{
+	pub(crate) fn new(sender: Box<S>, recver: Box<R>) -> Self {
+		let sender = ControlSend::new(sender);
+		let recver = ControlRecv::new(recver);
 
 		Self { sender, recver }
 	}
 
-	pub fn split(self) -> (ControlSend<B>, ControlRecv<B::RecvStream>) {
+	pub fn split(self) -> (ControlSend<S>, ControlRecv<R>) {
 		(self.sender, self.recver)
 	}
 
 	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
-		self.sender.send(msg).await
+		self.sender.send(msg)
+			.await
+			.map_err(|e| anyhow::anyhow!("{:?}", e))
+			.context("error sending control message")
 	}
 
 	pub async fn recv(&mut self) -> anyhow::Result<Message> {
@@ -35,13 +40,13 @@ impl<B: BidiStream> Control<B>{
 	}
 }
 
-pub struct ControlSend<B: BidiStream> {
-	stream: Box<B::SendStream>,
+pub struct ControlSend<S: SendStream> {
+	stream: Box<S>,
 	buf: BytesMut, // reuse a buffer to encode messages.
 }
 
-impl<B: BidiStream> ControlSend<B> {
-	pub fn new(inner: Box<B::SendStream>) -> Self {
+impl<S: SendStream> ControlSend<S> {
+	pub fn new(inner: Box<S>) -> Self {
 		Self {
 			buf: BytesMut::new(),
 			stream: inner,
@@ -56,13 +61,15 @@ impl<B: BidiStream> ControlSend<B> {
 		msg.encode(&mut self.buf)?;
 
 		// TODO make this work with select!
-		moq_generic_transport::send(self.stream.as_mut(), &mut self.buf).await?;
-
+		send(self.stream.as_mut(), &mut self.buf)
+		.await
+		.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+		.context("error sending control message")?;
 		Ok(())
 	}
 
 	// Helper that lets multiple threads send control messages.
-	pub fn share(self) -> ControlShared<B> {
+	pub fn share(self) -> ControlShared<S> {
 		ControlShared {
 			stream: Arc::new(Mutex::new(self)),
 		}
@@ -72,11 +79,11 @@ impl<B: BidiStream> ControlSend<B> {
 // Helper that allows multiple threads to send control messages.
 // There's no equivalent for receiving since only one thread should be receiving at a time.
 #[derive(Clone)]
-pub struct ControlShared<B: BidiStream> {
-	stream: Arc<Mutex<ControlSend<B>>>,
+pub struct ControlShared<S: SendStream> {
+	stream: Arc<Mutex<ControlSend<S>>>,
 }
 
-impl<B: BidiStream> ControlShared<B> {
+impl<S: SendStream> ControlShared<S> {
 	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
 		let mut stream = self.stream.lock().await;
 		stream.send(msg).await
@@ -112,7 +119,10 @@ impl<R: RecvStream> ControlRecv<R> {
 				}
 				Err(DecodeError::UnexpectedEnd) => {
 					// The decode failed, so we need to append more data.
-					moq_generic_transport::recv(self.stream.as_mut(), &mut self.buf).await?;
+					recv(self.stream.as_mut(), &mut self.buf)
+						.await
+						.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+						.context("error receiving control message")?;
 				}
 				Err(e) => return Err(e.into()),
 			}

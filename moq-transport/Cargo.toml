@@ -18,3 +18,7 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 bytes = "1"
 thiserror = "1.0.21"
 log = "0.4"
+tokio = { version = "1.27", features = ["full"] }
+anyhow = "1.0.70"
+
+webtransport-generic = {git = "https://github.com/kixelated/webtransport-rs"}

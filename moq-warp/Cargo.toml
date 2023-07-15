@@ -17,8 +17,7 @@ categories = [ "multimedia", "network-programming", "web-programming" ]
 [dependencies]
 moq-transport = { path = "../moq-transport" }
 moq-transport-quinn = { path = "../moq-transport-quinn" }
-moq-transport-generic = { path = "../moq-transport-generic" }
-moq-generic-transport = {git = "https://github.com/francoismichel/moq-rs-quiche", branch = "generic-transport-trait"}
+webtransport-generic = {git = "https://github.com/kixelated/webtransport-rs"}
 
 bytes = "1"
 tokio = "1.27"

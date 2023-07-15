@@ -1,23 +1,17 @@
-use std::{fs, io, sync::{self, Arc}, time};
+use std::{fs, io, time};
 
 use anyhow::Context;
 use bytes::Bytes;
-use h3::{quic::StreamId, proto::varint::VarInt};
+use h3::quic::BidiStream;
 use h3_webtransport::server::AcceptedBi;
-use moq_transport::Message;
-use moq_transport_generic::{AcceptSetup, Control, Objects};
-use moq_warp::relay::{broker, ServerConfig};
+use moq_transport::AcceptSetup;
+use moq_warp::relay::ServerConfig;
 use tokio::task::JoinSet;
 use warp::{Future, http};
 
-use self::stream::{QuinnBidiStream, QuinnSendStream, QuinnRecvStream};
+use self::stream::{QuinnSendStream, QuinnRecvStream};
 
 mod stream;
-
-fn stream_id_to_u64(stream_id: StreamId) -> u64 {
-	let val: VarInt = stream_id.into();
-	val.into_inner()
-}
 
 pub struct Server {
 	// The MoQ transport server.
@@ -61,15 +55,15 @@ impl Server {
 		];
 		tls_config.alpn_protocols = alpn;
 
-		let mut server_config = quinn::ServerConfig::with_crypto(sync::Arc::new(tls_config));
+		let mut server_config = quinn::ServerConfig::with_crypto(std::sync::Arc::new(tls_config));
 
 		// Enable BBR congestion control
 		// TODO validate the implementation
 		let mut transport_config = quinn::TransportConfig::default();
 		transport_config.keep_alive_interval(Some(time::Duration::from_secs(2)));
-		transport_config.congestion_controller_factory(sync::Arc::new(quinn::congestion::BbrConfig::default()));
+		transport_config.congestion_controller_factory(std::sync::Arc::new(quinn::congestion::BbrConfig::default()));
 
-		server_config.transport = sync::Arc::new(transport_config);
+		server_config.transport = std::sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 
 		Ok(server)
@@ -160,22 +154,18 @@ pub struct Connect {
 }
 
 impl Connect {
-	// Expose the received URI
-	pub fn uri(&self) -> &http::Uri {
-		self.req.uri()
-	}
 
 	// Accept the WebTransport session.
 	pub async fn accept(self) -> anyhow::Result<AcceptSetup<Server>> {
 		let session = h3_webtransport::server::WebTransportSession::accept(self.req, self.stream, self.conn).await?;
 		let mut session = Server{server: session};
 
-		let control_stream = moq_generic_transport::accept_bidi(&mut session)
+		let (control_stream_send, control_stream_recv) = moq_transport::accept_bidi(&mut session)
 			.await
 			.context("failed to accept bidi stream")?
 			.unwrap();
 
-		Ok(moq_transport_generic::Session::accept(Box::new(control_stream), Box::new(session)).await?)
+		Ok(moq_transport::Session::accept(Box::new(control_stream_send), Box::new(control_stream_recv), Box::new(session)).await?)
 	}
 
 	// Reject the WebTransport session with a HTTP response.
@@ -186,17 +176,17 @@ impl Connect {
 }
 
 
-impl moq_generic_transport::Connection for Server {
-    type BidiStream = QuinnBidiStream;
+impl webtransport_generic::Connection for Server {
 
+	type Error = anyhow::Error;
     type SendStream = QuinnSendStream;
 
     type RecvStream = QuinnRecvStream;
 
-    fn poll_accept_recv(
+    fn poll_accept_uni(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<Option<Self::RecvStream>, anyhow::Error>> {
+    ) -> std::task::Poll<Result<Option<Self::RecvStream>, Self::Error>> {
 		let fut = self.server.accept_uni();
 		let fut = std::pin::pin!(fut);
 		fut.poll(cx)
@@ -207,13 +197,16 @@ impl moq_generic_transport::Connection for Server {
     fn poll_accept_bidi(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<Option<Self::BidiStream>, anyhow::Error>> {
+    ) -> std::task::Poll<Result<Option<(Self::SendStream, Self::RecvStream)>, Self::Error>> {
 		let fut = self.server.accept_bi();
 		let fut = std::pin::pin!(fut);
 		let res = std::task::ready!(fut.poll(cx).map_err(|e| anyhow::anyhow!("{:?}", e)));
 		match res {
 			Ok(Some(AcceptedBi::Request(_, _))) => std::task::Poll::Ready(Err(anyhow::anyhow!("received new session whils accepting bidi stream"))),
-			Ok(Some(AcceptedBi::BidiStream(_, s))) => std::task::Poll::Ready(Ok(Some(QuinnBidiStream::new(s)))),
+			Ok(Some(AcceptedBi::BidiStream(_, s))) => {
+				let (send, recv) = s.split();
+				std::task::Poll::Ready(Ok(Some((QuinnSendStream::new(send), QuinnRecvStream::new(recv)))))
+			}
 			Ok(None) => std::task::Poll::Ready(Ok(None)),
 			Err(e) => std::task::Poll::Ready(Err(e)),
 		}
@@ -222,18 +215,22 @@ impl moq_generic_transport::Connection for Server {
     fn poll_open_bidi(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<Self::BidiStream, anyhow::Error>> {
+    ) -> std::task::Poll<Result<(Self::SendStream, Self::RecvStream), Self::Error>> {
 		let fut = self.server.open_bi(self.server.session_id());
 		let fut = std::pin::pin!(fut);
 		fut.poll(cx)
-		.map_ok(|s| QuinnBidiStream::new(s))
+		.map_ok(|s| {
+				let (send, recv) = s.split();
+				(QuinnSendStream::new(send), QuinnRecvStream::new(recv))
+			}
+		)
 		.map_err(|e| anyhow::anyhow!("{:?}", e))
     }
 
-    fn poll_open_send(
+    fn poll_open_uni(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<Self::SendStream, anyhow::Error>> {
+    ) -> std::task::Poll<Result<Self::SendStream, Self::Error>> {
 		let fut = self.server.open_uni(self.server.session_id());
 		let fut = std::pin::pin!(fut);
 		fut.poll(cx)
@@ -241,7 +238,7 @@ impl moq_generic_transport::Connection for Server {
 		.map_err(|e| anyhow::anyhow!("{:?}", e))
     }
 
-    fn close(&mut self, _code: u64, _reason: &[u8]) {
+    fn close(&mut self, _code: u32, _reason: &[u8]) {
         todo!("not implemented")
     }
 }

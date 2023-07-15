@@ -2,9 +2,6 @@
 members = [
     "moq-transport",
 	"moq-transport-quinn",
-    "moq-demo-quiche",
     "moq-demo-quinn",
     "moq-warp",
-    "transport",
-    "moq-transport-generic",
 ]

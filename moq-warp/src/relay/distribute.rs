@@ -3,16 +3,15 @@ use std::marker::PhantomData;
 use anyhow::Context;
 
 use bytes::Buf;
-use moq_generic_transport::{SendStream, SendStreamUnframed, Connection};
+use webtransport_generic::{SendStream, Connection};
 use tokio::task::JoinSet; // allows locking across await
 
-use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_generic::SendObjects;
+use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt, SendObjects};
 
 use super::{broker, control};
 use crate::model::{segment, track};
 
-pub struct Session<S: SendStream + SendStreamUnframed + Send, C: Connection + Send> {
+pub struct Session<S: SendStream + Send, C: Connection + Send> {
 	// Objects are sent to the client
 	objects: SendObjects<C>,
 
@@ -29,7 +28,7 @@ pub struct Session<S: SendStream + SendStreamUnframed + Send, C: Connection + Se
 }
 
 impl<S, C> Session<S, C> where
-	S: SendStream + SendStreamUnframed + Send,
+	S: SendStream + Send,
 	C: Connection<SendStream = S> + Send + 'static {
 	pub fn new(
 		objects: SendObjects<C>,
@@ -179,13 +178,14 @@ impl<S, C> Session<S, C> where
 		while let Some(fragment) = segment.fragments.next().await {
 			let mut buf = bytes::Bytes::copy_from_slice(fragment.as_slice());
 			while buf.has_remaining() {
-				moq_generic_transport::send(&mut stream, &mut buf).await?;
+				moq_transport::send(&mut stream, &mut buf)
+					.await
+					.map_err(|e| anyhow::anyhow!("{:?}", e.into()))
+					.context("error sending control message")?;
 			}
-			// stream.write_all(fragment.as_slice()).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped
-
 		Ok(())
 	}
 

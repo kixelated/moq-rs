@@ -1,19 +1,19 @@
 
 use anyhow::Context;
-use moq_generic_transport::{Connection, RecvStream};
-use moq_transport::{Message, SetupClient, SetupServer};
+use webtransport_generic::{Connection, RecvStream};
+use crate::{Message, SetupClient, SetupServer};
 
 
 use super::{Control, Objects};
 pub struct Session<C: Connection + Send> {
-	pub control: Control<C::BidiStream>,
+	pub control: Control<C::SendStream, C::RecvStream>,
 	pub objects: Objects<C>,
 }
 
 impl<R: RecvStream + 'static, C: Connection<RecvStream = R> + Send> Session<C> {
 
-	pub async fn accept(control_stream: Box<C::BidiStream>, connection: Box<C>) -> anyhow::Result<AcceptSetup<C>> {
-		let mut control = Control::new(control_stream);
+	pub async fn accept(control_stream_send: Box<C::SendStream>, control_stream_recv: Box::<C::RecvStream>, connection: Box<C>) -> anyhow::Result<AcceptSetup<C>> {
+		let mut control = Control::new(control_stream_send, control_stream_recv);
 		let objects = Objects::new(std::sync::Arc::new(std::sync::Mutex::new(connection)));
 
 		let setup_client = match control.recv().await.context("failed to read SETUP")? {
@@ -23,7 +23,7 @@ impl<R: RecvStream + 'static, C: Connection<RecvStream = R> + Send> Session<C> {
 		Ok(AcceptSetup { setup_client, control, objects })
 
 	}
-	pub fn split(self) -> (Control<C::BidiStream>, Objects<C>) {
+	pub fn split(self) -> (Control<C::SendStream, C::RecvStream>, Objects<C>) {
 		(self.control, self.objects)
 	}
 }
@@ -31,7 +31,7 @@ impl<R: RecvStream + 'static, C: Connection<RecvStream = R> + Send> Session<C> {
 
 pub struct AcceptSetup<C: Connection + Send> {
 	setup_client: SetupClient,
-	control: Control<C::BidiStream>,
+	control: Control<C::SendStream, C::RecvStream>,
 	objects: Objects<C>,
 }
 
