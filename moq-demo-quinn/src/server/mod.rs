@@ -120,28 +120,6 @@ impl Server {
 		}
 	}
 
-	// pub async fn run(mut self) -> anyhow::Result<()> {
-	// 	loop {
-	// 		tokio::select! {
-	// 			res = self.server.accept() => {
-	// 				let session = res.context("failed to accept connection")?;
-	// 				let broker = self.broker.clone();
-
-	// 				self.tasks.spawn(async move {
-	// 					let session: Session = Session::accept(session, broker).await?;
-	// 					session.run().await
-	// 				});
-	// 			},
-				// res = self.tasks.join_next(), if !self.tasks.is_empty() => {
-				// 	let res = res.expect("no tasks").expect("task aborted");
-
-				// 	if let Err(err) = res {
-				// 		log::error!("session terminated: {:?}", err);
-				// 	}
-				// },
-	// 		}
-	// 	}
-	// }
 }
 
 // The WebTransport CONNECT has arrived, and we need to decide if we accept it.
