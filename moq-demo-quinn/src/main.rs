@@ -7,7 +7,7 @@ use ring::digest::{digest, SHA256};
 use tokio::task::JoinSet;
 use warp::Filter;
 
-use moq_warp::{relay::{self}, source};
+use moq_warp::{relay::{self, broker::Broadcasts}, source};
 
 mod server;
 
@@ -41,10 +41,6 @@ async fn main() -> anyhow::Result<()> {
 
 	// Create a web server to serve the fingerprint
 	let serve = serve_http(args.clone());
-	let mut tasks = JoinSet::new();
-	tasks.spawn(async move {
-		serve.await.unwrap();
-	});
 
 	// Create a fake media source from disk.
 	let media = source::File::new(args.media).context("failed to open file source")?;
@@ -53,11 +49,6 @@ async fn main() -> anyhow::Result<()> {
 	broker
 		.announce("quic.video/demo", media.source())
 		.context("failed to announce file source")?;
-
-	let mut tasks = JoinSet::new();
-	tasks.spawn(async move {
-		media.run().await.unwrap();
-	});
 	
 	// Create a server to actually serve the media
 	let config = relay::ServerConfig {
@@ -67,8 +58,17 @@ async fn main() -> anyhow::Result<()> {
 		broker: broker.clone(),
 	};
 
-	let quinn = server::Server::new_quinn_connection(config).unwrap();
+	tokio::select! {
+		res = run_server(config, broker) => res.context("failed to run server"),
+		res = media.run() => res.context("failed to run media source"),
+		res = serve => res.context("failed to run HTTP server"),
+	}
 
+}
+
+async fn run_server(config: relay::ServerConfig, broker: Broadcasts) -> anyhow::Result<()> {
+
+	let quinn = server::Server::new_quinn_connection(config).unwrap();
 	let mut tasks = JoinSet::new();
 	loop {
 		let broker = broker.clone();
@@ -87,8 +87,8 @@ async fn main() -> anyhow::Result<()> {
 						role,
 					};
 				
-					let session = client_setup.accept(setup_server).await.unwrap();
-					let session = relay::Session::from_transport_session(session, broker.clone()).await.unwrap();
+					let session = client_setup.accept(setup_server).await?;
+					let session = relay::Session::from_transport_session(session, broker.clone()).await?;
 					session.run().await?;
 					let ret: anyhow::Result<()> = Ok(());
 					ret
@@ -103,7 +103,6 @@ async fn main() -> anyhow::Result<()> {
 			},
 		}
 	}
-
 }
 
 // Run a HTTP server using Warp
