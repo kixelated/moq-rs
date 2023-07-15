@@ -41,7 +41,6 @@ bytes= "1"
 
 webtransport-generic = {git = "https://github.com/kixelated/webtransport-rs"}
 moq-transport = { path = "../moq-transport" }
-moq-transport-quinn = { path = "../moq-transport-quinn" }
 moq-warp = { path = "../moq-warp" }
 
 h3 = { git = "https://github.com/hyperium/h3", branch = "master" }
