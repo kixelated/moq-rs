@@ -1,6 +1,5 @@
 use anyhow::Context;
 
-use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};

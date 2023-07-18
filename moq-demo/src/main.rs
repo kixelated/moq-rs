@@ -7,6 +7,9 @@ use warp::Filter;
 
 use moq_warp::{relay, source};
 
+mod server;
+use server::*;
+
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]
 struct Cli {
@@ -45,14 +48,14 @@ async fn main() -> anyhow::Result<()> {
 		.context("failed to announce file source")?;
 
 	// Create a server to actually serve the media
-	let config = relay::ServerConfig {
+	let config = ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
 		broker,
 	};
 
-	let server = relay::Server::new(config).context("failed to create server")?;
+	let server = Server::new(config).context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {

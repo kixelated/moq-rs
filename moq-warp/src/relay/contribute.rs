@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time;
 
-use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
@@ -115,9 +114,10 @@ impl Session {
 		let mut buf = [0u8; 32 * 1024];
 		loop {
 			let size = stream.read(&mut buf).await.context("failed to read from stream")?;
-			if size == 0 {
-				return Ok(());
-			}
+			let size = match size {
+				Some(size) if size > 0 => size,
+				_ => return Ok(()),
+			};
 
 			let chunk = buf[..size].to_vec();
 			segment.fragments.push(chunk.into())

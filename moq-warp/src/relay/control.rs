@@ -1,10 +1,12 @@
 use tokio::sync::mpsc;
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Message, Subscribe, SubscribeError, SubscribeOk};
-use moq_transport_quinn::Control;
+use moq_transport_quinn::{RecvControl, SendControl};
 
 pub struct Main {
-	control: Control,
+	send_control: SendControl,
+	recv_control: RecvControl,
+
 	outgoing: mpsc::Receiver<Message>,
 
 	contribute: mpsc::Sender<Contribute>,
@@ -15,8 +17,8 @@ impl Main {
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
-				Some(msg) = self.outgoing.recv() => self.control.send(msg).await?,
-				Ok(msg) = self.control.recv() => self.handle(msg).await?,
+				Some(msg) = self.outgoing.recv() => self.send_control.send(msg).await?,
+				Ok(msg) = self.recv_control.recv() => self.handle(msg).await?,
 			}
 		}
 	}
@@ -51,13 +53,17 @@ impl<T> Component<T> {
 }
 
 // Splits a control stream into two components, based on if it's a message for contribution or distribution.
-pub fn split(control: Control) -> (Main, Component<Contribute>, Component<Distribute>) {
+pub fn split(
+	send_control: SendControl,
+	recv_control: RecvControl,
+) -> (Main, Component<Contribute>, Component<Distribute>) {
 	let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
 	let (contribute_tx, contribute_rx) = mpsc::channel(1);
 	let (distribute_tx, distribute_rx) = mpsc::channel(1);
 
 	let control = Main {
-		control,
+		send_control,
+		recv_control,
 		outgoing: outgoing_rx,
 		contribute: contribute_tx,
 		distribute: distribute_tx,

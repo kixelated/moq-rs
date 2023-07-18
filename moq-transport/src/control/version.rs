@@ -73,3 +73,9 @@ impl Deref for Versions {
 		&self.0
 	}
 }
+
+impl From<Vec<Version>> for Versions {
+	fn from(vs: Vec<Version>) -> Self {
+		Self(vs)
+	}
+}
