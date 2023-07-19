@@ -2006,9 +2006,9 @@ dependencies = [
 
 [[package]]
 name = "webtransport-quinn"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1cc103c5015ed69529ae38c4df36948da0baeb8def0906ed6e5ed95ee1b034a"
+checksum = "c645a48f4bac5ce504cef2dd02b373f8b8a2a7de9a72f59395a54799958f3cf2"
 dependencies = [
  "async-std",
  "bytes",
@@ -2018,7 +2018,6 @@ dependencies = [
  "quinn-proto",
  "thiserror",
  "tokio",
- "tokio-util",
  "webtransport-generic",
  "webtransport-proto",
 ]

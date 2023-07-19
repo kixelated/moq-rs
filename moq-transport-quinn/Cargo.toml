@@ -17,8 +17,8 @@ categories = ["multimedia", "network-programming", "web-programming"]
 moq-transport = { path = "../moq-transport" }
 
 quinn = "0.10"
-webtransport-quinn = "0.4"
 http = "0.2"
+webtransport-quinn = "0.4.1"
 tokio = { version = "1.27", features = ["macros"] }
 bytes = "1"
 log = "0.4"
