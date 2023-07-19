@@ -19,10 +19,9 @@ moq-transport = { path = "../moq-transport" }
 moq-transport-quinn = { path = "../moq-transport-quinn" }
 moq-warp = { path = "../moq-warp" }
 
-webtransport-quinn = "0.3"
-
 # QUIC
 quinn = "0.10"
+webtransport-quinn = "0.4"
 
 # Crypto
 ring = "0.16.20"

@@ -91,10 +91,13 @@ impl Session {
 	async fn receive_object(&mut self, object: Object, stream: RecvStream) -> anyhow::Result<()> {
 		let track = object.track;
 
+		// Keep objects in memory for 10s
+		let expires = time::Instant::now() + time::Duration::from_secs(10);
+
 		let segment = segment::Info {
 			sequence: object.sequence,
 			send_order: object.send_order,
-			expires: Some(time::Instant::now() + time::Duration::from_secs(2)), // TODO increase this once send_order is implemented
+			expires: Some(expires),
 		};
 
 		let segment = segment::Publisher::new(segment);

@@ -1,48 +1,89 @@
-use std::io::Cursor;
-use std::ops::{Deref, DerefMut};
+use std::{collections::BinaryHeap, io::Cursor, sync::Arc};
 
 use anyhow::Context;
 use bytes::BytesMut;
 use moq_transport::{Decode, DecodeError, Encode, Object};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::task::JoinSet;
 
+use tokio::io::AsyncWriteExt;
+use tokio::task::JoinSet;
+use tokio::{io::AsyncBufReadExt, sync::Mutex};
 use webtransport_quinn::Session;
 
-pub struct SendObjects {
-	session: Session,
+use crate::{RecvStream, SendStream, SendStreamOrder};
 
-	// A reusable buffer for encoding messages.
-	buf: BytesMut,
+// Allow this to be cloned so we can have multiple senders.
+#[derive(Clone)]
+pub struct SendObjects {
+	// This is a tokio mutex since we need to lock across await boundaries.
+	inner: Arc<Mutex<SendObjectsInner>>,
 }
 
 impl SendObjects {
 	pub fn new(session: Session) -> Self {
+		let inner = SendObjectsInner::new(session);
 		Self {
-			session,
-			buf: BytesMut::new(),
+			inner: Arc::new(Mutex::new(inner)),
 		}
 	}
 
-	pub async fn send(&mut self, header: Object) -> anyhow::Result<SendStream> {
-		self.buf.clear();
-		header.encode(&mut self.buf).unwrap();
-
-		let mut stream = self.session.open_uni().await.context("failed to open uni stream")?;
-
-		// TODO support select! without making a new stream.
-		stream.write_all(&self.buf).await?;
-
-		Ok(stream)
+	pub async fn open(&mut self, header: Object) -> anyhow::Result<SendStream> {
+		let mut inner = self.inner.lock().await;
+		inner.open(header).await
 	}
 }
 
-impl Clone for SendObjects {
-	fn clone(&self) -> Self {
+struct SendObjectsInner {
+	session: Session,
+
+	// Quinn supports a i32 for priority, but the wire format is a u64.
+	// Our work around is to keep a list of streams in priority order and use the index as the priority.
+	// This involves more work, so TODO either increase the Quinn size or reduce the wire size.
+	ordered: BinaryHeap<SendStreamOrder>,
+	ordered_swap: BinaryHeap<SendStreamOrder>, // reuse memory to avoid allocations
+
+	// A reusable buffer for encoding headers.
+	// TODO figure out how to use BufMut on the stack and remove this.
+	buf: BytesMut,
+}
+
+impl SendObjectsInner {
+	fn new(session: Session) -> Self {
 		Self {
-			session: self.session.clone(),
+			session,
+			ordered: BinaryHeap::new(),
+			ordered_swap: BinaryHeap::new(),
 			buf: BytesMut::new(),
 		}
+	}
+
+	pub async fn open(&mut self, header: Object) -> anyhow::Result<SendStream> {
+		let stream = self.session.open_uni().await.context("failed to open uni stream")?;
+		let (mut stream, priority) = SendStream::with_order(stream, header.send_order.into_inner());
+
+		// Add the priority to our existing list.
+		self.ordered.push(priority);
+
+		// Loop through the list and update the priorities of any still active streams.
+		let mut index = 0;
+		while let Some(stream) = self.ordered.pop() {
+			if stream.update(index).is_ok() {
+				// Add the stream to the new list so it'll be in sorted order.
+				self.ordered_swap.push(stream);
+				index += 1;
+			}
+		}
+
+		// Swap the lists so we can reuse the memory.
+		std::mem::swap(&mut self.ordered, &mut self.ordered_swap);
+
+		// Encode and write the stream header.
+		// TODO do this in SendStream so we don't hold the lock.
+		// Otherwise,
+		self.buf.clear();
+		header.encode(&mut self.buf).unwrap();
+		stream.write_all(&self.buf).await.context("failed to write header")?;
+
+		Ok(stream)
 	}
 }
 
@@ -102,39 +143,5 @@ impl RecvObjects {
 
 			return Ok((header, stream));
 		}
-	}
-}
-
-pub type SendStream = webtransport_quinn::SendStream;
-
-// Unfortunately, we need to wrap RecvStream with a buffer since moq-transport::Coding only supports buffered reads.
-// TODO support unbuffered reads so we only read the MoQ header and then hand off the stream.
-// NOTE: We can't use AsyncRead::chain because we need to get the inner stream for stop.
-pub struct RecvStream {
-	stream: BufReader<webtransport_quinn::RecvStream>,
-}
-
-impl RecvStream {
-	fn new(stream: webtransport_quinn::RecvStream) -> Self {
-		let stream = BufReader::new(stream);
-		Self { stream }
-	}
-
-	pub fn stop(self, code: u32) {
-		self.stream.into_inner().stop(code).ok();
-	}
-}
-
-impl Deref for RecvStream {
-	type Target = BufReader<webtransport_quinn::RecvStream>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.stream
-	}
-}
-
-impl DerefMut for RecvStream {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.stream
 	}
 }

@@ -89,22 +89,30 @@ impl Server {
 		}
 	}
 
-	async fn handle(conn: quinn::Connecting, _broker: broker::Broadcasts) -> anyhow::Result<()> {
+	async fn handle(conn: quinn::Connecting, broker: broker::Broadcasts) -> anyhow::Result<()> {
+		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
+		// Wait for the CONNECT request.
 		let request = webtransport_quinn::accept(conn)
 			.await
 			.context("failed to receive WebTransport request")?;
 
+		// TODO parse the request URI
+
+		// Accept the CONNECT request.
 		let session = request
 			.ok()
 			.await
 			.context("failed to respond to WebTransport request")?;
 
-		let _session = moq_transport_quinn::accept(session, moq_transport::Role::Both)
+		// Perform the MoQ handshake.
+		let session = moq_transport_quinn::accept(session, moq_transport::Role::Both)
 			.await
 			.context("failed to perform MoQ handshake")?;
 
-		Ok(())
+		// Run the relay code.
+		let session = moq_warp::relay::Session::new(session, broker);
+		session.run().await
 	}
 }

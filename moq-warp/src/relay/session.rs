@@ -1,8 +1,4 @@
-
-
 use super::{broker, contribute, control, distribute};
-
-
 
 pub struct Session {
 	// Split logic into contribution/distribution to reduce the problem space.
@@ -14,19 +10,17 @@ pub struct Session {
 }
 
 impl Session {
-	pub fn new(session: moq_transport_quinn::Session, broker: broker::Broadcasts) -> anyhow::Result<Session> {
+	pub fn new(session: moq_transport_quinn::Session, broker: broker::Broadcasts) -> Session {
 		let (control, contribute, distribute) = control::split(session.send_control, session.recv_control);
 
 		let contribute = contribute::Session::new(session.recv_objects, contribute, broker.clone());
 		let distribute = distribute::Session::new(session.send_objects, distribute, broker);
 
-		let session = Self {
+		Self {
 			control,
 			contribute,
 			distribute,
-		};
-
-		Ok(session)
+		}
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
