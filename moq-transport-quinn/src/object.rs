@@ -1,6 +1,10 @@
+use std::io::Cursor;
+use std::ops::{Deref, DerefMut};
+
 use anyhow::Context;
-use bytes::{BytesMut};
-use moq_transport::{Decode, Encode, Object};
+use bytes::BytesMut;
+use moq_transport::{Decode, DecodeError, Encode, Object};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::task::JoinSet;
 
 use webtransport_quinn::Session;
@@ -72,67 +76,65 @@ impl RecvObjects {
 		}
 	}
 
-	async fn read(mut stream: RecvStream) -> anyhow::Result<(Object, RecvStream)> {
-		let mut chunk = stream.read_chunk(usize::MAX, true).await?.context("no more data")?;
+	async fn read(stream: webtransport_quinn::RecvStream) -> anyhow::Result<(Object, RecvStream)> {
+		let mut stream = RecvStream::new(stream);
 
-		// TODO buffer more on UnexpectedEnd
-		// TODO read ONLY the header.
-		let header = Object::decode(&mut chunk.bytes)?;
+		loop {
+			// Read more data into the buffer.
+			let data = stream.fill_buf().await?;
+			if data.is_empty() {
+				anyhow::bail!("stream closed before reading header");
+			}
 
-		Ok((header, stream))
+			// Use a cursor to read the buffer and remember how much we read.
+			let mut read = Cursor::new(data);
+
+			let header = match Object::decode(&mut read) {
+				Ok(header) => header,
+				Err(DecodeError::UnexpectedEnd) => continue,
+				Err(err) => return Err(err.into()),
+			};
+
+			// We parsed a full header, advance the cursor.
+			// The borrow checker requires these on separate lines.
+			let size = read.position() as usize;
+			stream.consume(size);
+
+			return Ok((header, stream));
+		}
 	}
 }
 
 pub type SendStream = webtransport_quinn::SendStream;
-pub type RecvStream = webtransport_quinn::RecvStream;
 
-/*
-// Unfortunately we need a wrapper for reading, because the moq-transport::Coding API means we read too much of the stream.
+// Unfortunately, we need to wrap RecvStream with a buffer since moq-transport::Coding only supports buffered reads.
+// TODO support unbuffered reads so we only read the MoQ header and then hand off the stream.
+// NOTE: We can't use AsyncRead::chain because we need to get the inner stream for stop.
 pub struct RecvStream {
-	stream: webtransport_quinn::RecvStream,
-	buffer: Bytes,
+	stream: BufReader<webtransport_quinn::RecvStream>,
 }
 
 impl RecvStream {
-	pub fn new(stream: webtransport_quinn::RecvStream, buffer: Bytes) -> Self {
-		Self { stream, buffer }
+	fn new(stream: webtransport_quinn::RecvStream) -> Self {
+		let stream = BufReader::new(stream);
+		Self { stream }
 	}
 
-	pub async fn read(&mut self, dst: &mut [u8]) -> Result<Option<usize>, webtransport_quinn::ReadError> {
-		if !self.buffer.is_empty() {
-			let size = std::cmp::min(dst.len(), self.buffer.len());
-			self.buffer.copy_to_slice(&mut dst[..size]);
-			Ok(Some(size))
-		} else {
-			self.stream.read(dst).await
-		}
-	}
-
-	pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<(), webtransport_quinn::ReadExactError> {
-		if self.buffer.is_empty() {
-			let size = std::cmp::min(buf.len(), self.buffer.len());
-			self.buffer.copy_to_slice(&mut buf[..size]);
-			buf = &mut buf[size..];
-		}
-
-		self.stream.read_exact(&mut buf).await
-	}
-
-	pub async fn read_chunk(
-		&mut self,
-		max_length: usize,
-		ordered: bool,
-	) -> Result<Option<quinn::Chunk>, webtransport_quinn::ReadError> {
-		if self.buffer.is_empty() {
-		}
-	}
-
-	pub async fn read_chunks(&mut self, bufs: &mut [Bytes]) -> Result<Option<usize>, webtransport_quinn::ReadError> {}
-
-	pub async fn read_to_end(&mut self, size_limit: usize) -> Result<Vec<u8>, webtransport_quinn::ReadToEndError> {}
-
-	pub fn stop(&mut self, error_code: u32) -> Result<(), webtransport_quinn::UnknownStream> {
-		self.stream.stop(error_code)
+	pub fn stop(self, code: u32) {
+		self.stream.into_inner().stop(code).ok();
 	}
 }
-*/
+
+impl Deref for RecvStream {
+	type Target = BufReader<webtransport_quinn::RecvStream>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.stream
+	}
+}
+
+impl DerefMut for RecvStream {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.stream
+	}
+}
