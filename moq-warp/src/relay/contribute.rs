@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time;
 
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
@@ -91,10 +91,13 @@ impl Session {
 	async fn receive_object(&mut self, object: Object, stream: RecvStream) -> anyhow::Result<()> {
 		let track = object.track;
 
+		// Keep objects in memory for 10s
+		let expires = time::Instant::now() + time::Duration::from_secs(10);
+
 		let segment = segment::Info {
 			sequence: object.sequence,
 			send_order: object.send_order,
-			expires: Some(time::Instant::now() + time::Duration::from_secs(2)), // TODO increase this once send_order is implemented
+			expires: Some(expires),
 		};
 
 		let segment = segment::Publisher::new(segment);
@@ -112,14 +115,15 @@ impl Session {
 	}
 
 	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
-		let mut buf = [0u8; 32 * 1024];
 		loop {
-			let size = stream.read(&mut buf).await.context("failed to read from stream")?;
-			if size == 0 {
+			let buf = stream.fill_buf().await?;
+			if buf.is_empty() {
 				return Ok(());
 			}
 
-			let chunk = buf[..size].to_vec();
+			let chunk = buf.to_vec();
+			stream.consume(chunk.len());
+
 			segment.fragments.push(chunk.into())
 		}
 	}

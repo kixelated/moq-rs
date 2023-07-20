@@ -1,136 +1,147 @@
+use std::{collections::BinaryHeap, io::Cursor, sync::Arc};
+
 use anyhow::Context;
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::BytesMut;
 use moq_transport::{Decode, DecodeError, Encode, Object};
-use std::{io::Cursor, sync::Arc};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
+use tokio::task::JoinSet;
+use tokio::{io::AsyncBufReadExt, sync::Mutex};
+use webtransport_quinn::Session;
 
-// TODO support clients
-type WebTransportSession = h3_webtransport::server::WebTransportSession<h3_quinn::Connection, Bytes>;
+use crate::{RecvStream, SendStream, SendStreamOrder};
 
-// Reduce some typing
-pub type SendStream = h3_webtransport::stream::SendStream<h3_quinn::SendStream<Bytes>, Bytes>;
-pub type RecvStream = h3_webtransport::stream::RecvStream<h3_quinn::RecvStream, Bytes>;
-
-pub struct Objects {
-	send: SendObjects,
-	recv: RecvObjects,
-}
-
-impl Objects {
-	pub fn new(session: Arc<WebTransportSession>) -> Self {
-		let send = SendObjects::new(session.clone());
-		let recv = RecvObjects::new(session);
-		Self { send, recv }
-	}
-
-	pub fn split(self) -> (SendObjects, RecvObjects) {
-		(self.send, self.recv)
-	}
-
-	pub async fn recv(&mut self) -> anyhow::Result<(Object, RecvStream)> {
-		self.recv.recv().await
-	}
-
-	pub async fn send(&mut self, header: Object) -> anyhow::Result<SendStream> {
-		self.send.send(header).await
-	}
-}
-
+// Allow this to be cloned so we can have multiple senders.
+#[derive(Clone)]
 pub struct SendObjects {
-	session: Arc<WebTransportSession>,
-
-	// A reusable buffer for encoding messages.
-	buf: BytesMut,
+	// This is a tokio mutex since we need to lock across await boundaries.
+	inner: Arc<Mutex<SendObjectsInner>>,
 }
 
 impl SendObjects {
-	pub fn new(session: Arc<WebTransportSession>) -> Self {
+	pub fn new(session: Session) -> Self {
+		let inner = SendObjectsInner::new(session);
+		Self {
+			inner: Arc::new(Mutex::new(inner)),
+		}
+	}
+
+	pub async fn open(&mut self, header: Object) -> anyhow::Result<SendStream> {
+		let mut inner = self.inner.lock().await;
+		inner.open(header).await
+	}
+}
+
+struct SendObjectsInner {
+	session: Session,
+
+	// Quinn supports a i32 for priority, but the wire format is a u64.
+	// Our work around is to keep a list of streams in priority order and use the index as the priority.
+	// This involves more work, so TODO either increase the Quinn size or reduce the wire size.
+	ordered: BinaryHeap<SendStreamOrder>,
+	ordered_swap: BinaryHeap<SendStreamOrder>, // reuse memory to avoid allocations
+
+	// A reusable buffer for encoding headers.
+	// TODO figure out how to use BufMut on the stack and remove this.
+	buf: BytesMut,
+}
+
+impl SendObjectsInner {
+	fn new(session: Session) -> Self {
 		Self {
 			session,
+			ordered: BinaryHeap::new(),
+			ordered_swap: BinaryHeap::new(),
 			buf: BytesMut::new(),
 		}
 	}
 
-	pub async fn send(&mut self, header: Object) -> anyhow::Result<SendStream> {
+	pub async fn open(&mut self, header: Object) -> anyhow::Result<SendStream> {
+		let stream = self.session.open_uni().await.context("failed to open uni stream")?;
+		let (mut stream, priority) = SendStream::with_order(stream, header.send_order.into_inner());
+
+		// Add the priority to our existing list.
+		self.ordered.push(priority);
+
+		// Loop through the list and update the priorities of any still active streams.
+		let mut index = 0;
+		while let Some(stream) = self.ordered.pop() {
+			if stream.update(index).is_ok() {
+				// Add the stream to the new list so it'll be in sorted order.
+				self.ordered_swap.push(stream);
+				index += 1;
+			}
+		}
+
+		// Swap the lists so we can reuse the memory.
+		std::mem::swap(&mut self.ordered, &mut self.ordered_swap);
+
+		// Encode and write the stream header.
+		// TODO do this in SendStream so we don't hold the lock.
+		// Otherwise,
 		self.buf.clear();
 		header.encode(&mut self.buf).unwrap();
-
-		let mut stream = self
-			.session
-			.open_uni(self.session.session_id())
-			.await
-			.context("failed to open uni stream")?;
-
-		// TODO support select! without making a new stream.
-		stream.write_all(&self.buf).await?;
+		stream.write_all(&self.buf).await.context("failed to write header")?;
 
 		Ok(stream)
 	}
 }
 
-impl Clone for SendObjects {
-	fn clone(&self) -> Self {
-		Self {
-			session: self.session.clone(),
-			buf: BytesMut::new(),
-		}
-	}
-}
-
 // Not clone, so we don't accidentally have two listners.
 pub struct RecvObjects {
-	session: Arc<WebTransportSession>,
+	session: Session,
 
-	// A uni stream that's been accepted but not fully read from yet.
-	stream: Option<RecvStream>,
-
-	// Data that we've read but haven't formed a full message yet.
-	buf: BytesMut,
+	// Streams that we've accepted but haven't read the header from yet.
+	streams: JoinSet<anyhow::Result<(Object, RecvStream)>>,
 }
 
 impl RecvObjects {
-	pub fn new(session: Arc<WebTransportSession>) -> Self {
+	pub fn new(session: Session) -> Self {
 		Self {
 			session,
-			stream: None,
-			buf: BytesMut::new(),
+			streams: JoinSet::new(),
 		}
 	}
 
 	pub async fn recv(&mut self) -> anyhow::Result<(Object, RecvStream)> {
-		// Make sure any state is saved across await boundaries so this works with select!
-
-		let stream = match self.stream.as_mut() {
-			Some(stream) => stream,
-			None => {
-				let (_session_id, stream) = self
-					.session
-					.accept_uni()
-					.await
-					.context("failed to accept uni stream")?
-					.context("no uni stream")?;
-
-				self.stream.insert(stream)
+		loop {
+			tokio::select! {
+				res = self.session.accept_uni() => {
+					let stream = res.context("failed to accept stream")?;
+					self.streams.spawn(async move { Self::read(stream).await });
+				},
+				res = self.streams.join_next(), if !self.streams.is_empty() => {
+					return res.unwrap().context("failed to run join set")?;
+				}
 			}
-		};
+		}
+	}
+
+	async fn read(stream: webtransport_quinn::RecvStream) -> anyhow::Result<(Object, RecvStream)> {
+		let mut stream = RecvStream::new(stream);
 
 		loop {
-			// Read the contents of the buffer
-			let mut peek = Cursor::new(&self.buf);
-
-			match Object::decode(&mut peek) {
-				Ok(header) => {
-					let stream = self.stream.take().unwrap();
-					self.buf.advance(peek.position() as usize);
-					return Ok((header, stream));
-				}
-				Err(DecodeError::UnexpectedEnd) => {
-					// The decode failed, so we need to append more data.
-					stream.read_buf(&mut self.buf).await?;
-				}
-				Err(e) => return Err(e.into()),
+			// Read more data into the buffer.
+			let data = stream.fill_buf().await?;
+			if data.is_empty() {
+				anyhow::bail!("stream closed before reading header");
 			}
+
+			// Use a cursor to read the buffer and remember how much we read.
+			let mut read = Cursor::new(data);
+
+			let header = match Object::decode(&mut read) {
+				Ok(header) => header,
+				Err(DecodeError::UnexpectedEnd) => continue,
+				Err(err) => return Err(err.into()),
+			};
+
+			// We parsed a full header, advance the cursor.
+			// The borrow checker requires these on separate lines.
+			let size = read.position() as usize;
+			stream.consume(size);
+
+			return Ok((header, stream));
 		}
 	}
 }

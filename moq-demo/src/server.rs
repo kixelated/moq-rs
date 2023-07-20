@@ -1,4 +1,4 @@
-use super::{broker, Session};
+use moq_warp::relay::broker;
 
 use std::{fs, io, net, path, sync, time};
 
@@ -7,21 +7,19 @@ use anyhow::Context;
 use tokio::task::JoinSet;
 
 pub struct Server {
-	// The MoQ transport server.
-	server: moq_transport_quinn::Server,
+	server: quinn::Endpoint,
 
 	// The media sources.
 	broker: broker::Broadcasts,
 
-	// Sessions actively being run.
-	tasks: JoinSet<anyhow::Result<()>>,
+	// The active connections.
+	conns: JoinSet<anyhow::Result<()>>,
 }
 
 pub struct ServerConfig {
 	pub addr: net::SocketAddr,
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
-
 	pub broker: broker::Broadcasts,
 }
 
@@ -53,14 +51,7 @@ impl Server {
 			.with_single_cert(certs, key)?;
 
 		tls_config.max_early_data_size = u32::MAX;
-		let alpn: Vec<Vec<u8>> = vec![
-			b"h3".to_vec(),
-			b"h3-32".to_vec(),
-			b"h3-31".to_vec(),
-			b"h3-30".to_vec(),
-			b"h3-29".to_vec(),
-		];
-		tls_config.alpn_protocols = alpn;
+		tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 
 		let mut server_config = quinn::ServerConfig::with_crypto(sync::Arc::new(tls_config));
 
@@ -74,32 +65,54 @@ impl Server {
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
 		let broker = config.broker;
 
-		let server = moq_transport_quinn::Server::new(server);
-		let tasks = JoinSet::new();
+		let conns = JoinSet::new();
 
-		Ok(Self { server, broker, tasks })
+		Ok(Self { server, broker, conns })
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
 				res = self.server.accept() => {
-					let session = res.context("failed to accept connection")?;
+					let conn = res.context("failed to accept QUIC connection")?;
 					let broker = self.broker.clone();
 
-					self.tasks.spawn(async move {
-						let session: Session = Session::accept(session, broker).await?;
-						session.run().await
-					});
+					self.conns.spawn(async move { Self::handle(conn, broker).await });
 				},
-				res = self.tasks.join_next(), if !self.tasks.is_empty() => {
+				res = self.conns.join_next(), if !self.conns.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
-
 					if let Err(err) = res {
-						log::error!("session terminated: {:?}", err);
+						log::error!("connection terminated: {:?}", err);
 					}
 				},
 			}
 		}
+	}
+
+	async fn handle(conn: quinn::Connecting, broker: broker::Broadcasts) -> anyhow::Result<()> {
+		// Wait for the QUIC connection to be established.
+		let conn = conn.await.context("failed to establish QUIC connection")?;
+
+		// Wait for the CONNECT request.
+		let request = webtransport_quinn::accept(conn)
+			.await
+			.context("failed to receive WebTransport request")?;
+
+		// TODO parse the request URI
+
+		// Accept the CONNECT request.
+		let session = request
+			.ok()
+			.await
+			.context("failed to respond to WebTransport request")?;
+
+		// Perform the MoQ handshake.
+		let session = moq_transport_quinn::accept(session, moq_transport::Role::Both)
+			.await
+			.context("failed to perform MoQ handshake")?;
+
+		// Run the relay code.
+		let session = moq_warp::relay::Session::new(session, broker);
+		session.run().await
 	}
 }

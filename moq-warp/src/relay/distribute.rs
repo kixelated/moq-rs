@@ -1,7 +1,6 @@
 use anyhow::Context;
 
-use tokio::io::AsyncWriteExt;
-use tokio::task::JoinSet; // allows locking across await
+use tokio::{io::AsyncWriteExt, task::JoinSet}; // allows locking across await
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
 use moq_transport_quinn::SendObjects;
@@ -165,7 +164,7 @@ impl Session {
 			send_order: segment.send_order,
 		};
 
-		let mut stream = objects.send(object).await?;
+		let mut stream = objects.open(object).await?;
 
 		// Write each fragment as they are available.
 		while let Some(fragment) = segment.fragments.next().await {
