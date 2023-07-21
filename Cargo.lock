@@ -943,6 +943,7 @@ dependencies = [
 name = "moq-pub"
 version = "0.1.0"
 dependencies = [
+ "moq-transport-quinn",
  "webtransport-quinn",
 ]
 
