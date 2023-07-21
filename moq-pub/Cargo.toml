@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 moq-transport-quinn = { version = "0.1.0", path = "../moq-transport-quinn" }
 moq-warp = { version = "0.1.0", path = "../moq-warp" }
+quinn = "0.10.1"
 webtransport-quinn = "0.4.2"

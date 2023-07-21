@@ -945,6 +945,7 @@ version = "0.1.0"
 dependencies = [
  "moq-transport-quinn",
  "moq-warp",
+ "quinn",
  "webtransport-quinn",
 ]
 
