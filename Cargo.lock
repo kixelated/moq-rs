@@ -943,9 +943,18 @@ dependencies = [
 name = "moq-pub"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "log",
+ "moq-transport",
  "moq-transport-quinn",
  "moq-warp",
  "quinn",
+ "ring",
+ "rustls 0.21.2",
+ "rustls-pemfile",
+ "tokio",
  "webtransport-quinn",
 ]
 
