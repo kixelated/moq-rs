@@ -21,6 +21,7 @@ moq-warp = { path = "../moq-warp" }
 # QUIC
 quinn = "0.10"
 webtransport-quinn = "0.4.2"
+http = "0.2.9"
 
 # Crypto
 ring = "0.16.20"

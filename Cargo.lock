@@ -946,6 +946,7 @@ dependencies = [
  "anyhow",
  "clap",
  "env_logger",
+ "http",
  "log",
  "moq-transport",
  "moq-transport-quinn",
