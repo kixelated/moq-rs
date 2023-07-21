@@ -1,11 +1,18 @@
 use anyhow::Context;
 use clap::Parser;
+use std::net;
 
 mod client;
 use client::*;
 
 #[derive(Parser, Clone)]
-struct Cli {}
+struct Cli {
+	#[arg(short, long, default_value = "0.0.0.0:0")]
+	addr: net::SocketAddr,
+
+	#[arg(short, long, default_value = "https://localhost:4443/moq-pub")]
+	uri: http::uri::Uri,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -13,6 +20,16 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	println!("Hello, world!");
+	let config = ClientConfig{
+		addr: args.addr,
+		uri: args.uri,
+	};
+
+	let client = Client::new(config).await?;
+
+	tokio::select! {
+		res = client.run() => res.context("failed to run client")?,
+	}
+
 	Ok(())
 }
