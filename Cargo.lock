@@ -940,6 +940,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-pub"
+version = "0.1.0"
+
+[[package]]
 name = "moq-transport"
 version = "0.1.0"
 dependencies = [
