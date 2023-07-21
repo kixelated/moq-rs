@@ -942,6 +942,9 @@ dependencies = [
 [[package]]
 name = "moq-pub"
 version = "0.1.0"
+dependencies = [
+ "webtransport-quinn",
+]
 
 [[package]]
 name = "moq-transport"
