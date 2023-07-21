@@ -18,7 +18,7 @@ moq-transport = { path = "../moq-transport" }
 
 quinn = "0.10"
 http = "0.2"
-webtransport-quinn = "0.4.1"
+webtransport-quinn = "0.4.2"
 tokio = { version = "1.27", features = ["macros"] }
 bytes = "1"
 log = "0.4"

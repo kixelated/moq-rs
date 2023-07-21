@@ -77,7 +77,8 @@ impl Session {
 	fn receive_announce_error(&mut self, msg: AnnounceError) -> anyhow::Result<()> {
 		// TODO make sure we sent this announce
 		// TODO remove this from the list of subscribable broadcasts.
-		anyhow::bail!("received ANNOUNCE_ERROR({:?}): {}", msg.code, msg.reason)
+		log::warn!("received error {:?}", msg);
+		Ok(())
 	}
 
 	async fn receive_subscribe(&mut self, msg: Subscribe) -> anyhow::Result<()> {

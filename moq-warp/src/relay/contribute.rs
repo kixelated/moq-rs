@@ -58,14 +58,14 @@ impl Session {
 				res = self.run_segments.join_next(), if !self.run_segments.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
-						log::error!("failed to produce segment: {:?}", err);
+						log::warn!("failed to produce segment: {:?}", err);
 					}
 				},
 				object = self.objects.recv() => {
 					let (object, stream) = object.context("failed to receive object")?;
 					let res = self.receive_object(object, stream).await;
 					if let Err(err) = res {
-						log::error!("failed to receive object: {:?}", err);
+						log::warn!("failed to receive object: {:?}", err);
 					}
 				},
 				subscribe = self.publishers.incoming() => {
