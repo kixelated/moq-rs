@@ -4,8 +4,17 @@ FROM rust:latest as builder
 RUN USER=root cargo new app
 WORKDIR /usr/src/app
 COPY Cargo.toml Cargo.lock ./
-# Needs at least a main.rs file with a main function
-RUN mkdir src && echo "fn main(){}" > src/main.rs
+
+RUN mkdir -p moq-transport/src moq-transport-quinn/src moq-demo/src moq-warp/src
+COPY moq-transport/Cargo.toml moq-transport/Cargo.toml
+COPY moq-transport-quinn/Cargo.toml moq-transport-quinn/Cargo.toml
+COPY moq-demo/Cargo.toml moq-demo/Cargo.toml
+COPY moq-warp/Cargo.toml moq-warp/Cargo.toml
+RUN touch moq-transport/src/lib.rs
+RUN touch moq-transport-quinn/src/lib.rs
+RUN touch moq-demo/src/lib.rs
+RUN touch moq-warp/src/lib.rs
+
 # Will build all dependent crates in release mode
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/src/app/target \
