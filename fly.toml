@@ -1,0 +1,21 @@
+# fly.toml file generated for englishm-tcp-echo on 2022-11-25T13:13:24-05:00
+
+app = "englishm-moq-demo"
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[env]
+  PORT = "4443"
+
+[experimental]
+  cmd = "./moq-demo"
+
+[[services]]
+  internal_port = 4443
+  protocol = "udp"
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+
+  [[services.ports]]
+    port = "4443"
