@@ -21,8 +21,8 @@ impl Client {
    }
 
    pub async fn run(self) -> anyhow::Result<()> {
-       let session = webtransport_quinn::connect(&self.client, &self.config.uri).await.context("failed to create session")?;
-       let session = moq_transport_quinn::connect(session, moq_transport::Role::Publisher).await.context("failed to create session")?;
+       let session = webtransport_quinn::connect(&self.client, &self.config.uri).await.context("failed to create WebTransport session")?;
+       let session = moq_transport_quinn::connect(session, moq_transport::Role::Publisher).await.context("failed to create MoQ Transport session")?;
        panic!("got a session - now what?");
    }
 }
