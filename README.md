@@ -8,18 +8,6 @@ It requires a client, such as [moq-js](https://github.com/kixelated/moq-js).
 
 ## Setup
 
-### Media
-
-This demo simulates a live stream by reading a file from disk and sleeping based on media timestamps. Obviously you should hook this up to a real live stream to do anything useful.
-
-Download your favorite media file and convert it to fragmented MP4.
-This requires [ffmpeg](https://ffmpeg.org/)
-
-```
-wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O media/source.mp4
-./media/generate
-```
-
 ### Certificates
 
 Unfortunately, QUIC mandates TLS and makes local development difficult.
@@ -50,9 +38,7 @@ Use a [MoQ client](https://github.com/kixelated/moq-js) to connect to the server
 
 ## License
 
-Licensed under either of
+Licensed under either:
 
- * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+-   Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+-   MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
