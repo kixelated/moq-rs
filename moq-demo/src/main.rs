@@ -5,8 +5,6 @@ use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-use moq_warp::{relay, source};
-
 mod server;
 use server::*;
 
@@ -24,10 +22,6 @@ struct Cli {
 	/// Use the private key at this path
 	#[arg(short, long, default_value = "cert/localhost.key")]
 	key: path::PathBuf,
-
-	/// Use the media file at this path
-	#[arg(short, long, default_value = "media/fragmented.mp4")]
-	media: path::PathBuf,
 }
 
 #[tokio::main]
@@ -39,20 +33,11 @@ async fn main() -> anyhow::Result<()> {
 	// Create a web server to serve the fingerprint
 	let serve = serve_http(args.clone());
 
-	// Create a fake media source from disk.
-	let media = source::File::new(args.media).context("failed to open file source")?;
-
-	let broker = relay::broker::Broadcasts::new();
-	broker
-		.announce("quic.video/demo", media.source())
-		.context("failed to announce file source")?;
-
 	// Create a server to actually serve the media
 	let config = ServerConfig {
 		addr: args.addr,
 		cert: args.cert,
 		key: args.key,
-		broker,
 	};
 
 	let server = Server::new(config).context("failed to create server")?;
@@ -60,7 +45,6 @@ async fn main() -> anyhow::Result<()> {
 	// Run all of the above
 	tokio::select! {
 		res = server.run() => res.context("failed to run server"),
-		res = media.run() => res.context("failed to run media source"),
 		res = serve => res.context("failed to run HTTP server"),
 	}
 }

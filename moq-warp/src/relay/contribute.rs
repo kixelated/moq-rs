@@ -13,7 +13,6 @@ use anyhow::Context;
 
 use super::{broker, control};
 use crate::model::{broadcast, segment, track};
-use crate::source::Source;
 
 // TODO experiment with making this Clone, so every task can have its own copy.
 pub struct Session {
@@ -215,10 +214,8 @@ impl Broadcast {
 			queue: publishers.sender.clone(),
 		}
 	}
-}
 
-impl Source for Broadcast {
-	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
+	pub fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
 		let mut subscriptions = self.subscriptions.lock().unwrap();
 
 		// Check if there's an existing subscription.
@@ -255,8 +252,8 @@ pub struct Publishers {
 	sender: mpsc::UnboundedSender<(String, track::Publisher)>,
 }
 
-impl Publishers {
-	pub fn new() -> Self {
+impl Default for Publishers {
+	fn default() -> Self {
 		let (sender, receiver) = mpsc::unbounded_channel();
 
 		Self {
@@ -265,6 +262,12 @@ impl Publishers {
 			sender,
 			receiver,
 		}
+	}
+}
+
+impl Publishers {
+	pub fn new() -> Self {
+		Self::default()
 	}
 
 	pub fn push_segment(&mut self, id: VarInt, segment: segment::Subscriber) -> anyhow::Result<()> {

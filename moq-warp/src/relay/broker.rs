@@ -1,5 +1,5 @@
 use crate::model::{broadcast, track, watch};
-use crate::source::Source;
+use crate::relay::contribute;
 
 use std::collections::hash_map::HashMap;
 use std::sync::{Arc, Mutex};
@@ -15,7 +15,7 @@ pub struct Broadcasts {
 #[derive(Default)]
 struct BroadcastsInner {
 	// TODO Automatically reclaim dropped sources.
-	lookup: HashMap<String, Arc<dyn Source + Send + Sync>>,
+	lookup: HashMap<String, Arc<contribute::Broadcast>>,
 	updates: watch::Publisher<Update>,
 }
 
@@ -47,7 +47,7 @@ impl Broadcasts {
 		(keys, updates)
 	}
 
-	pub fn announce(&self, namespace: &str, source: Arc<dyn Source + Send + Sync>) -> anyhow::Result<()> {
+	pub fn announce(&self, namespace: &str, source: Arc<contribute::Broadcast>) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
 		if let Some(_existing) = this.lookup.get(namespace) {
@@ -71,7 +71,6 @@ impl Broadcasts {
 
 	pub fn subscribe(&self, namespace: &str, name: &str) -> Option<track::Subscriber> {
 		let this = self.inner.lock().unwrap();
-
 		this.lookup.get(namespace).and_then(|v| v.subscribe(name))
 	}
 }

@@ -20,7 +20,6 @@ pub struct ServerConfig {
 	pub addr: net::SocketAddr,
 	pub cert: path::PathBuf,
 	pub key: path::PathBuf,
-	pub broker: broker::Broadcasts,
 }
 
 impl Server {
@@ -63,7 +62,7 @@ impl Server {
 
 		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broker = config.broker;
+		let broker = broker::Broadcasts::new();
 
 		let conns = JoinSet::new();
 
