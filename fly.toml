@@ -8,7 +8,7 @@ kill_timeout = 5
   PORT = "4443"
 
 [experimental]
-  cmd = "./moq-demo"
+  cmd = "./entrypoint.sh"
 
 [[services]]
   internal_port = 4443
