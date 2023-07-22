@@ -5,8 +5,6 @@ use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
-
-
 mod server;
 use server::*;
 
