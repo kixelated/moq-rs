@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Copy the rest
 COPY . .
 # Build (install) the actual binaries
-RUN cargo install --path .
+RUN cargo install --path moq-demo
 
 # Runtime image
 FROM debian:bullseye-slim
