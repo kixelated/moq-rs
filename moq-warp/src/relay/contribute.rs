@@ -275,6 +275,7 @@ impl Publishers {
 		let track = track.as_mut().context("track closed")?; // TODO don't make fatal
 
 		track.push_segment(segment);
+		track.drain_segments(time::Instant::now());
 
 		Ok(())
 	}
