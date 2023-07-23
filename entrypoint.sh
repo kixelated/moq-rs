@@ -9,4 +9,4 @@ echo "$MOQ_KEY" | base64 -d > cert/moq-demo.key
 #     sleep 5
 # done
 
-./moq-demo --cert cert/moq-demo.crt --key cert/moq-demo.key
+RUST_LOG=info ./moq-demo --cert cert/moq-demo.crt --key cert/moq-demo.key
