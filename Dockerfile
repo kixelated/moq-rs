@@ -37,4 +37,4 @@ WORKDIR /app
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /usr/local/cargo/bin/moq-demo /app/moq-demo
 
-CMD RUST_LOG=info ./moq-demo --cert cert/tls.crt --key cert/tls.key
+CMD ./moq-demo --cert cert/tls.crt --key cert/tls.key
