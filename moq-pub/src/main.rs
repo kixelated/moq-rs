@@ -10,7 +10,7 @@ struct Cli {
 	#[arg(short, long, default_value = "0.0.0.0:0")]
 	addr: net::SocketAddr,
 
-	#[arg(short, long, default_value = "https://localhost:4443/moq-pub")]
+	#[arg(short, long, default_value = "https://moq-demo.englishm.net:4443")]
 	uri: http::uri::Uri,
 }
 
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	let config = ClientConfig{
+	let config = ClientConfig {
 		addr: args.addr,
 		uri: args.uri,
 	};
