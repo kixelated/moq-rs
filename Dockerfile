@@ -37,5 +37,4 @@ WORKDIR /app
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /usr/local/cargo/bin/moq-demo /app/moq-demo
 
-ADD entrypoint.sh .
-# No CMD or ENTRYPOINT, see fly.toml with `cmd` override.
+CMD RUST_LOG=info ./moq-demo --cert cert/tls.crt --key cert/tls.key
