@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: moq-demo
+  name: moq-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moq-demo
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: moq-demo
+    spec:
+      containers:
+      - env:
+        - name: RUST_LOG
+          value: info
+        image: us-west1-docker.pkg.dev/quic-video/moq/moq-demo:v4
+        imagePullPolicy: IfNotPresent
+        name: moq-demo
+        volumeMounts:
+        - mountPath: /app/cert
+          name: moq-demo-tls
+          readOnly: true
+      volumes:
+      - name: moq-demo-tls
+        secret:
+          defaultMode: 420
+          secretName: moq-demo-tls
