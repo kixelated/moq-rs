@@ -955,6 +955,7 @@ dependencies = [
  "quinn",
  "ring",
  "rustls 0.21.2",
+ "rustls-native-certs",
  "rustls-pemfile",
  "tokio",
  "webtransport-quinn",
