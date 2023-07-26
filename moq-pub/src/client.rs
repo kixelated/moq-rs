@@ -1,9 +1,11 @@
 use crate::media::{self, MapSource};
 use http;
+use moq_transport::{Object, VarInt};
 use rustls;
 use rustls_native_certs;
 use std::net;
 use std::sync::{Arc, Mutex};
+use tokio::io::AsyncWriteExt;
 use webtransport_quinn;
 
 use anyhow::Context;
@@ -77,14 +79,28 @@ impl Client {
 
 	pub async fn run(self) -> anyhow::Result<()> {
 		let this = self.inner.lock().unwrap();
+		let mut objects = this.session.send_objects.clone();
 
 		for track_name in this.source.0.keys() {
 			println!("track name: {}", track_name);
 
-			// let track = this.source.0.get_mut(track_name).context("fail")?;
-			// track.next_segment(); // etc.
-		}
+			let mut track = this.source.0.get(track_name).cloned().context("failed to get track")?;
+			println!("track.name: {}", track.name);
+			let mut segment = track.next_segment().await?;
+			let object = Object {
+				track: VarInt::from_u32(track_name.parse::<u32>()?),
+				group: segment.sequence,
+				sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
+				send_order: segment.send_order,
+			};
 
-		loop {}
+			let mut stream = objects.open(object).await?;
+
+			// Write each fragment as they are available.
+			while let Some(fragment) = segment.fragments.next().await {
+				stream.write_all(fragment.as_slice()).await?;
+			}
+		}
+		Ok(())
 	}
 }
