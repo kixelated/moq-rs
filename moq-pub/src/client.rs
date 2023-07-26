@@ -1,4 +1,4 @@
-use crate::media::{self, MapSource, Source};
+use crate::media::{self, MapSource};
 use http;
 use rustls;
 use rustls_native_certs;
@@ -80,9 +80,10 @@ impl Client {
 
 		for track_name in this.source.0.keys() {
 			println!("track name: {}", track_name);
-		}
 
-		// TODO handle any track subscribers that are ready
+			// let track = this.source.0.get_mut(track_name).context("fail")?;
+			// track.next_segment(); // etc.
+		}
 
 		loop {}
 	}
