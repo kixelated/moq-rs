@@ -4,14 +4,17 @@ use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
 use std::collections::HashMap;
 use std::io::{self, BufReader, Cursor, Read};
+use std::sync::Arc;
 use std::time;
 
 pub struct Media {
 	// TODO hold on a lock on StdIn, use as BufReader
 	//	reader: std::io::StdinLock,
-	source: std::io::Stdin,
+	stdin: std::io::Stdin,
 	// The tracks we're producing.
 	tracks: HashMap<String, Track>,
+
+	source: Arc<MapSource>,
 }
 
 impl Media {
@@ -20,15 +23,16 @@ impl Media {
 		// let stdin = io::stdin();
 		// let reader = stdin.lock();
 		Ok(Media {
-			source: io::stdin(),
+			stdin: io::stdin(),
 			tracks: HashMap::<String, Track>::new(),
+			source: Arc::new(MapSource(HashMap::default())),
 		})
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		let ftyp = read_atom(self.source.by_ref())?;
+		let ftyp = read_atom(self.stdin.by_ref())?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
-		let moov = read_atom(self.source.by_ref())?;
+		let moov = read_atom(self.stdin.by_ref())?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
 		let mut init = ftyp;
@@ -43,7 +47,7 @@ impl Media {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create a source that can be subscribed to.
-		//let mut source = HashMap::default();
+		let mut source = HashMap::default();
 
 		let mut tracks = HashMap::new();
 
@@ -55,18 +59,21 @@ impl Media {
 
 			// Store the track publisher in a map so we can update it later.
 			let track = Track::new(&name, timescale);
-			//source.insert(name.to_string(), track.subscribe());
+			source.insert(name.to_string(), track.subscribe());
 
 			tracks.insert(name, track);
 		}
 
+		let source = Arc::new(MapSource(source));
+
 		self.tracks = tracks;
+		self.source = source;
 
 		// The current track name
 		let mut track_name = None;
 
 		loop {
-			let atom = read_atom(self.source.by_ref())?;
+			let atom = read_atom(self.stdin.by_ref())?;
 
 			let mut reader = io::Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
@@ -327,4 +334,17 @@ fn track_timescale(moov: &mp4::MoovBox, track_id: u32) -> u64 {
 		.expect("failed to find trak");
 
 	trak.mdia.mdhd.timescale as u64
+}
+
+pub trait Source {
+	fn subscribe(&self, name: &str) -> Option<track::Subscriber>;
+}
+
+#[derive(Clone, Default)]
+pub struct MapSource(pub HashMap<String, track::Subscriber>);
+
+impl Source for MapSource {
+	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
+		self.0.get(name).cloned()
+	}
 }
