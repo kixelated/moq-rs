@@ -3,7 +3,7 @@ use moq_transport::VarInt;
 use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
 use std::collections::HashMap;
-use std::io::{self, BufReader, Cursor, Read};
+use std::io::{self, Read};
 use std::sync::Arc;
 use std::time;
 
@@ -48,6 +48,10 @@ impl Media {
 
 		// Create a source that can be subscribed to.
 		let mut source = HashMap::default();
+
+		// Create the catalog track
+		let (_catalog, subscriber) = Self::create_catalog(init);
+		source.insert("0".to_string(), subscriber);
 
 		let mut tracks = HashMap::new();
 
@@ -115,6 +119,29 @@ impl Media {
 				}
 			}
 		}
+	}
+	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
+		// Create a track with a single segment containing the init data.
+		let mut catalog = track::Publisher::new("0");
+
+		// Subscribe to the catalog before we push the segment.
+		let subscriber = catalog.subscribe();
+
+		let mut segment = segment::Publisher::new(segment::Info {
+			sequence: VarInt::from_u32(0),   // first and only segment
+			send_order: VarInt::from_u32(0), // highest priority
+			expires: None,                   // never delete from the cache
+		});
+
+		// Add the segment and add the fragment.
+		catalog.push_segment(segment.subscribe());
+		segment.fragments.push(raw.into());
+
+		// Return the catalog
+		(catalog, subscriber)
+	}
+	pub fn source(&self) -> Arc<MapSource> {
+		self.source.clone()
 	}
 }
 

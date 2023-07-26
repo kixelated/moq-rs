@@ -1,7 +1,9 @@
+use crate::media::{self, MapSource, Source};
 use http;
 use rustls;
 use rustls_native_certs;
 use std::net;
+use std::sync::{Arc, Mutex};
 use webtransport_quinn;
 
 use anyhow::Context;
@@ -11,9 +13,14 @@ pub struct ClientConfig {
 	pub uri: http::uri::Uri,
 }
 
+#[derive(Clone)]
 pub struct Client {
-	client: quinn::Endpoint,
-	config: ClientConfig,
+	inner: Arc<Mutex<ClientInner>>,
+}
+
+pub struct ClientInner {
+	session: moq_transport_quinn::Session,
+	source: MapSource,
 }
 
 impl Client {
@@ -36,25 +43,43 @@ impl Client {
 
 		let mut endpoint = quinn::Endpoint::client(config.addr)?;
 		endpoint.set_default_client_config(quinn_client_config);
+
+		let session = webtransport_quinn::connect(&endpoint, &config.uri)
+			.await
+			.context("failed to create WebTransport session")?;
+		let session = moq_transport_quinn::connect(session, moq_transport::Role::Both)
+			.await
+			.context("failed to create MoQ Transport session")?;
 		Ok(Client {
-			client: endpoint,
-			config,
+			inner: Arc::new(Mutex::new(ClientInner {
+				session,
+				source: MapSource::default(),
+			})),
 		})
 	}
 
-	pub async fn run(self) -> anyhow::Result<()> {
-		let session = webtransport_quinn::connect(&self.client, &self.config.uri)
-			.await
-			.context("failed to create WebTransport session")?;
-		let mut session = moq_transport_quinn::connect(session, moq_transport::Role::Both)
-			.await
-			.context("failed to create MoQ Transport session")?;
-		session
+	pub async fn announce(self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
+		let mut this = self.inner.lock().unwrap();
+
+		// keep track of this track
+		let subscriber = source.subscribe(namespace).context("failed to subscribe to track")?;
+		this.source.0.insert(namespace.to_string(), subscriber);
+
+		// ANNOUNCE the namespace
+		this.session
 			.send_control
 			.send(moq_transport::Announce {
-				track_namespace: "foo".to_string(),
+				track_namespace: namespace.to_string(),
 			})
 			.await?;
+
+		Ok(())
+	}
+
+	pub async fn run(self) -> anyhow::Result<()> {
+		let _this = self.inner.lock().unwrap();
+
+		// TODO handle any track subscribers that are ready
 
 		loop {}
 	}
