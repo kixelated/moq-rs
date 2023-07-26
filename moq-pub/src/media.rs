@@ -22,17 +22,11 @@ impl Media {
 		// TODO hold a lock on StdIn
 		// let stdin = io::stdin();
 		// let reader = stdin.lock();
-		Ok(Media {
-			stdin: io::stdin(),
-			tracks: HashMap::<String, Track>::new(),
-			source: Arc::new(MapSource(HashMap::default())),
-		})
-	}
-	pub async fn run(mut self) -> anyhow::Result<()> {
-		let ftyp = read_atom(self.stdin.by_ref())?;
+		let mut stdin = io::stdin();
+		let ftyp = read_atom(stdin.by_ref())?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
-		let moov = read_atom(self.stdin.by_ref())?;
+		let moov = read_atom(stdin.by_ref())?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
 		let mut init = ftyp;
@@ -70,9 +64,9 @@ impl Media {
 
 		let source = Arc::new(MapSource(source));
 
-		self.tracks = tracks;
-		self.source = source;
-
+		Ok(Media { stdin, tracks, source })
+	}
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		// The current track name
 		let mut track_name = None;
 

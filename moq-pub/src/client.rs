@@ -62,7 +62,7 @@ impl Client {
 		let mut this = self.inner.lock().unwrap();
 
 		// keep track of this track
-		let subscriber = source.subscribe(namespace).context("failed to subscribe to track")?;
+		let subscriber = source.subscribe("0").context("failed to subscribe to track")?;
 		this.source.0.insert(namespace.to_string(), subscriber);
 
 		// ANNOUNCE the namespace
