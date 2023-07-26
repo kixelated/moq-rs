@@ -20,7 +20,7 @@ pub struct Client {
 
 pub struct ClientInner {
 	session: moq_transport_quinn::Session,
-	source: MapSource,
+	source: Arc<MapSource>,
 }
 
 impl Client {
@@ -53,7 +53,7 @@ impl Client {
 		Ok(Client {
 			inner: Arc::new(Mutex::new(ClientInner {
 				session,
-				source: MapSource::default(),
+				source: MapSource::default().into(),
 			})),
 		})
 	}
@@ -61,9 +61,8 @@ impl Client {
 	pub async fn announce(self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
-		// keep track of this track
-		let subscriber = source.subscribe("0").context("failed to subscribe to track")?;
-		this.source.0.insert(namespace.to_string(), subscriber);
+		// Only allow one souce at a time for now?
+		this.source = source;
 
 		// ANNOUNCE the namespace
 		this.session
@@ -77,7 +76,11 @@ impl Client {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let _this = self.inner.lock().unwrap();
+		let this = self.inner.lock().unwrap();
+
+		for track_name in this.source.0.keys() {
+			println!("track name: {}", track_name);
+		}
 
 		// TODO handle any track subscribers that are ready
 

@@ -79,7 +79,7 @@ impl Media {
 			match header.name {
 				mp4::BoxType::MoofBox => {
 					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
-					dbg!(&moof);
+					//dbg!(&moof);
 					// Process the moof.
 					let fragment = Fragment::new(moof)?;
 					let name = fragment.track.to_string();
@@ -97,7 +97,7 @@ impl Media {
 
 					// Publish the moof header, creating a new segment if it's a keyframe.
 					track.header(atom, fragment).context("failed to publish moof")?;
-					println!("proccessed moof!");
+					//println!("proccessed moof!");
 				}
 				mp4::BoxType::MdatBox => {
 					// Get the track ID from the previous moof.
@@ -106,7 +106,7 @@ impl Media {
 
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
-					println!("processed mdat!");
+					//println!("processed mdat!");
 				}
 				_ => {
 					// Skip unknown atoms
