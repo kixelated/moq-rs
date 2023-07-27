@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 use webtransport_quinn;
 
+use anyhow::anyhow;
 use anyhow::Context;
 
 pub struct ClientConfig {
@@ -61,7 +62,10 @@ impl Client {
 	}
 
 	pub async fn announce(&mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
-		let mut this = self.inner.lock().unwrap();
+		let mut this = self
+			.inner
+			.lock()
+			.map_err(|_| anyhow!("Failed to get lock on ClientInner"))?;
 
 		// Only allow one souce at a time for now?
 		this.source = source;
