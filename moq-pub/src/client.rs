@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 use webtransport_quinn;
 
-use anyhow::anyhow;
 use anyhow::Context;
 
 pub struct ClientConfig {
@@ -16,12 +15,7 @@ pub struct ClientConfig {
 	pub uri: http::uri::Uri,
 }
 
-#[derive(Clone)]
 pub struct Client {
-	inner: Arc<Mutex<ClientInner>>,
-}
-
-pub struct ClientInner {
 	session: moq_transport_quinn::Session,
 	source: Arc<MapSource>,
 }
@@ -54,24 +48,17 @@ impl Client {
 			.await
 			.context("failed to create MoQ Transport session")?;
 		Ok(Client {
-			inner: Arc::new(Mutex::new(ClientInner {
-				session,
-				source: MapSource::default().into(),
-			})),
+			session,
+			source: Arc::new(MapSource::default()),
 		})
 	}
 
 	pub async fn announce(&mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
-		let mut this = self
-			.inner
-			.lock()
-			.map_err(|_| anyhow!("Failed to get lock on ClientInner"))?;
-
 		// Only allow one souce at a time for now?
-		this.source = source;
+		self.source = source;
 
 		// ANNOUNCE the namespace
-		this.session
+		self.session
 			.send_control
 			.send(moq_transport::Announce {
 				track_namespace: namespace.to_string(),
@@ -82,13 +69,12 @@ impl Client {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let this = self.inner.lock().unwrap();
-		let mut objects = this.session.send_objects.clone();
+		let mut objects = self.session.send_objects.clone();
 
-		for track_name in this.source.0.keys() {
+		for track_name in self.source.0.keys() {
 			println!("track name: {}", track_name);
 
-			let mut track = this.source.0.get(track_name).cloned().context("failed to get track")?;
+			let mut track = self.source.0.get(track_name).cloned().context("failed to get track")?;
 			println!("track.name: {}", track.name);
 			let mut segment = track.next_segment().await?;
 			let object = Object {
