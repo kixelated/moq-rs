@@ -60,7 +60,7 @@ impl Client {
 		})
 	}
 
-	pub async fn announce(self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
+	pub async fn announce(&mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
 		let mut this = self.inner.lock().unwrap();
 
 		// Only allow one souce at a time for now?

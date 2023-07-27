@@ -28,16 +28,13 @@ async fn main() -> anyhow::Result<()> {
 		uri: args.uri,
 	};
 
-	let client = Client::new(config).await?;
+	let mut client = Client::new(config).await?;
 	let media = Media::new().await?;
-	client
-		.clone()
-		.announce("quic.video/moq-pub-foo", media.source())
-		.await?;
+	client.announce("quic.video/moq-pub-foo", media.source()).await?;
 
 	tokio::select! {
-		res = client.run() => res.context("failed to run client")?,
 		res = media.run() => res.context("failed to run media source")?,
+		res = client.run() => res.context("failed to run client")?,
 	}
 
 	Ok(())
