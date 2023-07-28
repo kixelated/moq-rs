@@ -1,7 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
 use std::net;
-use tokio::time::sleep;
 
 mod client;
 use client::*;
@@ -31,7 +30,6 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut client = Client::new(config).await?;
 	let media = Media::new().await?;
-	sleep(std::time::Duration::from_secs(2)).await;
 	client.announce("quic.video/moq-pub-foo", media.source()).await?;
 
 	tokio::select! {
