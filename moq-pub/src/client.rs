@@ -3,6 +3,7 @@ use http;
 use moq_transport::{Object, VarInt};
 use rustls;
 use rustls_native_certs;
+use std::io::Write;
 use std::net;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -69,14 +70,18 @@ impl Client {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
+		println!("client.run()");
 		let mut objects = self.session.send_objects.clone();
 
+		println!("self.source.0.len(): {}", self.source.0.len());
+		dbg!(&self.source.0);
 		for track_name in self.source.0.keys() {
 			println!("track name: {}", track_name);
 
 			let mut track = self.source.0.get(track_name).cloned().context("failed to get track")?;
 			println!("track.name: {}", track.name);
 			let mut segment = track.next_segment().await?;
+			println!("segment: {:?}", &segment);
 			let object = Object {
 				track: VarInt::from_u32(track_name.parse::<u32>()?),
 				group: segment.sequence,
@@ -91,6 +96,7 @@ impl Client {
 				stream.write_all(fragment.as_slice()).await?;
 			}
 		}
+		std::io::stdout().flush()?;
 		Ok(())
 	}
 }

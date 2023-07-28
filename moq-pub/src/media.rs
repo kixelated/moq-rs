@@ -52,6 +52,7 @@ impl Media {
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = id.to_string();
+			println!("trak name: {}", name);
 
 			let timescale = track_timescale(&moov, id);
 
@@ -67,10 +68,13 @@ impl Media {
 		Ok(Media { stdin, tracks, source })
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
+		println!("media.run()");
 		// The current track name
 		let mut track_name = None;
 
 		loop {
+			//dbg!(&self.source);
+			//dbg!(&track_name);
 			let atom = read_atom(self.stdin.by_ref())?;
 
 			let mut reader = io::Cursor::new(&atom);
@@ -97,7 +101,7 @@ impl Media {
 
 					// Publish the moof header, creating a new segment if it's a keyframe.
 					track.header(atom, fragment).context("failed to publish moof")?;
-					//println!("proccessed moof!");
+					//	println!("proccessed moof!");
 				}
 				mp4::BoxType::MdatBox => {
 					// Get the track ID from the previous moof.
@@ -106,7 +110,7 @@ impl Media {
 
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
-					//println!("processed mdat!");
+					//	println!("processed mdat!");
 				}
 				_ => {
 					// Skip unknown atoms
@@ -135,6 +139,7 @@ impl Media {
 		(catalog, subscriber)
 	}
 	pub fn source(&self) -> Arc<MapSource> {
+		println!("source size: {}", self.source.0.len());
 		self.source.clone()
 	}
 }
@@ -263,6 +268,8 @@ impl Track {
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
+		println!("data()");
+		dbg!(&self.track.name);
 		let segment = self.segment.as_mut().context("missing segment")?;
 		segment.fragments.push(raw.into());
 
