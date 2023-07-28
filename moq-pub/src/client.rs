@@ -4,7 +4,7 @@ use moq_transport::{Object, VarInt};
 use rustls;
 use rustls_native_certs;
 use std::net;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use webtransport_quinn;
 
