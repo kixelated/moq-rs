@@ -361,7 +361,7 @@ pub trait Source {
 	fn subscribe(&self, name: &str) -> Option<track::Subscriber>;
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct MapSource(pub HashMap<String, track::Subscriber>);
 
 impl Source for MapSource {
