@@ -52,7 +52,7 @@ impl Media {
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = id.to_string();
-			println!("trak name: {}", name);
+			dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
 
@@ -68,9 +68,11 @@ impl Media {
 		Ok(Media { stdin, tracks, source })
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		println!("media.run()");
+		dbg!("media.run()");
 		// The current track name
 		let mut track_name = None;
+
+		let mut count = 0;
 
 		loop {
 			//dbg!(&self.source);
@@ -111,10 +113,14 @@ impl Media {
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
 					//	println!("processed mdat!");
+					count += 1;
 				}
 				_ => {
 					// Skip unknown atoms
 				}
+			}
+			if count >= 3 {
+				break Ok(());
 			}
 		}
 	}
@@ -139,7 +145,7 @@ impl Media {
 		(catalog, subscriber)
 	}
 	pub fn source(&self) -> Arc<MapSource> {
-		println!("source size: {}", self.source.0.len());
+		dbg!("source size: {}", self.source.0.len());
 		self.source.clone()
 	}
 }
@@ -268,7 +274,7 @@ impl Track {
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		println!("data()");
+		dbg!("data()");
 		dbg!(&self.track.name);
 		let segment = self.segment.as_mut().context("missing segment")?;
 		segment.fragments.push(raw.into());

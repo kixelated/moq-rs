@@ -70,18 +70,18 @@ impl Client {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		println!("client.run()");
+		dbg!("client.run()");
 		let mut objects = self.session.send_objects.clone();
 
-		println!("self.source.0.len(): {}", self.source.0.len());
+		dbg!("self.source.0.len(): {}", self.source.0.len());
 		dbg!(&self.source.0);
 		for track_name in self.source.0.keys() {
-			println!("track name: {}", track_name);
+			dbg!("track name: {}", track_name);
 
 			let mut track = self.source.0.get(track_name).cloned().context("failed to get track")?;
-			println!("track.name: {}", track.name);
+			dbg!("track.name: {}", &track.name);
 			let mut segment = track.next_segment().await?;
-			println!("segment: {:?}", &segment);
+			dbg!("segment: {:?}", &segment);
 			let object = Object {
 				track: VarInt::from_u32(track_name.parse::<u32>()?),
 				group: segment.sequence,
