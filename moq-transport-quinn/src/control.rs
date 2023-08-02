@@ -1,11 +1,10 @@
-use anyhow::Context;
 use moq_transport::{Decode, DecodeError, Encode, Message};
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BytesMut};
 
 use std::io::Cursor;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::{io::AsyncReadExt, sync::Mutex};
 
 use webtransport_quinn::{RecvStream, SendStream};
 
@@ -86,8 +85,7 @@ impl RecvControl {
 				}
 				Err(DecodeError::UnexpectedEnd) => {
 					// The decode failed, so we need to append more data.
-					let chunk = self.stream.read_chunk(1024, true).await?.context("stream closed")?;
-					self.buf.put(chunk.bytes);
+					self.stream.read_buf(&mut self.buf).await?;
 				}
 				Err(e) => return Err(e.into()),
 			}

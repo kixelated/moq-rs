@@ -1,12 +1,12 @@
 use std::{collections::BinaryHeap, io::Cursor, sync::Arc};
 
 use anyhow::Context;
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use moq_transport::{Decode, DecodeError, Encode, Object};
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
-use tokio::{io::AsyncBufReadExt, sync::Mutex};
 use webtransport_quinn::Session;
 
 use crate::{RecvStream, SendStream, SendStreamOrder};
@@ -83,6 +83,8 @@ impl SendObjectsInner {
 		header.encode(&mut self.buf).unwrap();
 		stream.write_all(&self.buf).await.context("failed to write header")?;
 
+		// log::info!("created stream: {:?}", header);
+
 		Ok(stream)
 	}
 }
@@ -117,18 +119,15 @@ impl RecvObjects {
 		}
 	}
 
-	async fn read(stream: webtransport_quinn::RecvStream) -> anyhow::Result<(Object, RecvStream)> {
-		let mut stream = RecvStream::new(stream);
+	async fn read(mut stream: webtransport_quinn::RecvStream) -> anyhow::Result<(Object, RecvStream)> {
+		let mut buf = BytesMut::new();
 
 		loop {
 			// Read more data into the buffer.
-			let data = stream.fill_buf().await?;
-			if data.is_empty() {
-				anyhow::bail!("stream closed before reading header");
-			}
+			stream.read_buf(&mut buf).await?;
 
 			// Use a cursor to read the buffer and remember how much we read.
-			let mut read = Cursor::new(data);
+			let mut read = Cursor::new(&mut buf);
 
 			let header = match Object::decode(&mut read) {
 				Ok(header) => header,
@@ -136,10 +135,14 @@ impl RecvObjects {
 				Err(err) => return Err(err.into()),
 			};
 
-			// We parsed a full header, advance the cursor.
-			// The borrow checker requires these on separate lines.
+			// We parsed a full header, advance the buffer.
 			let size = read.position() as usize;
-			stream.consume(size);
+			buf.advance(size);
+			let buf = buf.freeze();
+
+			// log::info!("received stream: {:?}", header);
+
+			let stream = RecvStream::new(buf, stream);
 
 			return Ok((header, stream));
 		}

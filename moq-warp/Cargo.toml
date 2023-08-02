@@ -1,15 +1,15 @@
 [package]
 name = "moq-warp"
 description = "Media over QUIC"
-authors = [ "Luke Curley" ]
+authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
 version = "0.1.0"
 edition = "2021"
 
-keywords = [ "quic", "http3", "webtransport", "media", "live" ]
-categories = [ "multimedia", "network-programming", "web-programming" ]
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,7 +20,8 @@ moq-transport-quinn = { path = "../moq-transport-quinn" }
 
 tokio = "1.27"
 anyhow = "1.0.70"
-log = "0.4" # TODO remove
+log = "0.4"       # TODO remove
+bytes = "1.4"
 
 # QUIC stuff
 quinn = "0.10"

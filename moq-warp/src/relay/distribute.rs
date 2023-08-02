@@ -168,8 +168,8 @@ impl Session {
 		let mut stream = objects.open(object).await?;
 
 		// Write each fragment as they are available.
-		while let Some(fragment) = segment.fragments.next().await {
-			stream.write_all(fragment.as_slice()).await?;
+		while let Some(mut fragment) = segment.fragments.next().await {
+			stream.write_all_buf(&mut fragment).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped

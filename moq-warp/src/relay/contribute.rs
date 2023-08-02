@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
 use moq_transport_quinn::{RecvObjects, RecvStream};
+
+use bytes::BytesMut;
 
 use anyhow::Context;
 
@@ -114,16 +116,17 @@ impl Session {
 	}
 
 	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
+		let mut buf = BytesMut::new();
+
 		loop {
-			let buf = stream.fill_buf().await?;
-			if buf.is_empty() {
+			let size = stream.read_buf(&mut buf).await?;
+			if size == 0 {
 				return Ok(());
 			}
 
-			let chunk = buf.to_vec();
-			stream.consume(chunk.len());
-
-			segment.fragments.push(chunk.into())
+			// Split off the data we read into the buffer, freezing it so multiple threads can read simitaniously.
+			let data = buf.split().freeze();
+			segment.fragments.push(data);
 		}
 	}
 
