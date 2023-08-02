@@ -117,7 +117,6 @@ impl Session {
 
 	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
 		let mut buf = BytesMut::new();
-		let _prev = 0;
 
 		loop {
 			let size = stream.read_buf(&mut buf).await?;
