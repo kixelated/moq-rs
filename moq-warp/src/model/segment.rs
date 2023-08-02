@@ -1,5 +1,6 @@
-use super::{fragment, watch};
+use super::watch;
 
+use bytes::Bytes;
 use moq_transport::VarInt;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ pub struct Publisher {
 	pub info: Arc<Info>,
 
 	// A list of fragments that make up the segment.
-	pub fragments: watch::Publisher<fragment::Shared>,
+	pub fragments: watch::Publisher<Bytes>,
 }
 
 impl Publisher {
@@ -53,7 +54,7 @@ pub struct Subscriber {
 	pub info: Arc<Info>,
 
 	// A list of fragments that make up the segment.
-	pub fragments: watch::Subscriber<fragment::Shared>,
+	pub fragments: watch::Subscriber<Bytes>,
 }
 
 impl Deref for Subscriber {

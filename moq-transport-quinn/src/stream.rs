@@ -1,12 +1,12 @@
 use std::{
 	io,
-	ops::{Deref, DerefMut},
-	pin::Pin,
+	pin::{pin, Pin},
 	sync::{Arc, Mutex, Weak},
-	task,
+	task::{self, Poll},
 };
 
-use tokio::io::{AsyncWrite, BufReader};
+use bytes::{BufMut, Bytes};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 // Ugh, so we need to wrap SendStream with a mutex because we need to be able to call set_priority on it.
 // The problem is that set_priority takes a i32, while send_order is a VarInt
@@ -83,33 +83,33 @@ impl AsyncWrite for SendStream {
 }
 
 // Unfortunately, we need to wrap RecvStream with a buffer since moq-transport::Coding only supports buffered reads.
-// TODO support unbuffered reads so we only read the MoQ header and then hand off the stream.
-// NOTE: We can't use AsyncRead::chain because we need to get the inner stream for stop.
+// We first serve any data in the buffer, then we poll the stream.
 pub struct RecvStream {
-	stream: BufReader<webtransport_quinn::RecvStream>,
+	buf: Bytes,
+	stream: webtransport_quinn::RecvStream,
 }
 
 impl RecvStream {
-	pub(crate) fn new(stream: webtransport_quinn::RecvStream) -> Self {
-		let stream = BufReader::new(stream);
-		Self { stream }
+	pub(crate) fn new(buf: Bytes, stream: webtransport_quinn::RecvStream) -> Self {
+		Self { buf, stream }
 	}
 
-	pub fn stop(self, code: u32) {
-		self.stream.into_inner().stop(code).ok();
-	}
-}
-
-impl Deref for RecvStream {
-	type Target = BufReader<webtransport_quinn::RecvStream>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.stream
+	pub fn stop(&mut self, code: u32) {
+		self.stream.stop(code).ok();
 	}
 }
 
-impl DerefMut for RecvStream {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.stream
+impl AsyncRead for RecvStream {
+	fn poll_read(
+		mut self: Pin<&mut Self>,
+		cx: &mut task::Context<'_>,
+		buf: &mut tokio::io::ReadBuf<'_>,
+	) -> Poll<io::Result<()>> {
+		if !self.buf.is_empty() {
+			buf.put(&mut pin!(self).buf);
+			Poll::Ready(Ok(()))
+		} else {
+			Pin::new(&mut self.stream).poll_read(cx, buf)
+		}
 	}
 }
