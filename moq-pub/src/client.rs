@@ -7,6 +7,7 @@ use std::io::Write;
 use std::net;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
+use tokio::task::JoinSet;
 use webtransport_quinn;
 
 use anyhow::Context;
@@ -19,6 +20,8 @@ pub struct ClientConfig {
 pub struct Client {
 	session: moq_transport_quinn::Session,
 	source: Arc<MapSource>,
+
+	recv_tasks: JoinSet<anyhow::Result<()>>,
 }
 
 impl Client {
@@ -51,10 +54,15 @@ impl Client {
 		Ok(Client {
 			session,
 			source: Arc::new(MapSource::default()),
+			recv_tasks: JoinSet::new(),
 		})
 	}
 
-	pub async fn announce(&mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
+	pub async fn debug_listen(&mut self) -> anyhow::Result<()> {
+		Ok(())
+	}
+
+	pub async fn announce(mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<Client> {
 		// Only allow one souce at a time for now?
 		self.source = source;
 
@@ -66,16 +74,27 @@ impl Client {
 			})
 			.await?;
 
-		Ok(())
+		let mut rc = self.session.recv_control;
+
+		let foo = "bar";
+
+		self.recv_tasks.spawn(async move {
+			let msg = rc.recv().await;
+			dbg!(&msg);
+			Ok(())
+		});
+
+		Ok(self)
 	}
 
-	pub async fn run(self) -> anyhow::Result<()> {
+	pub async fn run(&mut self) -> anyhow::Result<()> {
 		dbg!("client.run()");
 		let mut objects = self.session.send_objects.clone();
 
 		dbg!("self.source.0.len(): {}", self.source.0.len());
 		dbg!(&self.source.0);
 		for track_name in self.source.0.keys() {
+			// make tokio task
 			dbg!("track name: {}", track_name);
 
 			let mut track = self.source.0.get(track_name).cloned().context("failed to get track")?;
@@ -97,6 +116,10 @@ impl Client {
 			}
 		}
 		std::io::stdout().flush()?;
+
+		loop {
+			self.recv_tasks.join_next();
+		}
 		Ok(())
 	}
 }

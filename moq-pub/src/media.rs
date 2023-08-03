@@ -67,7 +67,7 @@ impl Media {
 
 		Ok(Media { stdin, tracks, source })
 	}
-	pub async fn run(mut self) -> anyhow::Result<()> {
+	pub async fn run(&mut self) -> anyhow::Result<()> {
 		dbg!("media.run()");
 		// The current track name
 		let mut track_name = None;
@@ -85,6 +85,7 @@ impl Media {
 			match header.name {
 				mp4::BoxType::MoofBox => {
 					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
+
 					//dbg!(&moof);
 					// Process the moof.
 					let fragment = Fragment::new(moof)?;

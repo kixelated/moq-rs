@@ -2,8 +2,14 @@ use anyhow::Context;
 use clap::Parser;
 use std::net;
 
-mod client;
-use client::*;
+mod session_runner;
+use session_runner::*;
+
+mod media_runner;
+use media_runner::*;
+
+mod log_viewer;
+use log_viewer::*;
 
 mod media;
 use media::*;
@@ -23,18 +29,26 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	let config = ClientConfig {
+	let config = Config {
 		addr: args.addr,
 		uri: args.uri,
 	};
 
-	let mut client = Client::new(config).await?;
-	let media = Media::new().await?;
-	client.announce("quic.video/moq-pub-foo", media.source()).await?;
+	let mut media = Media::new().await?;
+	let mut session_runner = SessionRunner::new(config).await?;
+	let mut media_runner = MediaRunner::new(
+		session_runner.get_outgoing_senders().await,
+		session_runner.get_incoming_receivers().await,
+	)
+	.await?;
+	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
+	media_runner.announce("quic.video/moq-pub-foo", media.source()).await?;
 
 	tokio::select! {
 		res = media.run() => res.context("failed to run media source")?,
-		res = client.run() => res.context("failed to run client")?,
+		res = session_runner.run() => res.context("failed to run session runner")?,
+		res = log_viewer.run() => res.context("failed to run media source")?,
+		res = media_runner.run() => res.context("failed to run client")?,
 	}
 
 	Ok(())
