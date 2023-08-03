@@ -2,27 +2,24 @@ mod announce;
 mod announce_error;
 mod announce_ok;
 mod go_away;
-mod role;
-mod setup_client;
-mod setup_server;
+mod receiver;
+mod sender;
 mod subscribe;
 mod subscribe_error;
 mod subscribe_ok;
-mod version;
 
 pub use announce::*;
 pub use announce_error::*;
 pub use announce_ok::*;
 pub use go_away::*;
-pub use role::*;
-pub use setup_client::*;
-pub use setup_server::*;
+pub use receiver::*;
+pub use sender::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
-pub use version::*;
 
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::setup;
 
 use bytes::{Buf, BufMut};
 use std::fmt;
@@ -86,6 +83,10 @@ macro_rules! message_types {
 		}
     }
 }
+
+// Just so we can use the macro above.
+type SetupClient = setup::Client;
+type SetupServer = setup::Server;
 
 // Each message is prefixed with the given VarInt type.
 message_types! {

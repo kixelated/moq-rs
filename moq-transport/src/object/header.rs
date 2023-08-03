@@ -1,9 +1,8 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
-
 use bytes::{Buf, BufMut};
 
 #[derive(Debug)]
-pub struct Object {
+pub struct Header {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
 	pub track: VarInt,
@@ -18,7 +17,7 @@ pub struct Object {
 	pub send_order: VarInt,
 }
 
-impl Decode for Object {
+impl Decode for Header {
 	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r)?;
 		if typ.into_inner() != 0 {
@@ -41,7 +40,7 @@ impl Decode for Object {
 	}
 }
 
-impl Encode for Object {
+impl Encode for Header {
 	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from_u32(0).encode(w)?;
 		self.track.encode(w)?;

@@ -919,7 +919,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-demo"
+name = "moq-quinn"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -928,7 +928,6 @@ dependencies = [
  "hex",
  "log",
  "moq-transport",
- "moq-transport-quinn",
  "moq-warp",
  "quinn",
  "ring",
@@ -936,6 +935,7 @@ dependencies = [
  "rustls-pemfile",
  "tokio",
  "warp",
+ "webtransport-generic",
  "webtransport-quinn",
 ]
 
@@ -943,23 +943,11 @@ dependencies = [
 name = "moq-transport"
 version = "0.1.0"
 dependencies = [
- "bytes",
- "thiserror",
-]
-
-[[package]]
-name = "moq-transport-quinn"
-version = "0.1.0"
-dependencies = [
  "anyhow",
  "bytes",
- "http",
- "log",
- "moq-transport",
- "quinn",
  "thiserror",
  "tokio",
- "webtransport-quinn",
+ "webtransport-generic",
 ]
 
 [[package]]
@@ -970,12 +958,12 @@ dependencies = [
  "bytes",
  "log",
  "moq-transport",
- "moq-transport-quinn",
  "quinn",
  "ring",
  "rustls 0.21.2",
  "rustls-pemfile",
  "tokio",
+ "webtransport-generic",
 ]
 
 [[package]]
@@ -1913,19 +1901,13 @@ dependencies = [
 [[package]]
 name = "webtransport-generic"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba4583e96bb0ef08142f868bf0d28f90211eced56a473768ee27446864a2310"
 dependencies = [
  "bytes",
- "log",
- "thiserror",
 ]
 
 [[package]]
 name = "webtransport-proto"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21fefb5728651d507b444659853b47896116179ea8fd0348d02de080250892c7"
 dependencies = [
  "bytes",
  "http",
@@ -1935,8 +1917,6 @@ dependencies = [
 [[package]]
 name = "webtransport-quinn"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a4ac9975117d8c63c4d04577d594b3130fe2023b7363ebc613905acf98590a"
 dependencies = [
  "async-std",
  "bytes",

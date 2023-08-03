@@ -7,7 +7,7 @@ use bytes::{Buf, BufMut};
 // NOTE: This is not a message type, but rather the control stream header.
 // Proposal: https://github.com/moq-wg/moq-transport/issues/138
 #[derive(Debug)]
-pub struct SetupServer {
+pub struct Server {
 	// The list of supported versions in preferred order.
 	pub version: Version,
 
@@ -16,7 +16,7 @@ pub struct SetupServer {
 	pub role: Role,
 }
 
-impl Decode for SetupServer {
+impl Decode for Server {
 	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let version = Version::decode(r)?;
 		let role = Role::decode(r)?;
@@ -25,7 +25,7 @@ impl Decode for SetupServer {
 	}
 }
 
-impl Encode for SetupServer {
+impl Encode for Server {
 	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.version.encode(w)?;
 		self.role.encode(w)?;

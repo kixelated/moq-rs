@@ -10,9 +10,6 @@ pub enum EncodeError {
 
 	#[error("varint too large")]
 	BoundsExceeded(#[from] BoundsExceeded),
-
-	#[error("unknown error")]
-	Unknown,
 }
 
 pub trait Encode: Sized {

@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut};
 
 // Sent by the client to setup up the session.
 #[derive(Debug)]
-pub struct SetupClient {
+pub struct Client {
 	// NOTE: This is not a message type, but rather the control stream header.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/138
 
@@ -20,7 +20,7 @@ pub struct SetupClient {
 	pub path: String,
 }
 
-impl Decode for SetupClient {
+impl Decode for Client {
 	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let versions = Versions::decode(r)?;
 		let role = Role::decode(r)?;
@@ -30,7 +30,7 @@ impl Decode for SetupClient {
 	}
 }
 
-impl Encode for SetupClient {
+impl Encode for Client {
 	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.versions.encode(w)?;
 		self.role.encode(w)?;

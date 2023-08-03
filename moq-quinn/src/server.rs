@@ -1,16 +1,15 @@
-use moq_warp::relay::broker;
-
 use std::{fs, io, net, path, sync, time};
 
 use anyhow::Context;
 
+use moq_warp::relay;
 use tokio::task::JoinSet;
 
 pub struct Server {
 	server: quinn::Endpoint,
 
 	// The media sources.
-	broker: broker::Broadcasts,
+	broker: relay::Broker,
 
 	// The active connections.
 	conns: JoinSet<anyhow::Result<()>>,
@@ -62,7 +61,7 @@ impl Server {
 
 		server_config.transport = sync::Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broker = broker::Broadcasts::new();
+		let broker = relay::Broker::new();
 
 		let conns = JoinSet::new();
 
@@ -88,7 +87,7 @@ impl Server {
 		}
 	}
 
-	async fn handle(conn: quinn::Connecting, broker: broker::Broadcasts) -> anyhow::Result<()> {
+	async fn handle(conn: quinn::Connecting, broker: relay::Broker) -> anyhow::Result<()> {
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
@@ -106,12 +105,12 @@ impl Server {
 			.context("failed to respond to WebTransport request")?;
 
 		// Perform the MoQ handshake.
-		let session = moq_transport_quinn::accept(session, moq_transport::Role::Both)
+		let session = moq_transport::Session::accept(session, moq_transport::setup::Role::Both)
 			.await
 			.context("failed to perform MoQ handshake")?;
 
 		// Run the relay code.
-		let session = moq_warp::relay::Session::new(session, broker);
+		let session = relay::Session::new(session, broker);
 		session.run().await
 	}
 }

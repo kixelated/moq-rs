@@ -7,20 +7,20 @@ use std::sync::{Arc, Mutex};
 use anyhow::Context;
 
 #[derive(Clone, Default)]
-pub struct Broadcasts {
+pub struct Broker {
 	// Operate on the inner struct so we can share/clone the outer struct.
-	inner: Arc<Mutex<BroadcastsInner>>,
+	inner: Arc<Mutex<BrokerInner>>,
 }
 
 #[derive(Default)]
-struct BroadcastsInner {
+struct BrokerInner {
 	// TODO Automatically reclaim dropped sources.
 	lookup: HashMap<String, Arc<contribute::Broadcast>>,
-	updates: watch::Publisher<Update>,
+	updates: watch::Publisher<BrokerUpdate>,
 }
 
 #[derive(Clone)]
-pub enum Update {
+pub enum BrokerUpdate {
 	// Broadcast was announced
 	Insert(String), // TODO include source?
 
@@ -28,13 +28,13 @@ pub enum Update {
 	Remove(String, broadcast::Error),
 }
 
-impl Broadcasts {
+impl Broker {
 	pub fn new() -> Self {
 		Default::default()
 	}
 
 	// Return the list of available broadcasts, and a subscriber that will return updates (add/remove).
-	pub fn available(&self) -> (Vec<String>, watch::Subscriber<Update>) {
+	pub fn available(&self) -> (Vec<String>, watch::Subscriber<BrokerUpdate>) {
 		// Grab the lock.
 		let this = self.inner.lock().unwrap();
 
@@ -55,7 +55,7 @@ impl Broadcasts {
 		}
 
 		this.lookup.insert(namespace.to_string(), source);
-		this.updates.push(Update::Insert(namespace.to_string()));
+		this.updates.push(BrokerUpdate::Insert(namespace.to_string()));
 
 		Ok(())
 	}
@@ -64,7 +64,7 @@ impl Broadcasts {
 		let mut this = self.inner.lock().unwrap();
 
 		this.lookup.remove(namespace).context("namespace was not published")?;
-		this.updates.push(Update::Remove(namespace.to_string(), error));
+		this.updates.push(BrokerUpdate::Remove(namespace.to_string(), error));
 
 		Ok(())
 	}

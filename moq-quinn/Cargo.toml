@@ -1,5 +1,5 @@
 [package]
-name = "moq-demo"
+name = "moq-quinn"
 description = "Media over QUIC"
 authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
@@ -16,12 +16,12 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
-moq-transport-quinn = { path = "../moq-transport-quinn" }
 moq-warp = { path = "../moq-warp" }
+webtransport-generic = { path = "../../webtransport-rs/webtransport-generic", version = "0.3" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.4.2"
+webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn", version = "0.4.2" }
 
 # Crypto
 ring = "0.16.20"
