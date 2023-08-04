@@ -1,6 +1,7 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
 
-use bytes::{Buf, BufMut};
+
+use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]
 pub struct Announce {
@@ -8,16 +9,14 @@ pub struct Announce {
 	pub track_namespace: String,
 }
 
-impl Decode for Announce {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let track_namespace = String::decode(r)?;
+impl Announce {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let track_namespace = decode_string(r).await?;
 		Ok(Self { track_namespace })
 	}
-}
 
-impl Encode for Announce {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.track_namespace.encode(w)?;
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		encode_string(&self.track_namespace, w).await?;
 		Ok(())
 	}
 }

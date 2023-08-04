@@ -1,26 +1,16 @@
 use anyhow::Context;
 
 use crate::{message, object, setup};
-use webtransport_generic::{AsyncRecvStream, AsyncSendStream, AsyncSession};
+use webtransport_generic::Session as WTSession;
 
-pub struct Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+pub struct Session<S: WTSession> {
 	pub send_control: message::Sender<S::SendStream>,
 	pub recv_control: message::Receiver<S::RecvStream>,
 	pub send_objects: object::Sender<S>,
 	pub recv_objects: object::Receiver<S>,
 }
 
-impl<S> Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+impl<S: WTSession> Session<S> {
 	/// Called by a server with an established WebTransport session.
 	// TODO close the session with an error code
 	pub async fn accept(session: S, role: setup::Role) -> anyhow::Result<Self> {

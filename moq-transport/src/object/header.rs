@@ -1,5 +1,7 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
-use bytes::{Buf, BufMut};
+use crate::coding::{DecodeError, EncodeError, VarInt};
+
+
+use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]
 pub struct Header {
@@ -17,19 +19,19 @@ pub struct Header {
 	pub send_order: VarInt,
 }
 
-impl Decode for Header {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = VarInt::decode(r)?;
+impl Header {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let typ = VarInt::decode(r).await?;
 		if typ.into_inner() != 0 {
 			return Err(DecodeError::InvalidType(typ));
 		}
 
 		// NOTE: size has been omitted
 
-		let track = VarInt::decode(r)?;
-		let group = VarInt::decode(r)?;
-		let sequence = VarInt::decode(r)?;
-		let send_order = VarInt::decode(r)?;
+		let track = VarInt::decode(r).await?;
+		let group = VarInt::decode(r).await?;
+		let sequence = VarInt::decode(r).await?;
+		let send_order = VarInt::decode(r).await?;
 
 		Ok(Self {
 			track,
@@ -38,15 +40,13 @@ impl Decode for Header {
 			send_order,
 		})
 	}
-}
 
-impl Encode for Header {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from_u32(0).encode(w)?;
-		self.track.encode(w)?;
-		self.group.encode(w)?;
-		self.sequence.encode(w)?;
-		self.send_order.encode(w)?;
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		VarInt::from_u32(0).encode(w).await?;
+		self.track.encode(w).await?;
+		self.group.encode(w).await?;
+		self.sequence.encode(w).await?;
+		self.send_order.encode(w).await?;
 
 		Ok(())
 	}

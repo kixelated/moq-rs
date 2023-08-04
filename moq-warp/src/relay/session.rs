@@ -1,13 +1,8 @@
 use crate::relay::{contribute, distribute, message, Broker};
 
-use webtransport_generic::{AsyncRecvStream, AsyncSendStream, AsyncSession};
+use webtransport_generic::Session as WTSession;
 
-pub struct Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+pub struct Session<S: WTSession> {
 	// Split logic into contribution/distribution to reduce the problem space.
 	contribute: contribute::Session<S>,
 	distribute: distribute::Session<S>,
@@ -16,12 +11,7 @@ where
 	control: message::Main<S>,
 }
 
-impl<S> Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+impl<S: WTSession> Session<S> {
 	pub fn new(session: moq_transport::Session<S>, broker: Broker) -> Self {
 		let (control, contribute, distribute) = message::split(session.send_control, session.recv_control);
 

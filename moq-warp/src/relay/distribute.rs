@@ -1,10 +1,11 @@
 use anyhow::Context;
 
+use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
 use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
 use moq_transport::{object, VarInt};
-use webtransport_generic::{AsyncRecvStream, AsyncSendStream, AsyncSession};
+use webtransport_generic::Session as WTSession;
 
 use crate::model::{segment, track};
 use crate::relay::{
@@ -12,11 +13,7 @@ use crate::relay::{
 	Broker, BrokerUpdate,
 };
 
-pub struct Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-{
+pub struct Session<S: WTSession> {
 	// Objects are sent to the client
 	objects: object::Sender<S>,
 
@@ -30,12 +27,7 @@ where
 	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
 }
 
-impl<S> Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+impl<S: WTSession> Session<S> {
 	pub fn new(objects: object::Sender<S>, control: Component<Distribute>, broker: Broker) -> Self {
 		Self {
 			objects,
@@ -181,8 +173,8 @@ where
 		let mut stream = objects.open(object).await?;
 
 		// Write each fragment as they are available.
-		while let Some(mut fragment) = segment.fragments.next().await {
-			stream.send_all(&mut fragment).await?;
+		while let Some(fragment) = segment.fragments.next().await {
+			stream.write_all(&fragment).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped

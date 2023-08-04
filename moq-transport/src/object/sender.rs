@@ -1,42 +1,32 @@
+use std::io;
+use std::pin::Pin;
 use std::sync::{Mutex, Weak};
 use std::task::{self, Poll};
 use std::{collections::BinaryHeap, sync::Arc};
 
 use anyhow::Context;
-use bytes::{Buf, BytesMut};
 
-use crate::coding::Encode;
+use tokio::io::AsyncWrite;
+
 use crate::object::Header;
 
-use webtransport_generic::SendStream as GenericSendStream;
-use webtransport_generic::{AsyncSendStream, AsyncSession};
+use webtransport_generic::SendStream as WTSendStream;
+use webtransport_generic::Session;
 
 // Allow this to be cloned so we can have multiple senders.
-pub struct Sender<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-{
+pub struct Sender<S: Session> {
 	// The session.
 	session: S,
-
-	// A reusable buffer for the stream header.
-	buf: BytesMut,
 
 	// Register new streams with an inner object that will prioritize them.
 	inner: Arc<Mutex<SenderInner<S::SendStream>>>,
 }
 
-impl<S> Sender<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-{
+impl<S: Session> Sender<S> {
 	pub fn new(session: S) -> Self {
 		let inner = SenderInner::new();
 		Self {
 			session,
-			buf: BytesMut::new(),
 			inner: Arc::new(Mutex::new(inner)),
 		}
 	}
@@ -49,37 +39,24 @@ where
 			inner.register(stream, header.send_order.into_inner())?
 		};
 
-		self.buf.clear();
-		header.encode(&mut self.buf).unwrap();
-		stream.send_all(&mut self.buf).await.context("failed to write header")?;
+		header.encode(&mut stream).await.context("failed to write header")?;
 
 		// log::info!("created stream: {:?}", header);
-
-		header.encode(&mut self.buf).unwrap();
-		stream.send_all(&mut self.buf).await.context("failed to write header")?;
 
 		Ok(stream)
 	}
 }
 
-impl<S> Clone for Sender<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-{
+impl<S: Session> Clone for Sender<S> {
 	fn clone(&self) -> Self {
-		Sender {
+		Self {
 			session: self.session.clone(),
-			buf: BytesMut::new(),
 			inner: self.inner.clone(),
 		}
 	}
 }
 
-struct SenderInner<S>
-where
-	S: GenericSendStream,
-{
+struct SenderInner<S> {
 	// Quinn supports a i32 for priority, but the wire format is a u64.
 	// Our work around is to keep a list of streams in priority order and use the index as the priority.
 	// This involves more work, so TODO either increase the Quinn size or reduce the wire size.
@@ -87,10 +64,7 @@ where
 	ordered_swap: BinaryHeap<SendOrder<S>>, // reuse memory to avoid allocations
 }
 
-impl<S> SenderInner<S>
-where
-	S: GenericSendStream,
-{
+impl<S: WTSendStream> SenderInner<S> {
 	fn new() -> Self {
 		Self {
 			ordered: BinaryHeap::new(),
@@ -122,20 +96,14 @@ where
 	}
 }
 
-struct SendOrder<S>
-where
-	S: GenericSendStream,
-{
+struct SendOrder<S> {
 	// We use Weak here so we don't prevent the stream from being closed when dereferenced.
 	// set_priority() will return None if the stream was closed.
 	stream: Weak<Mutex<S>>,
 	order: u64,
 }
 
-impl<S> SendOrder<S>
-where
-	S: GenericSendStream,
-{
+impl<S: WTSendStream> SendOrder<S> {
 	fn new(stream: &SendStream<S>, order: u64) -> Self {
 		let stream = stream.weak();
 		Self { stream, order }
@@ -149,31 +117,22 @@ where
 	}
 }
 
-impl<S> PartialEq for SendOrder<S>
-where
-	S: GenericSendStream,
-{
+impl<S> PartialEq for SendOrder<S> {
 	fn eq(&self, other: &Self) -> bool {
 		self.order == other.order
 	}
 }
 
-impl<S> Eq for SendOrder<S> where S: GenericSendStream {}
+impl<S> Eq for SendOrder<S> where S: WTSendStream {}
 
-impl<S> PartialOrd for SendOrder<S>
-where
-	S: GenericSendStream,
-{
+impl<S> PartialOrd for SendOrder<S> {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
 		// We reverse the order so the lower send order is higher priority.
 		other.order.partial_cmp(&self.order)
 	}
 }
 
-impl<S> Ord for SendOrder<S>
-where
-	S: GenericSendStream,
-{
+impl<S: WTSendStream> Ord for SendOrder<S> {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		// We reverse the order so the lower send order is higher priority.
 		other.order.cmp(&self.order)
@@ -184,18 +143,12 @@ where
 // The problem is that set_priority takes a i32, while send_order is a VarInt
 // So the solution is to maintain a priority queue of active streams and constantly update the priority with their index.
 // So the library might update the priority of the stream at any point, while the application might similtaniously write to it.
-pub struct SendStream<S>
-where
-	S: GenericSendStream,
-{
+pub struct SendStream<S> {
 	// All SendStream methods are &mut, so we need to wrap them with an internal mutex.
 	inner: Arc<Mutex<S>>,
 }
 
-impl<S> SendStream<S>
-where
-	S: GenericSendStream,
-{
+impl<S> SendStream<S> {
 	pub(crate) fn new(stream: S) -> Self {
 		Self {
 			inner: Arc::new(Mutex::new(stream)),
@@ -207,16 +160,7 @@ where
 	}
 }
 
-impl<S> GenericSendStream for SendStream<S>
-where
-	S: GenericSendStream,
-{
-	type Error = S::Error;
-
-	fn poll_send<B: Buf>(&mut self, cx: &mut task::Context<'_>, buf: &mut B) -> Poll<Result<usize, Self::Error>> {
-		self.inner.lock().unwrap().poll_send(cx, buf)
-	}
-
+impl<S: WTSendStream> WTSendStream for SendStream<S> {
 	fn reset(&mut self, reset_code: u32) {
 		self.inner.lock().unwrap().reset(reset_code)
 	}
@@ -225,5 +169,19 @@ where
 	// The library will automatically set the stream priority on creation based on the header.
 	fn set_priority(&mut self, order: i32) {
 		self.inner.lock().unwrap().set_priority(order)
+	}
+}
+
+impl<S: WTSendStream> AsyncWrite for SendStream<S> {
+	fn poll_write(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+		Pin::new(&mut *self.inner.lock().unwrap()).poll_write(cx, buf)
+	}
+
+	fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+		Pin::new(&mut *self.inner.lock().unwrap()).poll_flush(cx)
+	}
+
+	fn poll_shutdown(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+		Pin::new(&mut *self.inner.lock().unwrap()).poll_shutdown(cx)
 	}
 }

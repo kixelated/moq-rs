@@ -3,14 +3,9 @@ use tokio::sync::mpsc;
 use moq_transport::message::{
 	self, Announce, AnnounceError, AnnounceOk, Message, Subscribe, SubscribeError, SubscribeOk,
 };
-use webtransport_generic::{AsyncRecvStream, AsyncSendStream, AsyncSession};
+use webtransport_generic::Session;
 
-pub struct Main<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+pub struct Main<S: Session> {
 	send_control: message::Sender<S::SendStream>,
 	recv_control: message::Receiver<S::RecvStream>,
 
@@ -20,12 +15,7 @@ where
 	distribute: mpsc::Sender<Distribute>,
 }
 
-impl<S> Main<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+impl<S: Session> Main<S> {
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
@@ -65,15 +55,10 @@ impl<T> Component<T> {
 }
 
 // Splits a control stream into two components, based on if it's a message for contribution or distribution.
-pub fn split<S>(
+pub fn split<S: Session>(
 	send_control: message::Sender<S::SendStream>,
 	recv_control: message::Receiver<S::RecvStream>,
-) -> (Main<S>, Component<Contribute>, Component<Distribute>)
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+) -> (Main<S>, Component<Contribute>, Component<Distribute>) {
 	let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
 	let (contribute_tx, contribute_rx) = mpsc::channel(1);
 	let (distribute_tx, distribute_rx) = mpsc::channel(1);

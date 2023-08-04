@@ -18,11 +18,13 @@ pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{DecodeError, EncodeError, VarInt};
 use crate::setup;
 
-use bytes::{Buf, BufMut};
+
 use std::fmt;
+
+use webtransport_generic::{RecvStream, SendStream};
 
 // NOTE: This is forked from moq-transport-00.
 //   1. SETUP role indicates local support ("I can subscribe"), not remote support ("server must publish")
@@ -40,28 +42,24 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-
-		impl Decode for Message {
-			fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = VarInt::decode(r)?;
+		impl Message {
+			pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = VarInt::decode(r).await?;
 
 				match t.into_inner() {
 					$($val => {
-						let msg = $name::decode(r)?;
+						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidType(t)),
 				}
 			}
-		}
 
-
-		impl Encode for Message {
-			fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+			pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w)?;
-						m.encode(w)
+						VarInt::from_u32($val).encode(w).await?;
+						m.encode(w).await
 					},)*
 				}
 			}

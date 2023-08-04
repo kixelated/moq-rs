@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time;
 
+use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
 use moq_transport::{object, VarInt};
-use webtransport_generic::{AsyncRecvStream, AsyncSendStream, AsyncSession};
+use webtransport_generic::Session as WTSession;
 
 use bytes::BytesMut;
 
@@ -20,10 +21,7 @@ use crate::relay::{
 };
 
 // TODO experiment with making this Clone, so every task can have its own copy.
-pub struct Session<S>
-where
-	S: AsyncSession,
-{
+pub struct Session<S: WTSession> {
 	// Used to receive objects.
 	objects: object::Receiver<S>,
 
@@ -43,12 +41,7 @@ where
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
 }
 
-impl<S> Session<S>
-where
-	S: AsyncSession,
-	S::SendStream: AsyncSendStream,
-	S::RecvStream: AsyncRecvStream,
-{
+impl<S: WTSession> Session<S> {
 	pub fn new(objects: object::Receiver<S>, control: Component<Contribute>, broker: Broker) -> Self {
 		Self {
 			objects,
@@ -96,11 +89,7 @@ where
 		}
 	}
 
-	async fn receive_object(
-		&mut self,
-		header: object::Header,
-		stream: object::RecvStream<S::RecvStream>,
-	) -> anyhow::Result<()> {
+	async fn receive_object(&mut self, header: object::Header, stream: S::RecvStream) -> anyhow::Result<()> {
 		let track = header.track;
 
 		// Keep objects in memory for 10s
@@ -126,13 +115,10 @@ where
 		Ok(())
 	}
 
-	async fn run_segment(
-		mut segment: segment::Publisher,
-		mut stream: object::RecvStream<S::RecvStream>,
-	) -> anyhow::Result<()> {
+	async fn run_segment(mut segment: segment::Publisher, mut stream: S::RecvStream) -> anyhow::Result<()> {
 		let mut buf = BytesMut::new();
 
-		while stream.recv(&mut buf).await?.is_some() {
+		while stream.read_buf(&mut buf).await? > 0 {
 			// Split off the data we read into the buffer, freezing it so multiple threads can read simitaniously.
 			let data = buf.split().freeze();
 			segment.fragments.push(data);
@@ -191,10 +177,7 @@ where
 	}
 }
 
-impl<S> Drop for Session<S>
-where
-	S: AsyncSession,
-{
+impl<S: WTSession> Drop for Session<S> {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?

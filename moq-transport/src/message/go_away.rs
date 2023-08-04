@@ -1,21 +1,19 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
 
-use bytes::{Buf, BufMut};
+use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]
 pub struct GoAway {
 	pub url: String,
 }
 
-impl Decode for GoAway {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let url = String::decode(r)?;
+impl GoAway {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let url = decode_string(r).await?;
 		Ok(Self { url })
 	}
-}
 
-impl Encode for GoAway {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.url.encode(w)
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		encode_string(&self.url, w).await
 	}
 }

@@ -958,10 +958,6 @@ dependencies = [
  "bytes",
  "log",
  "moq-transport",
- "quinn",
- "ring",
- "rustls 0.21.2",
- "rustls-pemfile",
  "tokio",
  "webtransport-generic",
 ]
@@ -1903,6 +1899,8 @@ name = "webtransport-generic"
 version = "0.3.0"
 dependencies = [
  "bytes",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -1,49 +1,18 @@
-use crate::coding::{Decode, DecodeError};
-use crate::message::Message;
+use crate::{coding::DecodeError, message::Message};
 
-use bytes::{Buf, BytesMut};
+use webtransport_generic::RecvStream;
 
-use std::io::Cursor;
-
-use webtransport_generic::AsyncRecvStream;
-
-pub struct Receiver<R>
-where
-	R: AsyncRecvStream, // TODO take RecvStream instead
-{
+pub struct Receiver<R: RecvStream> {
 	stream: R,
-	buf: BytesMut, // data we've read but haven't fully decoded yet
 }
 
-impl<R> Receiver<R>
-where
-	R: AsyncRecvStream,
-{
+impl<R: RecvStream> Receiver<R> {
 	pub fn new(stream: R) -> Self {
-		Self {
-			buf: BytesMut::new(),
-			stream,
-		}
+		Self { stream }
 	}
 
 	// Read the next full message from the stream.
-	pub async fn recv(&mut self) -> anyhow::Result<Message> {
-		loop {
-			// Read the contents of the buffer
-			let mut peek = Cursor::new(&self.buf);
-
-			match Message::decode(&mut peek) {
-				Ok(msg) => {
-					// We've successfully decoded a message, so we can advance the buffer.
-					self.buf.advance(peek.position() as usize);
-					return Ok(msg);
-				}
-				Err(DecodeError::UnexpectedEnd) => {
-					// The decode failed, so we need to append more data.
-					self.stream.recv(&mut self.buf).await?;
-				}
-				Err(e) => return Err(e.into()),
-			}
-		}
+	pub async fn recv(&mut self) -> Result<Message, DecodeError> {
+		Message::decode(&mut self.stream).await
 	}
 }
