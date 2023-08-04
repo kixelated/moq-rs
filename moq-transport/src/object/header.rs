@@ -1,6 +1,5 @@
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
-
 use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]
@@ -16,7 +15,8 @@ pub struct Header {
 	pub sequence: VarInt,
 
 	// The priority/send order.
-	pub send_order: VarInt,
+	// Proposal: int32 instead of a varint.
+	pub send_order: i32,
 }
 
 impl Header {
@@ -31,7 +31,7 @@ impl Header {
 		let track = VarInt::decode(r).await?;
 		let group = VarInt::decode(r).await?;
 		let sequence = VarInt::decode(r).await?;
-		let send_order = VarInt::decode(r).await?;
+		let send_order = r.read_i32().await?; // big-endian
 
 		Ok(Self {
 			track,
@@ -46,7 +46,7 @@ impl Header {
 		self.track.encode(w).await?;
 		self.group.encode(w).await?;
 		self.sequence.encode(w).await?;
-		self.send_order.encode(w).await?;
+		w.write_i32(self.send_order).await?;
 
 		Ok(())
 	}
