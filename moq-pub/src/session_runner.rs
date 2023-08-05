@@ -1,5 +1,6 @@
 use anyhow::Context;
 use http;
+use moq_transport::{Message, Object};
 use std::net;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -89,7 +90,55 @@ impl SessionRunner {
 			self.incoming_obj_sender.subscribe(),
 		)
 	}
-	pub async fn run(&mut self) -> anyhow::Result<()> {
-		todo!()
+	pub async fn run(mut self) -> anyhow::Result<()> {
+		tokio::spawn(async move {
+			loop {
+				match self.moq_transport_session.recv_control.recv().await? {
+					Message::Announce(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::Announce(msg))?;
+					}
+					Message::AnnounceError(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::AnnounceError(msg))?;
+					}
+					Message::AnnounceOk(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::AnnounceOk(msg))?;
+					}
+					Message::GoAway(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::GoAway(msg))?;
+					}
+					Message::SetupClient(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::SetupClient(msg))?;
+					}
+					Message::SetupServer(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::SetupServer(msg))?;
+					}
+					Message::Subscribe(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::Subscribe(msg))?;
+					}
+					Message::SubscribeError(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::SubscribeError(msg))?;
+					}
+					Message::SubscribeOk(msg) => {
+						dbg!(&msg);
+						self.incoming_ctl_sender.send(Message::SubscribeOk(msg))?;
+					}
+				}
+				// match self.moq_transport_session.recv_objects.recv().await? {
+				// 	o @ Object => {
+				// 		dbg!(o.0);
+				// 		//self.incoming_obj_sender.send(o);
+				// 	}
+				// }
+			}
+		})
+		.await?
 	}
 }
