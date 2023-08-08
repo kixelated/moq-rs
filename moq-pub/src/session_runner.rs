@@ -91,8 +91,83 @@ impl SessionRunner {
 		)
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
+		dbg!("session_runner.run()");
 		tokio::spawn(async move {
 			loop {
+				dbg!();
+				// Send outgoing control messages
+				match self
+					.outgoing_ctl_receiver
+					.recv()
+					.await
+					.ok_or(anyhow::anyhow!("error receiving outbound control message"))?
+				{
+					Message::Announce(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::Announce(msg))
+							.await?;
+					}
+					Message::AnnounceError(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::AnnounceError(msg))
+							.await?;
+					}
+					Message::AnnounceOk(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::AnnounceOk(msg))
+							.await?;
+					}
+					Message::GoAway(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::GoAway(msg))
+							.await?;
+					}
+					Message::SetupClient(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::SetupClient(msg))
+							.await?;
+					}
+					Message::SetupServer(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::SetupServer(msg))
+							.await?;
+					}
+					Message::Subscribe(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::Subscribe(msg))
+							.await?;
+					}
+					Message::SubscribeError(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::SubscribeError(msg))
+							.await?;
+					}
+					Message::SubscribeOk(msg) => {
+						dbg!(&msg);
+						self.moq_transport_session
+							.send_control
+							.send(Message::SubscribeOk(msg))
+							.await?;
+					}
+				}
+				dbg!();
+				// Route incoming Control messages
 				match self.moq_transport_session.recv_control.recv().await? {
 					Message::Announce(msg) => {
 						dbg!(&msg);
@@ -131,6 +206,7 @@ impl SessionRunner {
 						self.incoming_ctl_sender.send(Message::SubscribeOk(msg))?;
 					}
 				}
+
 				// match self.moq_transport_session.recv_objects.recv().await? {
 				// 	o @ Object => {
 				// 		dbg!(o.0);
