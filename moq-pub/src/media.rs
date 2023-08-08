@@ -125,7 +125,7 @@ impl Media {
 				}
 			}
 			if count >= 3 {
-				break Ok(());
+				tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 			}
 		}
 	}
