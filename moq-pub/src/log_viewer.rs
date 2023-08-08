@@ -12,6 +12,9 @@ impl LogViewer {
 		Ok(Self {})
 	}
 	pub async fn run(&self) -> anyhow::Result<()> {
-		Ok(())
+		dbg!("log_viewer.run()");
+		loop {
+			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await
+		}
 	}
 }

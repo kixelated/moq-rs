@@ -37,6 +37,10 @@ impl MediaRunner {
 	}
 
 	pub async fn run(&self) -> anyhow::Result<()> {
-		todo!()
+		dbg!("media_runner.run()");
+		loop {
+			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await
+		}
+		//		todo!()
 	}
 }
