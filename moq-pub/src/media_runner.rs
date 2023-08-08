@@ -32,8 +32,19 @@ impl MediaRunner {
 			source: Arc::new(MapSource::default()),
 		})
 	}
-	pub async fn announce(&self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
-		todo!()
+	pub async fn announce(&mut self, namespace: &str, source: Arc<media::MapSource>) -> anyhow::Result<()> {
+		dbg!("media_runner.announce()");
+		// Only allow one souce at a time for now?
+		self.source = source;
+
+		// ANNOUNCE the namespace
+		self.outgoing_ctl_sender
+			.send(moq_transport::Message::Announce(moq_transport::Announce {
+				track_namespace: namespace.to_string(),
+			}))
+			.await?;
+		Ok(())
+		// TODO: wait for AnnounceOk to come back
 	}
 
 	pub async fn run(&self) -> anyhow::Result<()> {
