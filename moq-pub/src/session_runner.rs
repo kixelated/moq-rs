@@ -92,7 +92,7 @@ impl SessionRunner {
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		dbg!("session_runner.run()");
-		tokio::spawn(async move {
+		let _: anyhow::Result<()> = tokio::spawn(async move {
 			loop {
 				dbg!();
 				// Send outgoing control messages
@@ -166,55 +166,63 @@ impl SessionRunner {
 							.await?;
 					}
 				}
-				dbg!();
-				// Route incoming Control messages
-				match self.moq_transport_session.recv_control.recv().await? {
-					Message::Announce(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::Announce(msg))?;
-					}
-					Message::AnnounceError(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::AnnounceError(msg))?;
-					}
-					Message::AnnounceOk(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::AnnounceOk(msg))?;
-					}
-					Message::GoAway(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::GoAway(msg))?;
-					}
-					Message::SetupClient(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SetupClient(msg))?;
-					}
-					Message::SetupServer(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SetupServer(msg))?;
-					}
-					Message::Subscribe(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::Subscribe(msg))?;
-					}
-					Message::SubscribeError(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SubscribeError(msg))?;
-					}
-					Message::SubscribeOk(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SubscribeOk(msg))?;
-					}
-				}
-
-				// match self.moq_transport_session.recv_objects.recv().await? {
-				// 	o @ Object => {
-				// 		dbg!(o.0);
-				// 		//self.incoming_obj_sender.send(o);
-				// 	}
-				// }
 			}
 		})
-		.await?
+		.await?;
+		Ok(())
+
+		// tokio::spawn(async move {
+		// 	loop {
+		// 		dbg!();
+		// 		dbg!();
+		// 		// Route incoming Control messages
+		// 		match self.moq_transport_session.recv_control.recv().await? {
+		// 			Message::Announce(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::Announce(msg))?;
+		// 			}
+		// 			Message::AnnounceError(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::AnnounceError(msg))?;
+		// 			}
+		// 			Message::AnnounceOk(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::AnnounceOk(msg))?;
+		// 			}
+		// 			Message::GoAway(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::GoAway(msg))?;
+		// 			}
+		// 			Message::SetupClient(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::SetupClient(msg))?;
+		// 			}
+		// 			Message::SetupServer(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::SetupServer(msg))?;
+		// 			}
+		// 			Message::Subscribe(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::Subscribe(msg))?;
+		// 			}
+		// 			Message::SubscribeError(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::SubscribeError(msg))?;
+		// 			}
+		// 			Message::SubscribeOk(msg) => {
+		// 				dbg!(&msg);
+		// 				self.incoming_ctl_sender.send(Message::SubscribeOk(msg))?;
+		// 			}
+		// 		}
+
+		// 		// match self.moq_transport_session.recv_objects.recv().await? {
+		// 		// 	o @ Object => {
+		// 		// 		dbg!(o.0);
+		// 		// 		//self.incoming_obj_sender.send(o);
+		// 		// 	}
+		// 		// }
+		// 	}
+		// })
+		// .await?
 	}
 }
