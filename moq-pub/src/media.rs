@@ -3,14 +3,16 @@ use moq_transport::VarInt;
 use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::io::Cursor;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
+use tokio::io::AsyncReadExt;
 
 pub struct Media {
 	// TODO hold on a lock on StdIn, use as BufReader
 	//	reader: std::io::StdinLock,
-	stdin: std::io::Stdin,
+	//stdin: Pin<&mut tokio::io::Stdin>,
 	// The tracks we're producing.
 	tracks: HashMap<String, Track>,
 
@@ -22,11 +24,12 @@ impl Media {
 		// TODO hold a lock on StdIn
 		// let stdin = io::stdin();
 		// let reader = stdin.lock();
-		let mut stdin = io::stdin();
-		let ftyp = read_atom(stdin.by_ref())?;
+		//let mut stdin = io::stdin();
+		let mut stdin = tokio::io::stdin();
+		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
-		let moov = read_atom(stdin.by_ref())?;
+		let moov = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
 		let mut init = ftyp;
@@ -34,7 +37,7 @@ impl Media {
 
 		// We're going to parse the moov box.
 		// We have to read the moov box header to correctly advance the cursor for the mp4 crate.
-		let mut moov_reader = io::Cursor::new(&moov);
+		let mut moov_reader = Cursor::new(&moov);
 		let moov_header = mp4::BoxHeader::read(&mut moov_reader)?;
 
 		// Parse the moov box so we can detect the timescales for each track.
@@ -65,10 +68,11 @@ impl Media {
 
 		let source = Arc::new(MapSource(source));
 
-		Ok(Media { stdin, tracks, source })
+		Ok(Media { tracks, source })
 	}
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		dbg!("media.run()");
+		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut track_name = None;
 
@@ -77,9 +81,9 @@ impl Media {
 		loop {
 			//dbg!(&self.source);
 			//dbg!(&track_name);
-			let atom = read_atom(self.stdin.by_ref())?;
+			let atom = read_atom(&mut stdin).await?;
 
-			let mut reader = io::Cursor::new(&atom);
+			let mut reader = Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
 
 			match header.name {
@@ -152,10 +156,10 @@ impl Media {
 }
 
 // Read a full MP4 atom into a vector.
-fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
+async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
 	// Read the 8 bytes for the size + type
 	let mut buf = [0u8; 8];
-	reader.read_exact(&mut buf)?;
+	reader.read_exact(&mut buf).await?;
 
 	// Convert the first 4 bytes into the size.
 	let size = u32::from_be_bytes(buf[0..4].try_into()?) as u64;
@@ -169,7 +173,7 @@ fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
 
 		// The next 8 bytes are the extended size to be used instead.
 		1 => {
-			reader.read_exact(&mut buf)?;
+			reader.read_exact(&mut buf).await?;
 			let size_large = u64::from_be_bytes(buf);
 			anyhow::ensure!(size_large >= 16, "impossible extended box size: {}", size_large);
 
@@ -185,7 +189,7 @@ fn read_atom<R: Read>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
 	};
 
 	// Append to the vector and return it.
-	limit.read_to_end(&mut raw)?;
+	limit.read_to_end(&mut raw).await?;
 
 	Ok(raw)
 }
