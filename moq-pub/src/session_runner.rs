@@ -119,6 +119,14 @@ impl SessionRunner {
 				self.incoming_ctl_sender.send(msg)?;
 			}
 		});
+
+		// Route incoming Objects?
+		join_set.spawn(async move {
+			loop {
+				dbg!();
+				let receive_stream = self.moq_transport_session.recv_objects.recv().await?;
+				dbg!(&receive_stream.0);
+				self.incoming_obj_sender.send(receive_stream.0)?;
 			}
 		});
 
