@@ -106,68 +106,9 @@ impl SessionRunner {
 					.await
 					.ok_or(anyhow::anyhow!("error receiving outbound control message"))?
 				{
-					Message::Announce(msg) => {
+					msg @ _ => {
 						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::Announce(msg))
-							.await?;
-					}
-					Message::AnnounceError(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::AnnounceError(msg))
-							.await?;
-					}
-					Message::AnnounceOk(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::AnnounceOk(msg))
-							.await?;
-					}
-					Message::GoAway(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::GoAway(msg))
-							.await?;
-					}
-					Message::SetupClient(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::SetupClient(msg))
-							.await?;
-					}
-					Message::SetupServer(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::SetupServer(msg))
-							.await?;
-					}
-					Message::Subscribe(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::Subscribe(msg))
-							.await?;
-					}
-					Message::SubscribeError(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::SubscribeError(msg))
-							.await?;
-					}
-					Message::SubscribeOk(msg) => {
-						dbg!(&msg);
-						self.moq_transport_session
-							.send_control
-							.send(Message::SubscribeOk(msg))
-							.await?;
+						self.moq_transport_session.send_control.send(msg).await?;
 					}
 				}
 			}
@@ -178,41 +119,9 @@ impl SessionRunner {
 				dbg!();
 				// Route incoming Control messages
 				match self.moq_transport_session.recv_control.recv().await? {
-					Message::Announce(msg) => {
+					msg @ _ => {
 						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::Announce(msg))?;
-					}
-					Message::AnnounceError(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::AnnounceError(msg))?;
-					}
-					Message::AnnounceOk(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::AnnounceOk(msg))?;
-					}
-					Message::GoAway(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::GoAway(msg))?;
-					}
-					Message::SetupClient(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SetupClient(msg))?;
-					}
-					Message::SetupServer(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SetupServer(msg))?;
-					}
-					Message::Subscribe(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::Subscribe(msg))?;
-					}
-					Message::SubscribeError(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SubscribeError(msg))?;
-					}
-					Message::SubscribeOk(msg) => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(Message::SubscribeOk(msg))?;
+						self.incoming_ctl_sender.send(msg)?;
 					}
 				}
 			}
