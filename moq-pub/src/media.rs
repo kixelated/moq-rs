@@ -124,9 +124,9 @@ impl Media {
 					// Skip unknown atoms
 				}
 			}
-			if count >= 3 {
-				tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-			}
+			// if count >= 3 {
+			// 	tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+			// }
 		}
 	}
 	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
