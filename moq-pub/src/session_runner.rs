@@ -1,6 +1,7 @@
 use anyhow::Context;
 use http;
 use moq_transport::{Message, Object};
+use moq_transport_quinn::SendObjects;
 use std::net;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -120,20 +121,46 @@ impl SessionRunner {
 			}
 		});
 
+		// Send outgoing objects
+		//TODO: Rework to handle tuples of object headers and segments?
+		// join_set.spawn(async move {
+		// 	loop {
+		// 		dbg!();
+		// 		let obj = self
+		// 			.outgoing_obj_receiver
+		// 			.recv()
+		// 			.await
+		// 			.ok_or(anyhow::anyhow!("error receiving outbound control message"))?;
+		// 		dbg!(&obj);
+		// 		let foo = self.moq_transport_session.send_objects.open(obj).await?;
+		// 		self.moq_transport_session.send_control.send(obj).await?;
+		// 	}
+		// });
+
 		// Route incoming Objects?
+		// TODO: Rework to handle tuples of object headers and RecvStreams?
 		join_set.spawn(async move {
 			loop {
 				dbg!();
 				let receive_stream = self.moq_transport_session.recv_objects.recv().await?;
 				dbg!(&receive_stream.0);
+
 				self.incoming_obj_sender.send(receive_stream.0)?;
 			}
 		});
 
 		while let Some(res) = join_set.join_next().await {
 			dbg!(&res);
+			let _ = res?; // if we finish, it'll be with an error, which we can return
 		}
 
 		Ok(())
+	}
+
+	// async fn open(&self, object_header: Object) -> anyhow::Result<SendStream> {
+	// 	self.moq_transport_session.send_objects.open(object_header).await
+	// }
+	pub async fn get_send_objects(&self) -> SendObjects {
+		self.moq_transport_session.send_objects.clone()
 	}
 }
