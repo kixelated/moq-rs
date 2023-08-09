@@ -96,34 +96,29 @@ impl SessionRunner {
 
 		let mut join_set: JoinSet<anyhow::Result<()>> = tokio::task::JoinSet::new();
 
+		// Send outgoing control messages
 		join_set.spawn(async move {
 			loop {
 				dbg!();
-				// Send outgoing control messages
-				match self
+				let msg = self
 					.outgoing_ctl_receiver
 					.recv()
 					.await
-					.ok_or(anyhow::anyhow!("error receiving outbound control message"))?
-				{
-					msg @ _ => {
-						dbg!(&msg);
-						self.moq_transport_session.send_control.send(msg).await?;
-					}
-				}
+					.ok_or(anyhow::anyhow!("error receiving outbound control message"))?;
+				dbg!(&msg);
+				self.moq_transport_session.send_control.send(msg).await?;
 			}
 		});
 
+		// Route incoming Control messages
 		join_set.spawn(async move {
 			loop {
 				dbg!();
-				// Route incoming Control messages
-				match self.moq_transport_session.recv_control.recv().await? {
-					msg @ _ => {
-						dbg!(&msg);
-						self.incoming_ctl_sender.send(msg)?;
-					}
-				}
+				let msg = self.moq_transport_session.recv_control.recv().await?;
+				dbg!(&msg);
+				self.incoming_ctl_sender.send(msg)?;
+			}
+		});
 			}
 		});
 
