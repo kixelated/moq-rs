@@ -1,9 +1,15 @@
 use crate::media::{self, MapSource};
+use moq_transport::AnnounceOk;
+use moq_transport::{Object, VarInt};
+use moq_transport_quinn::SendObjects;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 pub struct MediaRunner {
+	send_objects: SendObjects,
 	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
 	outgoing_obj_sender: mpsc::Sender<moq_transport::Object>,
 	incoming_ctl_receiver: broadcast::Receiver<moq_transport::Message>,
@@ -13,6 +19,7 @@ pub struct MediaRunner {
 
 impl MediaRunner {
 	pub async fn new(
+		send_objects: SendObjects,
 		outgoing: (
 			mpsc::Sender<moq_transport::Message>,
 			mpsc::Sender<moq_transport::Object>,
@@ -25,6 +32,7 @@ impl MediaRunner {
 		let (outgoing_ctl_sender, outgoing_obj_sender) = outgoing;
 		let (incoming_ctl_receiver, incoming_obj_receiver) = incoming;
 		Ok(Self {
+			send_objects,
 			outgoing_ctl_sender,
 			outgoing_obj_sender,
 			incoming_ctl_receiver,
@@ -43,15 +51,58 @@ impl MediaRunner {
 				track_namespace: namespace.to_string(),
 			}))
 			.await?;
+
+		// wait for the go ahead
+		loop {
+			match self.incoming_ctl_receiver.recv().await? {
+				moq_transport::Message::AnnounceOk(_) => {
+					break;
+				}
+				msg => {
+					dbg!(msg);
+				}
+			}
+		}
+
 		Ok(())
-		// TODO: wait for AnnounceOk to come back
 	}
 
 	pub async fn run(&self) -> anyhow::Result<()> {
 		dbg!("media_runner.run()");
-		loop {
-			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await
+		let mut join_set: JoinSet<anyhow::Result<()>> = tokio::task::JoinSet::new();
+
+		for (track_name, track) in self.source.0.iter() {
+			dbg!(&track_name);
+			let mut objects = self.send_objects.clone();
+			let mut track = track.clone();
+			let track_name = track_name.clone();
+			join_set.spawn(async move {
+				loop {
+					let mut segment = track.next_segment().await?;
+
+					dbg!("segment: {:?}", &segment);
+					let object = Object {
+						track: VarInt::from_u32(track_name.parse::<u32>()?),
+						group: segment.sequence,
+						sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
+						send_order: segment.send_order,
+					};
+
+					let mut stream = objects.open(object).await?;
+
+					// Write each fragment as they are available.
+					while let Some(fragment) = segment.fragments.next().await {
+						stream.write_all(fragment.as_slice()).await?;
+					}
+				}
+			});
 		}
-		//		todo!()
+
+		while let Some(res) = join_set.join_next().await {
+			dbg!(&res);
+			let _ = res?;
+		}
+
+		Ok(())
 	}
 }
