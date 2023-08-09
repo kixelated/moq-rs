@@ -62,7 +62,6 @@ pub struct Subscriber {
 impl Subscriber {
 	pub async fn next_segment(&mut self) -> Result<segment::Subscriber, Error> {
 		println!("next_segment()");
-		dbg!(&self);
 		let res = self.segments.next().await;
 		match res {
 			None => Err(Error {

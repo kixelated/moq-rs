@@ -66,11 +66,7 @@ impl<T: Clone> Publisher<T> {
 
 	// Push a new element to the end of the queue.
 	pub fn push(&mut self, value: T) {
-		dbg!("push()");
-		self.sender.send_modify(|state| {
-			dbg!("send_modify() in push()");
-			state.push(value)
-		});
+		self.sender.send_modify(|state| state.push(value));
 	}
 
 	// Remove any elements from the front of the queue that match the condition.
@@ -110,16 +106,10 @@ pub struct Subscriber<T: Clone> {
 
 impl<T: Clone> Subscriber<T> {
 	pub async fn next(&mut self) -> Option<T> {
-		dbg!("next()");
-		dbg!(&self.state);
 		// Wait until the queue has a new element or if it's closed.
 		let state = self
 			.state
-			.wait_for(|state| {
-				dbg!("waitfor() in next()");
-				dbg!(self.index, state.drained, state.queue.len());
-				self.index < state.drained + state.queue.len()
-			})
+			.wait_for(|state| self.index < state.drained + state.queue.len())
 			.await;
 
 		let state = match state {
