@@ -1,6 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
 use std::net;
+use tokio::task::JoinSet;
 
 mod session_runner;
 use session_runner::*;
@@ -37,18 +38,21 @@ async fn main() -> anyhow::Result<()> {
 	let mut media = Media::new().await?;
 	let mut session_runner = SessionRunner::new(config).await?;
 	let mut media_runner = MediaRunner::new(
+		session_runner.get_send_objects().await,
 		session_runner.get_outgoing_senders().await,
 		session_runner.get_incoming_receivers().await,
 	)
 	.await?;
-	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
+	let log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
+	let mut join_set: JoinSet<anyhow::Result<()>> = tokio::task::JoinSet::new();
+	join_set.spawn(async { session_runner.run().await.context("failed to run session runner") });
+	join_set.spawn(async move { log_viewer.run().await.context("failed to run media source") });
 	media_runner.announce("quic.video/moq-pub-foo", media.source()).await?;
-
-	tokio::select! {
-		res = media.run() => res.context("failed to run media source")?,
-		res = session_runner.run() => res.context("failed to run session runner")?,
-		res = log_viewer.run() => res.context("failed to run media source")?,
-		res = media_runner.run() => res.context("failed to run client")?,
+	join_set.spawn(async move { media.run().await.context("failed to run media source") });
+	media_runner.run().await.context("failed to run client")?;
+	while let Some(res) = join_set.join_next().await {
+		dbg!(&res);
+		let _ = res?;
 	}
 
 	Ok(())
