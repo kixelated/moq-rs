@@ -87,11 +87,13 @@ impl MediaRunner {
 						sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
 						send_order: segment.send_order,
 					};
+					dbg!(&object);
 
 					let mut stream = objects.open(object).await?;
 
 					// Write each fragment as they are available.
 					while let Some(fragment) = segment.fragments.next().await {
+						//dbg!(&fragment);
 						stream.write_all(fragment.as_slice()).await?;
 					}
 				}
