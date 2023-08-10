@@ -64,6 +64,38 @@ impl MediaRunner {
 			}
 		}
 
+		// DIRTY BAD HACK
+		// Subscribe to all of our own tracks immediately
+		// so that the relay will ask us for them
+		//
+		// What we really _ought_ to do is dynamically create senders
+		// for tracks only in response to received subscriptions
+		for track_name in self.source.0.keys() {
+			self.outgoing_ctl_sender
+				.send(moq_transport::Message::Subscribe(moq_transport::Subscribe {
+					track_id: moq_transport::VarInt::from(track_name.parse::<u32>()?),
+					track_namespace: namespace.to_string(),
+					track_name: track_name.to_string(),
+				}))
+				.await?;
+			loop {
+				match self.incoming_ctl_receiver.recv().await? {
+					msg @ moq_transport::Message::Subscribe(_) => {
+						dbg!(msg);
+						self.outgoing_ctl_sender
+							.send(moq_transport::Message::SubscribeOk(moq_transport::SubscribeOk {
+								track_id: moq_transport::VarInt::from(track_name.parse::<u32>()?),
+								expires: Some(std::time::Duration::from_secs(300)),
+							}))
+							.await?;
+						break;
+					}
+					msg => {
+						dbg!(msg);
+					}
+				}
+			}
+		}
 		Ok(())
 	}
 
