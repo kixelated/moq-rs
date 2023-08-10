@@ -1,5 +1,6 @@
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]

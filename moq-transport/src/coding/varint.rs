@@ -6,6 +6,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use webtransport_generic::{RecvStream, SendStream};
 
 use super::{DecodeError, EncodeError};

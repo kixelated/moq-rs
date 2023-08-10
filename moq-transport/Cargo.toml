@@ -18,5 +18,5 @@ categories = ["multimedia", "network-programming", "web-programming"]
 bytes = "1.4"
 thiserror = "1"
 anyhow = "1"
-webtransport-generic = { path = "../../webtransport-rs/webtransport-generic", version = "0.3" }
+webtransport-generic = "0.5"
 tokio = { version = "1.27", features = ["macros", "io-util", "rt", "sync"] }

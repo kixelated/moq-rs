@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use webtransport_generic::{RecvStream, SendStream};
 
 use crate::VarInt;

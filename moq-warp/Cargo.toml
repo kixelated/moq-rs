@@ -16,7 +16,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
-webtransport-generic = { path = "../../webtransport-rs/webtransport-generic", version = "0.3" }
+webtransport-generic = "0.5"
 
 tokio = "1.27"
 anyhow = "1.0.70"
