@@ -26,7 +26,13 @@ Longer term, I'd like to refactor everything such that the `Media` + `MediaRunne
 Here's how I'm currently testing things, with a local copy of Big Buck Bunny named `bbb_source.mp4`:
 
 ```
-$ RUST_LOG=info ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | cargo run
+$ RUST_LOG=info ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | cargo run
 ```
 
 This relies on having `moq-demo` (the relay server) already running locally in another shell.
+
+Here's how to run `moq-pub` without dropping the audio track (omit the `-an` I'm using above):
+```
+$ RUST_LOG=info ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | cargo run
+```
+
