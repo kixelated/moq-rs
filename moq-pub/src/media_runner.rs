@@ -102,7 +102,7 @@ impl MediaRunner {
 
 		while let Some(res) = join_set.join_next().await {
 			dbg!(&res);
-			let _ = res?;
+			//let _ = res?;
 		}
 
 		Ok(())
