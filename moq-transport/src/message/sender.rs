@@ -11,6 +11,8 @@ impl<S: SendStream> Sender<S> {
 		Self { stream }
 	}
 
+	// Read the next full message from the stream.
+	// NOTE: This is not cancellable; you must poll the future to completion.
 	pub async fn send<T: Into<Message>>(&mut self, msg: T) -> anyhow::Result<()> {
 		let msg = msg.into();
 		msg.encode(&mut self.stream).await?;
