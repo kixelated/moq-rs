@@ -1,5 +1,6 @@
 use anyhow::Context;
 use http;
+use log::{debug, info};
 use moq_transport::{Message, Object};
 use moq_transport_quinn::SendObjects;
 use std::net;
@@ -93,20 +94,19 @@ impl SessionRunner {
 		)
 	}
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		dbg!("session_runner.run()");
+		debug!("session_runner.run()");
 
 		let mut join_set: JoinSet<anyhow::Result<()>> = tokio::task::JoinSet::new();
 
 		// Send outgoing control messages
 		join_set.spawn(async move {
 			loop {
-				dbg!();
 				let msg = self
 					.outgoing_ctl_receiver
 					.recv()
 					.await
 					.ok_or(anyhow::anyhow!("error receiving outbound control message"))?;
-				dbg!(&msg);
+				debug!("Sending outgoing MOQT Control Message: {:?}", &msg);
 				self.moq_transport_session.send_control.send(msg).await?;
 			}
 		});
@@ -114,43 +114,24 @@ impl SessionRunner {
 		// Route incoming Control messages
 		join_set.spawn(async move {
 			loop {
-				dbg!();
 				let msg = self.moq_transport_session.recv_control.recv().await?;
-				dbg!(&msg);
 				self.incoming_ctl_sender.send(msg)?;
 			}
 		});
 
-		// Send outgoing objects
-		//TODO: Rework to handle tuples of object headers and segments?
-		// join_set.spawn(async move {
-		// 	loop {
-		// 		dbg!();
-		// 		let obj = self
-		// 			.outgoing_obj_receiver
-		// 			.recv()
-		// 			.await
-		// 			.ok_or(anyhow::anyhow!("error receiving outbound control message"))?;
-		// 		dbg!(&obj);
-		// 		let foo = self.moq_transport_session.send_objects.open(obj).await?;
-		// 		self.moq_transport_session.send_control.send(obj).await?;
-		// 	}
-		// });
-
-		// Route incoming Objects?
-		// TODO: Rework to handle tuples of object headers and RecvStreams?
+		// Route incoming Objects headers
+		// NOTE: Only sends the headers for incoming objects, not the associated streams
+		// We don't currently expose any way to read incoming bytestreams because we don't expect any
 		join_set.spawn(async move {
 			loop {
-				dbg!();
 				let receive_stream = self.moq_transport_session.recv_objects.recv().await?;
-				dbg!(&receive_stream.0);
 
 				self.incoming_obj_sender.send(receive_stream.0)?;
 			}
 		});
 
 		while let Some(res) = join_set.join_next().await {
-			dbg!(&res);
+			debug!("SessionRunner task finished with result: {:?}", &res);
 			let _ = res?; // if we finish, it'll be with an error, which we can return
 		}
 
