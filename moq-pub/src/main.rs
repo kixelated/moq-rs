@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut media = Media::new().await?;
 	let session_runner = SessionRunner::new(config).await?;
-	let log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
+	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
 	let mut media_runner = MediaRunner::new(
 		session_runner.get_send_objects().await,
 		session_runner.get_outgoing_senders().await,
