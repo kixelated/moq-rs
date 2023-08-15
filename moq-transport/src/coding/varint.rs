@@ -5,10 +5,11 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
-
-use bytes::{Buf, BufMut};
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use webtransport_generic::{RecvStream, SendStream};
+
+use super::{DecodeError, EncodeError};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value too large for varint encoding")]
@@ -120,15 +121,10 @@ impl fmt::Display for VarInt {
 	}
 }
 
-impl Decode for VarInt {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let mut buf = [0; 8];
-
-		if r.remaining() < 1 {
-			return Err(DecodeError::UnexpectedEnd);
-		}
-
-		buf[0] = r.get_u8();
+impl VarInt {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let mut buf = [0u8; 8];
+		r.read_exact(buf[0..1].as_mut()).await?;
 
 		let tag = buf[0] >> 6;
 		buf[0] &= 0b0011_1111;
@@ -136,27 +132,15 @@ impl Decode for VarInt {
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				if r.remaining() < 1 {
-					return Err(DecodeError::UnexpectedEnd);
-				}
-
-				r.copy_to_slice(buf[1..2].as_mut());
+				r.read_exact(buf[1..2].as_mut()).await?;
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				if r.remaining() < 3 {
-					return Err(DecodeError::UnexpectedEnd);
-				}
-
-				r.copy_to_slice(buf[1..4].as_mut());
+				r.read_exact(buf[1..4].as_mut()).await?;
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				if r.remaining() < 7 {
-					return Err(DecodeError::UnexpectedEnd);
-				}
-
-				r.copy_to_slice(buf[1..8].as_mut());
+				r.read_exact(buf[1..8].as_mut()).await?;
 				u64::from_be_bytes(buf)
 			}
 			_ => unreachable!(),
@@ -164,21 +148,21 @@ impl Decode for VarInt {
 
 		Ok(Self(x))
 	}
-}
 
-impl Encode for VarInt {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
-			(x as u8).encode(w)
+			w.write_u8(x as u8).await?;
 		} else if x < 2u64.pow(14) {
-			(0b01 << 14 | x as u16).encode(w)
+			w.write_u16(0b01 << 14 | x as u16).await?;
 		} else if x < 2u64.pow(30) {
-			(0b10 << 30 | x as u32).encode(w)
+			w.write_u32(0b10 << 30 | x as u32).await?;
 		} else if x < 2u64.pow(62) {
-			(0b11 << 62 | x).encode(w)
+			w.write_u64(0b11 << 62 | x).await?;
 		} else {
 			unreachable!("malformed VarInt");
 		}
+
+		Ok(())
 	}
 }

@@ -1,7 +1,2 @@
 [workspace]
-members = [
-    "moq-transport",
-	"moq-transport-quinn",
-    "moq-demo",
-    "moq-warp",
-]
+members = ["moq-transport", "moq-quinn", "moq-warp"]

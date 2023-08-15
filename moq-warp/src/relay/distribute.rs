@@ -1,33 +1,34 @@
 use anyhow::Context;
 
-use tokio::{io::AsyncWriteExt, task::JoinSet}; // allows locking across await
+use tokio::io::AsyncWriteExt;
+use tokio::task::JoinSet; // allows locking across await
 
-use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_quinn::SendObjects;
+use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
+use moq_transport::{object, VarInt};
+use webtransport_generic::Session as WTSession;
 
-use super::{broker, control};
 use crate::model::{segment, track};
+use crate::relay::{
+	message::{Component, Distribute},
+	Broker, BrokerUpdate,
+};
 
-pub struct Session {
+pub struct Session<S: WTSession> {
 	// Objects are sent to the client
-	objects: SendObjects,
+	objects: object::Sender<S>,
 
 	// Used to send and receive control messages.
-	control: control::Component<control::Distribute>,
+	control: Component<Distribute>,
 
 	// Globally announced namespaces, which can be subscribed to.
-	broker: broker::Broadcasts,
+	broker: Broker,
 
 	// A list of tasks that are currently running.
 	run_subscribes: JoinSet<SubscribeError>, // run subscriptions, sending the returned error if they fail
 }
 
-impl Session {
-	pub fn new(
-		objects: SendObjects,
-		control: control::Component<control::Distribute>,
-		broker: broker::Broadcasts,
-	) -> Self {
+impl<S: WTSession> Session<S> {
+	pub fn new(objects: object::Sender<S>, control: Component<Distribute>, broker: Broker) -> Self {
 		Self {
 			objects,
 			control,
@@ -40,7 +41,7 @@ impl Session {
 		// Announce all available tracks and get a stream of updates.
 		let (available, mut updates) = self.broker.available();
 		for namespace in available {
-			self.on_available(broker::Update::Insert(namespace)).await?;
+			self.on_available(BrokerUpdate::Insert(namespace)).await?;
 		}
 
 		loop {
@@ -61,11 +62,11 @@ impl Session {
 		}
 	}
 
-	async fn receive_message(&mut self, msg: control::Distribute) -> anyhow::Result<()> {
+	async fn receive_message(&mut self, msg: Distribute) -> anyhow::Result<()> {
 		match msg {
-			control::Distribute::AnnounceOk(msg) => self.receive_announce_ok(msg),
-			control::Distribute::AnnounceError(msg) => self.receive_announce_error(msg),
-			control::Distribute::Subscribe(msg) => self.receive_subscribe(msg).await,
+			Distribute::AnnounceOk(msg) => self.receive_announce_ok(msg),
+			Distribute::AnnounceError(msg) => self.receive_announce_error(msg),
+			Distribute::Subscribe(msg) => self.receive_subscribe(msg).await,
 		}
 	}
 
@@ -119,7 +120,11 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_subscribe(objects: SendObjects, track_id: VarInt, mut track: track::Subscriber) -> SubscribeError {
+	async fn run_subscribe(
+		objects: object::Sender<S>,
+		track_id: VarInt,
+		mut track: track::Subscriber,
+	) -> SubscribeError {
 		let mut tasks = JoinSet::new();
 		let mut result = None;
 
@@ -154,11 +159,11 @@ impl Session {
 	}
 
 	async fn serve_group(
-		mut objects: SendObjects,
+		mut objects: object::Sender<S>,
 		track_id: VarInt,
 		mut segment: segment::Subscriber,
 	) -> anyhow::Result<()> {
-		let object = Object {
+		let object = object::Header {
 			track: track_id,
 			group: segment.sequence,
 			sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object
@@ -168,8 +173,8 @@ impl Session {
 		let mut stream = objects.open(object).await?;
 
 		// Write each fragment as they are available.
-		while let Some(mut fragment) = segment.fragments.next().await {
-			stream.write_all_buf(&mut fragment).await?;
+		while let Some(fragment) = segment.fragments.next().await {
+			stream.write_all(&fragment).await?;
 		}
 
 		// NOTE: stream is automatically closed when dropped
@@ -177,16 +182,16 @@ impl Session {
 		Ok(())
 	}
 
-	async fn on_available(&mut self, delta: broker::Update) -> anyhow::Result<()> {
+	async fn on_available(&mut self, delta: BrokerUpdate) -> anyhow::Result<()> {
 		match delta {
-			broker::Update::Insert(name) => {
+			BrokerUpdate::Insert(name) => {
 				self.control
 					.send(Announce {
 						track_namespace: name.clone(),
 					})
 					.await
 			}
-			broker::Update::Remove(name, error) => {
+			BrokerUpdate::Remove(name, error) => {
 				self.control
 					.send(AnnounceError {
 						track_namespace: name,

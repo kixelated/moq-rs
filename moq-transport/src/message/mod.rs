@@ -2,30 +2,28 @@ mod announce;
 mod announce_error;
 mod announce_ok;
 mod go_away;
-mod role;
-mod setup_client;
-mod setup_server;
+mod receiver;
+mod sender;
 mod subscribe;
 mod subscribe_error;
 mod subscribe_ok;
-mod version;
 
 pub use announce::*;
 pub use announce_error::*;
 pub use announce_ok::*;
 pub use go_away::*;
-pub use role::*;
-pub use setup_client::*;
-pub use setup_server::*;
+pub use receiver::*;
+pub use sender::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
-pub use version::*;
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{DecodeError, EncodeError, VarInt};
+use crate::setup;
 
-use bytes::{Buf, BufMut};
 use std::fmt;
+
+use webtransport_generic::{RecvStream, SendStream};
 
 // NOTE: This is forked from moq-transport-00.
 //   1. SETUP role indicates local support ("I can subscribe"), not remote support ("server must publish")
@@ -43,28 +41,24 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-
-		impl Decode for Message {
-			fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = VarInt::decode(r)?;
+		impl Message {
+			pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = VarInt::decode(r).await?;
 
 				match t.into_inner() {
 					$($val => {
-						let msg = $name::decode(r)?;
+						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidType(t)),
 				}
 			}
-		}
 
-
-		impl Encode for Message {
-			fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+			pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w)?;
-						m.encode(w)
+						VarInt::from_u32($val).encode(w).await?;
+						m.encode(w).await
 					},)*
 				}
 			}
@@ -86,6 +80,10 @@ macro_rules! message_types {
 		}
     }
 }
+
+// Just so we can use the macro above.
+type SetupClient = setup::Client;
+type SetupServer = setup::Server;
 
 // Each message is prefixed with the given VarInt type.
 message_types! {

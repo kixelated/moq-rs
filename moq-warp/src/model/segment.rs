@@ -12,7 +12,7 @@ pub struct Info {
 	pub sequence: VarInt,
 
 	// The priority of the segment within the BROADCAST.
-	pub send_order: VarInt,
+	pub send_order: i32,
 
 	// The time at which the segment expires for cache purposes.
 	pub expires: Option<time::Instant>,

@@ -6,26 +6,30 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
-use moq_transport::{Announce, AnnounceError, AnnounceOk, Object, Subscribe, SubscribeError, SubscribeOk, VarInt};
-use moq_transport_quinn::{RecvObjects, RecvStream};
+use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
+use moq_transport::{object, VarInt};
+use webtransport_generic::Session as WTSession;
 
 use bytes::BytesMut;
 
 use anyhow::Context;
 
-use super::{broker, control};
 use crate::model::{broadcast, segment, track};
+use crate::relay::{
+	message::{Component, Contribute},
+	Broker,
+};
 
 // TODO experiment with making this Clone, so every task can have its own copy.
-pub struct Session {
+pub struct Session<S: WTSession> {
 	// Used to receive objects.
-	objects: RecvObjects,
+	objects: object::Receiver<S>,
 
 	// Used to send and receive control messages.
-	control: control::Component<control::Contribute>,
+	control: Component<Contribute>,
 
 	// Globally announced namespaces, which we can add ourselves to.
-	broker: broker::Broadcasts,
+	broker: Broker,
 
 	// The names of active broadcasts being produced.
 	broadcasts: HashMap<String, Arc<Broadcast>>,
@@ -37,12 +41,8 @@ pub struct Session {
 	run_segments: JoinSet<anyhow::Result<()>>, // receiving objects
 }
 
-impl Session {
-	pub fn new(
-		objects: RecvObjects,
-		control: control::Component<control::Contribute>,
-		broker: broker::Broadcasts,
-	) -> Self {
+impl<S: WTSession> Session<S> {
+	pub fn new(objects: object::Receiver<S>, control: Component<Contribute>, broker: Broker) -> Self {
 		Self {
 			objects,
 			control,
@@ -81,23 +81,23 @@ impl Session {
 		}
 	}
 
-	async fn receive_message(&mut self, msg: control::Contribute) -> anyhow::Result<()> {
+	async fn receive_message(&mut self, msg: Contribute) -> anyhow::Result<()> {
 		match msg {
-			control::Contribute::Announce(msg) => self.receive_announce(msg).await,
-			control::Contribute::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
-			control::Contribute::SubscribeError(msg) => self.receive_subscribe_error(msg),
+			Contribute::Announce(msg) => self.receive_announce(msg).await,
+			Contribute::SubscribeOk(msg) => self.receive_subscribe_ok(msg),
+			Contribute::SubscribeError(msg) => self.receive_subscribe_error(msg),
 		}
 	}
 
-	async fn receive_object(&mut self, object: Object, stream: RecvStream) -> anyhow::Result<()> {
-		let track = object.track;
+	async fn receive_object(&mut self, header: object::Header, stream: S::RecvStream) -> anyhow::Result<()> {
+		let track = header.track;
 
 		// Keep objects in memory for 10s
 		let expires = time::Instant::now() + time::Duration::from_secs(10);
 
 		let segment = segment::Info {
-			sequence: object.sequence,
-			send_order: object.send_order,
+			sequence: header.sequence,
+			send_order: header.send_order,
 			expires: Some(expires),
 		};
 
@@ -115,19 +115,16 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_segment(mut segment: segment::Publisher, mut stream: RecvStream) -> anyhow::Result<()> {
+	async fn run_segment(mut segment: segment::Publisher, mut stream: S::RecvStream) -> anyhow::Result<()> {
 		let mut buf = BytesMut::new();
 
-		loop {
-			let size = stream.read_buf(&mut buf).await?;
-			if size == 0 {
-				return Ok(());
-			}
-
+		while stream.read_buf(&mut buf).await? > 0 {
 			// Split off the data we read into the buffer, freezing it so multiple threads can read simitaniously.
 			let data = buf.split().freeze();
 			segment.fragments.push(data);
 		}
+
+		Ok(())
 	}
 
 	async fn receive_announce(&mut self, msg: Announce) -> anyhow::Result<()> {
@@ -180,7 +177,7 @@ impl Session {
 	}
 }
 
-impl Drop for Session {
+impl<S: WTSession> Drop for Session<S> {
 	fn drop(&mut self) {
 		// Unannounce all broadcasts we have announced.
 		// TODO make this automatic so we can't screw up?

@@ -1,6 +1,6 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{DecodeError, EncodeError, VarInt};
 
-use bytes::{Buf, BufMut};
+use webtransport_generic::{RecvStream, SendStream};
 
 use std::ops::Deref;
 
@@ -23,43 +23,40 @@ impl From<Version> for VarInt {
 	}
 }
 
-impl Decode for Version {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = VarInt::decode(r)?;
+impl Version {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = VarInt::decode(r).await?;
 		Ok(Self(v))
 	}
-}
 
-impl Encode for Version {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.encode(w)
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.0.encode(w).await?;
+		Ok(())
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Versions(pub Vec<Version>);
 
-impl Decode for Versions {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let count = VarInt::decode(r)?.into_inner();
+impl Versions {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let count = VarInt::decode(r).await?.into_inner();
 		let mut vs = Vec::new();
 
 		for _ in 0..count {
-			let v = Version::decode(r)?;
+			let v = Version::decode(r).await?;
 			vs.push(v);
 		}
 
 		Ok(Self(vs))
 	}
-}
 
-impl Encode for Versions {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let size: VarInt = self.0.len().try_into()?;
-		size.encode(w)?;
+		size.encode(w).await?;
 
 		for v in &self.0 {
-			v.encode(w)?;
+			v.encode(w).await?;
 		}
 
 		Ok(())

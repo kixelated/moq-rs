@@ -1,6 +1,6 @@
-use bytes::{Buf, BufMut};
+use webtransport_generic::{RecvStream, SendStream};
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{DecodeError, EncodeError, VarInt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -52,15 +52,13 @@ impl TryFrom<VarInt> for Role {
 	}
 }
 
-impl Decode for Role {
-	fn decode<R: Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = VarInt::decode(r)?;
+impl Role {
+	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = VarInt::decode(r).await?;
 		v.try_into()
 	}
-}
 
-impl Encode for Role {
-	fn encode<W: BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from(*self).encode(w)
+	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		VarInt::from(*self).encode(w).await
 	}
 }

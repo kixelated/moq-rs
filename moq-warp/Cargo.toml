@@ -16,15 +16,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
-moq-transport-quinn = { path = "../moq-transport-quinn" }
+webtransport-generic = "0.5"
 
 tokio = "1.27"
 anyhow = "1.0.70"
 log = "0.4"       # TODO remove
 bytes = "1.4"
-
-# QUIC stuff
-quinn = "0.10"
-ring = "0.16.20"
-rustls = "0.21.2"
-rustls-pemfile = "1.0.2"
