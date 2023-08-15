@@ -1,7 +1,6 @@
 use super::{Role, Versions};
 use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
 
-
 use webtransport_generic::{RecvStream, SendStream};
 
 // Sent by the client to setup up the session.

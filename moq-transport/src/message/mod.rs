@@ -21,7 +21,6 @@ pub use subscribe_ok::*;
 use crate::coding::{DecodeError, EncodeError, VarInt};
 use crate::setup;
 
-
 use std::fmt;
 
 use webtransport_generic::{RecvStream, SendStream};

@@ -1,6 +1,5 @@
 use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarInt};
 
-
 use webtransport_generic::{RecvStream, SendStream};
 
 #[derive(Debug)]

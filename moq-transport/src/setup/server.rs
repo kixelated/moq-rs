@@ -1,7 +1,6 @@
 use super::{Role, Version};
 use crate::coding::{DecodeError, EncodeError};
 
-
 use webtransport_generic::{RecvStream, SendStream};
 
 // Sent by the server in response to a client.

@@ -1,4 +1,3 @@
-
 use webtransport_generic::{RecvStream, SendStream};
 
 use crate::coding::{DecodeError, EncodeError, VarInt};
