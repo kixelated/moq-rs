@@ -76,6 +76,8 @@ impl MediaRunner {
 		let mut incoming_ctl_receiver = self.incoming_ctl_receiver.resubscribe();
 		let outgoing_ctl_sender = self.outgoing_ctl_sender.clone();
 
+		// Pre-spawn tasks for each track we have
+		// and let them .await on receiving the go ahead via a channel
 		for (track_name, track) in source.0.iter() {
 			let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
 			track_dispatcher.insert(track_name.to_string(), sender);
@@ -105,7 +107,6 @@ impl MediaRunner {
 			});
 		}
 
-		// TODO: restructure to handle errors from spawned tasks
 		join_set.spawn(async move {
 			loop {
 				match incoming_ctl_receiver.recv().await? {
@@ -126,7 +127,7 @@ impl MediaRunner {
 									},
 								));
 							}
-							// if track exists, spawn task to send it to the subscriber
+							// if track exists, send go-ahead signal to unblock task to send data to subscriber
 							Some(track) => {
 								debug!("We have the track! (Good news everyone)");
 								track_dispatcher
