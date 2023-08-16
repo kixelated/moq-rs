@@ -20,7 +20,9 @@ enum InputValues {
 	Stdin,
 }
 
-//TODO: clap mangen, clap complete
+// TODO: clap mangen
+// TODO: clap complete
+// TODO: tiered help (hide bind_address at simplest layer)
 
 #[derive(Parser, Clone)]
 #[command(arg_required_else_help(true))]
