@@ -1,6 +1,6 @@
 use anyhow::Context;
-use clap::{CommandFactory, Parser};
-use std::{net, process::exit};
+use clap::{CommandFactory, Parser, ValueEnum};
+use std::{net, process::exit, str::FromStr};
 use tokio::task::JoinSet;
 
 mod session_runner;
@@ -15,6 +15,11 @@ use log_viewer::*;
 mod media;
 use media::*;
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum InputValues {
+	Stdin,
+}
+
 #[derive(Parser, Clone)]
 #[command(arg_required_else_help(true))]
 struct Cli {
@@ -24,8 +29,15 @@ struct Cli {
 	#[arg(short, long, default_value = "https://localhost:4443")]
 	uri: http::uri::Uri,
 
-	#[arg(short, long, required = true)]
-	input: String,
+	#[arg(short, long, required = true, value_parser=input_parser)]
+	input: InputValues,
+}
+
+fn input_parser(s: &str) -> Result<InputValues, String> {
+	if s == "-" {
+		return Ok(InputValues::Stdin);
+	}
+	Err("Only '-' supported for now".to_string())
 }
 
 #[tokio::main]
@@ -34,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	if args.input != "-" {
+	if args.input != InputValues::Stdin {
 		Cli::command().print_help();
 		exit(1);
 	}
