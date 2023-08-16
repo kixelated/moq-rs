@@ -46,11 +46,6 @@ async fn main() -> anyhow::Result<()> {
 
 	let args = Cli::parse();
 
-	if args.input != InputValues::Stdin {
-		Cli::command().print_help();
-		exit(1);
-	}
-
 	let config = Config {
 		addr: args.bind_address,
 		uri: args.uri,
