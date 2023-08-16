@@ -37,7 +37,7 @@ fn input_parser(s: &str) -> Result<InputValues, String> {
 	if s == "-" {
 		return Ok(InputValues::Stdin);
 	}
-	Err("Only '-' supported for now".to_string())
+	Err("The only currently supported input value is: '-' (stdin)".to_string())
 }
 
 #[tokio::main]
