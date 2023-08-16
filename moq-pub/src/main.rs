@@ -1,6 +1,6 @@
 use anyhow::Context;
-use clap::Parser;
-use std::net;
+use clap::{CommandFactory, Parser};
+use std::{net, process::exit};
 use tokio::task::JoinSet;
 
 mod session_runner;
@@ -16,12 +16,16 @@ mod media;
 use media::*;
 
 #[derive(Parser, Clone)]
+#[command(arg_required_else_help(true))]
 struct Cli {
 	#[arg(short, long, default_value = "[::]:0")]
 	addr: net::SocketAddr,
 
 	#[arg(short, long, default_value = "https://localhost:4443")]
 	uri: http::uri::Uri,
+
+	#[arg(short, long, required = true)]
+	input: String,
 }
 
 #[tokio::main]
@@ -29,6 +33,11 @@ async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
 	let args = Cli::parse();
+
+	if args.input != "-" {
+		Cli::command().print_help();
+		exit(1);
+	}
 
 	let config = Config {
 		addr: args.addr,
