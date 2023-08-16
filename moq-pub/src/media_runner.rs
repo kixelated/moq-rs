@@ -21,16 +21,13 @@ pub struct MediaRunner {
 impl MediaRunner {
 	pub async fn new(
 		send_objects: SendObjects,
-		outgoing: (
-			mpsc::Sender<moq_transport::Message>,
-			mpsc::Sender<moq_transport::Object>,
-		),
+		outgoing: mpsc::Sender<moq_transport::Message>,
 		incoming: (
 			broadcast::Receiver<moq_transport::Message>,
 			broadcast::Receiver<moq_transport::Object>,
 		),
 	) -> anyhow::Result<Self> {
-		let (outgoing_ctl_sender, outgoing_obj_sender) = outgoing;
+		let outgoing_ctl_sender = outgoing;
 		let (incoming_ctl_receiver, incoming_obj_receiver) = incoming;
 		Ok(Self {
 			send_objects,

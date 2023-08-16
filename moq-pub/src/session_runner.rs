@@ -11,7 +11,6 @@ pub struct SessionRunner {
 	moq_transport_session: moq_transport_quinn::Session,
 	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
 	outgoing_ctl_receiver: mpsc::Receiver<moq_transport::Message>,
-	outgoing_obj_sender: mpsc::Sender<moq_transport::Object>,
 	incoming_ctl_sender: broadcast::Sender<moq_transport::Message>,
 	incoming_obj_sender: broadcast::Sender<moq_transport::Object>,
 }
@@ -51,8 +50,6 @@ impl SessionRunner {
 
 		// outgoing ctl msgs
 		let (outgoing_ctl_sender, outgoing_ctl_receiver) = mpsc::channel(5);
-		// outgoing obs
-		let (outgoing_obj_sender, outgoing_obj_receiver) = mpsc::channel(5);
 		// incoming ctl msg
 		let (incoming_ctl_sender, incoming_ctl_receiver) = broadcast::channel(5);
 		// incoming objs
@@ -62,18 +59,12 @@ impl SessionRunner {
 			moq_transport_session,
 			outgoing_ctl_sender,
 			outgoing_ctl_receiver,
-			outgoing_obj_sender,
 			incoming_ctl_sender,
 			incoming_obj_sender,
 		})
 	}
-	pub async fn get_outgoing_senders(
-		&self,
-	) -> (
-		mpsc::Sender<moq_transport::Message>,
-		mpsc::Sender<moq_transport::Object>,
-	) {
-		(self.outgoing_ctl_sender.clone(), self.outgoing_obj_sender.clone())
+	pub async fn get_outgoing_senders(&self) -> mpsc::Sender<moq_transport::Message> {
+		self.outgoing_ctl_sender.clone()
 	}
 	pub async fn get_incoming_receivers(
 		&self,
