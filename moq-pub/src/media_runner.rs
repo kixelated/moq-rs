@@ -115,13 +115,13 @@ impl MediaRunner {
 						match source.0.get(&track_id.to_string()) {
 							None => {
 								// if track !exist, send subscribe error
-								outgoing_ctl_sender.send(moq_transport::Message::SubscribeError(
-									moq_transport::SubscribeError {
+								outgoing_ctl_sender
+									.send(moq_transport::Message::SubscribeError(moq_transport::SubscribeError {
 										track_id: subscribe.track_id,
 										code: moq_transport::VarInt::from_u32(1),
 										reason: "Only bad reasons (don't know what that track is)".to_string(),
-									},
-								));
+									}))
+									.await?;
 							}
 							// if track exists, send go-ahead signal to unblock task to send data to subscriber
 							Some(track) => {
