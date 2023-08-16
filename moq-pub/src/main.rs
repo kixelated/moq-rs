@@ -20,6 +20,8 @@ enum InputValues {
 	Stdin,
 }
 
+//TODO: clap mangen, clap complete
+
 #[derive(Parser, Clone)]
 #[command(arg_required_else_help(true))]
 struct Cli {
