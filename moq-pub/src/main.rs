@@ -23,8 +23,8 @@ enum InputValues {
 #[derive(Parser, Clone)]
 #[command(arg_required_else_help(true))]
 struct Cli {
-	#[arg(short, long, default_value = "[::]:0")]
-	addr: net::SocketAddr,
+	#[arg(long, default_value = "[::]:0")]
+	bind_address: net::SocketAddr,
 
 	#[arg(short, long, default_value = "https://localhost:4443")]
 	uri: http::uri::Uri,
@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 	}
 
 	let config = Config {
-		addr: args.addr,
+		addr: args.bind_address,
 		uri: args.uri,
 	};
 
