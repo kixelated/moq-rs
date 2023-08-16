@@ -4,7 +4,6 @@ use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
 use tokio::io::AsyncReadExt;

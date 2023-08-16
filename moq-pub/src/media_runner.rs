@@ -1,7 +1,7 @@
 use crate::media::{self, MapSource};
 use anyhow;
-use log::{debug, info};
-use moq_transport::{AnnounceOk, Message};
+use log::debug;
+use moq_transport::Message;
 use moq_transport::{Object, VarInt};
 use moq_transport_quinn::SendObjects;
 use std::collections::HashMap;
