@@ -13,11 +13,8 @@ pub struct SessionRunner {
 	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
 	outgoing_ctl_receiver: mpsc::Receiver<moq_transport::Message>,
 	outgoing_obj_sender: mpsc::Sender<moq_transport::Object>,
-	outgoing_obj_receiver: mpsc::Receiver<moq_transport::Object>,
 	incoming_ctl_sender: broadcast::Sender<moq_transport::Message>,
-	incoming_ctl_receiver: broadcast::Receiver<moq_transport::Message>,
 	incoming_obj_sender: broadcast::Sender<moq_transport::Object>,
-	incoming_obj_receiver: broadcast::Receiver<moq_transport::Object>,
 }
 
 pub struct Config {
@@ -67,11 +64,8 @@ impl SessionRunner {
 			outgoing_ctl_sender,
 			outgoing_ctl_receiver,
 			outgoing_obj_sender,
-			outgoing_obj_receiver,
 			incoming_ctl_sender,
-			incoming_ctl_receiver,
 			incoming_obj_sender,
-			incoming_obj_receiver,
 		})
 	}
 	pub async fn get_outgoing_senders(

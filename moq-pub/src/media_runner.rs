@@ -14,9 +14,7 @@ use tokio::task::JoinSet;
 pub struct MediaRunner {
 	send_objects: SendObjects,
 	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
-	outgoing_obj_sender: mpsc::Sender<moq_transport::Object>,
 	incoming_ctl_receiver: broadcast::Receiver<moq_transport::Message>,
-	incoming_obj_receiver: broadcast::Receiver<moq_transport::Object>,
 	source: Arc<MapSource>,
 }
 
@@ -37,9 +35,7 @@ impl MediaRunner {
 		Ok(Self {
 			send_objects,
 			outgoing_ctl_sender,
-			outgoing_obj_sender,
 			incoming_ctl_receiver,
-			incoming_obj_receiver,
 			source: Arc::new(MapSource::default()),
 		})
 	}
