@@ -26,13 +26,25 @@ Longer term, I'd like to refactor everything such that the `Media` + `MediaRunne
 Here's how I'm currently testing things, with a local copy of Big Buck Bunny named `bbb_source.mp4`:
 
 ```
-$ RUST_LOG=info ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | cargo run
+$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=debug cargo run -- -i -
 ```
 
 This relies on having `moq-demo` (the relay server) already running locally in another shell.
 
 Here's how to run `moq-pub` without dropping the audio track (omit the `-an` I'm using above):
 ```
-$ RUST_LOG=info ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | cargo run
+$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=debug cargo run -- -i -
 ```
 
+
+ffmpeg -i asdf.mp4 moq://relay-server/namespace
+
+### API Design thoughts
+
+Use cases:
+- live
+- Vod
+
+If we have a live use case, we may want to buffer some data, but then expire and continuously accept new data so we always have the live edge ready to sent to new subscribers.
+
+If however we have a vod use case, we probably want to queue up some data to be ready to send, and then block.
