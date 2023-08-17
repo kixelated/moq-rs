@@ -19,7 +19,6 @@ pub use subscribe_error::*;
 pub use subscribe_ok::*;
 
 use crate::coding::{DecodeError, EncodeError, VarInt};
-use crate::setup;
 
 use std::fmt;
 
@@ -81,16 +80,12 @@ macro_rules! message_types {
     }
 }
 
-// Just so we can use the macro above.
-type SetupClient = setup::Client;
-type SetupServer = setup::Server;
-
 // Each message is prefixed with the given VarInt type.
 message_types! {
 	// NOTE: Object and Setup are in other modules.
 	// Object = 0x0
-	SetupClient = 0x1,
-	SetupServer = 0x2,
+	// SetupClient = 0x1
+	// SetupServer = 0x2
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,

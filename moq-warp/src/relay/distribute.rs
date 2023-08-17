@@ -4,7 +4,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet; // allows locking across await
 
 use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
-use moq_transport::{object, VarInt};
+use moq_transport::{object, Object, VarInt};
 use webtransport_generic::Session as WTSession;
 
 use crate::model::{segment, track};
@@ -163,7 +163,7 @@ impl<S: WTSession> Session<S> {
 		track_id: VarInt,
 		mut segment: segment::Subscriber,
 	) -> anyhow::Result<()> {
-		let object = object::Header {
+		let object = Object {
 			track: track_id,
 			group: segment.sequence,
 			sequence: VarInt::from_u32(0), // Always zero since we send an entire group as an object

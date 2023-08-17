@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use crate::object::Header;
+use crate::Object;
 
 use webtransport_generic::{SendStream, Session};
 
@@ -16,11 +16,11 @@ impl<S: Session> Sender<S> {
 		Self { session }
 	}
 
-	pub async fn open(&mut self, header: Header) -> anyhow::Result<S::SendStream> {
+	pub async fn open(&mut self, object: Object) -> anyhow::Result<S::SendStream> {
 		let mut stream = self.session.open_uni().await.context("failed to open uni stream")?;
 
-		stream.set_priority(header.send_order);
-		header.encode(&mut stream).await.context("failed to write header")?;
+		stream.set_priority(object.send_order);
+		object.encode(&mut stream).await.context("failed to write header")?;
 
 		// log::info!("created stream: {:?}", header);
 
