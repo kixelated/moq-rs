@@ -22,12 +22,11 @@ enum InputValues {
 
 // TODO: clap mangen
 // TODO: clap complete
-// TODO: tiered help (hide bind_address at simplest layer)
 
 #[derive(Parser, Clone)]
 #[command(arg_required_else_help(true))]
 struct Cli {
-	#[arg(long, default_value = "[::]:0")]
+	#[arg(long, hide_short_help = true, default_value = "[::]:0")]
 	bind_address: net::SocketAddr,
 
 	#[arg(short, long, default_value = "https://localhost:4443")]
