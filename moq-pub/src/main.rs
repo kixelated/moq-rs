@@ -18,7 +18,6 @@ use media::*;
 mod cli;
 use cli::*;
 
-// TODO: clap mangen
 // TODO: clap complete
 
 #[tokio::main]

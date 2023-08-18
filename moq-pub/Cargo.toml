@@ -38,3 +38,8 @@ env_logger = "0.9.3"
 anyhow = "1.0.70"
 mp4 = "0.13.0"
 rustls-native-certs = "0.6.3"
+
+[build-dependencies]
+http = "0.2.9"
+clap = { version = "4.0", features = ["derive"] }
+clap_mangen = "0.2.12"
