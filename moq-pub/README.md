@@ -36,6 +36,12 @@ Here's how to run `moq-pub` without dropping the audio track (omit the `-an` I'm
 $ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=debug cargo run -- -i -
 ```
 
+Here's a way to share a webcam:
+
+```
+$ ffmpeg -hide_banner -f avfoundation -framerate 30 -pixel_format nv12 -probesize 42M -i "FaceTime HD Camera:MacBook Pro Microphone" -an -vf scale=-1:720 -c:v libx264 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset | RUST_LOG=moq_pub=debug cargo run -- -i -
+```
+
 
 ffmpeg -i asdf.mp4 moq://relay-server/namespace
 
