@@ -1,4 +1,5 @@
 use anyhow::{self, Context};
+use log::debug;
 use moq_transport::VarInt;
 use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
@@ -6,7 +7,8 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time;
-use tokio::io::AsyncReadExt;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct Media {
 	// TODO hold on a lock on StdIn, use as BufReader
@@ -84,6 +86,8 @@ impl Media {
 
 			let mut reader = Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
+
+			dbg!(header);
 
 			match header.name {
 				mp4::BoxType::MoofBox => {
@@ -167,6 +171,9 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 	let mut raw = buf.to_vec();
 
+	debug!("size: {}", &size);
+	let mut save_mystery_data = false;
+
 	let mut limit = match size {
 		// Runs until the end of the file.
 		0 => reader.take(u64::MAX),
@@ -184,12 +191,27 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 			anyhow::bail!("impossible box size: {}", size)
 		}
 
+		size @ 272033 => {
+			save_mystery_data = true;
+			reader.take(size - 8)
+		}
+
 		// Otherwise read based on the size.
+		// size => reader.take(size - 8),
 		size => reader.take(size - 8),
 	};
 
 	// Append to the vector and return it.
-	limit.read_to_end(&mut raw).await?;
+	let read_bytes = limit.read_to_end(&mut raw).await?;
+	debug!("read_bytes: {}", read_bytes);
+
+	if save_mystery_data {
+		//dbg!(&raw);
+		debug!("saving mystery data to mystery_data.mp4");
+		let mut f = File::create("mystery_data.mp4").await?;
+		f.write_all(&raw).await?;
+		f.flush().await?;
+	}
 
 	Ok(raw)
 }
