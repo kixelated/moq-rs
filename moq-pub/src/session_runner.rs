@@ -51,9 +51,9 @@ impl SessionRunner {
 		// outgoing ctl msgs
 		let (outgoing_ctl_sender, outgoing_ctl_receiver) = mpsc::channel(5);
 		// incoming ctl msg
-		let (incoming_ctl_sender, incoming_ctl_receiver) = broadcast::channel(5);
+		let (incoming_ctl_sender, _incoming_ctl_receiver) = broadcast::channel(5);
 		// incoming objs
-		let (incoming_obj_sender, incoming_obj_receiver) = broadcast::channel(5);
+		let (incoming_obj_sender, _incoming_obj_receiver) = broadcast::channel(5);
 
 		Ok(SessionRunner {
 			moq_transport_session,

@@ -28,7 +28,7 @@ impl MediaRunner {
 		),
 	) -> anyhow::Result<Self> {
 		let outgoing_ctl_sender = outgoing;
-		let (incoming_ctl_receiver, incoming_obj_receiver) = incoming;
+		let (incoming_ctl_receiver, _incoming_obj_receiver) = incoming;
 		Ok(Self {
 			send_objects,
 			outgoing_ctl_sender,
