@@ -75,7 +75,7 @@ impl Media {
 		// The current track name
 		let mut track_name = None;
 
-		let mut count = 0;
+		//let mut count = 0;
 
 		loop {
 			//dbg!(&self.source);
@@ -117,8 +117,9 @@ impl Media {
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
 					//	println!("processed mdat!");
-					count += 1;
+					//count += 1;
 				}
+
 				_ => {
 					// Skip unknown atoms
 				}
