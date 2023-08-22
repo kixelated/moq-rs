@@ -250,7 +250,7 @@ impl Track {
 			.unwrap();
 
 		// Delete segments after 10s.
-		let expires = Some(now + time::Duration::from_secs(2)); // TODO increase this once send order is implemented
+		let expires = Some(now + time::Duration::from_secs(10)); // TODO increase this once send order is implemented
 		let sequence = self.sequence.try_into().context("sequence too large")?;
 
 		self.sequence += 1;
