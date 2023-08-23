@@ -1,5 +1,8 @@
 use super::{Role, Version};
-use crate::coding::{DecodeError, EncodeError};
+use crate::{
+	coding::{DecodeError, EncodeError},
+	VarInt,
+};
 
 use webtransport_generic::{RecvStream, SendStream};
 
@@ -18,6 +21,11 @@ pub struct Server {
 
 impl Server {
 	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+		let typ = VarInt::decode(r).await?;
+		if typ.into_inner() != 2 {
+			return Err(DecodeError::InvalidType(typ));
+		}
+
 		let version = Version::decode(r).await?;
 		let role = Role::decode(r).await?;
 
@@ -25,6 +33,7 @@ impl Server {
 	}
 
 	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+		VarInt::from_u32(2).encode(w).await?;
 		self.version.encode(w).await?;
 		self.role.encode(w).await?;
 

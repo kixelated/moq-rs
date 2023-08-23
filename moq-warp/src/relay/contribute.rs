@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet; // lock across await boundaries
 
 use moq_transport::message::{Announce, AnnounceError, AnnounceOk, Subscribe, SubscribeError, SubscribeOk};
-use moq_transport::{object, VarInt};
+use moq_transport::{object, Object, VarInt};
 use webtransport_generic::Session as WTSession;
 
 use bytes::BytesMut;
@@ -89,15 +89,15 @@ impl<S: WTSession> Session<S> {
 		}
 	}
 
-	async fn receive_object(&mut self, header: object::Header, stream: S::RecvStream) -> anyhow::Result<()> {
-		let track = header.track;
+	async fn receive_object(&mut self, obj: Object, stream: S::RecvStream) -> anyhow::Result<()> {
+		let track = obj.track;
 
 		// Keep objects in memory for 10s
 		let expires = time::Instant::now() + time::Duration::from_secs(10);
 
 		let segment = segment::Info {
-			sequence: header.sequence,
-			send_order: header.send_order,
+			sequence: obj.sequence,
+			send_order: obj.send_order,
 			expires: Some(expires),
 		};
 

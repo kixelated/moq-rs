@@ -1,4 +1,4 @@
-use crate::object::Header;
+use crate::Object;
 
 use anyhow::Context;
 
@@ -10,7 +10,7 @@ pub struct Receiver<S: Session> {
 	session: S,
 
 	// Streams that we've accepted but haven't read the header from yet.
-	streams: JoinSet<anyhow::Result<(Header, S::RecvStream)>>,
+	streams: JoinSet<anyhow::Result<(Object, S::RecvStream)>>,
 }
 
 impl<S: Session> Receiver<S> {
@@ -21,7 +21,7 @@ impl<S: Session> Receiver<S> {
 		}
 	}
 
-	pub async fn recv(&mut self) -> anyhow::Result<(Header, S::RecvStream)> {
+	pub async fn recv(&mut self) -> anyhow::Result<(Object, S::RecvStream)> {
 		loop {
 			tokio::select! {
 				res = self.session.accept_uni() => {
@@ -35,8 +35,8 @@ impl<S: Session> Receiver<S> {
 		}
 	}
 
-	async fn read(mut stream: S::RecvStream) -> anyhow::Result<(Header, S::RecvStream)> {
-		let header = Header::decode(&mut stream).await?;
+	async fn read(mut stream: S::RecvStream) -> anyhow::Result<(Object, S::RecvStream)> {
+		let header = Object::decode(&mut stream).await?;
 		Ok((header, stream))
 	}
 }

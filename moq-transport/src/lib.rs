@@ -6,4 +6,5 @@ pub mod setup;
 
 pub use coding::VarInt;
 pub use message::Message;
+pub use object::Object;
 pub use session::Session;
