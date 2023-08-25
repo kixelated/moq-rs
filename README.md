@@ -1,10 +1,13 @@
 # Media over QUIC
 
 Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC streams.
-See the [Warp draft](https://datatracker.ietf.org/doc/draft-lcurley-warp/).
+See the [MoQ working group](https://datatracker.ietf.org/wg/moq/about/) for more information.
 
-This repository is a Rust server that supports both contribution (ingest) and distribution (playback).
-It requires a client, such as [moq-js](https://github.com/kixelated/moq-js).
+This repository contains reusable libraries and a relay server.
+It requires a client to actually publish/view content, such as [moq-js](https://github.com/kixelated/moq-js).
+
+Join the [Discord](https://discord.gg/FCYF3p99mr) for updates and discussion.
+
 
 ## Setup
 
