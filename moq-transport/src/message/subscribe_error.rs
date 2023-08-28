@@ -2,7 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 
 use webtransport_generic::{RecvStream, SendStream};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SubscribeError {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
 

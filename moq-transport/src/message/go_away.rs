@@ -2,7 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
 
 use webtransport_generic::{RecvStream, SendStream};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GoAway {
 	pub url: String,
 }
