@@ -36,6 +36,7 @@ use webtransport_generic::{RecvStream, SendStream};
 // This implements a decode/encode method that uses the specified type.
 macro_rules! message_types {
     {$($name:ident = $val:expr,)*} => {
+		#[derive(Clone)]
 		pub enum Message {
 			$($name($name)),*
 		}
