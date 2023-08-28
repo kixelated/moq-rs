@@ -142,7 +142,7 @@ impl Media {
 
 		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0), // first and only segment
-			send_order: 0,                 // highest priority
+			send_order: i32::MIN,          // highest priority
 			expires: None,                 // never delete from the cache
 		});
 
