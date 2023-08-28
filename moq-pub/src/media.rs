@@ -264,8 +264,7 @@ impl Track {
 
 		// The send order is simple; newer timestamps are higher priority.
 		// TODO give audio a boost?
-		let send_order = VarInt::MAX
-			.into_inner()
+		let send_order = i32::MAX
 			.checked_sub(timestamp)
 			.context("timestamp too large")?
 			.try_into()
