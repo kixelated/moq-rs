@@ -51,7 +51,7 @@ impl fmt::Debug for Publisher {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Subscriber {
 	pub name: String,
 
@@ -69,12 +69,6 @@ impl Subscriber {
 			}),
 			Some(res) => res,
 		}
-	}
-}
-
-impl fmt::Debug for Subscriber {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "track subscriber: {:?}", self.name)
 	}
 }
 

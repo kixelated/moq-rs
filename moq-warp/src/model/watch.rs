@@ -1,3 +1,4 @@
+use core::fmt;
 use std::collections::VecDeque;
 use tokio::sync::watch;
 
@@ -5,6 +6,18 @@ use tokio::sync::watch;
 struct State<T> {
 	queue: VecDeque<T>,
 	drained: usize,
+}
+
+impl<T> fmt::Debug for State<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"State<{}> ( queue.len(): {}, drained: {} )",
+			std::any::type_name::<T>(),
+			&self.queue.len(),
+			&self.drained
+		)
+	}
 }
 
 impl<T> State<T> {
@@ -85,7 +98,7 @@ impl<T: Clone> Default for Publisher<T> {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Subscriber<T: Clone> {
 	state: watch::Receiver<State<T>>,
 	index: usize,

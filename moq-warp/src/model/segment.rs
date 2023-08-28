@@ -49,7 +49,7 @@ impl Deref for Publisher {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Subscriber {
 	pub info: Arc<Info>,
 
