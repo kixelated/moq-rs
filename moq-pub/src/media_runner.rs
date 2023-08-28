@@ -1,9 +1,9 @@
 use crate::media::{self, MapSource};
 use anyhow;
 use log::debug;
-use moq_transport::Message;
-use moq_transport::{Object, VarInt};
-use moq_transport_quinn::SendObjects;
+use moq_transport::message::Message;
+use moq_transport::message::{Announce, SubscribeError};
+use moq_transport::{object, Object, VarInt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -11,21 +11,20 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-pub struct MediaRunner {
-	send_objects: SendObjects,
-	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
-	incoming_ctl_receiver: broadcast::Receiver<moq_transport::Message>,
+use webtransport_generic::Session as WTSession;
+
+pub struct MediaRunner<S: WTSession> {
+	send_objects: object::Sender<S>,
+	outgoing_ctl_sender: mpsc::Sender<Message>,
+	incoming_ctl_receiver: broadcast::Receiver<Message>,
 	source: Arc<MapSource>,
 }
 
-impl MediaRunner {
+impl<S: WTSession> MediaRunner<S> {
 	pub async fn new(
-		send_objects: SendObjects,
-		outgoing: mpsc::Sender<moq_transport::Message>,
-		incoming: (
-			broadcast::Receiver<moq_transport::Message>,
-			broadcast::Receiver<moq_transport::Object>,
-		),
+		send_objects: object::Sender<S>,
+		outgoing: mpsc::Sender<Message>,
+		incoming: (broadcast::Receiver<Message>, broadcast::Receiver<Object>),
 	) -> anyhow::Result<Self> {
 		let outgoing_ctl_sender = outgoing;
 		let (incoming_ctl_receiver, _incoming_obj_receiver) = incoming;
@@ -43,7 +42,7 @@ impl MediaRunner {
 
 		// ANNOUNCE the namespace
 		self.outgoing_ctl_sender
-			.send(moq_transport::Message::Announce(moq_transport::Announce {
+			.send(Message::Announce(Announce {
 				track_namespace: namespace.to_string(),
 			}))
 			.await?;
@@ -51,7 +50,7 @@ impl MediaRunner {
 		// wait for the go ahead
 		loop {
 			match self.incoming_ctl_receiver.recv().await? {
-				moq_transport::Message::AnnounceOk(_) => {
+				Message::AnnounceOk(_) => {
 					break;
 				}
 				_ => {}
@@ -94,7 +93,7 @@ impl MediaRunner {
 
 					// Write each fragment as they are available.
 					while let Some(fragment) = segment.fragments.next().await {
-						stream.write_all(fragment.as_slice()).await?;
+						stream.write_all(&fragment).await?;
 					}
 				}
 			});
@@ -113,7 +112,7 @@ impl MediaRunner {
 							None => {
 								// if track !exist, send subscribe error
 								outgoing_ctl_sender
-									.send(moq_transport::Message::SubscribeError(moq_transport::SubscribeError {
+									.send(Message::SubscribeError(SubscribeError {
 										track_id: subscribe.track_id,
 										code: moq_transport::VarInt::from_u32(1),
 										reason: "Only bad reasons (don't know what that track is)".to_string(),

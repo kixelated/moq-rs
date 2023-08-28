@@ -932,6 +932,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-pub"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_mangen",
+ "env_logger",
+ "http",
+ "log",
+ "moq-transport",
+ "moq-warp",
+ "mp4",
+ "quinn",
+ "ring",
+ "rustls 0.21.2",
+ "rustls-native-certs",
+ "rustls-pemfile",
+ "tokio",
+ "webtransport-generic",
+ "webtransport-quinn",
+]
+
+[[package]]
 name = "moq-quinn"
 version = "0.1.0"
 dependencies = [
@@ -949,29 +972,6 @@ dependencies = [
  "tokio",
  "warp",
  "webtransport-generic",
- "webtransport-quinn",
-]
-
-[[package]]
-name = "moq-pub"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap_mangen",
- "env_logger",
- "http",
- "log",
- "moq-transport",
- "moq-transport-quinn",
- "moq-warp",
- "mp4",
- "quinn",
- "ring",
- "rustls 0.21.2",
- "rustls-native-certs",
- "rustls-pemfile",
- "tokio",
  "webtransport-quinn",
 ]
 

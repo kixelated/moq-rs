@@ -141,9 +141,9 @@ impl Media {
 		let subscriber = catalog.subscribe();
 
 		let mut segment = segment::Publisher::new(segment::Info {
-			sequence: VarInt::from_u32(0),   // first and only segment
-			send_order: VarInt::from_u32(0), // highest priority
-			expires: None,                   // never delete from the cache
+			sequence: VarInt::from_u32(0), // first and only segment
+			send_order: 0,                 // highest priority
+			expires: None,                 // never delete from the cache
 		});
 
 		// Add the segment and add the fragment.

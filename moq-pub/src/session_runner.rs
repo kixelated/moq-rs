@@ -1,18 +1,18 @@
 use anyhow::Context;
 use http;
 use log::debug;
-use moq_transport_quinn::SendObjects;
+use moq_transport::{object, Object};
 use std::net;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 pub struct SessionRunner {
-	moq_transport_session: moq_transport_quinn::Session,
+	moq_transport_session: moq_transport::Session<webtransport_quinn::Session>,
 	outgoing_ctl_sender: mpsc::Sender<moq_transport::Message>,
 	outgoing_ctl_receiver: mpsc::Receiver<moq_transport::Message>,
 	incoming_ctl_sender: broadcast::Sender<moq_transport::Message>,
-	incoming_obj_sender: broadcast::Sender<moq_transport::Object>,
+	incoming_obj_sender: broadcast::Sender<Object>,
 }
 
 pub struct Config {
@@ -44,9 +44,10 @@ impl SessionRunner {
 		let webtransport_session = webtransport_quinn::connect(&endpoint, &config.uri)
 			.await
 			.context("failed to create WebTransport session")?;
-		let moq_transport_session = moq_transport_quinn::connect(webtransport_session, moq_transport::Role::Both)
-			.await
-			.context("failed to create MoQ Transport session")?;
+		let moq_transport_session =
+			moq_transport::Session::connect(webtransport_session, moq_transport::setup::Role::Both)
+				.await
+				.context("failed to create MoQ Transport session")?;
 
 		// outgoing ctl msgs
 		let (outgoing_ctl_sender, outgoing_ctl_receiver) = mpsc::channel(5);
@@ -125,7 +126,7 @@ impl SessionRunner {
 	// async fn open(&self, object_header: Object) -> anyhow::Result<SendStream> {
 	// 	self.moq_transport_session.send_objects.open(object_header).await
 	// }
-	pub async fn get_send_objects(&self) -> SendObjects {
+	pub async fn get_send_objects(&self) -> object::Sender<webtransport_quinn::Session> {
 		self.moq_transport_session.send_objects.clone()
 	}
 }
