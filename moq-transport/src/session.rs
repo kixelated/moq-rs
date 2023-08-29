@@ -26,10 +26,6 @@ impl<S: WTSession> Session<S> {
 			.find(|version| **version == setup::Version::DRAFT_00)
 			.context("no supported versions")?;
 
-		if !setup_client.role.compatible(role) {
-			anyhow::bail!("incompatible roles: {:?} {:?}", setup_client.role, role);
-		}
-
 		let setup_server = setup::Server {
 			role,
 			version: setup::Version::DRAFT_00,
@@ -73,10 +69,6 @@ impl<S: WTSession> Session<S> {
 
 		if setup_server.version != setup::Version::DRAFT_00 {
 			anyhow::bail!("unsupported version: {:?}", setup_server.version);
-		}
-
-		if !setup_server.role.compatible(role) {
-			anyhow::bail!("incompatible roles: {:?} {:?}", role, setup_server.role);
 		}
 
 		let send_control = message::Sender::new(send);

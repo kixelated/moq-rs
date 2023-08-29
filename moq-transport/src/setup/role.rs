@@ -23,10 +23,6 @@ impl Role {
 			Self::Publisher => false,
 		}
 	}
-
-	pub fn compatible(&self, other: Role) -> bool {
-		self.is_publisher() == other.is_subscriber() && self.is_subscriber() == other.is_publisher()
-	}
 }
 
 impl From<Role> for VarInt {
