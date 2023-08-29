@@ -140,7 +140,7 @@ impl Media {
 
 		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0), // first and only segment
-			send_order: i32::MIN,          // highest priority
+			send_order: 0,                 // highest priority
 			expires: None,                 // never delete from the cache
 		});
 
@@ -262,8 +262,8 @@ impl Track {
 
 		// The send order is simple; newer timestamps are higher priority.
 		// TODO give audio a boost?
-		let send_order = i32::MAX
-			.checked_sub(timestamp)
+		let send_order = 0_i32
+			.checked_add(timestamp)
 			.context("timestamp too large")?
 			.try_into()
 			.unwrap();
