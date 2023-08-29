@@ -50,8 +50,6 @@ async fn main() -> anyhow::Result<()> {
 	join_set.spawn(async move { media.run().await.context("failed to run media source") });
 	join_set.spawn(async move { media_runner.run().await.context("failed to run client") });
 
-	//	media_runner.run().await.context("failed to run client")?;
-
 	while let Some(res) = join_set.join_next().await {
 		dbg!(&res);
 		res??;

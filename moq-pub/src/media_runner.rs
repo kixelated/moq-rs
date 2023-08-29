@@ -130,7 +130,6 @@ impl<S: WTSession> MediaRunner<S> {
 
 		while let Some(res) = join_set.join_next().await {
 			debug!("MediaRunner task finished with result: {:?}", &res);
-			//let _ = res?;
 		}
 
 		Ok(())

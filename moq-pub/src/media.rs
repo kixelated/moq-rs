@@ -11,9 +11,6 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct Media {
-	// TODO hold on a lock on StdIn, use as BufReader
-	//	reader: std::io::StdinLock,
-	//stdin: Pin<&mut tokio::io::Stdin>,
 	// The tracks we're producing.
 	tracks: HashMap<String, Track>,
 
@@ -22,10 +19,6 @@ pub struct Media {
 
 impl Media {
 	pub async fn new() -> anyhow::Result<Self> {
-		// TODO hold a lock on StdIn
-		// let stdin = io::stdin();
-		// let reader = stdin.lock();
-		//let mut stdin = io::stdin();
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -72,16 +65,11 @@ impl Media {
 		Ok(Media { tracks, source })
 	}
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		// dbg!("media.run()");
 		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut track_name = None;
 
-		//let mut count = 0;
-
 		loop {
-			//dbg!(&self.source);
-			//dbg!(&track_name);
 			let atom = read_atom(&mut stdin).await?;
 
 			let mut reader = Cursor::new(&atom);
@@ -91,7 +79,6 @@ impl Media {
 				mp4::BoxType::MoofBox => {
 					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
 
-					//dbg!(&moof);
 					// Process the moof.
 					let fragment = Fragment::new(moof)?;
 					let name = fragment.track.to_string();
@@ -99,17 +86,12 @@ impl Media {
 					// Get the track for this moof.
 					let track = self.tracks.get_mut(&name).context("failed to find track")?;
 
-					// // Sleep until we should publish this sample.
-					// let timestamp = time::Duration::from_millis(1000 * fragment.timestamp / track.timescale);
-					// tokio::time::sleep_until(start + timestamp).await;
-
 					// Save the track ID for the next iteration, which must be a mdat.
 					anyhow::ensure!(track_name.is_none(), "multiple moof atoms");
 					track_name.replace(name);
 
 					// Publish the moof header, creating a new segment if it's a keyframe.
 					track.header(atom, fragment).context("failed to publish moof")?;
-					//	println!("proccessed moof!");
 				}
 				mp4::BoxType::MdatBox => {
 					// Get the track ID from the previous moof.
@@ -118,17 +100,12 @@ impl Media {
 
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
-					//	println!("processed mdat!");
-					//count += 1;
 				}
 
 				_ => {
 					// Skip unknown atoms
 				}
 			}
-			// if count >= 3 {
-			// 	tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-			// }
 		}
 	}
 	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
@@ -152,7 +129,6 @@ impl Media {
 		(catalog, subscriber)
 	}
 	pub fn source(&self) -> Arc<MapSource> {
-		// dbg!("source size: {}", self.source.0.len());
 		self.source.clone()
 	}
 }
@@ -165,7 +141,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 	// Convert the first 4 bytes into the size.
 	let size = u32::from_be_bytes(buf[0..4].try_into()?) as u64;
-	//let typ = &buf[4..8].try_into().ok().unwrap();
 
 	let mut raw = buf.to_vec();
 
@@ -195,7 +170,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 		}
 
 		// Otherwise read based on the size.
-		// size => reader.take(size - 8),
 		size => reader.take(size - 8),
 	};
 
@@ -204,7 +178,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 	debug!("read_bytes: {}", read_bytes);
 
 	if save_mystery_data {
-		//dbg!(&raw);
 		debug!("saving mystery data to mystery_data.mp4");
 		let mut f = File::create("mystery_data.mp4").await?;
 		f.write_all(&raw).await?;
@@ -260,13 +233,9 @@ impl Track {
 			.try_into()
 			.context("timestamp too large")?;
 
-		// The send order is simple; newer timestamps are higher priority.
+		// The send order is simple; newer timestamps should be higher priority.
 		// TODO give audio a boost?
-		// let send_order = 0_i32
-		// 	.checked_add(timestamp)
-		// 	.context("timestamp too large")?
-		// 	.try_into()
-		// 	.unwrap();
+		// TODO Use timestamps for prioritization again after quinn priority bug fixed
 		let send_order = i32::MIN;
 
 		// Delete segments after 10s.
@@ -299,8 +268,6 @@ impl Track {
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		// dbg!("data()");
-		// dbg!(&self.track.name);
 		let segment = self.segment.as_mut().context("missing segment")?;
 		segment.fragments.push(raw.into());
 

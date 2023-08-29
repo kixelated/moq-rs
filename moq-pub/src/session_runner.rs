@@ -21,7 +21,6 @@ pub struct Config {
 
 impl SessionRunner {
 	pub async fn new(config: Config) -> anyhow::Result<Self> {
-		// Ugh, just let me use my native root certs already
 		let mut roots = rustls::RootCertStore::empty();
 		for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
 			roots.add(&rustls::Certificate(cert.0)).unwrap();
@@ -122,9 +121,6 @@ impl SessionRunner {
 		Ok(())
 	}
 
-	// async fn open(&self, object_header: Object) -> anyhow::Result<SendStream> {
-	// 	self.moq_transport_session.send_objects.open(object_header).await
-	// }
 	pub async fn get_send_objects(&self) -> object::Sender<webtransport_quinn::Session> {
 		self.moq_transport_session.send_objects.clone()
 	}
