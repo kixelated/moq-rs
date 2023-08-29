@@ -145,7 +145,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 	let mut raw = buf.to_vec();
 
 	debug!("size: {}", &size);
-	let mut save_mystery_data = false;
 
 	let mut limit = match size {
 		// Runs until the end of the file.
@@ -164,11 +163,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 			anyhow::bail!("impossible box size: {}", size)
 		}
 
-		size @ 272033 => {
-			save_mystery_data = true;
-			reader.take(size - 8)
-		}
-
 		// Otherwise read based on the size.
 		size => reader.take(size - 8),
 	};
@@ -176,13 +170,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 	// Append to the vector and return it.
 	let read_bytes = limit.read_to_end(&mut raw).await?;
 	debug!("read_bytes: {}", read_bytes);
-
-	if save_mystery_data {
-		debug!("saving mystery data to mystery_data.mp4");
-		let mut f = File::create("mystery_data.mp4").await?;
-		f.write_all(&raw).await?;
-		f.flush().await?;
-	}
 
 	Ok(raw)
 }
