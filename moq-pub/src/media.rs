@@ -87,8 +87,6 @@ impl Media {
 			let mut reader = Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
 
-			dbg!(header);
-
 			match header.name {
 				mp4::BoxType::MoofBox => {
 					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
