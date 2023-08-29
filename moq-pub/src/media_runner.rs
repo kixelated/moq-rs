@@ -1,5 +1,4 @@
 use crate::media::{self, MapSource};
-use anyhow;
 use log::debug;
 use moq_transport::message::Message;
 use moq_transport::message::{Announce, SubscribeError};
@@ -49,11 +48,8 @@ impl<S: WTSession> MediaRunner<S> {
 
 		// wait for the go ahead
 		loop {
-			match self.incoming_ctl_receiver.recv().await? {
-				Message::AnnounceOk(_) => {
-					break;
-				}
-				_ => {}
+			if let Message::AnnounceOk(_) = self.incoming_ctl_receiver.recv().await? {
+				break;
 			}
 		}
 
@@ -101,36 +97,33 @@ impl<S: WTSession> MediaRunner<S> {
 
 		join_set.spawn(async move {
 			loop {
-				match incoming_ctl_receiver.recv().await? {
-					Message::Subscribe(subscribe) => {
-						debug!("Received a subscription request");
+				if let Message::Subscribe(subscribe) = incoming_ctl_receiver.recv().await? {
+					debug!("Received a subscription request");
 
-						let track_id = subscribe.track_id;
-						debug!("Looking up track_id: {}", &track_id);
-						// Look up track in source
-						match source.0.get(&track_id.to_string()) {
-							None => {
-								// if track !exist, send subscribe error
-								outgoing_ctl_sender
-									.send(Message::SubscribeError(SubscribeError {
-										track_id: subscribe.track_id,
-										code: moq_transport::VarInt::from_u32(1),
-										reason: "Only bad reasons (don't know what that track is)".to_string(),
-									}))
-									.await?;
-							}
-							// if track exists, send go-ahead signal to unblock task to send data to subscriber
-							Some(track) => {
-								debug!("We have the track! (Good news everyone)");
-								track_dispatcher
-									.get(&track.name)
-									.ok_or(anyhow::anyhow!("missing task for track"))?
-									.send(())
-									.await?;
-							}
-						};
-					}
-					_ => {}
+					let track_id = subscribe.track_id;
+					debug!("Looking up track_id: {}", &track_id);
+					// Look up track in source
+					match source.0.get(&track_id.to_string()) {
+						None => {
+							// if track !exist, send subscribe error
+							outgoing_ctl_sender
+								.send(Message::SubscribeError(SubscribeError {
+									track_id: subscribe.track_id,
+									code: moq_transport::VarInt::from_u32(1),
+									reason: "Only bad reasons (don't know what that track is)".to_string(),
+								}))
+								.await?;
+						}
+						// if track exists, send go-ahead signal to unblock task to send data to subscriber
+						Some(track) => {
+							debug!("We have the track! (Good news everyone)");
+							track_dispatcher
+								.get(&track.name)
+								.ok_or(anyhow::anyhow!("missing task for track"))?
+								.send(())
+								.await?;
+						}
+					};
 				}
 			}
 		});

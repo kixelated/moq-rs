@@ -1,5 +1,4 @@
 use anyhow::Context;
-use http;
 use log::debug;
 use moq_transport::{object, Object};
 use std::net;
