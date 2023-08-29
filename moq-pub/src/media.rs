@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 
 pub struct Media {
 	// The tracks we're producing.
