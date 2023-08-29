@@ -9,7 +9,7 @@ use crate::coding::{DecodeError, EncodeError, VarInt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use webtransport_generic::{RecvStream, SendStream};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Object {
 	// An ID for this track.
 	// Proposal: https://github.com/moq-wg/moq-transport/issues/209

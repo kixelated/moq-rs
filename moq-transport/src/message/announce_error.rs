@@ -2,7 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 
 use webtransport_generic::{RecvStream, SendStream};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AnnounceError {
 	// Echo back the namespace that was announced.
 	// TODO Propose using an ID to save bytes.
