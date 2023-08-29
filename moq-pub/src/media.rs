@@ -140,7 +140,7 @@ impl Media {
 
 		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0), // first and only segment
-			send_order: 0,                 // highest priority
+			send_order: i32::MIN,          // highest priority
 			expires: None,                 // never delete from the cache
 		});
 
@@ -254,7 +254,7 @@ impl Track {
 
 		// Compute the timestamp in milliseconds.
 		// Overflows after 583 million years, so we're fine.
-		let timestamp = fragment
+		let _timestamp: i32 = fragment
 			.timestamp(self.timescale)
 			.as_millis()
 			.try_into()
@@ -262,11 +262,12 @@ impl Track {
 
 		// The send order is simple; newer timestamps are higher priority.
 		// TODO give audio a boost?
-		let send_order = 0_i32
-			.checked_add(timestamp)
-			.context("timestamp too large")?
-			.try_into()
-			.unwrap();
+		// let send_order = 0_i32
+		// 	.checked_add(timestamp)
+		// 	.context("timestamp too large")?
+		// 	.try_into()
+		// 	.unwrap();
+		let send_order = i32::MIN;
 
 		// Delete segments after 10s.
 		let expires = Some(now + time::Duration::from_secs(10)); // TODO increase this once send order is implemented
