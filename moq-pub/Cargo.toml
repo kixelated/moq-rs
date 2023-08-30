@@ -1,7 +1,7 @@
 [package]
-name = "moq-quinn"
+name = "moq-pub"
 description = "Media over QUIC"
-authors = ["Luke Curley"]
+authors = ["Mike English"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
@@ -11,19 +11,18 @@ edition = "2021"
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
-default-run = "moq-quinn"
-
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
+#moq-transport-quinn = { path = "../moq-transport-quinn" }
 moq-warp = { path = "../moq-warp" }
 
 # QUIC
 quinn = "0.10"
-webtransport-generic = "0.5"
 webtransport-quinn = "0.5"
+webtransport-generic = "0.5"
+http = "0.2.9"
 
 # Crypto
 ring = "0.16.20"
@@ -33,12 +32,15 @@ rustls-pemfile = "1.0.2"
 # Async stuff
 tokio = { version = "1.27", features = ["full"] }
 
-# Web server to serve the fingerprint
-warp = { version = "0.3.3", features = ["tls"] }
-hex = "0.4.3"
-
-# Logging
+# CLI, logging, error handling
 clap = { version = "4.0", features = ["derive"] }
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9.3"
-anyhow = "1.0.70"
+anyhow = { version = "1.0.70", features = ["backtrace"]}
+mp4 = "0.13.0"
+rustls-native-certs = "0.6.3"
+
+[build-dependencies]
+http = "0.2.9"
+clap = { version = "4.0", features = ["derive"] }
+clap_mangen = "0.2.12"
