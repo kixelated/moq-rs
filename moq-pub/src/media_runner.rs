@@ -1,5 +1,6 @@
 use crate::media::{self, MapSource};
-use log::debug;
+use anyhow::bail;
+use log::{debug, error};
 use moq_transport::message::Message;
 use moq_transport::message::{Announce, SubscribeError};
 use moq_transport::{object, Object, VarInt};
@@ -48,8 +49,21 @@ impl<S: WTSession> MediaRunner<S> {
 
 		// wait for the go ahead
 		loop {
-			if let Message::AnnounceOk(_) = self.incoming_ctl_receiver.recv().await? {
-				break;
+			match self.incoming_ctl_receiver.recv().await? {
+				Message::AnnounceOk(_) => {
+					break;
+				}
+				Message::AnnounceError(announce_error) => {
+					error!(
+						"Failed to announce namespace '{}' with error code '{}' and reason '{}'",
+						&namespace, &announce_error.code, &announce_error.reason
+					);
+					// TODO: Think about how to recover here? Retry?
+					bail!("Failed to announce namespace");
+				}
+				_ => {
+					// TODO: work out how to ignore unknown/unrelated messages here without consuming them prematurely
+				}
 			}
 		}
 
