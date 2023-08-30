@@ -39,15 +39,11 @@ impl Media {
 		// Create a source that can be subscribed to.
 		let mut source = HashMap::default();
 
-		// Create the catalog track
-		let (_catalog, subscriber) = Self::create_catalog(init);
-		source.insert("0".to_string(), subscriber);
-
 		let mut tracks = HashMap::new();
 
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
-			let name = id.to_string();
+			let name = id.to_string() + ".m4s";
 			//dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
@@ -58,6 +54,12 @@ impl Media {
 
 			tracks.insert(name, track);
 		}
+
+		// Create the catalog track
+		let (_init, subscriber) = Self::create_init(init);
+		source.insert("1.mp4".to_string(), subscriber);
+		let (_catalog, subscriber) = Self::create_catalog(&moov, &tracks);
+		source.insert(".catalog".to_string(), subscriber);
 
 		let source = Arc::new(MapSource(source));
 
@@ -107,12 +109,12 @@ impl Media {
 			}
 		}
 	}
-	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
+	fn create_init(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
-		let mut catalog = track::Publisher::new("0");
+		let mut init_track = track::Publisher::new("1.mp4");
 
-		// Subscribe to the catalog before we push the segment.
-		let subscriber = catalog.subscribe();
+		// Subscribe to the init track before we push the segment.
+		let subscriber = init_track.subscribe();
 
 		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0), // first and only segment
@@ -121,11 +123,51 @@ impl Media {
 		});
 
 		// Add the segment and add the fragment.
-		catalog.push_segment(segment.subscribe());
+		init_track.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
 		// Return the catalog
-		(catalog, subscriber)
+		(init_track, subscriber)
+	}
+	fn create_catalog(moov: &mp4::MoovBox, tracks: &HashMap<String, Track>) -> (track::Publisher, track::Subscriber) {
+		// Create a track with a single segment containing the init data.
+		let mut catalog_track = track::Publisher::new(".catalog");
+
+		// Subscribe to the catalog before we push the segment.
+		let catalog_subscriber = catalog_track.subscribe();
+
+		let mut segment = segment::Publisher::new(segment::Info {
+			sequence: VarInt::from_u32(0), // first and only segment
+			send_order: i32::MIN,          // highest priority
+			expires: None,                 // never delete from the cache
+		});
+
+		// TODO: parse MOOV header and build this from real data
+		let catalog = r#"
+{
+  "tracks": [
+    {
+      "container": "mp4",
+      "namespace": "quic.video/moq-pub-foo",
+      "kind": "video",
+      "init_track": "1.mp4",
+      "data_track": "1.m4s",
+      "codec": "avc1.64001e",
+      "width": 1280,
+      "height": 720,
+      "frame_rate": 24,
+      "bit_rate": 1500000
+    }
+  ]
+}
+"#;
+
+		// Add the segment and add the fragment.
+		catalog_track.push_segment(segment.subscribe());
+		segment.fragments.push(catalog.into());
+
+		// Return the catalog
+		(catalog_track, catalog_subscriber)
 	}
 	pub fn source(&self) -> Arc<MapSource> {
 		self.source.clone()
