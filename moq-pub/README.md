@@ -35,3 +35,10 @@ Here's we can (eventually) run `moq-pub` without dropping the audio track (omit 
 ```
 $ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info cargo run -- -i -
 ```
+
+### Known issues
+
+- Catalog track is a raw binary MP4 init segment rather than the newer JSON format moq-js now expects
+- Doesn't handle EOF - just send it media forever with `-stream_loop`
+- Probably still full of lots of bugs
+- Various other TODOs you can find in the code
