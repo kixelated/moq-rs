@@ -1,24 +1,24 @@
 # moq-pub
 
-WARNING: Work in Progress!!!
+A command line tool for publishing media via Media over QUIC (MoQ).
 
-This is currently a *very* messy branch with a lot of debugging going on and also isn't currently factored in the way I eventualy imagine implementing this tool. 
+Expects to receive fragmented MP4 via standard input and connect to a MOQT relay.
 
-_However_, it is getting close to being in a working state. Once I have a version that works end-to-end, I'll start cleaning up and refactoring towards a more elegant design, probably on a new branch.
+```
+ffmpeg ... - | moq-pub -i - -u https://localhost:4443
+```
 
-In the meantime, here are some things that may be worth noting about the current WIP code I have here:
-
-### Current `moq-pub` components
+### A note on the `moq-pub` code organization
 
 - `Media` is responsible for reading from stdin and parsing MP4 boxes. It populates a `MapSource` of `Track`s for which it holds the producer side, pushing segments of video/audio into them and notifying consumers via tokio watch async primitives.
 
-- `SessionRunner` is currrently where we create and hold the MOQT Session from the moq_transport_quinn library, and we use a series of `mpsc` and `broadcast` channels to make it possible for other parts of our code to send/recieve control messages and objects (data) via that Session. At present, evenything that comes from the wire or goes onto the wire will route through here (in `session_runner.run()`)
+- `SessionRunner` is where we create and hold the MOQT Session from the `moq_transport` library. We currently hard-code our implementation to use `quinn` as the underlying WebTranport implementation. We use a series of `mpsc` and `broadcast` channels to make it possible for other parts of our code to send/recieve control messages via that Session. Sending Objects is handled a little differently because we are able to clone the MOQT Session's sender wherever we need to do that.
 
-- `MediaRunner` will be responsible for consuming the `Track`s that `Media` produces and populates. `MediaRunner` will spawn tasks for each `Track` to `.await` new segments and then put the media data into Objects and onto the wire (via channels into `SessionRunner`)
+- `MediaRunner` is responsible for consuming the `Track`s that `Media` produces and populates. `MediaRunner` spawns tasks for each `Track` to `.await` new segments and then put the media data into Objects and onto the wire (via channels into `SessionRunner`). Note that these tasks are created, but block waiting un the reception of a MOQT SUBSCRIBE message before they actually send any segments on the wire. `MediaRunner` is also responsible for sending the initial MOQT ANNOUNCE message announcing the namespace for the tracks we will send.
 
-- `LogViewer` will snoop on some channels going in/out of `SessionRunner` and be responsible for exposing useful debugging/troubleshooting information. Currently we just have a bunch of `dbg!()` lines scattered about in `SessionRunner` itself (and elsewhere). When we start cleaning those up, this is where some better logging functionality will reside.
+- `LogViewer` as the name implies is responsible for logging. It snoops on some channels going in/out of `SessionRunner` and logs MOQT control messages.
 
-Longer term, I'd like to refactor everything such that the `Media` + `MediaRunner` bits will consume an interface that's _closer_ to what we'd like to eventually expose as a C FFI for consumption by external tools. That probably means greatly reducing the use of async Rust in the parts of this code that make up both sides of that interface boundary.
+Longer term, I think it'd be interesting to refactor everything such that the `Media` + `MediaRunner` bits consume an interface that's _closer_ to what we'd like to eventually expose as a C FFI for consumption by external tools. That probably means greatly reducing the use of async Rust in the parts of this code that make up both sides of that interface boundary.
 
 
 ### Invoking `moq-pub`:
@@ -26,31 +26,12 @@ Longer term, I'd like to refactor everything such that the `Media` + `MediaRunne
 Here's how I'm currently testing things, with a local copy of Big Buck Bunny named `bbb_source.mp4`:
 
 ```
-$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=debug cargo run -- -i -
+$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info cargo run -- -i -
 ```
 
-This relies on having `moq-demo` (the relay server) already running locally in another shell.
+This relies on having `moq-quinn` (the relay server) already running locally in another shell.
 
-Here's how to run `moq-pub` without dropping the audio track (omit the `-an` I'm using above):
+Here's we can (eventually) run `moq-pub` without dropping the audio track (omit the `-an` I'm using above):
 ```
-$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=debug cargo run -- -i -
+$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info cargo run -- -i -
 ```
-
-Here's a way to share a webcam:
-
-```
-$ ffmpeg -hide_banner -f avfoundation -framerate 30 -pixel_format nv12 -probesize 42M -i "FaceTime HD Camera:MacBook Pro Microphone" -an -vf scale=-1:720 -c:v libx264 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset | RUST_LOG=moq_pub=debug cargo run -- -i -
-```
-
-
-ffmpeg -i asdf.mp4 moq://relay-server/namespace
-
-### API Design thoughts
-
-Use cases:
-- live
-- Vod
-
-If we have a live use case, we may want to buffer some data, but then expire and continuously accept new data so we always have the live edge ready to sent to new subscribers.
-
-If however we have a vod use case, we probably want to queue up some data to be ready to send, and then block.
