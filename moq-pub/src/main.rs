@@ -45,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
 	join_set.spawn(async { session_runner.run().await.context("failed to run session runner") });
 	join_set.spawn(async move { log_viewer.run().await.context("failed to run media source") });
 
+	// TODO: generate unique namespace with UUID and/or take a command line arg
 	media_runner.announce("quic.video/moq-pub-foo", media.source()).await?;
 
 	join_set.spawn(async move { media.run().await.context("failed to run media source") });
