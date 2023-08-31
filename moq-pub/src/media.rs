@@ -43,7 +43,7 @@ impl Media {
 
 		// Create the catalog track
 		let (_catalog, subscriber) = Self::create_catalog(&moov, &tracks);
-		source.insert("0".to_string(), subscriber);
+		source.insert(".catalog".to_string(), subscriber);
 
 		// Create the init track
 		let (_init, subscriber) = Self::create_init(init);
@@ -126,7 +126,8 @@ impl Media {
 			expires: None,                 // never delete from the cache
 		});
 
-		// Add the segment and add the fragment. init_track.push_segment(segment.subscribe());
+		// Add the segment and add the fragment.
+		init_track.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
 		// Return the catalog
@@ -135,7 +136,7 @@ impl Media {
 
 	fn create_catalog(_moov: &mp4::MoovBox, _tracks: &HashMap<String, Track>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
-		let mut catalog_track = track::Publisher::new("0");
+		let mut catalog_track = track::Publisher::new(".catalog");
 
 		// Subscribe to the catalog before we push the segment.
 		let catalog_subscriber = catalog_track.subscribe();
