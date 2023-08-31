@@ -41,9 +41,18 @@ impl Media {
 
 		let mut tracks = HashMap::new();
 
+		// Create the catalog track
+		let (_catalog, subscriber) = Self::create_catalog(&moov, &tracks);
+		source.insert("0".to_string(), subscriber);
+
+		// Create the init track
+		let (_init, subscriber) = Self::create_init(init);
+		source.insert("1.mp4".to_string(), subscriber);
+
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
-			let name = id.to_string() + ".m4s";
+			let name = id.to_string();
+			//let name = "2".to_string();
 			//dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
@@ -54,12 +63,6 @@ impl Media {
 
 			tracks.insert(name, track);
 		}
-
-		// Create the catalog track
-		let (_init, subscriber) = Self::create_init(init);
-		source.insert("1.mp4".to_string(), subscriber);
-		let (_catalog, subscriber) = Self::create_catalog(&moov, &tracks);
-		source.insert(".catalog".to_string(), subscriber);
 
 		let source = Arc::new(MapSource(source));
 
@@ -109,6 +112,7 @@ impl Media {
 			}
 		}
 	}
+
 	fn create_init(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
 		let mut init_track = track::Publisher::new("1.mp4");
@@ -122,16 +126,16 @@ impl Media {
 			expires: None,                 // never delete from the cache
 		});
 
-		// Add the segment and add the fragment.
-		init_track.push_segment(segment.subscribe());
+		// Add the segment and add the fragment. init_track.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
 		// Return the catalog
 		(init_track, subscriber)
 	}
-	fn create_catalog(moov: &mp4::MoovBox, tracks: &HashMap<String, Track>) -> (track::Publisher, track::Subscriber) {
+
+	fn create_catalog(_moov: &mp4::MoovBox, _tracks: &HashMap<String, Track>) -> (track::Publisher, track::Subscriber) {
 		// Create a track with a single segment containing the init data.
-		let mut catalog_track = track::Publisher::new(".catalog");
+		let mut catalog_track = track::Publisher::new("0");
 
 		// Subscribe to the catalog before we push the segment.
 		let catalog_subscriber = catalog_track.subscribe();
@@ -151,8 +155,8 @@ impl Media {
       "namespace": "quic.video/moq-pub-foo",
       "kind": "video",
       "init_track": "1.mp4",
-      "data_track": "1.m4s",
-      "codec": "avc1.64001e",
+      "data_track": "1",
+      "codec": "avc1.31637661",
       "width": 1280,
       "height": 720,
       "frame_rate": 24,

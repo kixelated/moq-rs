@@ -115,9 +115,10 @@ impl<S: WTSession> MediaRunner<S> {
 					debug!("Received a subscription request");
 
 					let track_id = subscribe.track_id;
-					debug!("Looking up track_id: {}", &track_id);
+					let track_name = subscribe.track_name;
+					debug!("Looking up track_name: {} (track_id: {})", &track_name, &track_id);
 					// Look up track in source
-					match source.0.get(&track_id.to_string()) {
+					match source.0.get(&track_name.to_string()) {
 						None => {
 							// if track !exist, send subscribe error
 							outgoing_ctl_sender
@@ -136,6 +137,7 @@ impl<S: WTSession> MediaRunner<S> {
 								.ok_or(anyhow::anyhow!("missing task for track"))?
 								.send(())
 								.await?;
+							// TODO: Are we missing a needed SubscribeOk response here?
 						}
 					};
 				}
