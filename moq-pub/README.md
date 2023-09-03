@@ -38,7 +38,7 @@ $ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f 
 
 ### Known issues
 
-- Catalog track is a raw binary MP4 init segment rather than the newer JSON format moq-js now expects
+- JSON Catalog only partially implemented
 - Doesn't handle EOF - just send it media forever with `-stream_loop`
 - Probably still full of lots of bugs
 - Various other TODOs you can find in the code
