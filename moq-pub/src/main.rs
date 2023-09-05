@@ -23,15 +23,10 @@ use cli::*;
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
-	let args = Cli::parse();
+	let config = Config::parse();
 
-	let config = Config {
-		addr: args.bind_address,
-		uri: args.uri,
-	};
-
-	let mut media = Media::new().await?;
-	let session_runner = SessionRunner::new(config).await?;
+	let mut media = Media::new(&config).await?;
+	let session_runner = SessionRunner::new(&config).await?;
 	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
 	let mut media_runner = MediaRunner::new(
 		session_runner.get_send_objects().await,

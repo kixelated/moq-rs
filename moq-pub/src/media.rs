@@ -1,3 +1,4 @@
+use crate::cli::Config;
 use anyhow::{self, Context};
 use log::{debug, info};
 use moq_transport::VarInt;
@@ -18,7 +19,7 @@ pub struct Media {
 }
 
 impl Media {
-	pub async fn new() -> anyhow::Result<Self> {
+	pub async fn new(config: &Config) -> anyhow::Result<Self> {
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -64,8 +65,13 @@ impl Media {
 
 		// Create the catalog track
 		let namespace = "quic.video/moq-pub-foo";
-		let (_catalog, subscriber) =
-			Self::create_catalog(namespace.to_string(), init_track_name.to_string(), &moov, &tracks)?;
+		let (_catalog, subscriber) = Self::create_catalog(
+			config,
+			namespace.to_string(),
+			init_track_name.to_string(),
+			&moov,
+			&tracks,
+		)?;
 		source.insert(".catalog".to_string(), subscriber);
 
 		let source = Arc::new(MapSource(source));
@@ -139,6 +145,7 @@ impl Media {
 	}
 
 	fn create_catalog(
+		config: &Config,
 		namespace: String,
 		init_track_name: String,
 		moov: &mp4::MoovBox,
@@ -193,8 +200,8 @@ impl Media {
 				"codec": codec_str,
 				"width": width,
 				"height": height,
-				"frame_rate": 24,
-				"bit_rate": 1500000
+				"frame_rate": config.catalog_fps,
+				"bit_rate": config.catalog_bit_rate,
 				}
 			]
 		});
