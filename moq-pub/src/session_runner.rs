@@ -1,7 +1,7 @@
+use crate::cli::Config;
 use anyhow::Context;
 use log::debug;
 use moq_transport::{object, Object};
-use std::net;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -14,13 +14,8 @@ pub struct SessionRunner {
 	incoming_obj_sender: broadcast::Sender<Object>,
 }
 
-pub struct Config {
-	pub addr: net::SocketAddr,
-	pub uri: http::uri::Uri,
-}
-
 impl SessionRunner {
-	pub async fn new(config: Config) -> anyhow::Result<Self> {
+	pub async fn new(config: &Config) -> anyhow::Result<Self> {
 		let mut roots = rustls::RootCertStore::empty();
 		for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
 			roots.add(&rustls::Certificate(cert.0)).unwrap();
@@ -36,7 +31,7 @@ impl SessionRunner {
 		let arc_tls_config = std::sync::Arc::new(tls_config);
 		let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
 
-		let mut endpoint = quinn::Endpoint::client(config.addr)?;
+		let mut endpoint = quinn::Endpoint::client(config.bind_address)?;
 		endpoint.set_default_client_config(quinn_client_config);
 
 		let webtransport_session = webtransport_quinn::connect(&endpoint, &config.uri)

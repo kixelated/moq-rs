@@ -1,8 +1,10 @@
+use crate::cli::Config;
 use anyhow::{self, Context};
-use log::debug;
+use log::{debug, info};
 use moq_transport::VarInt;
 use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -17,7 +19,7 @@ pub struct Media {
 }
 
 impl Media {
-	pub async fn new() -> anyhow::Result<Self> {
+	pub async fn new(config: &Config) -> anyhow::Result<Self> {
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -39,15 +41,17 @@ impl Media {
 		// Create a source that can be subscribed to.
 		let mut source = HashMap::default();
 
-		// Create the catalog track
-		let (_catalog, subscriber) = Self::create_catalog(init);
-		source.insert("0".to_string(), subscriber);
-
 		let mut tracks = HashMap::new();
+
+		// Create the init track
+		let init_track_name = "1.mp4";
+		let (_init, subscriber) = Self::create_init(init);
+		source.insert(init_track_name.to_string(), subscriber);
 
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = id.to_string();
+			//let name = "2".to_string();
 			//dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
@@ -58,6 +62,17 @@ impl Media {
 
 			tracks.insert(name, track);
 		}
+
+		// Create the catalog track
+		let namespace = "quic.video/moq-pub-foo";
+		let (_catalog, subscriber) = Self::create_catalog(
+			config,
+			namespace.to_string(),
+			init_track_name.to_string(),
+			&moov,
+			&tracks,
+		)?;
+		source.insert(".catalog".to_string(), subscriber);
 
 		let source = Arc::new(MapSource(source));
 
@@ -107,12 +122,13 @@ impl Media {
 			}
 		}
 	}
-	fn create_catalog(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
-		// Create a track with a single segment containing the init data.
-		let mut catalog = track::Publisher::new("0");
 
-		// Subscribe to the catalog before we push the segment.
-		let subscriber = catalog.subscribe();
+	fn create_init(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
+		// Create a track with a single segment containing the init data.
+		let mut init_track = track::Publisher::new("1.mp4");
+
+		// Subscribe to the init track before we push the segment.
+		let subscriber = init_track.subscribe();
 
 		let mut segment = segment::Publisher::new(segment::Info {
 			sequence: VarInt::from_u32(0), // first and only segment
@@ -121,11 +137,83 @@ impl Media {
 		});
 
 		// Add the segment and add the fragment.
-		catalog.push_segment(segment.subscribe());
+		init_track.push_segment(segment.subscribe());
 		segment.fragments.push(raw.into());
 
 		// Return the catalog
-		(catalog, subscriber)
+		(init_track, subscriber)
+	}
+
+	fn create_catalog(
+		config: &Config,
+		namespace: String,
+		init_track_name: String,
+		moov: &mp4::MoovBox,
+		_tracks: &HashMap<String, Track>,
+	) -> Result<(track::Publisher, track::Subscriber), anyhow::Error> {
+		// Create a track with a single segment containing the init data.
+		let mut catalog_track = track::Publisher::new(".catalog");
+
+		// Subscribe to the catalog before we push the segment.
+		let catalog_subscriber = catalog_track.subscribe();
+
+		let mut segment = segment::Publisher::new(segment::Info {
+			sequence: VarInt::from_u32(0), // first and only segment
+			send_order: i32::MIN,          // highest priority
+			expires: None,                 // never delete from the cache
+		});
+
+		// avc1[.PPCCLL]
+		//
+		// let profile = 0x64;
+		// let constraints = 0x00;
+		// let level = 0x1f;
+
+		// TODO: do build multi-track catalog by looping through moov.traks
+		let trak = moov.traks[0].clone();
+		let avc1 = trak
+			.mdia
+			.minf
+			.stbl
+			.stsd
+			.avc1
+			.ok_or(anyhow::anyhow!("avc1 atom not found"))?;
+
+		let profile = avc1.avcc.avc_profile_indication;
+		let constraints = avc1.avcc.profile_compatibility; // Not 100% certain here, but it's 0x00 on my current test video
+		let level = avc1.avcc.avc_level_indication;
+
+		let width = avc1.width;
+		let height = avc1.height;
+
+		let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
+		let codec_str = codec.to_string();
+
+		let catalog = json!({
+			"tracks": [
+				{
+				"container": "mp4",
+				"namespace": namespace,
+				"kind": "video",
+				"init_track": init_track_name,
+				"data_track": "1", // assume just one track for now
+				"codec": codec_str,
+				"width": width,
+				"height": height,
+				"frame_rate": config.catalog_fps,
+				"bit_rate": config.catalog_bit_rate,
+				}
+			]
+		});
+		let catalog_str = serde_json::to_string_pretty(&catalog)?;
+		info!("catalog: {}", catalog_str);
+
+		// Add the segment and add the fragment.
+		catalog_track.push_segment(segment.subscribe());
+		segment.fragments.push(catalog_str.into());
+
+		// Return the catalog
+		Ok((catalog_track, catalog_subscriber))
 	}
 	pub fn source(&self) -> Arc<MapSource> {
 		self.source.clone()

@@ -26,19 +26,16 @@ Longer term, I think it'd be interesting to refactor everything such that the `M
 Here's how I'm currently testing things, with a local copy of Big Buck Bunny named `bbb_source.mp4`:
 
 ```
-$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info cargo run -- -i -
+$ ffmpeg -hide_banner -v quiet -stream_loop -1 -re -i bbb_source.mp4 -an -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info moq-pub -i -
 ```
 
 This relies on having `moq-quinn` (the relay server) already running locally in another shell.
 
-Here's we can (eventually) run `moq-pub` without dropping the audio track (omit the `-an` I'm using above):
-```
-$ ffmpeg -hide_banner -v quiet -stream_loop 0 -re -i ../media/bbb_source.mp4 -f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - | RUST_LOG=moq_pub=info cargo run -- -i -
-```
+Note also that we're dropping the audio track (`-an`) above until audio playback is stabilized on the `moq-js` side.
 
 ### Known issues
 
-- Catalog track is a raw binary MP4 init segment rather than the newer JSON format moq-js now expects
-- Doesn't handle EOF - just send it media forever with `-stream_loop`
+- Expects only one H.264/AVC1-encoded video track (catalog generation doesn't support audio tracks yet)
+- Doesn't yet gracefully handle EOF - workaround: never stop sending it media (`-stream_loop -1`)
 - Probably still full of lots of bugs
 - Various other TODOs you can find in the code

@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let out_dir = std::path::PathBuf::from(
 		std::env::var_os("OUT_DIR").ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "OUT_DIR not found"))?,
 	);
-	let cmd = Cli::command();
+	let cmd = Config::command();
 	let man = clap_mangen::Man::new(cmd);
 	let mut buffer: Vec<u8> = Default::default();
 	man.render(&mut buffer)?;
