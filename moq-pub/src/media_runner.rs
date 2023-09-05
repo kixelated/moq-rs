@@ -2,7 +2,7 @@ use crate::media::{self, MapSource};
 use anyhow::bail;
 use log::{debug, error};
 use moq_transport::message::Message;
-use moq_transport::message::{Announce, SubscribeError};
+use moq_transport::message::{Announce, SubscribeError, SubscribeOk};
 use moq_transport::{object, Object, VarInt};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -138,7 +138,12 @@ impl<S: WTSession> MediaRunner<S> {
 								.ok_or(anyhow::anyhow!("missing task for track"))?
 								.send(track_id)
 								.await?;
-							// TODO: Are we missing a needed SubscribeOk response here?
+							outgoing_ctl_sender
+								.send(Message::SubscribeOk(SubscribeOk {
+									track_id: subscribe.track_id,
+									expires: Some(VarInt::from_u32(0)), // valid until unsubscribed
+								}))
+								.await?;
 						}
 					};
 				}
