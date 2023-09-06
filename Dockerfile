@@ -12,8 +12,10 @@ COPY moq-pub/Cargo.toml moq-pub/Cargo.toml
 COPY moq-warp/Cargo.toml moq-warp/Cargo.toml
 RUN touch moq-transport/src/lib.rs
 RUN touch moq-warp/src/lib.rs
-RUN touch moq-quinn/src/lib.rs
 RUN touch moq-pub/src/lib.rs
+RUN touch moq-quinn/src/lib.rs
+
+RUN sed -i '/default-run.*/d' moq-quinn/Cargo.toml
 
 # Will build all dependent crates in release mode
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
