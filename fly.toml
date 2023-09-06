@@ -1,6 +1,4 @@
-# fly.toml file generated for englishm-tcp-echo on 2022-11-25T13:13:24-05:00
-
-app = "englishm-moq-demo"
+app = "englishm-moq-relay"
 kill_signal = "SIGINT"
 kill_timeout = 5
 

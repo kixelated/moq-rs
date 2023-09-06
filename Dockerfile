@@ -1,4 +1,4 @@
-FROM rust:latest as builder
+FROM rust:latest
 
 # Make a fake Rust app to keep a cached layer of compiled crates
 RUN USER=root cargo new app
@@ -27,9 +27,6 @@ COPY . .
 # Build (install) the actual binaries
 RUN cargo install --path moq-quinn
 
-# Runtime image
-FROM debian:bullseye-slim
-
 # Run as "app" user
 RUN useradd -ms /bin/bash app
 
@@ -37,7 +34,7 @@ USER app
 WORKDIR /app
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/local/cargo/bin/moq-quinn /app/moq-quinn
+RUN cp /usr/local/cargo/bin/moq-quinn /app/moq-quinn
 
 ADD entrypoint.sh .
 # No CMD or ENTRYPOINT, see fly.toml with `cmd` override.
