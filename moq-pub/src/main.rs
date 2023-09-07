@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut config = Config::parse();
 
-	if config.namespace.len() == 0 {
+	if config.namespace.is_empty() {
 		config.namespace = format!("quic.video/{}", Uuid::new_v4());
 	}
 
