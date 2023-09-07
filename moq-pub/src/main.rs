@@ -27,6 +27,10 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut config = Config::parse();
 
+	if config.namespace.len() == 0 {
+		config.namespace = format!("quic.video/{}", Uuid::new_v4());
+	}
+
 	let mut media = Media::new(&config).await?;
 	let session_runner = SessionRunner::new(&config).await?;
 	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
@@ -42,9 +46,6 @@ async fn main() -> anyhow::Result<()> {
 	join_set.spawn(async { session_runner.run().await.context("failed to run session runner") });
 	join_set.spawn(async move { log_viewer.run().await.context("failed to run media source") });
 
-	if config.namespace.len() == 0 {
-		config.namespace = Uuid::new_v4().to_string();
-	}
 	media_runner.announce(&config.namespace, media.source()).await?;
 
 	join_set.spawn(async move { media.run().await.context("failed to run media source") });
