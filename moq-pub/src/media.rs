@@ -64,10 +64,9 @@ impl Media {
 		}
 
 		// Create the catalog track
-		let namespace = "quic.video/moq-pub-foo";
 		let (_catalog, subscriber) = Self::create_catalog(
 			config,
-			namespace.to_string(),
+			config.namespace.to_string(),
 			init_track_name.to_string(),
 			&moov,
 			&tracks,

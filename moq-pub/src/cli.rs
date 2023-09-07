@@ -18,6 +18,9 @@ pub struct Config {
 
 	#[arg(long, hide_short_help = true, default_value = "1500000")]
 	pub catalog_bit_rate: u32,
+
+	#[arg(short, long, required = false, default_value = "")]
+	pub namespace: String,
 }
 
 fn input_parser(s: &str) -> Result<InputValues, String> {

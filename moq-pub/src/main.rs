@@ -17,13 +17,19 @@ use media::*;
 mod cli;
 use cli::*;
 
+use uuid::Uuid;
+
 // TODO: clap complete
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
-	let config = Config::parse();
+	let mut config = Config::parse();
+
+	if config.namespace.is_empty() {
+		config.namespace = format!("quic.video/{}", Uuid::new_v4());
+	}
 
 	let mut media = Media::new(&config).await?;
 	let session_runner = SessionRunner::new(&config).await?;
@@ -40,8 +46,7 @@ async fn main() -> anyhow::Result<()> {
 	join_set.spawn(async { session_runner.run().await.context("failed to run session runner") });
 	join_set.spawn(async move { log_viewer.run().await.context("failed to run media source") });
 
-	// TODO: generate unique namespace with UUID and/or take a command line arg
-	media_runner.announce("quic.video/moq-pub-foo", media.source()).await?;
+	media_runner.announce(&config.namespace, media.source()).await?;
 
 	join_set.spawn(async move { media.run().await.context("failed to run media source") });
 	join_set.spawn(async move { media_runner.run().await.context("failed to run client") });
