@@ -1,4 +1,4 @@
-use webtransport_generic::{RecvStream, SendStream};
+use crate::coding::{AsyncRead, AsyncWrite};
 
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
@@ -22,6 +22,10 @@ impl Role {
 			Self::Subscriber | Self::Both => true,
 			Self::Publisher => false,
 		}
+	}
+
+	pub fn is_compatible(&self, other: Role) -> bool {
+		self.is_publisher() == other.is_subscriber() && self.is_subscriber() == other.is_publisher()
 	}
 }
 
@@ -49,12 +53,12 @@ impl TryFrom<VarInt> for Role {
 }
 
 impl Role {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let v = VarInt::decode(r).await?;
 		v.try_into()
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from(*self).encode(w).await
 	}
 }

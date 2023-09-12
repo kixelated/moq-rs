@@ -3,33 +3,34 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 use crate::coding::{AsyncRead, AsyncWrite};
 
 #[derive(Clone, Debug)]
-pub struct Subscribe {
-	// An ID we choose so we can map to the track_name.
-	// Proposal: https://github.com/moq-wg/moq-transport/issues/209
-	pub id: VarInt,
-
-	// The track namespace.
+pub struct AnnounceStop {
+	// Echo back the namespace that was reset
 	pub namespace: String,
 
-	// The track name.
-	pub name: String,
+	// An error code.
+	pub code: u32,
+
+	// An optional, human-readable reason.
+	pub reason: String,
 }
 
-impl Subscribe {
+impl AnnounceStop {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = VarInt::decode(r).await?;
 		let namespace = decode_string(r).await?;
-		let name = decode_string(r).await?;
+		let code = VarInt::decode(r).await?.try_into()?;
+		let reason = decode_string(r).await?;
 
-		Ok(Self { id, namespace, name })
+		Ok(Self {
+			namespace,
+			code,
+			reason,
+		})
 	}
-}
 
-impl Subscribe {
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
 		encode_string(&self.namespace, w).await?;
-		encode_string(&self.name, w).await?;
+		VarInt::from_u32(self.code).encode(w).await?;
+		encode_string(&self.reason, w).await?;
 
 		Ok(())
 	}

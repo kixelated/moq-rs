@@ -1,22 +1,13 @@
 use anyhow::Context;
 use clap::Parser;
-use tokio::task::JoinSet;
-
-mod session_runner;
-use session_runner::*;
-
-mod media_runner;
-use media_runner::*;
-
-mod log_viewer;
-use log_viewer::*;
-
-mod media;
-use media::*;
 
 mod cli;
-use cli::*;
+mod media;
 
+use cli::*;
+use media::*;
+
+use moq_transport::model::broadcast;
 use uuid::Uuid;
 
 // TODO: clap complete
@@ -31,30 +22,40 @@ async fn main() -> anyhow::Result<()> {
 		config.namespace = format!("quic.video/{}", Uuid::new_v4());
 	}
 
-	let mut media = Media::new(&config).await?;
-	let session_runner = SessionRunner::new(&config).await?;
-	let mut log_viewer = LogViewer::new(session_runner.get_incoming_receivers().await).await?;
-	let mut media_runner = MediaRunner::new(
-		session_runner.get_send_objects().await,
-		session_runner.get_outgoing_senders().await,
-		session_runner.get_incoming_receivers().await,
-	)
-	.await?;
+	let (publisher, subscriber, _) = broadcast::new(&config.namespace);
+	let mut media = Media::new(&config, publisher).await?;
 
-	let mut join_set: JoinSet<anyhow::Result<()>> = tokio::task::JoinSet::new();
-
-	join_set.spawn(async { session_runner.run().await.context("failed to run session runner") });
-	join_set.spawn(async move { log_viewer.run().await.context("failed to run media source") });
-
-	media_runner.announce(&config.namespace, media.source()).await?;
-
-	join_set.spawn(async move { media.run().await.context("failed to run media source") });
-	join_set.spawn(async move { media_runner.run().await.context("failed to run client") });
-
-	while let Some(res) = join_set.join_next().await {
-		dbg!(&res);
-		res??;
+	// Ugh, just let me use my native root certs already
+	let mut roots = rustls::RootCertStore::empty();
+	for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
+		roots.add(&rustls::Certificate(cert.0)).unwrap();
 	}
+
+	let mut tls_config = rustls::ClientConfig::builder()
+		.with_safe_defaults()
+		.with_root_certificates(roots)
+		.with_no_client_auth();
+
+	tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
+
+	let arc_tls_config = std::sync::Arc::new(tls_config);
+	let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
+
+	let mut endpoint = quinn::Endpoint::client(config.bind_address)?;
+	endpoint.set_default_client_config(quinn_client_config);
+
+	let session = webtransport_quinn::connect(&endpoint, &config.uri)
+		.await
+		.context("failed to create WebTransport session")?;
+
+	let mut session = moq_transport::Client::publisher(session)
+		.await
+		.context("failed to create MoQ Transport session")?;
+
+	session.announce(subscriber).context("failed to announce broadcast")?;
+
+	// TODO wait until session.closed() so we fully flush
+	media.run().await.context("failed to run media")?;
 
 	Ok(())
 }

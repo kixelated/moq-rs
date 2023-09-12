@@ -1,25 +1,28 @@
 use crate::cli::Config;
 use anyhow::{self, Context};
-use log::{debug, info};
+use log::debug;
+use moq_transport::model::{broadcast, segment, track};
 use moq_transport::VarInt;
-use moq_warp::model::{segment, track};
 use mp4::{self, ReadBox};
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::sync::Arc;
 use std::time;
 use tokio::io::AsyncReadExt;
 
 pub struct Media {
-	// The tracks we're producing.
+	// We hold on to this so we don't close the broadcast until dropped.
+	// TODO provide it to run() instead of new() so it's dropped at the right time
+	_broadcast: broadcast::Publisher,
 	tracks: HashMap<String, Track>,
-
-	source: Arc<MapSource>,
 }
 
 impl Media {
-	pub async fn new(config: &Config) -> anyhow::Result<Self> {
+	pub async fn new(config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
+		// TODO hold a lock on StdIn
+		// let stdin = io::stdin();
+		// let reader = stdin.lock();
+		//let mut stdin = io::stdin();
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -38,46 +41,46 @@ impl Media {
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
-		// Create a source that can be subscribed to.
-		let mut source = HashMap::default();
+		// Create the catalog track with a single segment.
+		let mut init_track = broadcast.create_track("1.mp4")?;
+		let mut init_segment = init_track.create_segment(VarInt::from_u32(0), i32::MIN)?;
+		init_segment.bytes(init.into())?;
 
 		let mut tracks = HashMap::new();
-
-		// Create the init track
-		let init_track_name = "1.mp4";
-		let (_init, subscriber) = Self::create_init(init);
-		source.insert(init_track_name.to_string(), subscriber);
 
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = id.to_string();
-			//let name = "2".to_string();
 			//dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
 
 			// Store the track publisher in a map so we can update it later.
-			let track = Track::new(&name, timescale);
-			source.insert(name.to_string(), track.subscribe());
-
+			let track = broadcast.create_track(&name)?;
+			let track = Track::new(track, timescale);
 			tracks.insert(name, track);
 		}
 
+		let catalog = broadcast.create_track(".catalog")?;
+
 		// Create the catalog track
-		let (_catalog, subscriber) = Self::create_catalog(
+		Self::serve_catalog(
+			catalog,
 			config,
 			config.namespace.to_string(),
-			init_track_name.to_string(),
+			init_track.name.to_string(),
 			&moov,
 			&tracks,
 		)?;
-		source.insert(".catalog".to_string(), subscriber);
 
-		let source = Arc::new(MapSource(source));
-
-		Ok(Media { tracks, source })
+		Ok(Media {
+			_broadcast: broadcast,
+			tracks,
+		})
 	}
+
 	pub async fn run(&mut self) -> anyhow::Result<()> {
+		// dbg!("media.run()");
 		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut track_name = None;
@@ -122,45 +125,15 @@ impl Media {
 		}
 	}
 
-	fn create_init(raw: Vec<u8>) -> (track::Publisher, track::Subscriber) {
-		// Create a track with a single segment containing the init data.
-		let mut init_track = track::Publisher::new("1.mp4");
-
-		// Subscribe to the init track before we push the segment.
-		let subscriber = init_track.subscribe();
-
-		let mut segment = segment::Publisher::new(segment::Info {
-			sequence: VarInt::from_u32(0), // first and only segment
-			send_order: i32::MIN,          // highest priority
-			expires: None,                 // never delete from the cache
-		});
-
-		// Add the segment and add the fragment.
-		init_track.push_segment(segment.subscribe());
-		segment.fragments.push(raw.into());
-
-		// Return the catalog
-		(init_track, subscriber)
-	}
-
-	fn create_catalog(
+	fn serve_catalog(
+		mut track: track::Publisher,
 		config: &Config,
 		namespace: String,
 		init_track_name: String,
 		moov: &mp4::MoovBox,
 		_tracks: &HashMap<String, Track>,
-	) -> Result<(track::Publisher, track::Subscriber), anyhow::Error> {
-		// Create a track with a single segment containing the init data.
-		let mut catalog_track = track::Publisher::new(".catalog");
-
-		// Subscribe to the catalog before we push the segment.
-		let catalog_subscriber = catalog_track.subscribe();
-
-		let mut segment = segment::Publisher::new(segment::Info {
-			sequence: VarInt::from_u32(0), // first and only segment
-			send_order: i32::MIN,          // highest priority
-			expires: None,                 // never delete from the cache
-		});
+	) -> Result<(), anyhow::Error> {
+		let mut segment = track.create_segment(VarInt::from_u32(0), i32::MIN)?;
 
 		// avc1[.PPCCLL]
 		//
@@ -205,17 +178,12 @@ impl Media {
 			]
 		});
 		let catalog_str = serde_json::to_string_pretty(&catalog)?;
-		info!("catalog: {}", catalog_str);
+		log::info!("catalog: {}", catalog_str);
 
 		// Add the segment and add the fragment.
-		catalog_track.push_segment(segment.subscribe());
-		segment.fragments.push(catalog_str.into());
+		segment.bytes(catalog_str.into())?;
 
-		// Return the catalog
-		Ok((catalog_track, catalog_subscriber))
-	}
-	pub fn source(&self) -> Arc<MapSource> {
-		self.source.clone()
+		Ok(())
 	}
 }
 
@@ -249,7 +217,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 			anyhow::bail!("impossible box size: {}", size)
 		}
 
-		// Otherwise read based on the size.
 		size => reader.take(size - 8),
 	};
 
@@ -275,9 +242,7 @@ struct Track {
 }
 
 impl Track {
-	fn new(name: &str, timescale: u64) -> Self {
-		let track = track::Publisher::new(name);
-
+	fn new(track: track::Publisher, timescale: u64) -> Self {
 		Self {
 			track,
 			sequence: 0,
@@ -290,7 +255,7 @@ impl Track {
 		if let Some(segment) = self.segment.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				segment.fragments.push(raw.into());
+				segment.bytes(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -306,49 +271,31 @@ impl Track {
 			.try_into()
 			.context("timestamp too large")?;
 
-		// The send order is simple; newer timestamps should be higher priority.
-		// TODO give audio a boost?
-		// TODO Use timestamps for prioritization again after quinn priority bug fixed
 		let send_order = i32::MIN;
 
 		// Delete segments after 10s.
-		let expires = Some(now + time::Duration::from_secs(10)); // TODO increase this once send order is implemented
+		let _expires = Some(now + time::Duration::from_secs(10)); // TODO increase this once send order is implemented
 		let sequence = self.sequence.try_into().context("sequence too large")?;
 
 		self.sequence += 1;
 
 		// Create a new segment.
-		let segment = segment::Info {
-			sequence,
-			expires,
-			send_order,
-		};
-
-		let mut segment = segment::Publisher::new(segment);
-		self.track.push_segment(segment.subscribe());
+		let mut segment = self.track.create_segment(sequence, send_order)?;
 
 		// Insert the raw atom into the segment.
-		segment.fragments.push(raw.into());
+		segment.bytes(raw.into())?;
 
 		// Save for the next iteration
 		self.segment = Some(segment);
-
-		// Remove any segments older than 10s.
-		// TODO This can only drain from the FRONT of the queue, so don't get clever with expirations.
-		self.track.drain_segments(now);
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let segment = self.segment.as_mut().context("missing segment")?;
-		segment.fragments.push(raw.into());
+		segment.bytes(raw.into())?;
 
 		Ok(())
-	}
-
-	pub fn subscribe(&self) -> track::Subscriber {
-		self.track.subscribe()
 	}
 }
 
@@ -433,17 +380,4 @@ fn track_timescale(moov: &mp4::MoovBox, track_id: u32) -> u64 {
 		.expect("failed to find trak");
 
 	trak.mdia.mdhd.timescale as u64
-}
-
-pub trait Source {
-	fn subscribe(&self, name: &str) -> Option<track::Subscriber>;
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct MapSource(pub HashMap<String, track::Subscriber>);
-
-impl Source for MapSource {
-	fn subscribe(&self, name: &str) -> Option<track::Subscriber> {
-		self.0.get(name).cloned()
-	}
 }

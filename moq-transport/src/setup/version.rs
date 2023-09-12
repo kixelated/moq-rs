@@ -1,6 +1,6 @@
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
-use webtransport_generic::{RecvStream, SendStream};
+use crate::coding::{AsyncRead, AsyncWrite};
 
 use std::ops::Deref;
 
@@ -24,12 +24,12 @@ impl From<Version> for VarInt {
 }
 
 impl Version {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let v = VarInt::decode(r).await?;
 		Ok(Self(v))
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.0.encode(w).await?;
 		Ok(())
 	}
@@ -39,7 +39,7 @@ impl Version {
 pub struct Versions(pub Vec<Version>);
 
 impl Versions {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let count = VarInt::decode(r).await?.into_inner();
 		let mut vs = Vec::new();
 
@@ -51,7 +51,7 @@ impl Versions {
 		Ok(Self(vs))
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let size: VarInt = self.0.len().try_into()?;
 		size.encode(w).await?;
 

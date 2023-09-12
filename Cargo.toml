@@ -1,7 +1,3 @@
 [workspace]
-members = [
-    "moq-transport",
-	"moq-quinn",
-    "moq-pub",
-    "moq-warp",
-]
+members = ["moq-transport", "moq-relay", "moq-pub"]
+resolver = "2"

@@ -4,7 +4,7 @@ use crate::{
 	VarInt,
 };
 
-use webtransport_generic::{RecvStream, SendStream};
+use crate::coding::{AsyncRead, AsyncWrite};
 
 // Sent by the client to setup up the session.
 #[derive(Debug)]
@@ -24,7 +24,7 @@ pub struct Client {
 }
 
 impl Client {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r).await?;
 		if typ.into_inner() != 1 {
 			return Err(DecodeError::InvalidType(typ));
@@ -37,7 +37,7 @@ impl Client {
 		Ok(Self { versions, role, path })
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from_u32(1).encode(w).await?;
 		self.versions.encode(w).await?;
 		self.role.encode(w).await?;

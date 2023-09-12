@@ -4,7 +4,7 @@ use crate::{
 	VarInt,
 };
 
-use webtransport_generic::{RecvStream, SendStream};
+use crate::coding::{AsyncRead, AsyncWrite};
 
 // Sent by the server in response to a client.
 // NOTE: This is not a message type, but rather the control stream header.
@@ -20,7 +20,7 @@ pub struct Server {
 }
 
 impl Server {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r).await?;
 		if typ.into_inner() != 2 {
 			return Err(DecodeError::InvalidType(typ));
@@ -32,7 +32,7 @@ impl Server {
 		Ok(Self { version, role })
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from_u32(2).encode(w).await?;
 		self.version.encode(w).await?;
 		self.role.encode(w).await?;

@@ -1,28 +1,30 @@
 mod announce;
-mod announce_error;
 mod announce_ok;
+mod announce_reset;
+mod announce_stop;
 mod go_away;
-mod receiver;
-mod sender;
+mod object;
 mod subscribe;
-mod subscribe_error;
 mod subscribe_ok;
+mod subscribe_reset;
+mod subscribe_stop;
 
 pub use announce::*;
-pub use announce_error::*;
 pub use announce_ok::*;
+pub use announce_reset::*;
+pub use announce_stop::*;
 pub use go_away::*;
-pub use receiver::*;
-pub use sender::*;
+pub use object::*;
 pub use subscribe::*;
-pub use subscribe_error::*;
 pub use subscribe_ok::*;
+pub use subscribe_reset::*;
+pub use subscribe_stop::*;
 
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
 use std::fmt;
 
-use webtransport_generic::{RecvStream, SendStream};
+use crate::coding::{AsyncRead, AsyncWrite};
 
 // NOTE: This is forked from moq-transport-00.
 //   1. SETUP role indicates local support ("I can subscribe"), not remote support ("server must publish")
@@ -42,7 +44,7 @@ macro_rules! message_types {
 		}
 
 		impl Message {
-			pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 				let t = VarInt::decode(r).await?;
 
 				match t.into_inner() {
@@ -54,11 +56,27 @@ macro_rules! message_types {
 				}
 			}
 
-			pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
 						VarInt::from_u32($val).encode(w).await?;
 						m.encode(w).await
+					},)*
+				}
+			}
+
+			pub fn id(&self) -> VarInt {
+				match self {
+					$(Self::$name(_) => {
+						VarInt::from_u32($val)
+					},)*
+				}
+			}
+
+			pub fn name(&self) -> &'static str {
+				match self {
+					$(Self::$name(_) => {
+						stringify!($name)
 					},)*
 				}
 			}
@@ -89,9 +107,11 @@ message_types! {
 	// SetupServer = 0x2
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
-	SubscribeError = 0x5,
+	SubscribeStop = 0x5,
+	SubscribeReset = 0x15,
 	Announce = 0x6,
 	AnnounceOk = 0x7,
-	AnnounceError = 0x8,
+	AnnounceStop = 0x8,
+	AnnounceReset = 0x18,
 	GoAway = 0x10,
 }
