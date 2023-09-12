@@ -50,14 +50,19 @@ impl Publisher {
 	}
 
 	/// Serve a broadcast and send an ANNOUNCE.
-	pub fn announce(&mut self, broadcast: broadcast::Subscriber) -> Result<(), Error> {
+	pub async fn announce(&mut self, broadcast: broadcast::Subscriber) -> Result<(), Error> {
 		let namespace = broadcast.name.to_string();
 
-		let mut announces = self.announces.lock().unwrap();
-		let _entry = match announces.lookup.entry(namespace) {
-			hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-		};
+		{
+			let mut announces = self.announces.lock().unwrap();
+			match announces.lookup.entry(namespace.clone()) {
+				hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
+				hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
+			};
+		}
+
+		let msg = message::Announce { namespace };
+		self.control.send(msg).await?;
 
 		// TODO send ANNOUNCE_RESET on broadcast.closed()
 

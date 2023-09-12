@@ -151,7 +151,7 @@ impl Server {
 	async fn serve_subscriber(mut session: session::Publisher, mut broker: broker::Subscriber) -> Result<(), Error> {
 		while let Some(broadcast) = broker.next_broadcast().await? {
 			log::info!("announcing broadcast to subscriber: {:?}", broadcast);
-			session.announce(broadcast)?;
+			session.announce(broadcast).await?;
 		}
 
 		Ok(())

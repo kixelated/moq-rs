@@ -71,7 +71,7 @@ impl State {
 		Ok(())
 	}
 
-	// Try expiring any segments.
+	// Try expiring any segments
 	pub fn expire(&mut self) {
 		let now = time::Instant::now();
 		while let Some(segment) = self.expires.peek() {

@@ -1,5 +1,9 @@
 # Media over QUIC
 
+<p align="center">
+	<img height="256" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg">
+</p>
+
 Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC streams.
 See the [MoQ working group](https://datatracker.ietf.org/wg/moq/about/) for more information.
 
@@ -7,7 +11,6 @@ This repository contains reusable libraries and a relay server.
 It requires a client to actually publish/view content, such as [moq-js](https://github.com/kixelated/moq-js).
 
 Join the [Discord](https://discord.gg/FCYF3p99mr) for updates and discussion.
-
 
 ## Setup
 
@@ -19,7 +22,7 @@ If you have a valid certificate you can use it instead of self-signing.
 Use [mkcert](https://github.com/FiloSottile/mkcert) to generate a self-signed certificate.
 Unfortunately, this currently requires Go in order to [fork](https://github.com/FiloSottile/mkcert/pull/513) the tool.
 
-```
+```bash
 ./cert/generate
 ```
 
@@ -28,16 +31,71 @@ The workaround is to use the `serverFingerprints` options, which requires the ce
 This is also why we're using a fork of mkcert, because it generates certificates valid for years by default.
 This limitation will be removed once Chrome uses the system CA for WebTransport.
 
+### Media
+
+If you're using `moq-pub` then you'll want some test footage to broadcast.
+
+```bash
+mkdir media
+wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O media/source.mp4
+```
+
 ## Usage
 
-Run the server:
+### moq-relay
 
-```
-cargo run
+**moq-relay** is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
+You can run the server with:
+
+```bash
+RUST_LOG=info cargo run --bin moq-relay
 ```
 
-This listens for WebTransport connections on `https://localhost:4443` by default.
-Use a [MoQ client](https://github.com/kixelated/moq-js) to connect to the server.
+Notable flags:
+
+-   `-a <ADDR>` Listen on this address [default: [::]:4443]
+-   `-c <CERT>` Use the certificate file at this path [default: cert/localhost.crt]
+-   `-k <KEY>` Use the private key at this path [default: cert/localhost.key]
+
+This listens for WebTransport connections on `UDP https://localhost:4443` by default.
+You need a client to connect to that address, to both publish and consume media.
+
+The server also listens on `TCP localhost:4443` when in development mode.
+This is exclusively to serve a `/fingerprint` endpoint via HTTPS for self-signed certificates, which are not needed in production.
+
+### moq-pub
+
+This is a client that publishes a fMP4 file over MoQ.
+You can pipe the output of ffmpeg to produce a live stream.
+
+```bash
+ffmpeg -hide_banner -v quiet \
+	-stream_loop -1 -re \
+	-i media/source.mp4 \
+	-an \
+	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
+	| RUST_LOG=info cargo run --bin moq-pub -- -i -
+```
+
+Notable flags:
+
+-   `-u <URI>` connect to the given URL [default: https://localhost:4443]
+-   `-i <INPUT>` read from the input file, or `-` for stdin.
+-   `-n <NAMESPACE>` produce a broadcast with the given name [default: random-uuid]
+
+### moq-js
+
+There's currently no way to consume broadcasts with `moq-rs`, at least until somebody writes `moq-sub`.
+Until then, you can use [moq.js](https://github.com/kixelated/moq-js) both watch broadcasts and publish broadcasts.
+
+There's a hosted version available at [quic.video](https://quic.video/).
+There's a secret `?server` parameter that can be used to connect to a different address.
+
+-   Publish to localhost: `https://quic.video/publish/?server=localhost:4443`
+-   Watch from localhost: `https://quic.video/watch/<namespace>/?server=localhost:4443`
+
+Note that self-signed certificates are ONLY supported if the server name starts with `localhost`.
+You'll need to add an entry to `/etc/hosts` if you want to use a self-signed certs and an IP address.
 
 ## License
 
