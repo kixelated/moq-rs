@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time};
 
 use crate::{Error, VarInt};
 use bytes::Bytes;
@@ -7,12 +7,9 @@ use super::Watch;
 
 pub type Segment = (Publisher, Subscriber);
 
-pub fn new(sequence: VarInt, order: i32) -> Segment {
+pub fn new(info: Info) -> Segment {
 	let state = Watch::new(State::default());
-	let info = Arc::new(Info {
-		sequence,
-		send_order: order,
-	});
+	let info = Arc::new(info);
 
 	let publisher = Publisher::new(state.clone(), info.clone());
 	let subscriber = Subscriber::new(state, info);
@@ -27,7 +24,10 @@ pub struct Info {
 	pub sequence: VarInt,
 
 	// The priority of the segment within the BROADCAST.
-	pub send_order: i32,
+	pub priority: i32,
+
+	// Cache the segment for at most this long.
+	pub expires: Option<time::Duration>,
 }
 
 #[derive(Debug)]
@@ -74,7 +74,7 @@ impl Publisher {
 		Self { state, info, _dropped }
 	}
 
-	pub fn bytes(&mut self, data: Bytes) -> Result<(), Error> {
+	pub fn write_chunk(&mut self, data: Bytes) -> Result<(), Error> {
 		let mut state = self.state.lock_mut();
 		state.closed?;
 		state.data.push(data);
@@ -102,12 +102,12 @@ pub struct Subscriber {
 	// Immutable segment state.
 	info: Arc<Info>,
 
-	// Dropped when all Subscribers are dropped.
-	_dropped: Arc<Dropped>,
-
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
+
+	// Dropped when all Subscribers are dropped.
+	_dropped: Arc<Dropped>,
 }
 
 impl Subscriber {
@@ -122,7 +122,7 @@ impl Subscriber {
 		}
 	}
 
-	pub async fn bytes(&mut self) -> Result<Option<Bytes>, Error> {
+	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			let notify = {
 				let state = self.state.lock();

@@ -1,6 +1,6 @@
 use super::{Role, Versions};
 use crate::{
-	coding::{decode_string, encode_string, DecodeError, EncodeError},
+	coding::{DecodeError, EncodeError},
 	VarInt,
 };
 
@@ -18,9 +18,6 @@ pub struct Client {
 	// Indicate if the client is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
-
-	// The path, non-empty ONLY when not using WebTransport.
-	pub path: String,
 }
 
 impl Client {
@@ -32,16 +29,14 @@ impl Client {
 
 		let versions = Versions::decode(r).await?;
 		let role = Role::decode(r).await?;
-		let path = decode_string(r).await?;
 
-		Ok(Self { versions, role, path })
+		Ok(Self { versions, role })
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from_u32(1).encode(w).await?;
 		self.versions.encode(w).await?;
 		self.role.encode(w).await?;
-		encode_string(&self.path, w).await?;
 
 		Ok(())
 	}

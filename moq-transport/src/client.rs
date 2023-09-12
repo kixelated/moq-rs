@@ -33,8 +33,7 @@ impl Client {
 
 		let client = setup::Client {
 			role,
-			versions: vec![setup::Version::DRAFT_00].into(),
-			path: "".to_string(),
+			versions: vec![setup::Version::KIXEL_00].into(),
 		};
 
 		client
@@ -46,7 +45,7 @@ impl Client {
 			.await
 			.context("failed to read SETUP")?;
 
-		if server.version != setup::Version::DRAFT_00 {
+		if server.version != setup::Version::KIXEL_00{
 			anyhow::bail!("unsupported version: {:?}", server.version);
 		}
 

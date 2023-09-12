@@ -43,15 +43,19 @@ impl Media {
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("1.mp4")?;
-		let mut init_segment = init_track.create_segment(VarInt::from_u32(0), i32::MIN)?;
-		init_segment.bytes(init.into())?;
+		let mut init_segment = init_track.create_segment(segment::Info {
+			sequence: VarInt::ZERO,
+			priority: i32::MAX,
+			expires: None,
+		})?;
+
+		init_segment.write_chunk(init.into())?;
 
 		let mut tracks = HashMap::new();
 
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = id.to_string();
-			//dbg!("trak name: {}", &name);
 
 			let timescale = track_timescale(&moov, id);
 
@@ -80,7 +84,6 @@ impl Media {
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		// dbg!("media.run()");
 		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut track_name = None;
@@ -133,7 +136,11 @@ impl Media {
 		moov: &mp4::MoovBox,
 		_tracks: &HashMap<String, Track>,
 	) -> Result<(), anyhow::Error> {
-		let mut segment = track.create_segment(VarInt::from_u32(0), i32::MIN)?;
+		let mut segment = track.create_segment(segment::Info {
+			sequence: VarInt::ZERO,
+			priority: i32::MAX,
+			expires: None,
+		})?;
 
 		// avc1[.PPCCLL]
 		//
@@ -181,7 +188,7 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Add the segment and add the fragment.
-		segment.bytes(catalog_str.into())?;
+		segment.write_chunk(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -255,13 +262,12 @@ impl Track {
 		if let Some(segment) = self.segment.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				segment.bytes(raw.into())?;
+				segment.write_chunk(raw.into())?;
 				return Ok(());
 			}
 		}
 
 		// Otherwise make a new segment
-		let now = time::Instant::now();
 
 		// Compute the timestamp in milliseconds.
 		// Overflows after 583 million years, so we're fine.
@@ -271,19 +277,19 @@ impl Track {
 			.try_into()
 			.context("timestamp too large")?;
 
-		let send_order = i32::MIN;
+		// Create a new segment.
+		let mut segment = self.track.create_segment(segment::Info {
+			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
+			priority: i32::MAX, // TODO
 
-		// Delete segments after 10s.
-		let _expires = Some(now + time::Duration::from_secs(10)); // TODO increase this once send order is implemented
-		let sequence = self.sequence.try_into().context("sequence too large")?;
+			// Delete segments after 10s.
+			expires: Some(time::Duration::from_secs(10)),
+		})?;
 
 		self.sequence += 1;
 
-		// Create a new segment.
-		let mut segment = self.track.create_segment(sequence, send_order)?;
-
 		// Insert the raw atom into the segment.
-		segment.bytes(raw.into())?;
+		segment.write_chunk(raw.into())?;
 
 		// Save for the next iteration
 		self.segment = Some(segment);
@@ -293,7 +299,7 @@ impl Track {
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let segment = self.segment.as_mut().context("missing segment")?;
-		segment.bytes(raw.into())?;
+		segment.write_chunk(raw.into())?;
 
 		Ok(())
 	}

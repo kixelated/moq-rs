@@ -12,6 +12,9 @@ pub enum EncodeError {
 	#[error("varint too large")]
 	BoundsExceeded(#[from] BoundsExceeded),
 
+	#[error("invalid value")]
+	InvalidValue,
+
 	#[error("i/o error: {0}")]
 	IoError(#[from] std::io::Error),
 }

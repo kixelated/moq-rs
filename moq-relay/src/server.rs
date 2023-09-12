@@ -138,7 +138,10 @@ impl Server {
 	async fn serve_publisher(session: session::Subscriber, mut broker: broker::Publisher) -> Result<(), Error> {
 		let mut announced = session.announced();
 
+		log::info!("waiting for first announce");
+
 		while let Some(broadcast) = announced.next_broadcast().await? {
+			log::info!("received announce from publisher: {:?}", broadcast);
 			broker.insert_broadcast(broadcast)?;
 		}
 
@@ -147,6 +150,7 @@ impl Server {
 
 	async fn serve_subscriber(mut session: session::Publisher, mut broker: broker::Subscriber) -> Result<(), Error> {
 		while let Some(broadcast) = broker.next_broadcast().await? {
+			log::info!("announcing broadcast to subscriber: {:?}", broadcast);
 			session.announce(broadcast)?;
 		}
 

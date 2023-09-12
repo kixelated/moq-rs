@@ -107,8 +107,8 @@ message_types! {
 	// SetupServer = 0x2
 	Subscribe = 0x3,
 	SubscribeOk = 0x4,
-	SubscribeStop = 0x5,
-	SubscribeReset = 0x15,
+	SubscribeReset = 0x5,
+	SubscribeStop = 0x15,
 	Announce = 0x6,
 	AnnounceOk = 0x7,
 	AnnounceStop = 0x8,

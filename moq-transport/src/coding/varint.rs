@@ -25,6 +25,7 @@ pub struct VarInt(u64);
 
 impl VarInt {
 	pub const MAX: Self = Self((1 << 62) - 1);
+	pub const ZERO: Self = Self(0);
 
 	/// Construct a `VarInt` infallibly using the largest available type.
 	/// Larger values need to use `try_from` instead.

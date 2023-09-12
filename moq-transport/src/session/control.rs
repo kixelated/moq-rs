@@ -1,6 +1,6 @@
 // A helper class to guard sending control messages behind a Mutex.
 
-use std::sync::Arc;
+use std::{sync::Arc, fmt};
 
 use tokio::sync::Mutex;
 use webtransport_quinn::SendStream;
@@ -19,8 +19,9 @@ impl Control {
 		}
 	}
 
-	pub async fn send<T: Into<Message>>(&self, msg: T) -> Result<(), Error> {
+	pub async fn send<T: Into<Message> + fmt::Debug>(&self, msg: T) -> Result<(), Error> {
 		let mut stream = self.stream.lock().await;
+		log::info!("sending message: {:?}", msg);
 		msg.into().encode(&mut *stream).await.map_err(|_e| Error::Unknown)
 	}
 }

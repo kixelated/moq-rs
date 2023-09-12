@@ -80,7 +80,7 @@ impl Publisher {
 		loop {
 			tokio::select! {
 				_stream = self.webtransport.accept_uni() => {
-					return Err(Error::Role(VarInt::from_u32(0)));
+					return Err(Error::Role(VarInt::ZERO));
 				}
 				// NOTE: this is not cancel safe, but it's fine since the other branch is a fatal error.
 				msg = Message::decode(&mut control) => {
@@ -152,12 +152,18 @@ impl Publisher {
 			};
 
 			self.control.send(msg).await?;
+
+			return Err(err);
 		}
+
+		self.control.send(message::SubscribeOk { id: msg.id }).await?;
 
 		Ok(())
 	}
 
 	fn start_subscribe(&mut self, id: VarInt, broadcast: &str, mut track: track::Publisher) -> Result<(), Error> {
+		log::info!("starting subscribe: broadcast={} track={}", broadcast, track.name);
+
 		// Get the track from the announce.
 		let broadcast = self
 			.announces
@@ -174,8 +180,9 @@ impl Publisher {
 		let this = self.clone();
 
 		tokio::spawn(async move {
-			let res = this.run_subscribe(id, &mut source, &mut track).await;
+			log::info!("serving track: broadcast={} track={}", broadcast.name, source.name,);
 
+			let res = this.run_subscribe(id, &mut source, &mut track).await;
 			if let Err(err) = &res {
 				log::warn!(
 					"failed to serve track: broadcast={} track={} err={:?}",
@@ -223,21 +230,21 @@ impl Publisher {
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), Error> {
 		let object = message::Object {
 			track: id,
-			group: segment.sequence,
-			sequence: VarInt::from_u32(0),
-			send_order: segment.send_order,
+			sequence: segment.sequence,
+			priority: segment.priority,
+			expires: segment.expires,
 		};
 
-		log::debug!("serving segment: {:?}", object);
+		log::debug!("serving object: {:?}", object);
 
 		let mut stream = self.webtransport.open_uni().await.map_err(|_e| Error::Unknown)?;
 
-		stream.set_priority(object.send_order).ok();
+		stream.set_priority(object.priority).ok();
 
 		// TODO better handle the error.
 		object.encode(&mut stream).await.map_err(|_e| Error::Unknown)?;
 
-		while let Some(data) = segment.bytes().await? {
+		while let Some(data) = segment.read_chunk().await? {
 			stream.write_chunk(data).await.map_err(|_e| Error::Unknown)?;
 		}
 

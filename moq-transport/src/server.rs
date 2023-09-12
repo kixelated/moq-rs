@@ -18,7 +18,7 @@ impl Server {
 		client
 			.versions
 			.iter()
-			.find(|version| **version == setup::Version::DRAFT_00)
+			.find(|version| **version == setup::Version::KIXEL_00)
 			.context("no supported versions")?;
 
 		Ok(Request {
@@ -63,7 +63,7 @@ impl Request {
 	async fn send_setup(&mut self, role: setup::Role) -> anyhow::Result<()> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_00,
+			version: setup::Version::KIXEL_00,
 		};
 
 		// We need to sure we support the opposite of the client's role.

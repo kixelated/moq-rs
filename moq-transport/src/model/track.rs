@@ -1,4 +1,6 @@
-use std::{collections::VecDeque, ops::Deref, sync::Arc};
+use std::{collections::BinaryHeap, ops::Deref, sync::Arc, time};
+
+use indexmap::IndexMap;
 
 use super::{segment, Watch};
 use crate::{Error, VarInt};
@@ -22,7 +24,18 @@ pub struct Info {
 
 #[derive(Debug)]
 struct State {
-	segments: VecDeque<segment::Subscriber>,
+	// Store segments in received order so subscribers can detect changes.
+	// The key is the segment sequence, which could have gaps.
+	// A None value means the segment has expired.
+	lookup: IndexMap<VarInt, Option<segment::Subscriber>>,
+
+	// Store when segments will expire in a priority queue.
+	expires: BinaryHeap<SegmentExpiration>,
+
+	// The number of None entries removed from the start of the lookup.
+	pruned: usize,
+
+	// Set when the publisher is closed/dropped, or all subscribers are dropped.
 	closed: Result<(), Error>,
 }
 
@@ -32,12 +45,63 @@ impl State {
 		self.closed = Err(err);
 		Ok(())
 	}
+
+	pub fn insert(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
+		self.closed?;
+
+		let entry = match self.lookup.entry(segment.sequence) {
+			indexmap::map::Entry::Occupied(_entry) => return Err(Error::Duplicate),
+			indexmap::map::Entry::Vacant(entry) => entry,
+		};
+
+		if let Some(expires) = segment.expires {
+			self.expires.push(SegmentExpiration {
+				sequence: segment.sequence,
+				expires: time::Instant::now() + expires,
+			});
+		}
+
+		entry.insert(Some(segment));
+
+		// Expire any existing segments on insert.
+		// This means if you don't insert then you won't expire... but it's probably fine since the cache won't grow.
+		// TODO Use a timer to expire segments at the correct time instead
+		self.expire();
+
+		Ok(())
+	}
+
+	// Try expiring any segments.
+	pub fn expire(&mut self) {
+		let now = time::Instant::now();
+		while let Some(segment) = self.expires.peek() {
+			if segment.expires > now {
+				break;
+			}
+
+			// Update the entry to None while preserving the index.
+			match self.lookup.entry(segment.sequence) {
+				indexmap::map::Entry::Occupied(mut entry) => entry.insert(None),
+				indexmap::map::Entry::Vacant(_) => panic!("expired segment not found"),
+			};
+
+			self.expires.pop();
+		}
+
+		// Remove None entries from the start of the lookup.
+		while let Some((_, None)) = self.lookup.get_index(0) {
+			self.lookup.shift_remove_index(0);
+			self.pruned += 1;
+		}
+	}
 }
 
 impl Default for State {
 	fn default() -> Self {
 		Self {
-			segments: VecDeque::new(),
+			lookup: Default::default(),
+			expires: Default::default(),
+			pruned: 0,
 			closed: Ok(()),
 		}
 	}
@@ -57,19 +121,12 @@ impl Publisher {
 	}
 
 	pub fn insert_segment(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
-		let state = self.state.lock();
-		state.closed?;
-
-		// TODO check for duplicates
-		// TODO insert in (priority?) order
-		state.as_mut().segments.push_back(segment);
-
-		Ok(())
+		self.state.lock_mut().insert(segment)
 	}
 
 	// Helper method to create and insert a segment in one step.
-	pub fn create_segment(&mut self, sequence: VarInt, order: i32) -> Result<segment::Publisher, Error> {
-		let (publisher, subscriber) = segment::new(sequence, order);
+	pub fn create_segment(&mut self, info: segment::Info) -> Result<segment::Publisher, Error> {
+		let (publisher, subscriber) = segment::new(info);
 		self.insert_segment(subscriber)?;
 		Ok(publisher)
 	}
@@ -91,7 +148,14 @@ impl Deref for Publisher {
 pub struct Subscriber {
 	state: Watch<State>,
 	info: Arc<Info>,
+
+	// The index of the next segment to return.
 	index: usize,
+
+	// If there are multiple segments to return, we put them in here to return them in priority order.
+	pending: BinaryHeap<SegmentPriority>,
+
+	// Dropped when all subscribers are dropped.
 	_dropped: Arc<Dropped>,
 }
 
@@ -102,6 +166,7 @@ impl Subscriber {
 			state,
 			info,
 			index: 0,
+			pending: Default::default(),
 			_dropped,
 		}
 	}
@@ -110,12 +175,33 @@ impl Subscriber {
 		loop {
 			let notify = {
 				let state = self.state.lock();
-				if self.index < state.segments.len() {
-					let segment = state.segments[self.index].clone();
-					self.index += 1;
-					return Ok(Some(segment));
+
+				// Get our adjusted index, which could be negative if we've removed more broadcasts than read.
+				let mut index = self.index.saturating_sub(state.pruned);
+
+				// Push all new segments into a priority queue.
+				while index < state.lookup.len() {
+					let (_, segment) = state.lookup.get_index(index).unwrap();
+
+					// Skip None values (expired segments).
+					// TODO These might actually be expired, so we should check the expiration time.
+					if let Some(segment) = segment {
+						self.pending.push(SegmentPriority {
+							segment: segment.clone(),
+						})
+					}
+
+					index += 1;
 				}
 
+				self.index = state.pruned + index;
+
+				// Return the higher priority segment.
+				if let Some(segment) = self.pending.pop() {
+					return Ok(Some(segment.segment));
+				}
+
+				// Otherwise check if we need to return an error.
 				match state.closed {
 					Err(Error::Closed) => return Ok(None),
 					Err(err) => return Err(err),
@@ -153,3 +239,59 @@ impl Drop for Dropped {
 		self.state.lock_mut().close(Error::Closed).ok();
 	}
 }
+
+// Used to order segments by expiration time.
+#[derive(Debug)]
+struct SegmentExpiration {
+	sequence: VarInt,
+	expires: time::Instant,
+}
+
+impl Ord for SegmentExpiration {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		// Reverse order so the earliest expiration is at the top of the heap.
+		other.expires.cmp(&self.expires)
+	}
+}
+
+impl PartialOrd for SegmentExpiration {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for SegmentExpiration {
+	fn eq(&self, other: &Self) -> bool {
+		self.expires == other.expires
+	}
+}
+
+impl Eq for SegmentExpiration {}
+
+// Used to order segments by priority
+#[derive(Debug, Clone)]
+struct SegmentPriority {
+	segment: segment::Subscriber,
+}
+
+impl Ord for SegmentPriority {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		// Reverse order so the highest priority is at the top of the heap.
+		// TODO I let CodePilot generate this code so yolo
+		other.segment.priority.cmp(&self.segment.priority)
+	}
+}
+
+impl PartialOrd for SegmentPriority {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for SegmentPriority {
+	fn eq(&self, other: &Self) -> bool {
+		self.segment.priority == other.segment.priority
+	}
+}
+
+impl Eq for SegmentPriority {}

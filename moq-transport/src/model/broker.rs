@@ -8,6 +8,7 @@ use super::{broadcast, Watch};
 
 pub type Broker = (Publisher, Subscriber);
 
+/// Create a broker that can be used to announce and subscribe to broadcasts.
 pub fn new() -> Broker {
 	let state = Watch::new(State::default());
 
@@ -129,11 +130,14 @@ impl Subscriber {
 			let notify = {
 				let state = self.state.lock();
 
-				// Get our adjusted index, which could be negative if we've removed more broadcasts than read.
-				let index = self.index.saturating_sub(state.pruned);
+				loop {
+					// Get our adjusted index, which could be negative if we've removed more broadcasts than read.
+					let index = self.index.saturating_sub(state.pruned);
+					if index >= state.lookup.len() {
+						break;
+					}
 
-				while index < state.lookup.len() {
-					self.index += 1;
+					self.index = index + state.pruned + 1;
 
 					let next = state.lookup.get_index(index).unwrap();
 					if let Some(next) = next.1 {

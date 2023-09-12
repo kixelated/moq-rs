@@ -8,7 +8,47 @@ use std::ops::Deref;
 pub struct Version(pub VarInt);
 
 impl Version {
+	// https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html
 	pub const DRAFT_00: Version = Version(VarInt::from_u32(0xff00));
+
+	/// (undocumented) Fork of draft-ietf-moq-transport-00
+	///
+	/// Rough list of differences from memory:
+	///
+	/// - Messages are sent over a control stream or a data stream.
+	///   - **Data streams**: each unidirectional stream contains a single **OBJECT** message.
+	///   - **Control stream**: a (client-initiated) bidirectional stream containing **SETUP** and then all other messages.
+	/// - Messages do not contain a length; unknown messages are fatal.
+	///
+	/// - **SETUP** is split into **SETUP_CLIENT** and **SETUP_SERVER** with different IDs.
+	/// - **SETUP** uses version `0xff00` for draft-00.
+	/// - **SETUP** no longer contains optional parameters; all are encoded in order and possibly zero.
+	/// - **SETUP** `role` indicates the role of the sender, not the role of the server.
+	/// - **SETUP** `path` field removed; use WebTransport for path.
+	///
+	/// - **SUBSCRIBE** `full_name` is split into separate `namespace` and `name` fields.
+	/// - **SUBSCRIBE** no longer contains optional parameters; all are encoded in order and possibly zero.
+	/// - **SUBSCRIBE** no longer contains the `auth` parameter; use WebTransport for auth.
+	/// - **SUBSCRIBE** no longer contains the `group` parameter; concept no longer exists.
+	/// - **SUBSCRIBE** contains the `id` instead of **SUBSCRIBE_OK**.
+	/// - **SUBSCRIBE_OK** and **SUBSCRIBE_ERROR** reference the subscription `id` the instead of the track `full_name`.
+	/// - **SUBSCRIBE_ERROR** was renamed to **SUBSCRIBE_RESET**, sent by publisher to terminate a **SUBSCRIBE**.
+	/// - **SUBSCRIBE_STOP** was added, sent by the subscriber to terminate a **SUBSCRIBE**.
+	/// - **SUBSCRIBE_OK** no longer has `expires`.
+	///
+	/// - **ANNOUNCE** no longer contains optional parameters; all are encoded in order and possibly zero.
+	/// - **ANNOUNCE** no longer contains the `auth` field; use WebTransport for auth.
+	/// - **ANNOUNCE_ERROR** was renamed to **ANNOUNCE_RESET**, sent by publisher to terminate an **ANNOUNCE**.
+	/// - **ANNOUNCE_STOP** was added, sent by the subscriber to terminate an **ANNOUNCE**.
+	///
+	/// - **OBJECT** uses a dedicated QUIC stream.
+	/// - **OBJECT** has no size and continues until stream FIN.
+	/// - **OBJECT** `priority` is a i32 instead of a varint. (for practical reasons)
+	/// - **OBJECT** `expires` was added, a varint in seconds.
+	/// - **OBJECT** `group` was removed.
+	///
+	/// - **GROUP** concept was removed, replaced with **OBJECT** as a QUIC stream.
+	pub const KIXEL_00: Version = Version(VarInt::from_u32(0xbad00));
 }
 
 impl From<VarInt> for Version {

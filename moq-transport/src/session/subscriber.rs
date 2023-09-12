@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
 	message,
-	model::{broadcast, broker, track},
+	model::{broadcast, broker, segment, track},
 	Error, Message, VarInt,
 };
 
@@ -150,12 +150,19 @@ impl Subscriber {
 
 		// Start a task to automatically subscriptions while the ANNOUNCE is active.
 		tokio::spawn(async move {
+			log::info!("serving broadcast: name={}", name);
 			if let Err(err) = this.serve_broadcast(&mut unknown).await {
 				log::warn!("serving broadcast error: name={} err={:?}", name, err);
 			}
 
 			// We don't send an ANNOUNCE STOP because it's useless TBH
 		});
+
+		let msg = message::AnnounceOk {
+			namespace: msg.namespace.clone(),
+		};
+
+		self.control.send(msg).await?;
 
 		Ok(())
 	}
@@ -226,15 +233,22 @@ impl Subscriber {
 		// Decode the object on the data stream.
 		let object = message::Object::decode(&mut stream).await.map_err(|_| Error::Read)?;
 
+		log::debug!("received object: {:?}", object);
+
 		// A new scope is needed because the async compiler is dumb
 		let mut publisher = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let track = subscribes.tracks.get_mut(&object.track).ok_or(Error::NotFound)?;
-			track.create_segment(object.sequence, object.send_order)?
+
+			track.create_segment(segment::Info {
+				sequence: object.sequence,
+				priority: object.priority,
+				expires: object.expires,
+			})?
 		};
 
 		while let Some(data) = stream.read_chunk(usize::MAX, true).await.map_err(|_| Error::Read)? {
-			publisher.bytes(data.bytes)?;
+			publisher.write_chunk(data.bytes)?;
 		}
 
 		Ok(())

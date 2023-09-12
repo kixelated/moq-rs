@@ -5,5 +5,5 @@ use crate::VarInt;
 #[derive(Clone, Debug)]
 pub struct Object {
 	pub sequence: VarInt,
-	pub send_order: i32,
+	pub priority: i32,
 }
