@@ -1,6 +1,5 @@
 use crate::cli::Config;
 use anyhow::{self, Context};
-use log::debug;
 use moq_transport::model::{broadcast, segment, track};
 use moq_transport::VarInt;
 use mp4::{self, ReadBox};
@@ -205,8 +204,6 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 	let mut raw = buf.to_vec();
 
-	debug!("size: {}", &size);
-
 	let mut limit = match size {
 		// Runs until the end of the file.
 		0 => reader.take(u64::MAX),
@@ -228,8 +225,7 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 	};
 
 	// Append to the vector and return it.
-	let read_bytes = limit.read_to_end(&mut raw).await?;
-	debug!("read_bytes: {}", read_bytes);
+	let _read_bytes = limit.read_to_end(&mut raw).await?;
 
 	Ok(raw)
 }

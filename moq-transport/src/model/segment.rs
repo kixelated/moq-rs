@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{ops::Deref, sync::Arc, time};
 
 use crate::{Error, VarInt};
@@ -56,7 +57,7 @@ impl Default for State {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Publisher {
 	// Mutable segment state.
 	state: Watch<State>,
@@ -94,7 +95,16 @@ impl Deref for Publisher {
 	}
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Debug for Publisher {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Publisher")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.finish()
+	}
+}
+
+#[derive(Clone)]
 pub struct Subscriber {
 	// Modify the segment state.
 	state: Watch<State>,
@@ -152,7 +162,16 @@ impl Deref for Subscriber {
 	}
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Debug for Subscriber {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Subscriber")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.field("index", &self.index)
+			.finish()
+	}
+}
+
 pub struct Dropped {
 	// Modify the segment state.
 	state: Watch<State>,

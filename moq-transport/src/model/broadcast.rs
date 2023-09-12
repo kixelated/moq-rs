@@ -1,5 +1,6 @@
 use std::{
 	collections::{hash_map, HashMap, VecDeque},
+	fmt,
 	ops::Deref,
 	sync::Arc,
 };
@@ -120,7 +121,7 @@ impl Default for State {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
 	info: Arc<Info>,
@@ -150,6 +151,15 @@ impl Publisher {
 	}
 }
 
+impl fmt::Debug for Publisher {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Publisher")
+			.field("name", &self.name)
+			.field("state", &self.state)
+			.finish()
+	}
+}
+
 impl Deref for Publisher {
 	type Target = Info;
 
@@ -158,7 +168,7 @@ impl Deref for Publisher {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
 	info: Arc<Info>,
@@ -193,23 +203,12 @@ impl Deref for Subscriber {
 	}
 }
 
-// A handle that closes the broadcast when dropped:
-// - when all Subscribers are dropped or
-// - when Publisher and Unknown are dropped.
-#[derive(Debug)]
-struct Dropped {
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(Error::Closed).ok();
+impl fmt::Debug for Subscriber {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Subscriber")
+			.field("name", &self.name)
+			.field("state", &self.state)
+			.finish()
 	}
 }
 
@@ -261,5 +260,33 @@ impl Drop for Unknown {
 
 		// Prevent new requests.
 		state.requested = None;
+	}
+}
+
+impl fmt::Debug for Unknown {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Unknown")
+			.field("name", &self.name)
+			.field("state", &self.state)
+			.finish()
+	}
+}
+
+// A handle that closes the broadcast when dropped:
+// - when all Subscribers are dropped or
+// - when Publisher and Unknown are dropped.
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(Error::Closed).ok();
 	}
 }

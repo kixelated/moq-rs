@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use indexmap::IndexMap;
 
@@ -28,6 +28,7 @@ struct State {
 	// Incremented by one each time we remove the first element.
 	pruned: usize,
 
+	// Closed when the publisher or all subscribers are dropped.
 	closed: Result<(), Error>,
 }
 
@@ -49,7 +50,7 @@ impl Default for State {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
 
@@ -98,7 +99,13 @@ impl Publisher {
 	}
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Debug for Publisher {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Publisher").field("state", &self.state).finish()
+	}
+}
+
+#[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
 	index: usize,
@@ -157,7 +164,15 @@ impl Subscriber {
 	}
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Debug for Subscriber {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Subscriber")
+			.field("state", &self.state)
+			.field("index", &self.index)
+			.finish()
+	}
+}
+
 pub struct Dropped {
 	// Modify the segment state.
 	state: Watch<State>,

@@ -1,4 +1,4 @@
-use std::{collections::BinaryHeap, ops::Deref, sync::Arc, time};
+use std::{collections::BinaryHeap, fmt, ops::Deref, sync::Arc, time};
 
 use indexmap::IndexMap;
 
@@ -22,7 +22,6 @@ pub struct Info {
 	pub name: String,
 }
 
-#[derive(Debug)]
 struct State {
 	// Store segments in received order so subscribers can detect changes.
 	// The key is the segment sequence, which could have gaps.
@@ -107,7 +106,17 @@ impl Default for State {
 	}
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for State {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("State")
+			.field("lookup", &self.lookup)
+			.field("pruned", &self.pruned)
+			.field("closed", &self.closed)
+			.finish()
+	}
+}
+
+#[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
 	info: Arc<Info>,
@@ -144,7 +153,16 @@ impl Deref for Publisher {
 	}
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Debug for Publisher {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Publisher")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.finish()
+	}
+}
+
+#[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
 	info: Arc<Info>,
@@ -186,9 +204,7 @@ impl Subscriber {
 					// Skip None values (expired segments).
 					// TODO These might actually be expired, so we should check the expiration time.
 					if let Some(segment) = segment {
-						self.pending.push(SegmentPriority {
-							segment: segment.clone(),
-						})
+						self.pending.push(SegmentPriority(segment.clone()));
 					}
 
 					index += 1;
@@ -198,7 +214,7 @@ impl Subscriber {
 
 				// Return the higher priority segment.
 				if let Some(segment) = self.pending.pop() {
-					return Ok(Some(segment.segment));
+					return Ok(Some(segment.0));
 				}
 
 				// Otherwise check if we need to return an error.
@@ -222,8 +238,17 @@ impl Deref for Subscriber {
 	}
 }
 
+impl fmt::Debug for Subscriber {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Subscriber")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.field("index", &self.index)
+			.finish()
+	}
+}
+
 // Closes the track on Drop.
-#[derive(Debug)]
 struct Dropped {
 	state: Watch<State>,
 }
@@ -241,7 +266,6 @@ impl Drop for Dropped {
 }
 
 // Used to order segments by expiration time.
-#[derive(Debug)]
 struct SegmentExpiration {
 	sequence: VarInt,
 	expires: time::Instant,
@@ -269,16 +293,14 @@ impl PartialEq for SegmentExpiration {
 impl Eq for SegmentExpiration {}
 
 // Used to order segments by priority
-#[derive(Debug, Clone)]
-struct SegmentPriority {
-	segment: segment::Subscriber,
-}
+#[derive(Clone)]
+struct SegmentPriority(pub segment::Subscriber);
 
 impl Ord for SegmentPriority {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		// Reverse order so the highest priority is at the top of the heap.
 		// TODO I let CodePilot generate this code so yolo
-		other.segment.priority.cmp(&self.segment.priority)
+		other.0.priority.cmp(&self.0.priority)
 	}
 }
 
@@ -290,7 +312,7 @@ impl PartialOrd for SegmentPriority {
 
 impl PartialEq for SegmentPriority {
 	fn eq(&self, other: &Self) -> bool {
-		self.segment.priority == other.segment.priority
+		self.0.priority == other.0.priority
 	}
 }
 
