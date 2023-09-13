@@ -3,6 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
+use tokio::task::AbortHandle;
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use crate::{
@@ -14,61 +15,27 @@ use crate::{
 
 use super::Control;
 
-#[derive(Debug, Default)]
-struct Announces {
-	lookup: HashMap<String, broadcast::Subscriber>,
-}
-
-#[derive(Debug, Default)]
-struct Subscribes {
-	lookup: HashMap<VarInt, track::Publisher>,
-}
-
 /// Serves broadcasts over the network, automatically handling subscriptions and caching.
+// TODO Clone specific fields when a task actually needs it.
 #[derive(Clone, Debug)]
 pub struct Publisher {
-	announces: Arc<Mutex<Announces>>,
-	subscribes: Arc<Mutex<Subscribes>>,
-
+	// A map of active subscriptions, containing an abort handle to cancel them.
+	subscribes: Arc<Mutex<HashMap<VarInt, AbortHandle>>>,
 	webtransport: Session,
 	control: Control,
+	source: broadcast::Subscriber,
 }
 
 impl Publisher {
-	pub fn new(webtransport: Session, control: (SendStream, RecvStream)) -> Self {
-		let (send, recv) = control;
-		let control = Control::new(send);
+	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Subscriber) -> Self {
+		let control = Control::new(control.0, control.1);
 
-		let this = Self {
+		Self {
 			webtransport,
-			announces: Default::default(),
 			subscribes: Default::default(),
 			control,
-		};
-
-		tokio::spawn(this.clone().run(recv));
-
-		this
-	}
-
-	/// Serve a broadcast and send an ANNOUNCE.
-	pub async fn announce(&mut self, broadcast: broadcast::Subscriber) -> Result<(), Error> {
-		let namespace = broadcast.name.to_string();
-
-		{
-			let mut announces = self.announces.lock().unwrap();
-			match announces.lookup.entry(namespace.clone()) {
-				hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
-				hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-			};
+			source,
 		}
-
-		let msg = message::Announce { namespace };
-		self.control.send(msg).await?;
-
-		// TODO send ANNOUNCE_RESET on broadcast.closed()
-
-		Ok(())
 	}
 
 	// TODO Serve a broadcast without sending an ANNOUNCE.
@@ -77,20 +44,14 @@ impl Publisher {
 	// TODO Wait until the next subscribe that doesn't route to an ANNOUNCE.
 	// pub async fn subscribed(&mut self) -> Result<track::Producer, Error> {
 
-	pub fn close(self, code: u32) {
-		self.webtransport.close(code, b"")
-	}
-
-	// Internal methods
-
-	async fn run(mut self, mut control: RecvStream) -> Result<(), Error> {
+	pub async fn run(mut self) -> Result<(), Error> {
 		loop {
 			tokio::select! {
 				_stream = self.webtransport.accept_uni() => {
 					return Err(Error::Role(VarInt::ZERO));
 				}
 				// NOTE: this is not cancel safe, but it's fine since the other branch is a fatal error.
-				msg = Message::decode(&mut control) => {
+				msg = self.control.recv() => {
 					let msg = msg.map_err(|_x| Error::Read)?;
 
 					log::info!("message received: {:?}", msg);
@@ -113,95 +74,63 @@ impl Publisher {
 	}
 
 	async fn recv_announce_ok(&mut self, _msg: &message::AnnounceOk) -> Result<(), Error> {
-		// TODO do something
-		Ok(())
+		// We didn't send an announce.
+		Err(Error::NotFound)
 	}
 
-	async fn recv_announce_stop(&mut self, msg: &message::AnnounceStop) -> Result<(), Error> {
-		let _announce = self
-			.announces
-			.lock()
-			.unwrap()
-			.lookup
-			.remove(&msg.namespace)
-			.ok_or(Error::NotFound)?;
-
-		// broadcast::Subscriber is now dropped, but we continue to serve any existing track::Subscribers.
-		// broadcast::Publisher will get Error::Closed when all track::Subscribers have terminated.
-
-		let msg = message::AnnounceReset {
-			namespace: msg.namespace.clone(),
-			code: msg.code,
-			reason: msg.reason.clone(),
-		};
-
-		self.control.send(msg).await?;
-
-		Ok(())
+	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), Error> {
+		// We didn't send an announce.
+		Err(Error::NotFound)
 	}
 
 	async fn recv_subscribe(&mut self, msg: &message::Subscribe) -> Result<(), Error> {
-		// Make a new track that we're going to populate.
-		let (producer, _subscriber) = track::new(&msg.name);
-
-		// Make sure the subscription ID is unique.
-		match self.subscribes.lock().unwrap().lookup.entry(msg.id) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-			hash_map::Entry::Vacant(entry) => entry.insert(producer.clone()), // So we have a handle to close the producer.
+		// Assume that the subscribe ID is unique for now.
+		let abort = match self.start_subscribe(msg.clone()) {
+			Ok(abort) => abort,
+			Err(err) => return self.reset_subscribe(msg.id, err).await,
 		};
 
-		// Now that we have a unique subscription ID, start the subscribe or send an error.
-		if let Err(err) = self.start_subscribe(msg.id, &msg.namespace, producer) {
-			let msg = message::SubscribeReset {
-				id: msg.id,
-				code: err.code(),
-				reason: err.reason().to_string(),
-			};
+		// Insert the abort handle into the lookup table.
+		match self.subscribes.lock().unwrap().entry(msg.id) {
+			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate), // TODO fatal, because we already started the task
+			hash_map::Entry::Vacant(entry) => entry.insert(abort),
+		};
 
-			self.control.send(msg).await?;
-
-			return Err(err);
-		}
-
-		self.control.send(message::SubscribeOk { id: msg.id }).await?;
-
-		Ok(())
+		self.control.send(message::SubscribeOk { id: msg.id }).await
 	}
 
-	fn start_subscribe(&mut self, id: VarInt, broadcast: &str, mut track: track::Publisher) -> Result<(), Error> {
-		log::info!("starting subscribe: broadcast={} track={}", broadcast, track.name);
+	async fn reset_subscribe(&mut self, id: VarInt, err: Error) -> Result<(), Error> {
+		self.control
+			.send(message::SubscribeReset {
+				id,
+				code: err.code(),
+				reason: err.reason().to_string(),
+			})
+			.await
+	}
 
-		// Get the track from the announce.
-		let broadcast = self
-			.announces
-			.lock()
-			.unwrap()
-			.lookup
-			.get(broadcast)
-			.ok_or(Error::NotFound)?
-			.clone();
+	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, Error> {
+		// We currently don't use the namespace field in SUBSCRIBE
+		if !msg.namespace.is_empty() {
+			return Err(Error::NotFound);
+		}
 
-		let mut source = broadcast.get_track(&track.name)?;
+		let mut track = self.source.get_track(&msg.name)?;
 
 		// TODO only clone the fields we need
 		let this = self.clone();
 
-		tokio::spawn(async move {
-			log::info!("serving track: broadcast={} track={}", broadcast.name, source.name,);
+		let handle = tokio::spawn(async move {
+			log::info!("serving track: name={}", track.name);
 
-			let res = this.run_subscribe(id, &mut source, &mut track).await;
+			let res = this.run_subscribe(msg.id, &mut track).await;
 			if let Err(err) = &res {
-				log::warn!(
-					"failed to serve track: broadcast={} track={} err={:?}",
-					broadcast.name,
-					source.name,
-					err
-				);
+				log::warn!("failed to serve track: name={} err={:?}", track.name, err);
 			}
 
 			let err = res.err().unwrap_or(Error::Closed);
 			let msg = message::SubscribeReset {
-				id,
+				id: msg.id,
 				code: err.code(),
 				reason: err.reason().to_string(),
 			};
@@ -209,18 +138,13 @@ impl Publisher {
 			this.control.send(msg).await.ok();
 		});
 
-		Ok(())
+		Ok(handle.abort_handle())
 	}
 
-	async fn run_subscribe(
-		&self,
-		id: VarInt,
-		source: &mut track::Subscriber,
-		_destination: &mut track::Publisher,
-	) -> Result<(), Error> {
+	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), Error> {
 		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
 
-		while let Some(mut segment) = source.next_segment().await? {
+		while let Some(mut segment) = track.next_segment().await? {
 			// TODO only clone the fields we need
 			let this = self.clone();
 
@@ -259,14 +183,9 @@ impl Publisher {
 	}
 
 	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
-		let subscribe = self
-			.subscribes
-			.lock()
-			.unwrap()
-			.lookup
-			.remove(&msg.id)
-			.ok_or(Error::NotFound)?;
+		let abort = self.subscribes.lock().unwrap().remove(&msg.id).ok_or(Error::NotFound)?;
+		abort.abort();
 
-		subscribe.close(Error::Reset(msg.code))
+		self.reset_subscribe(msg.id, Error::Reset(msg.code)).await
 	}
 }

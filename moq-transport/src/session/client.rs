@@ -1,5 +1,5 @@
 use super::{Publisher, Subscriber};
-use crate::setup;
+use crate::{model::broadcast, setup};
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use anyhow::Context;
@@ -9,18 +9,18 @@ pub struct Client {}
 
 impl Client {
 	/// Connect using an established WebTransport session, performing the MoQ handshake as a publisher.
-	pub async fn publisher(session: Session) -> anyhow::Result<Publisher> {
+	pub async fn publisher(session: Session, source: broadcast::Subscriber) -> anyhow::Result<Publisher> {
 		let control = Self::send_setup(&session, setup::Role::Publisher).await?;
 
-		let publisher = Publisher::new(session, control);
+		let publisher = Publisher::new(session, control, source);
 		Ok(publisher)
 	}
 
 	/// Connect using an established WebTransport session, performing the MoQ handshake as a subscriber.
-	pub async fn subscriber(session: Session) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(session: Session, source: broadcast::Unknown) -> anyhow::Result<Subscriber> {
 		let control = Self::send_setup(&session, setup::Role::Subscriber).await?;
 
-		let subscriber = Subscriber::new(session, control);
+		let subscriber = Subscriber::new(session, control, source);
 		Ok(subscriber)
 	}
 

@@ -1,5 +1,5 @@
 use super::{Publisher, Subscriber};
-use crate::setup;
+use crate::{model::broadcast, setup};
 
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
@@ -41,19 +41,19 @@ pub struct Request {
 }
 
 impl Request {
-	/// Accept the session as a publisher only.
-	pub async fn publisher(mut self) -> anyhow::Result<Publisher> {
+	/// Accept the session as a publisher, using the provided broadcast to serve subscriptions.
+	pub async fn publisher(mut self, source: broadcast::Subscriber) -> anyhow::Result<Publisher> {
 		self.send_setup(setup::Role::Publisher).await?;
 
-		let publisher = Publisher::new(self.session, self.control);
+		let publisher = Publisher::new(self.session, self.control, source);
 		Ok(publisher)
 	}
 
 	/// Accept the session as a subscriber only.
-	pub async fn subscriber(mut self) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(mut self, source: broadcast::Unknown) -> anyhow::Result<Subscriber> {
 		self.send_setup(setup::Role::Subscriber).await?;
 
-		let subscriber = Subscriber::new(self.session, self.control);
+		let subscriber = Subscriber::new(self.session, self.control, source);
 		Ok(subscriber)
 	}
 

@@ -1,12 +1,13 @@
 use std::{
+	collections::HashMap,
 	fs, io, net, path,
-	sync::{self},
+	sync::{Arc, Mutex},
 	time,
 };
 
 use anyhow::Context;
 
-use moq_transport::model::broker;
+use moq_transport::model::broadcast;
 use tokio::task::JoinSet;
 
 use crate::Session;
@@ -17,8 +18,8 @@ pub struct Server {
 	// The active connections.
 	conns: JoinSet<anyhow::Result<()>>,
 
-	// The base session we close for each incoming connection.
-	base: Session,
+	// The map of active broadcasts by path.
+	broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
 }
 
 pub struct ServerConfig {
@@ -57,25 +58,25 @@ impl Server {
 		tls_config.max_early_data_size = u32::MAX;
 		tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 
-		let mut server_config = quinn::ServerConfig::with_crypto(sync::Arc::new(tls_config));
+		let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(tls_config));
 
 		// Enable BBR congestion control
 		// TODO validate the implementation
 		let mut transport_config = quinn::TransportConfig::default();
 		transport_config.keep_alive_interval(Some(time::Duration::from_secs(2)));
-		transport_config.congestion_controller_factory(sync::Arc::new(quinn::congestion::BbrConfig::default()));
+		transport_config.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
 
-		server_config.transport = sync::Arc::new(transport_config);
+		server_config.transport = Arc::new(transport_config);
 		let server = quinn::Endpoint::server(server_config, config.addr)?;
-		let broker = broker::new();
 
+		let broadcasts = Default::default();
 		let conns = JoinSet::new();
-		let base = Session {
-			publisher: broker.0.clone(),
-			subscriber: broker.1.clone(),
-		};
 
-		Ok(Self { server, base, conns })
+		Ok(Self {
+			server,
+			broadcasts,
+			conns,
+		})
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
@@ -83,10 +84,8 @@ impl Server {
 			tokio::select! {
 				res = self.server.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let mut session = self.base.clone();
-					self.conns.spawn(async move {
-						session.run(conn).await
-					});
+					let mut session = Session::new(self.broadcasts.clone());
+					self.conns.spawn(async move { session.run(conn).await });
 				},
 				res = self.conns.join_next(), if !self.conns.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");

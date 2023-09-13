@@ -48,17 +48,9 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create WebTransport session")?;
 
-	let mut session = moq_transport::session::Client::publisher(session)
+	let _session = moq_transport::session::Client::publisher(session, subscriber)
 		.await
 		.context("failed to create MoQ Transport session")?;
-
-	log::info!("announcing broadcast: {}", subscriber.name);
-	session
-		.announce(subscriber)
-		.await
-		.context("failed to announce broadcast")?;
-
-	log::info!("running media");
 
 	// TODO wait until session.closed() so we fully flush
 	media.run().await.context("failed to run media")?;

@@ -223,6 +223,7 @@ impl fmt::Debug for Subscriber {
 
 /// Contains a queue of requested tracks that do not exist.
 /// The publisher may wish to handle these tracks, or it can drop the Unknown handle to automatically close them with a Not Found error.
+#[derive(Clone)]
 pub struct Unknown {
 	state: Watch<State>,
 	info: Arc<Info>,

@@ -1,14 +1,22 @@
+use std::{
+	collections::{hash_map, HashMap},
+	sync::{Arc, Mutex},
+};
+
 use anyhow::Context;
 
-use moq_transport::{model::broker, session, setup::Role, Error};
+use moq_transport::{model::broadcast, session::Request, setup::Role};
 
 #[derive(Clone)]
 pub struct Session {
-	pub publisher: broker::Publisher,
-	pub subscriber: broker::Subscriber,
+	broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
 }
 
 impl Session {
+	pub fn new(broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>) -> Self {
+		Self { broadcasts }
+	}
+
 	pub async fn run(&mut self, conn: quinn::Connecting) -> anyhow::Result<()> {
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
@@ -32,16 +40,21 @@ impl Session {
 			.context("failed to accept handshake")?;
 
 		let role = request.role();
-		log::info!("received new session: path={} role={:?}", path, role);
 
 		match role {
 			Role::Publisher => {
-				let subscriber = request.subscriber().await?;
-				self.serve_publisher(subscriber).await?;
+				log::info!("publisher start: path={}", path);
+
+				if let Err(err) = self.serve_publisher(request, &path).await {
+					log::warn!("publisher error: path={} err={}", path, err);
+				}
 			}
 			Role::Subscriber => {
-				let publisher = request.publisher().await?;
-				self.serve_subscriber(publisher).await?;
+				log::info!("subscriber start: path={}", path);
+
+				if let Err(err) = self.serve_subscriber(request, &path).await {
+					log::warn!("subscriber error: path={} err={}", path, err)
+				}
 			}
 			Role::Both => request.reject(300),
 		};
@@ -49,24 +62,32 @@ impl Session {
 		Ok(())
 	}
 
-	async fn serve_publisher(&mut self, session: session::Subscriber) -> Result<(), Error> {
-		let mut announced = session.announced();
+	async fn serve_publisher(&mut self, request: Request, path: &str) -> anyhow::Result<()> {
+		let (_, subscriber, publisher) = broadcast::new(path);
 
-		log::info!("waiting for first announce");
+		match self.broadcasts.lock().unwrap().entry(path.to_string()) {
+			hash_map::Entry::Occupied(_) => {
+				request.reject(409);
+				return Ok(());
+			}
+			hash_map::Entry::Vacant(entry) => entry.insert(subscriber),
+		};
 
-		while let Some(broadcast) = announced.next_broadcast().await? {
-			log::info!("received announce from publisher: {:?}", broadcast);
-			self.publisher.insert_broadcast(broadcast)?;
-		}
+		let session = request.subscriber(publisher).await?;
+		session.run().await?;
 
 		Ok(())
 	}
 
-	async fn serve_subscriber(&mut self, mut session: session::Publisher) -> Result<(), Error> {
-		while let Some(broadcast) = self.subscriber.next_broadcast().await? {
-			log::info!("announcing broadcast to subscriber: {:?}", broadcast);
-			session.announce(broadcast).await?;
-		}
+	async fn serve_subscriber(&mut self, request: Request, path: &str) -> anyhow::Result<()> {
+		let broadcast = self.broadcasts.lock().unwrap().get(path).cloned();
+
+		if let Some(broadcast) = broadcast {
+			let session = request.publisher(broadcast.clone()).await?;
+			session.run().await?;
+		} else {
+			request.reject(404);
+		};
 
 		Ok(())
 	}
