@@ -18,7 +18,7 @@
 //! - [AnnounceStop]
 //!
 //! Example flow:
-//! ```
+//! ```test
 //!  -> ANNOUNCE        namespace="foo"
 //!  <- ANNOUNCE_OK     namespace="foo"
 //!  <- SUBSCRIBE       id=0 namespace="foo" name="bar"
