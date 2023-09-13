@@ -10,9 +10,11 @@ use std::time;
 use tokio::io::AsyncReadExt;
 
 pub struct Media {
-	// We hold on to this so we don't close the broadcast until dropped.
-	// TODO provide it to run() instead of new() so it's dropped at the right time
+	// We hold on to publisher so we don't close then while media is still being published.
 	_broadcast: broadcast::Publisher,
+	_catalog: track::Publisher,
+	_init: track::Publisher,
+
 	tracks: HashMap<String, Track>,
 }
 
@@ -60,11 +62,11 @@ impl Media {
 			tracks.insert(name, track);
 		}
 
-		let catalog = broadcast.create_track(".catalog")?;
+		let mut catalog = broadcast.create_track(".catalog")?;
 
 		// Create the catalog track
 		Self::serve_catalog(
-			catalog,
+			&mut catalog,
 			config,
 			config.namespace.to_string(),
 			init_track.name.to_string(),
@@ -74,6 +76,8 @@ impl Media {
 
 		Ok(Media {
 			_broadcast: broadcast,
+			_catalog: catalog,
+			_init: init_track,
 			tracks,
 		})
 	}
@@ -124,7 +128,7 @@ impl Media {
 	}
 
 	fn serve_catalog(
-		mut track: track::Publisher,
+		track: &mut track::Publisher,
 		config: &Config,
 		namespace: String,
 		init_track_name: String,
