@@ -2,6 +2,7 @@ use thiserror::Error;
 
 use crate::VarInt;
 
+/// A MoQTransport error with an associated error code.
 #[derive(Copy, Clone, Debug, Error)]
 pub enum Error {
 	#[error("closed")]
@@ -35,6 +36,7 @@ pub enum Error {
 }
 
 impl Error {
+	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u32 {
 		match self {
 			Self::Closed => 0,
@@ -49,6 +51,7 @@ impl Error {
 		}
 	}
 
+	/// A reason that is sent over the wire.
 	pub fn reason(&self) -> &str {
 		match self {
 			Self::Closed => "closed",

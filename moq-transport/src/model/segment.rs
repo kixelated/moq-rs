@@ -1,3 +1,13 @@
+//! A segment is a stream of bytes with a header, split into a [Publisher] and [Subscriber] handle.
+//!
+//! A [Publisher] writes an ordered stream of bytes in chunks.
+//! There's no framing, so these chunks can be of any size or position, and won't be maintained over the network.
+//!
+//! A [Subscriber] reads an ordered stream of bytes in chunks.
+//! These chunks are returned directly from the QUIC connection, so they may be of any size or position.
+//! A closed [Subscriber] will receive a copy of all future chunks. (fanout)
+//!
+//! The segment is closed with [Error::Closed] when all publishers or subscribers are dropped.
 use core::fmt;
 use std::{ops::Deref, sync::Arc, time};
 
@@ -6,9 +16,8 @@ use bytes::Bytes;
 
 use super::Watch;
 
-pub type Segment = (Publisher, Subscriber);
-
-pub fn new(info: Info) -> Segment {
+/// Create a new segment with the given info.
+pub fn new(info: Info) -> (Publisher, Subscriber) {
 	let state = Watch::new(State::default());
 	let info = Arc::new(info);
 
@@ -18,7 +27,7 @@ pub fn new(info: Info) -> Segment {
 	(publisher, subscriber)
 }
 
-// Static information about the segment.
+/// Static information about the segment.
 #[derive(Debug)]
 pub struct Info {
 	// The sequence number of the segment within the track.
@@ -57,7 +66,7 @@ impl Default for State {
 	}
 }
 
-#[derive(Clone)]
+/// Used to write data to a segment and notify subscribers.
 pub struct Publisher {
 	// Mutable segment state.
 	state: Watch<State>,
@@ -75,6 +84,7 @@ impl Publisher {
 		Self { state, info, _dropped }
 	}
 
+	/// Write a new chunk of bytes.
 	pub fn write_chunk(&mut self, data: Bytes) -> Result<(), Error> {
 		let mut state = self.state.lock_mut();
 		state.closed?;
@@ -82,6 +92,7 @@ impl Publisher {
 		Ok(())
 	}
 
+	/// Close the segment with an error.
 	pub fn close(self, err: Error) -> Result<(), Error> {
 		self.state.lock_mut().close(err)
 	}
@@ -104,6 +115,7 @@ impl fmt::Debug for Publisher {
 	}
 }
 
+/// Notified when a segment has new data available.
 #[derive(Clone)]
 pub struct Subscriber {
 	// Modify the segment state.
@@ -132,6 +144,7 @@ impl Subscriber {
 		}
 	}
 
+	/// Block until the next chunk of bytes is available.
 	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			let notify = {
@@ -172,7 +185,7 @@ impl fmt::Debug for Subscriber {
 	}
 }
 
-pub struct Dropped {
+struct Dropped {
 	// Modify the segment state.
 	state: Watch<State>,
 }

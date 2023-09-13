@@ -2,6 +2,9 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
+/// Sent by the subscriber to request all future objects for the given track.
+///
+/// Objects will use the provided ID instead of the full track name, to save bytes.
 #[derive(Clone, Debug)]
 pub struct Subscribe {
 	// An ID we choose so we can map to the track_name.

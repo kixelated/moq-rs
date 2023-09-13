@@ -5,6 +5,7 @@ use crate::coding::{DecodeError, EncodeError, VarInt};
 use crate::coding::{AsyncRead, AsyncWrite};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Sent by the publisher as the header of each data stream.
 #[derive(Clone, Debug)]
 pub struct Object {
 	// An ID for this track.

@@ -66,32 +66,8 @@ impl<T> Watch<T> {
 
 	pub fn lock_mut(&self) -> WatchMut<T> {
 		WatchMut {
-			state: self.state.clone(),
 			lock: self.state.lock().unwrap(),
 		}
-	}
-
-	// Block while the function returns None
-	pub async fn wait<F, U>(&self, f: F) -> U
-	where
-		F: Fn(&WatchRef<T>) -> Option<U>,
-	{
-		loop {
-			let changed = {
-				let state = self.lock();
-				match f(&state) {
-					Some(v) => return v,
-					None => state.changed(),
-				}
-			};
-
-			changed.await;
-		}
-	}
-
-	// Helper method
-	pub fn unlock(&self, watch: WatchRef<T>) {
-		drop(watch);
 	}
 }
 
@@ -124,11 +100,6 @@ pub struct WatchRef<'a, T> {
 }
 
 impl<'a, T> WatchRef<'a, T> {
-	pub fn set(&mut self, value: T) {
-		self.lock.value = value;
-		self.lock.notify();
-	}
-
 	// Release the lock and wait for a notification when next updated.
 	pub fn changed(self) -> WatchChanged<T> {
 		WatchChanged {
@@ -138,15 +109,9 @@ impl<'a, T> WatchRef<'a, T> {
 	}
 
 	// Upgrade to a mutable references that automatically calls notify on drop.
-	pub fn as_mut(self) -> WatchMut<'a, T> {
-		WatchMut {
-			state: self.state,
-			lock: self.lock,
-		}
+	pub fn into_mut(self) -> WatchMut<'a, T> {
+		WatchMut { lock: self.lock }
 	}
-
-	// Helper method
-	pub fn unlock(self) {}
 }
 
 impl<'a, T> Deref for WatchRef<'a, T> {
@@ -164,26 +129,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for WatchRef<'a, T> {
 }
 
 pub struct WatchMut<'a, T> {
-	state: Arc<Mutex<State<T>>>,
 	lock: MutexGuard<'a, State<T>>,
-}
-
-impl<'a, T> WatchMut<'a, T> {
-	// Helper method.
-	pub fn set(&mut self, value: T) {
-		self.lock.value = value;
-	}
-
-	// Release the lock and wait for a notification when next updated.
-	pub fn changed(self) -> WatchChanged<T> {
-		WatchChanged {
-			state: self.state.clone(),
-			epoch: self.lock.epoch,
-		}
-	}
-
-	// Helper method
-	pub fn unlock(self) {}
 }
 
 impl<'a, T> Deref for WatchMut<'a, T> {

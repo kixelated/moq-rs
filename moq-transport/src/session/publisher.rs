@@ -7,8 +7,9 @@ use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use crate::{
 	message,
+	message::Message,
 	model::{broadcast, segment, track},
-	Error, Message, VarInt,
+	Error, VarInt,
 };
 
 use super::Control;
@@ -23,6 +24,7 @@ struct Subscribes {
 	lookup: HashMap<VarInt, track::Publisher>,
 }
 
+/// Serves broadcasts over the network, automatically handling subscriptions and caching.
 #[derive(Clone, Debug)]
 pub struct Publisher {
 	announces: Arc<Mutex<Announces>>,

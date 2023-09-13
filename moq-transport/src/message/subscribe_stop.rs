@@ -2,6 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
+/// Sent by the subscriber to terminate a Subscribe.
 #[derive(Clone, Debug)]
 pub struct SubscribeStop {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209

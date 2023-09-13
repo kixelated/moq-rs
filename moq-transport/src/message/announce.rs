@@ -2,6 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
+/// Sent by the publisher to announce the availability of a group of tracks.
 #[derive(Clone, Debug)]
 pub struct Announce {
 	// The track namespace

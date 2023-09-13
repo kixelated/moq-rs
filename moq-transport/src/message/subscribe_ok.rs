@@ -2,6 +2,7 @@ use crate::coding::{DecodeError, EncodeError, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
+/// Sent by the publisher to accept a Subscribe.
 #[derive(Clone, Debug)]
 pub struct SubscribeOk {
 	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209

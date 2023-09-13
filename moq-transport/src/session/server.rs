@@ -1,13 +1,17 @@
-use crate::session::{Publisher, Subscriber};
+use super::{Publisher, Subscriber};
 use crate::setup;
 
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use anyhow::Context;
 
+/// An endpoint that accepts connections, publishing and/or consuming live streams.
 pub struct Server {}
 
 impl Server {
+	/// Accept an established Webtransport session, performing the MoQ handshake.
+	///
+	/// This returns a [Request] half-way through the handshake that allows the application to accept or deny the session.
 	pub async fn accept(session: Session) -> anyhow::Result<Request> {
 		let mut control = session.accept_bi().await.context("failed to accept bidi stream")?;
 
@@ -29,7 +33,7 @@ impl Server {
 	}
 }
 
-/// A partially complete MoQ transport handshake.
+/// A partially complete MoQ Transport handshake.
 pub struct Request {
 	session: Session,
 	client: setup::Client,
@@ -84,10 +88,12 @@ impl Request {
 		Ok(())
 	}
 
+	/// Reject the request, closing the Webtransport session.
 	pub fn reject(self, code: u32) {
 		self.session.close(code, b"")
 	}
 
+	/// The role advertised by the client.
 	pub fn role(&self) -> setup::Role {
 		self.client.role
 	}

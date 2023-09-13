@@ -1,12 +1,14 @@
-use crate::session::{Publisher, Subscriber};
+use super::{Publisher, Subscriber};
 use crate::setup;
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use anyhow::Context;
 
+/// An endpoint that connects to a URL to publish and/or consume live streams.
 pub struct Client {}
 
 impl Client {
+	/// Connect using an established WebTransport session, performing the MoQ handshake as a publisher.
 	pub async fn publisher(session: Session) -> anyhow::Result<Publisher> {
 		let control = Self::send_setup(&session, setup::Role::Publisher).await?;
 
@@ -14,6 +16,7 @@ impl Client {
 		Ok(publisher)
 	}
 
+	/// Connect using an established WebTransport session, performing the MoQ handshake as a subscriber.
 	pub async fn subscriber(session: Session) -> anyhow::Result<Subscriber> {
 		let control = Self::send_setup(&session, setup::Role::Subscriber).await?;
 
@@ -45,7 +48,7 @@ impl Client {
 			.await
 			.context("failed to read SETUP")?;
 
-		if server.version != setup::Version::KIXEL_00{
+		if server.version != setup::Version::KIXEL_00 {
 			anyhow::bail!("unsupported version: {:?}", server.version);
 		}
 

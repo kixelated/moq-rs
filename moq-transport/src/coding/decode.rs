@@ -8,6 +8,7 @@ use thiserror::Error;
 pub trait AsyncRead: tokio::io::AsyncRead + Unpin + Send {}
 impl AsyncRead for webtransport_quinn::RecvStream {}
 
+/// A decode error.
 #[derive(Error, Debug)]
 pub enum DecodeError {
 	#[error("unexpected end of buffer")]

@@ -1,3 +1,12 @@
+//! A broker is a list of broadcasts, split into a [Publisher] and [Subscriber] handle.
+//!
+//! The [Publisher] can be used to insert and remove broadcasts.
+//! These coorespond to ANNOUNCE messages in the protocol, signalling that a new broadcast is available.
+//!
+//! The [Subscriber] can be used to receive a copy of all new broadcasts.
+//! A cloned [Subscriber] will receive a copy of all new broadcasts going forward (fanout).
+//!
+//! The broker is closed with [Error::Closed] when all publishers or subscribers are dropped.
 use std::{fmt, sync::Arc};
 
 use indexmap::IndexMap;
@@ -6,10 +15,8 @@ use crate::Error;
 
 use super::{broadcast, Watch};
 
-pub type Broker = (Publisher, Subscriber);
-
-/// Create a broker that can be used to announce and subscribe to broadcasts.
-pub fn new() -> Broker {
+/// Create a broker that can be used to publish and subscribe a list of broadcasts.
+pub fn new() -> (Publisher, Subscriber) {
 	let state = Watch::new(State::default());
 
 	let publisher = Publisher::new(state.clone());
@@ -50,6 +57,7 @@ impl Default for State {
 	}
 }
 
+/// Publish new broadcasts by name.
 #[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
@@ -63,11 +71,12 @@ impl Publisher {
 		Self { state, _dropped }
 	}
 
+	/// Insert a broadcast into the list.
 	pub fn insert_broadcast(&mut self, broadcast: broadcast::Subscriber) -> Result<(), Error> {
 		let state = self.state.lock();
 		state.closed?;
 
-		match state.as_mut().lookup.entry(broadcast.name.clone()) {
+		match state.into_mut().lookup.entry(broadcast.name.clone()) {
 			indexmap::map::Entry::Occupied(_) => return Err(Error::Duplicate),
 			indexmap::map::Entry::Vacant(v) => v.insert(Some(broadcast)),
 		};
@@ -75,12 +84,14 @@ impl Publisher {
 		Ok(())
 	}
 
+	/// Create and insert a broadcast into the list.
 	pub fn create_broadcast(&mut self, name: &str) -> Result<(broadcast::Publisher, broadcast::Unknown), Error> {
 		let (publisher, subscriber, unknown) = broadcast::new(name);
 		self.insert_broadcast(subscriber)?;
 		Ok((publisher, unknown))
 	}
 
+	/// Remove a broadcast from the list.
 	pub fn remove_broadcast(&mut self, name: &str) -> Result<(), Error> {
 		let mut state = self.state.lock_mut();
 
@@ -105,6 +116,9 @@ impl fmt::Debug for Publisher {
 	}
 }
 
+/// Receives a notification for all new broadcasts.
+///
+/// This can be cloned to create handles, each receiving a copy of all broadcasts going forward.
 #[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
@@ -123,6 +137,7 @@ impl Subscriber {
 		}
 	}
 
+	/// Get a broadcast by name, assuming it has been already inserted.
 	pub fn get_broadcast(&mut self, name: &str) -> Result<broadcast::Subscriber, Error> {
 		let state = self.state.lock();
 		if let Some(Some(subscriber)) = state.lookup.get(name) {
@@ -132,6 +147,7 @@ impl Subscriber {
 		}
 	}
 
+	/// Block until the next broadcast is announced.
 	pub async fn next_broadcast(&mut self) -> Result<Option<broadcast::Subscriber>, Error> {
 		loop {
 			let notify = {
@@ -173,7 +189,7 @@ impl fmt::Debug for Subscriber {
 	}
 }
 
-pub struct Dropped {
+struct Dropped {
 	// Modify the segment state.
 	state: Watch<State>,
 }

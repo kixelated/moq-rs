@@ -2,6 +2,7 @@ use crate::coding::{AsyncRead, AsyncWrite};
 
 use crate::coding::{DecodeError, EncodeError, VarInt};
 
+/// Indicates the endpoint is a publisher, subscriber, or both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
 	Publisher,
@@ -10,6 +11,7 @@ pub enum Role {
 }
 
 impl Role {
+	/// Returns true if the role is publisher.
 	pub fn is_publisher(&self) -> bool {
 		match self {
 			Self::Publisher | Self::Both => true,
@@ -17,6 +19,7 @@ impl Role {
 		}
 	}
 
+	/// Returns true if the role is a subscriber.
 	pub fn is_subscriber(&self) -> bool {
 		match self {
 			Self::Subscriber | Self::Both => true,
@@ -24,6 +27,7 @@ impl Role {
 		}
 	}
 
+	/// Returns true if two endpoints are compatible.
 	pub fn is_compatible(&self, other: Role) -> bool {
 		self.is_publisher() == other.is_subscriber() && self.is_subscriber() == other.is_publisher()
 	}
@@ -53,11 +57,13 @@ impl TryFrom<VarInt> for Role {
 }
 
 impl Role {
+	/// Decode the role.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let v = VarInt::decode(r).await?;
 		v.try_into()
 	}
 
+	/// Encode the role.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from(*self).encode(w).await
 	}

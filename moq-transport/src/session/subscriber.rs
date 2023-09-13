@@ -7,8 +7,9 @@ use std::{
 
 use crate::{
 	message,
+	message::Message,
 	model::{broadcast, broker, segment, track},
-	Error, Message, VarInt,
+	Error, VarInt,
 };
 
 use super::Control;
@@ -39,6 +40,7 @@ struct Subscribes {
 	next: u32,
 }
 
+/// Receives broadcasts over the network, automatically handling subscriptions and caching.
 #[derive(Clone, Debug)]
 pub struct Subscriber {
 	// The webtransport session.
@@ -102,6 +104,7 @@ impl Subscriber {
 		Ok(())
 	}
 
+	/// Close the WebTransport session.
 	pub fn close(self, code: u32, reason: &str) {
 		self.webtransport.close(code, reason.as_bytes())
 	}

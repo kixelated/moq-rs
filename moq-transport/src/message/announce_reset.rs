@@ -2,6 +2,7 @@ use crate::coding::{decode_string, encode_string, DecodeError, EncodeError, VarI
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
+/// Sent by the subscriber to reject an Announce.
 #[derive(Clone, Debug)]
 pub struct AnnounceReset {
 	// Echo back the namespace that was reset

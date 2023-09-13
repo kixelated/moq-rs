@@ -1,5 +1,6 @@
 use crate::coding::{decode_string, encode_string, AsyncRead, AsyncWrite, DecodeError, EncodeError};
 
+/// Sent by the subscriber to accept an Announce.
 #[derive(Clone, Debug)]
 pub struct AnnounceOk {
 	// Echo back the namespace that was announced.

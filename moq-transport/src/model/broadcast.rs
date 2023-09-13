@@ -1,3 +1,20 @@
+//! A broadcast is a collection of tracks, split into three handles: [Publisher], [Subscriber], and [Unknown].
+//!
+//! The [Publisher] can create static tracks by name.
+//! These tracks are identified by name as a string, and can be inserted or removed.
+//! The [Publisher] can be dropped in favor of using the [Unknown] handle instead.
+//!
+//! A [Subscriber] can request tracks by name.
+//! If the track already exists, it will be returned.
+//! If the track doesn't exist, it will be sent to [Unknown] to be handled.
+//! A [Subscriber] can be cloned to create multiple subscriptions.
+//!
+//! The [Unknown] can create dynamic tracks by name.
+//! It receives all requests by a [Subscriber] for a tracks that don't exist.
+//! The simplest implementation is to close every track with [Error::NotFound].
+//! If you drop the [Unknown] handle, that's exactly what happens!
+//!
+//! The broadcast is automatically closed with [Error::Closed] when both [Publisher] and [Unknown] are dropped, or all [Subscriber]s are dropped.
 use std::{
 	collections::{hash_map, HashMap, VecDeque},
 	fmt,
@@ -9,23 +26,7 @@ use crate::Error;
 
 use super::{track, Watch};
 
-/// Creates a new broadcast by name, returning three handles.
-///   - Publisher:  Used to create tracks by name.
-///   - Subscriber: Used to request tracks by name.
-///   - Unknown:    Used to optionally create tracks on request.
-///
-/// When all Publishers are dropped:
-///   - Nothing happens... but you can't create new tracks.
-///
-/// When Unknown is dropped:
-///   - Any unknown tracks will return a Error::NotFound.
-///
-/// When all Publishers AND Unknown are dropped:
-///   - broadcast::Subscriber::get() will return Error::Closed, even if the track exists.
-///
-/// When all Subscribers are dropped:
-///   - Publisher::track() returns Error::Closed.
-///   - Unknown::track() returns None.
+/// Create a new broadcast with the given namespace.
 pub fn new(name: &str) -> (Publisher, Subscriber, Unknown) {
 	let state = Watch::new(State::default());
 	let info = Arc::new(Info { name: name.to_string() });
@@ -38,11 +39,13 @@ pub fn new(name: &str) -> (Publisher, Subscriber, Unknown) {
 	(publisher, subscriber, unknown)
 }
 
+/// Static information about the broadcast.
 #[derive(Debug)]
 pub struct Info {
 	pub name: String,
 }
 
+/// Dynamic information about the broadcast.
 #[derive(Debug)]
 struct State {
 	tracks: HashMap<String, track::Subscriber>,
@@ -121,6 +124,7 @@ impl Default for State {
 	}
 }
 
+/// Publish new tracks for a broadcast by name.
 #[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
@@ -146,6 +150,7 @@ impl Publisher {
 		self.state.lock_mut().insert(track)
 	}
 
+	/// Close the broadcast with an error.
 	pub fn close(self, err: Error) -> Result<(), Error> {
 		self.state.lock_mut().close(err)
 	}
@@ -168,6 +173,9 @@ impl Deref for Publisher {
 	}
 }
 
+/// Subscribe to a broadcast by requesting tracks.
+///
+/// This can be cloned to create handles.
 #[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
@@ -184,6 +192,7 @@ impl Subscriber {
 
 	/// Get a track from the broadcast by name.
 	/// If the track does not exist, it will be created and potentially fufilled by the publisher (via Unknown).
+	/// Otherwise, it will return [Error::NotFound].
 	pub fn get_track(&self, name: &str) -> Result<track::Subscriber, Error> {
 		let state = self.state.lock();
 		if let Some(track) = state.get(name)? {
@@ -191,7 +200,7 @@ impl Subscriber {
 		}
 
 		// Request a new track if it does not exist.
-		state.as_mut().request(name)
+		state.into_mut().request(name)
 	}
 }
 
@@ -226,12 +235,13 @@ impl Unknown {
 		Self { state, info, _dropped }
 	}
 
+	/// Block until the next track requested by a subscriber.
 	pub async fn next_track(&mut self) -> Result<Option<track::Publisher>, Error> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if state.has_next()? {
-					return Ok(Some(state.as_mut().next()));
+					return Ok(Some(state.into_mut().next()));
 				}
 
 				state.changed()

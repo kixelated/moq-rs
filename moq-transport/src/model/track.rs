@@ -1,3 +1,17 @@
+//! A track is a collection of semi-reliable and semi-ordered segments, split into a [Publisher] and [Subscriber] handle.
+//!
+//! A [Publisher] creates segments with a sequence number and priority.
+//! The sequest number is used to determine the order of segments, while the priority is used to determine which segment to transmit first.
+//! This may seem counter-intuitive, but is designed for live streaming where the newest segments may be higher priority.
+//! A cloned [Publisher] can be used to create segments in parallel, but will error if a duplicate sequence number is used.
+//!
+//! A [Subscriber] may not receive all segments in order or at all.
+//! These segments are meant to be transmitted over congested networks and the key to MoQ Tranport is to not block on them.
+//! Segments will be cached for a potentially limited duration added to the unreliable nature.
+//! A cloned [Subscriber] will receive a copy of all new segment going forward (fanout).
+//!
+//! The track is closed with [Error::Closed] when all publishers or subscribers are dropped.
+
 use std::{collections::BinaryHeap, fmt, ops::Deref, sync::Arc, time};
 
 use indexmap::IndexMap;
@@ -5,9 +19,8 @@ use indexmap::IndexMap;
 use super::{segment, Watch};
 use crate::{Error, VarInt};
 
-pub type Track = (Publisher, Subscriber);
-
-pub fn new(name: &str) -> Track {
+/// Create a track with the given name.
+pub fn new(name: &str) -> (Publisher, Subscriber) {
 	let state = Watch::new(State::default());
 	let info = Arc::new(Info { name: name.to_string() });
 
@@ -17,6 +30,7 @@ pub fn new(name: &str) -> Track {
 	(publisher, subscriber)
 }
 
+/// Static information about a track.
 #[derive(Debug)]
 pub struct Info {
 	pub name: String,
@@ -116,6 +130,7 @@ impl fmt::Debug for State {
 	}
 }
 
+/// Creates new segments for a track.
 #[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
@@ -129,17 +144,19 @@ impl Publisher {
 		Self { state, info, _dropped }
 	}
 
+	/// Insert a new segment.
 	pub fn insert_segment(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
 		self.state.lock_mut().insert(segment)
 	}
 
-	// Helper method to create and insert a segment in one step.
+	/// Create an insert a segment with the given info.
 	pub fn create_segment(&mut self, info: segment::Info) -> Result<segment::Publisher, Error> {
 		let (publisher, subscriber) = segment::new(info);
 		self.insert_segment(subscriber)?;
 		Ok(publisher)
 	}
 
+	/// Close the segment with an error.
 	pub fn close(self, err: Error) -> Result<(), Error> {
 		self.state.lock_mut().close(err)
 	}
@@ -162,6 +179,7 @@ impl fmt::Debug for Publisher {
 	}
 }
 
+/// Receives new segments for a track.
 #[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
@@ -189,6 +207,7 @@ impl Subscriber {
 		}
 	}
 
+	/// Block until the next segment arrives, or return None if the track is [Error::Closed].
 	pub async fn next_segment(&mut self) -> Result<Option<segment::Subscriber>, Error> {
 		loop {
 			let notify = {

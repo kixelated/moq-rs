@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create WebTransport session")?;
 
-	let mut session = moq_transport::Client::publisher(session)
+	let mut session = moq_transport::session::Client::publisher(session)
 		.await
 		.context("failed to create MoQ Transport session")?;
 

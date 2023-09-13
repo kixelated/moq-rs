@@ -7,6 +7,7 @@ use thiserror::Error;
 pub trait AsyncWrite: tokio::io::AsyncWrite + Unpin + Send {}
 impl AsyncWrite for webtransport_quinn::SendStream {}
 
+/// An encode error.
 #[derive(Error, Debug)]
 pub enum EncodeError {
 	#[error("varint too large")]

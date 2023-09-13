@@ -1,11 +1,11 @@
 // A helper class to guard sending control messages behind a Mutex.
 
-use std::{sync::Arc, fmt};
+use std::{fmt, sync::Arc};
 
 use tokio::sync::Mutex;
 use webtransport_quinn::SendStream;
 
-use crate::{Error, Message};
+use crate::{message::Message, Error};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Control {

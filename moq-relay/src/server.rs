@@ -6,8 +6,10 @@ use std::{
 
 use anyhow::Context;
 
-use moq_transport::{model::broker, session, setup::Role, Error};
+use moq_transport::model::broker;
 use tokio::task::JoinSet;
+
+use crate::Session;
 
 pub struct Server {
 	server: quinn::Endpoint,
@@ -15,8 +17,8 @@ pub struct Server {
 	// The active connections.
 	conns: JoinSet<anyhow::Result<()>>,
 
-	// A handle to add/remove broadcasts and a handle to get broadcasts.
-	broker: (broker::Publisher, broker::Subscriber),
+	// The base session we close for each incoming connection.
+	base: Session,
 }
 
 pub struct ServerConfig {
@@ -68,8 +70,12 @@ impl Server {
 		let broker = broker::new();
 
 		let conns = JoinSet::new();
+		let base = Session {
+			publisher: broker.0.clone(),
+			subscriber: broker.1.clone(),
+		};
 
-		Ok(Self { server, broker, conns })
+		Ok(Self { server, base, conns })
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
@@ -77,83 +83,18 @@ impl Server {
 			tokio::select! {
 				res = self.server.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					self.conns.spawn(Self::accept(conn, self.broker.0.clone(), self.broker.1.clone()));
+					let mut session = self.base.clone();
+					self.conns.spawn(async move {
+						session.run(conn).await
+					});
 				},
 				res = self.conns.join_next(), if !self.conns.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");
 					if let Err(err) = res {
-						log::error!("connection terminated: {:?}", err);
+						log::warn!("connection terminated: {:?}", err);
 					}
 				},
 			}
 		}
-	}
-
-	async fn accept(
-		conn: quinn::Connecting,
-		publisher: broker::Publisher,
-		subscriber: broker::Subscriber,
-	) -> anyhow::Result<()> {
-		// Wait for the QUIC connection to be established.
-		let conn = conn.await.context("failed to establish QUIC connection")?;
-
-		// Wait for the CONNECT request.
-		let request = webtransport_quinn::accept(conn)
-			.await
-			.context("failed to receive WebTransport request")?;
-
-		let path = request.uri().path().to_string();
-
-		// Accept the CONNECT request.
-		let session = request
-			.ok()
-			.await
-			.context("failed to respond to WebTransport request")?;
-
-		// Perform the MoQ handshake.
-		let request = moq_transport::Server::accept(session)
-			.await
-			.context("failed to accept handshake")?;
-
-		let role = request.role();
-		log::info!("received new session: path={} role={:?}", path, role);
-
-		match role {
-			Role::Publisher => {
-				let subscriber = request.subscriber().await?;
-				Self::serve_publisher(subscriber, publisher).await?;
-			}
-			Role::Subscriber => {
-				let publisher = request.publisher().await?;
-				Self::serve_subscriber(publisher, subscriber).await?;
-			}
-			Role::Both => request.reject(300),
-		};
-
-		log::info!("terminated session: path={} role={:?}", path, role);
-
-		Ok(())
-	}
-
-	async fn serve_publisher(session: session::Subscriber, mut broker: broker::Publisher) -> Result<(), Error> {
-		let mut announced = session.announced();
-
-		log::info!("waiting for first announce");
-
-		while let Some(broadcast) = announced.next_broadcast().await? {
-			log::info!("received announce from publisher: {:?}", broadcast);
-			broker.insert_broadcast(broadcast)?;
-		}
-
-		Ok(())
-	}
-
-	async fn serve_subscriber(mut session: session::Publisher, mut broker: broker::Subscriber) -> Result<(), Error> {
-		while let Some(broadcast) = broker.next_broadcast().await? {
-			log::info!("announcing broadcast to subscriber: {:?}", broadcast);
-			session.announce(broadcast).await?;
-		}
-
-		Ok(())
 	}
 }

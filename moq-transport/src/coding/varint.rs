@@ -24,7 +24,10 @@ pub struct BoundsExceeded;
 pub struct VarInt(u64);
 
 impl VarInt {
+	/// The largest possible value.
 	pub const MAX: Self = Self((1 << 62) - 1);
+
+	/// The smallest possible value.
 	pub const ZERO: Self = Self(0);
 
 	/// Construct a `VarInt` infallibly using the largest available type.
@@ -162,6 +165,7 @@ impl fmt::Display for VarInt {
 }
 
 impl VarInt {
+	/// Decode a varint from the given reader.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let mut buf = [0u8; 8];
 		r.read_exact(buf[0..1].as_mut()).await?;
@@ -189,6 +193,7 @@ impl VarInt {
 		Ok(Self(x))
 	}
 
+	/// Encode a varint to the given writer.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
@@ -207,6 +212,7 @@ impl VarInt {
 	}
 }
 
+// This is a fork of quinn::VarInt.
 impl From<quinn::VarInt> for VarInt {
 	fn from(v: quinn::VarInt) -> Self {
 		Self(v.into_inner())
