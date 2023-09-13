@@ -123,7 +123,7 @@ impl Subscriber {
 
 	async fn run_inbound(mut self, mut control: RecvStream) -> Result<(), Error> {
 		loop {
-			let msg = Message::decode(&mut control).await.map_err(|_e| Error::Unknown)?;
+			let msg = Message::decode(&mut control).await.map_err(|_e| Error::Read)?;
 
 			log::info!("message received: {:?}", msg);
 			if let Err(err) = self.recv_message(&msg).await {
@@ -221,7 +221,7 @@ impl Subscriber {
 	async fn run_streams(self) -> Result<(), Error> {
 		loop {
 			// Accept all incoming unidirectional streams.
-			let stream = self.webtransport.accept_uni().await.map_err(|_| Error::Unknown)?;
+			let stream = self.webtransport.accept_uni().await.map_err(|_| Error::Read)?;
 			let this = self.clone();
 
 			tokio::spawn(async move {

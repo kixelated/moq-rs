@@ -244,15 +244,15 @@ impl Publisher {
 
 		log::debug!("serving object: {:?}", object);
 
-		let mut stream = self.webtransport.open_uni().await.map_err(|_e| Error::Unknown)?;
+		let mut stream = self.webtransport.open_uni().await.map_err(|_e| Error::Write)?;
 
 		stream.set_priority(object.priority).ok();
 
 		// TODO better handle the error.
-		object.encode(&mut stream).await.map_err(|_e| Error::Unknown)?;
+		object.encode(&mut stream).await.map_err(|_e| Error::Write)?;
 
 		while let Some(data) = segment.read_chunk().await? {
-			stream.write_chunk(data).await.map_err(|_e| Error::Unknown)?;
+			stream.write_chunk(data).await.map_err(|_e| Error::Write)?;
 		}
 
 		Ok(())

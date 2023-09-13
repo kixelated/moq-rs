@@ -40,7 +40,6 @@ pub struct Info {
 	pub expires: Option<time::Duration>,
 }
 
-#[derive(Debug)]
 struct State {
 	// The data that has been received thus far.
 	data: Vec<Bytes>,
@@ -63,6 +62,19 @@ impl Default for State {
 			data: Vec::new(),
 			closed: Ok(()),
 		}
+	}
+}
+
+impl fmt::Debug for State {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// We don't want to print out the contents, so summarize.
+		let size = self.data.iter().map(|chunk| chunk.len()).sum::<usize>();
+		let data = format!("size={} chunks={}", size, self.data.len());
+
+		f.debug_struct("State")
+			.field("data", &data)
+			.field("closed", &self.closed)
+			.finish()
 	}
 }
 

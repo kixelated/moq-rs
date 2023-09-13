@@ -22,6 +22,6 @@ impl Control {
 	pub async fn send<T: Into<Message> + fmt::Debug>(&self, msg: T) -> Result<(), Error> {
 		let mut stream = self.stream.lock().await;
 		log::info!("sending message: {:?}", msg);
-		msg.into().encode(&mut *stream).await.map_err(|_e| Error::Unknown)
+		msg.into().encode(&mut *stream).await.map_err(|_e| Error::Write)
 	}
 }
