@@ -18,10 +18,6 @@ pub struct Media {
 
 impl Media {
 	pub async fn new(config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
-		// TODO hold a lock on StdIn
-		// let stdin = io::stdin();
-		// let reader = stdin.lock();
-		//let mut stdin = io::stdin();
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");

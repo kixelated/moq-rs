@@ -2,9 +2,9 @@ use anyhow::Context;
 use clap::Parser;
 
 mod cli;
-mod media;
-
 use cli::*;
+
+mod media;
 use media::*;
 
 use moq_transport::model::broadcast;

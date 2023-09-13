@@ -5,17 +5,17 @@ RUN USER=root cargo new app
 WORKDIR /usr/src/app
 COPY Cargo.toml Cargo.lock ./
 
-RUN mkdir -p moq-transport/src moq-quinn/src moq-warp/src moq-pub/src
+RUN mkdir -p moq-transport/src moq-relay/src moq-warp/src moq-pub/src
 COPY moq-transport/Cargo.toml moq-transport/Cargo.toml
-COPY moq-quinn/Cargo.toml moq-quinn/Cargo.toml
+COPY moq-relay/Cargo.toml moq-relay/Cargo.toml
 COPY moq-pub/Cargo.toml moq-pub/Cargo.toml
 COPY moq-warp/Cargo.toml moq-warp/Cargo.toml
 RUN touch moq-transport/src/lib.rs
 RUN touch moq-warp/src/lib.rs
 RUN touch moq-pub/src/lib.rs
-RUN touch moq-quinn/src/lib.rs
+RUN touch moq-relay/src/lib.rs
 
-RUN sed -i '/default-run.*/d' moq-quinn/Cargo.toml
+RUN sed -i '/default-run.*/d' moq-relay/Cargo.toml
 
 # Will build all dependent crates in release mode
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY . .
 
 # Build (install) the actual binaries
-RUN cargo install --path moq-quinn
+RUN cargo install --path moq-relay
 
 # Runtime image
 FROM rust:latest
@@ -38,7 +38,7 @@ USER app
 WORKDIR /app
 
 # Get compiled binaries from builder's cargo install directory
-COPY --from=builder /usr/local/cargo/bin/moq-quinn /app/moq-quinn
+COPY --from=builder /usr/local/cargo/bin/moq-relay /app/moq-relay
 
 ADD entrypoint.sh .
 # No CMD or ENTRYPOINT, see fly.toml with `cmd` override.
