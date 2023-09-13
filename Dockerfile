@@ -5,13 +5,11 @@ RUN USER=root cargo new app
 WORKDIR /usr/src/app
 COPY Cargo.toml Cargo.lock ./
 
-RUN mkdir -p moq-transport/src moq-relay/src moq-warp/src moq-pub/src
+RUN mkdir -p moq-transport/src moq-relay/src moq-pub/src
 COPY moq-transport/Cargo.toml moq-transport/Cargo.toml
 COPY moq-relay/Cargo.toml moq-relay/Cargo.toml
 COPY moq-pub/Cargo.toml moq-pub/Cargo.toml
-COPY moq-warp/Cargo.toml moq-warp/Cargo.toml
 RUN touch moq-transport/src/lib.rs
-RUN touch moq-warp/src/lib.rs
 RUN touch moq-pub/src/lib.rs
 RUN touch moq-relay/src/lib.rs
 
