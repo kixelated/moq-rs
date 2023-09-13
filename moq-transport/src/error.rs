@@ -5,32 +5,40 @@ use crate::VarInt;
 /// A MoQTransport error with an associated error code.
 #[derive(Copy, Clone, Debug, Error)]
 pub enum Error {
+	/// A clean termination, represented as error code 0.
+	/// This error is automatically used when publishers or subscribers are dropped without calling close.
 	#[error("closed")]
 	Closed,
 
+	/// An ANNOUNCE_RESET or SUBSCRIBE_RESET was sent by the publisher.
 	#[error("reset code={0:?}")]
 	Reset(u32),
 
+	/// An ANNOUNCE_STOP or SUBSCRIBE_STOP was sent by the subscriber.
 	#[error("stop code={0:?}")]
 	Stop(u32),
 
+	/// The requested resource was not found.
 	#[error("not found")]
 	NotFound,
 
+	/// A resource already exists with that ID.
 	#[error("duplicate")]
 	Duplicate,
 
-	/// The remote sent a message that violates the negotiated role. ex. sending SUBSCRIBE to a subscriber.
+	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation: msg={0}")]
 	Role(VarInt),
 
+	/// An error occured while reading from the QUIC stream.
 	#[error("failed to read from stream")]
 	Read,
 
+	/// An error occured while writing to the QUIC stream.
 	#[error("failed to write to stream")]
 	Write,
 
-	// TODO classify these errors
+	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error")]
 	Unknown,
 }
