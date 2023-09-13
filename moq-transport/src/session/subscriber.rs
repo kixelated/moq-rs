@@ -38,11 +38,11 @@ pub struct Subscriber {
 	control: Control,
 
 	// All unknown subscribes comes here.
-	source: broadcast::Unknown,
+	source: broadcast::Publisher,
 }
 
 impl Subscriber {
-	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Unknown) -> Self {
+	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Publisher) -> Self {
 		let control = Control::new(control.0, control.1);
 
 		Self {

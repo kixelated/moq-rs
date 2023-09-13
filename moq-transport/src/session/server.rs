@@ -50,7 +50,7 @@ impl Request {
 	}
 
 	/// Accept the session as a subscriber only.
-	pub async fn subscriber(mut self, source: broadcast::Unknown) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(mut self, source: broadcast::Publisher) -> anyhow::Result<Subscriber> {
 		self.send_setup(setup::Role::Subscriber).await?;
 
 		let subscriber = Subscriber::new(self.session, self.control, source);

@@ -17,7 +17,7 @@ impl Client {
 	}
 
 	/// Connect using an established WebTransport session, performing the MoQ handshake as a subscriber.
-	pub async fn subscriber(session: Session, source: broadcast::Unknown) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(session: Session, source: broadcast::Publisher) -> anyhow::Result<Subscriber> {
 		let control = Self::send_setup(&session, setup::Role::Subscriber).await?;
 
 		let subscriber = Subscriber::new(session, control, source);

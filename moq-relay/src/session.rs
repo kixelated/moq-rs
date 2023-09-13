@@ -63,7 +63,7 @@ impl Session {
 	}
 
 	async fn serve_publisher(&mut self, request: Request, path: &str) -> anyhow::Result<()> {
-		let (_, subscriber, publisher) = broadcast::new(path);
+		let (publisher, subscriber) = broadcast::new(path);
 
 		match self.broadcasts.lock().unwrap().entry(path.to_string()) {
 			hash_map::Entry::Occupied(_) => {

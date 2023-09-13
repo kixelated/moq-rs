@@ -131,7 +131,6 @@ impl fmt::Debug for State {
 }
 
 /// Creates new segments for a track.
-#[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
 	info: Arc<Info>,
