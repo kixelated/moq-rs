@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Run ffmpeg and pipe the output to moq-pub
+ffmpeg -hide_banner -v quiet \
+	-stream_loop -1 -re \
+	-i dev/source.mp4 \
+	-an \
+	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
+	| RUST_LOG=info cargo run --bin moq-pub -- "$@"

@@ -46,10 +46,12 @@ async fn main() -> anyhow::Result<()> {
 
 	let uri = http::Uri::builder()
 		.scheme("https")
-		.authority(config.host)
-		.path_and_query(config.name)
+		.authority(config.host.clone())
+		.path_and_query(format!("/{}", config.name))
 		.build()
 		.context("failed to build uri")?;
+
+	log::info!("connecting to {}", uri);
 
 	let session = webtransport_quinn::connect(&endpoint, &uri)
 		.await
@@ -58,6 +60,12 @@ async fn main() -> anyhow::Result<()> {
 	let session = moq_transport::session::Client::publisher(session, subscriber)
 		.await
 		.context("failed to create MoQ Transport session")?;
+
+	log::info!(
+		"watch at: https://quic.video/watch/{}?server={}",
+		config.name,
+		config.host
+	);
 
 	// TODO run a task that returns a 404 for all unknown subscriptions.
 	tokio::select! {

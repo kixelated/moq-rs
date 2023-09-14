@@ -23,7 +23,7 @@ Use [mkcert](https://github.com/FiloSottile/mkcert) to generate a self-signed ce
 Unfortunately, this currently requires Go in order to [fork](https://github.com/FiloSottile/mkcert/pull/513) the tool.
 
 ```bash
-./cert/generate
+./dev/cert
 ```
 
 Unfortunately, WebTransport in Chrome currently (May 2023) doesn't verify certificates using the root CA.
@@ -37,7 +37,7 @@ If you're using `moq-pub` then you'll want some test footage to broadcast.
 
 ```bash
 mkdir media
-wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O media/source.mp4
+wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/source.mp4
 ```
 
 ## Usage
@@ -45,17 +45,17 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 ### moq-relay
 
 **moq-relay** is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
-You can run the server with:
+You can run the development server with:
 
 ```bash
-RUST_LOG=info cargo run --bin moq-relay
+./dev/relay
 ```
 
 Notable flags:
 
 -   `-a <ADDR>` Listen on this address [default: [::]:4443]
--   `-c <CERT>` Use the certificate file at this path [default: cert/localhost.crt]
--   `-k <KEY>` Use the private key at this path [default: cert/localhost.key]
+-   `-c <CERT>` Use the certificate file at this path [default: dev/localhost.crt]
+-   `-k <KEY>` Use the private key at this path [default: dev/localhost.key]
 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
@@ -65,23 +65,19 @@ This is exclusively to serve a `/fingerprint` endpoint via HTTPS for self-signed
 
 ### moq-pub
 
-This is a client that publishes a fMP4 file over MoQ.
-You can pipe the output of ffmpeg to produce a live stream.
+This is a client that publishes a fMP4 file from stdin over MoQ.
+This can be combined with ffmpeg to produce a live stream from a file on disk, which is great for testing.
+You can use this command to broadcast `dev/source.mp4` to `localhost:4443` to test the relay:
 
 ```bash
-ffmpeg -hide_banner -v quiet \
-	-stream_loop -1 -re \
-	-i media/source.mp4 \
-	-an \
-	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
-	| RUST_LOG=info cargo run --bin moq-pub -- -i -
+./dev/pub
 ```
 
 Notable flags:
 
--   `-u <URI>` connect to the given URL [default: https://localhost:4443]
--   `-i <INPUT>` read from the input file, or `-` for stdin.
--   `-n <NAMESPACE>` produce a broadcast with the given name [default: random-uuid]
+-   `--host <HOST>` connect to the given host [default: localhost:4443]
+-   `--name <NAME>` produce a broadcast with the given name [default: random-uuid]
+-   `--input <INPUT>` read from the input file, or `-` for stdin.
 
 ### moq-js
 

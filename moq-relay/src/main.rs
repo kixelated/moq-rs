@@ -19,11 +19,11 @@ struct Cli {
 	addr: net::SocketAddr,
 
 	/// Use the certificate file at this path
-	#[arg(short, long, default_value = "cert/localhost.crt")]
+	#[arg(short, long, default_value = "dev/localhost.crt")]
 	cert: path::PathBuf,
 
 	/// Use the private key at this path
-	#[arg(short, long, default_value = "cert/localhost.key")]
+	#[arg(short, long, default_value = "dev/localhost.key")]
 	key: path::PathBuf,
 }
 

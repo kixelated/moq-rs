@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Run the relay and forward any arguments
+RUST_LOG=info cargo run --bin moq-relay -- "$@"
