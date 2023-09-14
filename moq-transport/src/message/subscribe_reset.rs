@@ -25,9 +25,7 @@ impl SubscribeReset {
 
 		Ok(Self { id, code, reason })
 	}
-}
 
-impl SubscribeReset {
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
 		VarInt::from_u32(self.code).encode(w).await?;

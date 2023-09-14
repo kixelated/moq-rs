@@ -68,7 +68,7 @@ impl Publisher {
 			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
 			Message::AnnounceStop(msg) => self.recv_announce_stop(msg).await,
 			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
-			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
+			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
 			_ => Err(Error::Role(msg.id())),
 		}
 	}
@@ -182,10 +182,10 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
+	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), Error> {
 		let abort = self.subscribes.lock().unwrap().remove(&msg.id).ok_or(Error::NotFound)?;
 		abort.abort();
 
-		self.reset_subscribe(msg.id, Error::Reset(msg.code)).await
+		self.reset_subscribe(msg.id, Error::Stop).await
 	}
 }

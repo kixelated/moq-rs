@@ -15,8 +15,8 @@ pub enum Error {
 	Reset(u32),
 
 	/// An ANNOUNCE_STOP or SUBSCRIBE_STOP was sent by the subscriber.
-	#[error("stop code={0:?}")]
-	Stop(u32),
+	#[error("stop")]
+	Stop,
 
 	/// The requested resource was not found.
 	#[error("not found")]
@@ -49,7 +49,7 @@ impl Error {
 		match self {
 			Self::Closed => 0,
 			Self::Reset(code) => *code,
-			Self::Stop(code) => *code,
+			Self::Stop => 206,
 			Self::NotFound => 404,
 			Self::Role(_) => 405,
 			Self::Duplicate => 409,
@@ -64,7 +64,7 @@ impl Error {
 		match self {
 			Self::Closed => "closed",
 			Self::Reset(_) => "reset",
-			Self::Stop(_) => "stop",
+			Self::Stop => "stop",
 			Self::NotFound => "not found",
 			Self::Duplicate => "duplicate",
 			Self::Role(_msg) => "role violation",

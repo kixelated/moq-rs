@@ -82,14 +82,14 @@ impl Subscriber {
 			Message::Announce(_) => Ok(()),      // don't care
 			Message::AnnounceReset(_) => Ok(()), // also don't care
 			Message::SubscribeOk(_) => Ok(()),   // guess what, don't care
-			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
+			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(Error::Role(msg.id())),
 		}
 	}
 
-	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), Error> {
-		let err = Error::Stop(msg.code);
+	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
+		let err = Error::Reset(msg.code);
 
 		// We need a new scope because the async compiler is dumb
 		{

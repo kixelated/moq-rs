@@ -135,7 +135,7 @@ message_types! {
 	SubscribeStop = 0x15,
 	Announce = 0x6,
 	AnnounceOk = 0x7,
-	AnnounceStop = 0x8,
-	AnnounceReset = 0x18,
+	AnnounceReset = 0x8,
+	AnnounceStop = 0x18,
 	GoAway = 0x10,
 }
