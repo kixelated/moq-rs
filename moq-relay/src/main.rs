@@ -6,10 +6,10 @@ use ring::digest::{digest, SHA256};
 use warp::Filter;
 
 mod server;
-pub use server::*;
-
 mod session;
-pub use session::*;
+
+use server::*;
+use session::*;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser, Clone)]

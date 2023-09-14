@@ -2,7 +2,7 @@ use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use std::{
 	collections::HashMap,
-	sync::{Arc, Mutex},
+	sync::{atomic, Arc, Mutex},
 };
 
 use crate::{
@@ -14,16 +14,6 @@ use crate::{
 
 use super::Control;
 
-#[derive(Default, Debug)]
-struct Subscribes {
-	// A lookup from ID to Subscribe.
-	// If the value is smaller than next but not in the lookup, then it have been closed.
-	tracks: HashMap<VarInt, track::Publisher>,
-
-	// The sequence number for the next subscription.
-	next: u32,
-}
-
 /// Receives broadcasts over the network, automatically handling subscriptions and caching.
 // TODO Clone specific fields when a task actually needs it.
 #[derive(Clone, Debug)]
@@ -32,7 +22,10 @@ pub struct Subscriber {
 	webtransport: Session,
 
 	// The list of active subscriptions, each guarded by an mutex.
-	subscribes: Arc<Mutex<Subscribes>>,
+	subscribes: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
+
+	// The sequence number for the next subscription.
+	next: Arc<atomic::AtomicU32>,
 
 	// A channel for sending messages.
 	control: Control,
@@ -48,6 +41,7 @@ impl Subscriber {
 		Self {
 			webtransport,
 			subscribes: Default::default(),
+			next: Default::default(),
 			control,
 			source,
 		}
@@ -91,21 +85,9 @@ impl Subscriber {
 	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
 		let err = Error::Reset(msg.code);
 
-		// We need a new scope because the async compiler is dumb
-		{
-			let mut subscribes = self.subscribes.lock().unwrap();
-			let subscribe = subscribes.tracks.remove(&msg.id).ok_or(Error::NotFound)?;
-			subscribe.close(err)?;
-		}
-
-		// Send the RESET now.
-		let msg = message::SubscribeReset {
-			id: msg.id,
-			code: msg.code,
-			reason: err.reason().to_string(),
-		};
-
-		self.control.send(msg).await?;
+		let mut subscribes = self.subscribes.lock().unwrap();
+		let subscribe = subscribes.remove(&msg.id).ok_or(Error::NotFound)?;
+		subscribe.close(err)?;
 
 		Ok(())
 	}
@@ -133,7 +115,7 @@ impl Subscriber {
 		// A new scope is needed because the async compiler is dumb
 		let mut publisher = {
 			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.tracks.get_mut(&object.track).ok_or(Error::NotFound)?;
+			let track = subscribes.get_mut(&object.track).ok_or(Error::NotFound)?;
 
 			track.create_segment(segment::Info {
 				sequence: object.sequence,
@@ -153,16 +135,8 @@ impl Subscriber {
 		while let Some(track) = self.source.next_track().await? {
 			let name = track.name.clone();
 
-			// Have to use a temporary scope because the compiler isn't smart enough to detect Send
-			let id = {
-				let mut subscribes = self.subscribes.lock().unwrap();
-
-				let id = VarInt::from_u32(subscribes.next);
-				subscribes.next += 1;
-				subscribes.tracks.insert(id, track);
-
-				id
-			};
+			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
+			self.subscribes.lock().unwrap().insert(id, track);
 
 			let msg = message::Subscribe {
 				id,

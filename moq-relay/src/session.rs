@@ -42,53 +42,55 @@ impl Session {
 		let role = request.role();
 
 		match role {
-			Role::Publisher => {
-				log::info!("publisher start: path={}", path);
-
-				if let Err(err) = self.serve_publisher(request, &path).await {
-					log::warn!("publisher error: path={} err={}", path, err);
-				}
-			}
-			Role::Subscriber => {
-				log::info!("subscriber start: path={}", path);
-
-				if let Err(err) = self.serve_subscriber(request, &path).await {
-					log::warn!("subscriber error: path={} err={}", path, err)
-				}
-			}
+			Role::Publisher => self.serve_publisher(request, &path).await,
+			Role::Subscriber => self.serve_subscriber(request, &path).await,
 			Role::Both => request.reject(300),
 		};
 
 		Ok(())
 	}
 
-	async fn serve_publisher(&mut self, request: Request, path: &str) -> anyhow::Result<()> {
+	async fn serve_publisher(&mut self, request: Request, path: &str) {
+		log::info!("publisher: path={}", path);
+
 		let (publisher, subscriber) = broadcast::new();
 
 		match self.broadcasts.lock().unwrap().entry(path.to_string()) {
-			hash_map::Entry::Occupied(_) => {
-				request.reject(409);
-				return Ok(());
-			}
+			hash_map::Entry::Occupied(_) => return request.reject(409),
 			hash_map::Entry::Vacant(entry) => entry.insert(subscriber),
 		};
 
+		if let Err(err) = self.run_publisher(request, publisher).await {
+			log::warn!("pubisher error: path={} err={:?}", path, err);
+		}
+
+		self.broadcasts.lock().unwrap().remove(path);
+	}
+
+	async fn run_publisher(&mut self, request: Request, publisher: broadcast::Publisher) -> anyhow::Result<()> {
 		let session = request.subscriber(publisher).await?;
 		session.run().await?;
-
 		Ok(())
 	}
 
-	async fn serve_subscriber(&mut self, request: Request, path: &str) -> anyhow::Result<()> {
-		let broadcast = self.broadcasts.lock().unwrap().get(path).cloned();
+	async fn serve_subscriber(&mut self, request: Request, path: &str) {
+		log::info!("subscriber: path={}", path);
 
-		if let Some(broadcast) = broadcast {
-			let session = request.publisher(broadcast.clone()).await?;
-			session.run().await?;
-		} else {
-			request.reject(404);
+		let broadcast = match self.broadcasts.lock().unwrap().get(path) {
+			Some(broadcast) => broadcast.clone(),
+			None => {
+				return request.reject(404);
+			}
 		};
 
+		if let Err(err) = self.run_subscriber(request, broadcast).await {
+			log::warn!("subscriber error: path={} err={:?}", path, err);
+		}
+	}
+
+	async fn run_subscriber(&mut self, request: Request, broadcast: broadcast::Subscriber) -> anyhow::Result<()> {
+		let session = request.publisher(broadcast).await?;
+		session.run().await?;
 		Ok(())
 	}
 }

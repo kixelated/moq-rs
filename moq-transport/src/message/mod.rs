@@ -26,8 +26,8 @@
 //!  -> OBJECT          id=0 sequence=69 priority=4 expires=30
 //!  -> OBJECT          id=0 sequence=70 priority=4 expires=30
 //!  -> OBJECT          id=0 sequence=70 priority=4 expires=30
-//!  <- SUBSCRIBE_STOP  id=0 code=1
-//!  -> SUBSCRIBE_RESET id=0 code=1 reason="closed by peer"
+//!  <- SUBSCRIBE_STOP  id=0
+//!  -> SUBSCRIBE_RESET id=0 code=206 reason="closed by peer"
 //! ```
 mod announce;
 mod announce_ok;

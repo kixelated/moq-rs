@@ -100,13 +100,13 @@ impl Publisher {
 	}
 
 	async fn reset_subscribe(&mut self, id: VarInt, err: Error) -> Result<(), Error> {
-		self.control
-			.send(message::SubscribeReset {
-				id,
-				code: err.code(),
-				reason: err.reason().to_string(),
-			})
-			.await
+		let msg = message::SubscribeReset {
+			id,
+			code: err.code(),
+			reason: err.reason().to_string(),
+		};
+
+		self.control.send(msg).await
 	}
 
 	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, Error> {
@@ -118,7 +118,7 @@ impl Publisher {
 		let mut track = self.source.get_track(&msg.name)?;
 
 		// TODO only clone the fields we need
-		let this = self.clone();
+		let mut this = self.clone();
 
 		let handle = tokio::spawn(async move {
 			log::info!("serving track: name={}", track.name);
@@ -128,14 +128,12 @@ impl Publisher {
 				log::warn!("failed to serve track: name={} err={:?}", track.name, err);
 			}
 
+			// Make sure we send a reset at the end.
 			let err = res.err().unwrap_or(Error::Closed);
-			let msg = message::SubscribeReset {
-				id: msg.id,
-				code: err.code(),
-				reason: err.reason().to_string(),
-			};
+			this.reset_subscribe(msg.id, err).await.ok();
 
-			this.control.send(msg).await.ok();
+			// We're all done, so clean up the abort handle.
+			this.subscribes.lock().unwrap().remove(&msg.id);
 		});
 
 		Ok(handle.abort_handle())
