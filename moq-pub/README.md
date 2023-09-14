@@ -5,7 +5,7 @@ A command line tool for publishing media via Media over QUIC (MoQ).
 Expects to receive fragmented MP4 via standard input and connect to a MOQT relay.
 
 ```
-ffmpeg ... - | moq-pub -i - -u https://localhost:4443
+ffmpeg ... - | moq-pub -i - --host localhost:4443
 ```
 
 ### Invoking `moq-pub`:

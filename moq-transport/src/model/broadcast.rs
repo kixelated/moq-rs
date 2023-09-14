@@ -13,7 +13,6 @@
 use std::{
 	collections::{hash_map, HashMap, VecDeque},
 	fmt,
-	ops::Deref,
 	sync::Arc,
 };
 
@@ -21,21 +20,14 @@ use crate::Error;
 
 use super::{track, Watch};
 
-/// Create a new broadcast with the given namespace.
-pub fn new(name: &str) -> (Publisher, Subscriber) {
+/// Create a new broadcast.
+pub fn new() -> (Publisher, Subscriber) {
 	let state = Watch::new(State::default());
-	let info = Arc::new(Info { name: name.to_string() });
 
-	let publisher = Publisher::new(state.clone(), info.clone());
-	let subscriber = Subscriber::new(state.clone(), info.clone());
+	let publisher = Publisher::new(state.clone());
+	let subscriber = Subscriber::new(state);
 
 	(publisher, subscriber)
-}
-
-/// Static information about the broadcast.
-#[derive(Debug)]
-pub struct Info {
-	pub name: String,
 }
 
 /// Dynamic information about the broadcast.
@@ -115,15 +107,13 @@ impl Default for State {
 #[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
-	info: Arc<Info>,
-
 	_dropped: Arc<Dropped>,
 }
 
 impl Publisher {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
+	fn new(state: Watch<State>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+		Self { state, _dropped }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
@@ -162,18 +152,7 @@ impl Publisher {
 
 impl fmt::Debug for Publisher {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Publisher")
-			.field("name", &self.name)
-			.field("state", &self.state)
-			.finish()
-	}
-}
-
-impl Deref for Publisher {
-	type Target = Info;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
+		f.debug_struct("Publisher").field("state", &self.state).finish()
 	}
 }
 
@@ -183,15 +162,13 @@ impl Deref for Publisher {
 #[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
-	info: Arc<Info>,
-
 	_dropped: Arc<Dropped>,
 }
 
 impl Subscriber {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
+	fn new(state: Watch<State>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+		Self { state, _dropped }
 	}
 
 	/// Get a track from the broadcast by name.
@@ -208,20 +185,9 @@ impl Subscriber {
 	}
 }
 
-impl Deref for Subscriber {
-	type Target = Info;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
-
 impl fmt::Debug for Subscriber {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Subscriber")
-			.field("name", &self.name)
-			.field("state", &self.state)
-			.finish()
+		f.debug_struct("Subscriber").field("state", &self.state).finish()
 	}
 }
 

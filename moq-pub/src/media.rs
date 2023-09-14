@@ -65,14 +65,7 @@ impl Media {
 		let mut catalog = broadcast.create_track(".catalog")?;
 
 		// Create the catalog track
-		Self::serve_catalog(
-			&mut catalog,
-			config,
-			config.namespace.to_string(),
-			init_track.name.to_string(),
-			&moov,
-			&tracks,
-		)?;
+		Self::serve_catalog(&mut catalog, config, init_track.name.to_string(), &moov, &tracks)?;
 
 		Ok(Media {
 			_broadcast: broadcast,
@@ -130,7 +123,6 @@ impl Media {
 	fn serve_catalog(
 		track: &mut track::Publisher,
 		config: &Config,
-		namespace: String,
 		init_track_name: String,
 		moov: &mp4::MoovBox,
 		_tracks: &HashMap<String, Track>,
@@ -171,7 +163,6 @@ impl Media {
 			"tracks": [
 				{
 				"container": "mp4",
-				"namespace": namespace,
 				"kind": "video",
 				"init_track": init_track_name,
 				"data_track": "1", // assume just one track for now

@@ -8,6 +8,7 @@ mod media;
 use media::*;
 
 use moq_transport::model::broadcast;
+
 use uuid::Uuid;
 
 // TODO: clap complete
@@ -17,12 +18,11 @@ async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
 	let mut config = Config::parse();
-
-	if config.namespace.is_empty() {
-		config.namespace = format!("quic.video/{}", Uuid::new_v4());
+	if config.name.is_empty() {
+		config.name = Uuid::new_v4().to_string();
 	}
 
-	let (publisher, subscriber) = broadcast::new(&config.namespace);
+	let (publisher, subscriber) = broadcast::new();
 	let mut media = Media::new(&config, publisher).await?;
 
 	// Ugh, just let me use my native root certs already
@@ -41,10 +41,17 @@ async fn main() -> anyhow::Result<()> {
 	let arc_tls_config = std::sync::Arc::new(tls_config);
 	let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
 
-	let mut endpoint = quinn::Endpoint::client(config.bind_address)?;
+	let mut endpoint = quinn::Endpoint::client(config.bind)?;
 	endpoint.set_default_client_config(quinn_client_config);
 
-	let session = webtransport_quinn::connect(&endpoint, &config.uri)
+	let uri = http::Uri::builder()
+		.scheme("https")
+		.authority(config.host)
+		.path_and_query(config.name)
+		.build()
+		.context("failed to build uri")?;
+
+	let session = webtransport_quinn::connect(&endpoint, &uri)
 		.await
 		.context("failed to create WebTransport session")?;
 
