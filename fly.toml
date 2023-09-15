@@ -6,7 +6,7 @@ kill_timeout = 5
   PORT = "4443"
 
 [experimental]
-  cmd = "./entrypoint.sh"
+  cmd = "./fly-relay.sh"
 
 [[services]]
   internal_port = 4443

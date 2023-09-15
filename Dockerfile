@@ -15,5 +15,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Runtime image
 FROM rust:latest
 
+# Fly.io entrypoint
+ADD fly-relay.sh .
+
 # Copy the compiled binaries
 COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin
