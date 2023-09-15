@@ -3,18 +3,32 @@ use std::net;
 
 #[derive(Parser, Clone, Debug)]
 pub struct Config {
-	#[arg(long, hide_short_help = true, default_value = "[::]:0")]
+	/// Listen for UDP packets on the given address.
+	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
 
-	#[arg(long, default_value = "localhost:4443")]
-	pub host: String,
+	/// Advertise this frame rate in the catalog (informational)
+	// TODO auto-detect this from the input when not provided
+	#[arg(long, default_value = "24")]
+	pub fps: u8,
 
-	#[arg(long, hide_short_help = true, default_value = "24")]
-	pub catalog_fps: u8,
+	/// Advertise this bit rate in the catalog (informational)
+	// TODO auto-detect this from the input when not provided
+	#[arg(long, default_value = "1500000")]
+	pub bitrate: u32,
 
-	#[arg(long, hide_short_help = true, default_value = "1500000")]
-	pub catalog_bit_rate: u32,
+	/// Connect to the given URI starting with moq://
+	#[arg(value_parser = moq_uri)]
+	pub uri: http::Uri,
+}
 
-	#[arg(long, required = false, default_value = "")]
-	pub name: String,
+fn moq_uri(s: &str) -> Result<http::Uri, String> {
+	let uri = http::Uri::try_from(s).map_err(|e| e.to_string())?;
+
+	// Make sure the scheme is moq
+	if uri.scheme_str() != Some("moq") {
+		return Err("uri scheme must be moq".to_string());
+	}
+
+	Ok(uri)
 }

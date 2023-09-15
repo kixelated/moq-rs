@@ -169,8 +169,8 @@ impl Media {
 				"codec": codec_str,
 				"width": width,
 				"height": height,
-				"frame_rate": config.catalog_fps,
-				"bit_rate": config.catalog_bit_rate,
+				"frame_rate": config.fps,
+				"bit_rate": config.bitrate,
 				}
 			]
 		});

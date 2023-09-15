@@ -45,17 +45,19 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 ### moq-relay
 
 **moq-relay** is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
-You can run the development server with:
+It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
+
+You can run the development server with the following command, automatically using the self-signed certificate generated earlier:
 
 ```bash
 ./dev/relay
 ```
 
-Notable flags:
+Notable arguments:
 
--   `-a <ADDR>` Listen on this address [default: [::]:4443]
--   `-c <CERT>` Use the certificate file at this path [default: dev/localhost.crt]
--   `-k <KEY>` Use the private key at this path [default: dev/localhost.key]
+-   `--bind <ADDR>` Listen on this address [default: [::]:4443]
+-   `--cert <CERT>` Use the certificate file at this path
+-   `--key <KEY>` Use the private key at this path
 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
@@ -65,19 +67,18 @@ This is exclusively to serve a `/fingerprint` endpoint via HTTPS for self-signed
 
 ### moq-pub
 
-This is a client that publishes a fMP4 file from stdin over MoQ.
-This can be combined with ffmpeg to produce a live stream from a file on disk, which is great for testing.
-You can use this command to broadcast `dev/source.mp4` to `localhost:4443` to test the relay:
+This is a client that publishes a fMP4 stream from stdin over MoQ.
+This can be combined with ffmpeg (and other tools) to produce a live stream.
+
+The following command runs a development instance, broadcasing `dev/source.mp4` to `localhost:4443`:
 
 ```bash
 ./dev/pub
 ```
 
-Notable flags:
+Notable arguments:
 
--   `--host <HOST>` connect to the given host [default: localhost:4443]
--   `--name <NAME>` produce a broadcast with the given name [default: random-uuid]
--   `--input <INPUT>` read from the input file, or `-` for stdin.
+-   `<URI>` connect to the given address, which must start with moq://.
 
 ### moq-js
 
@@ -88,7 +89,7 @@ There's a hosted version available at [quic.video](https://quic.video/).
 There's a secret `?server` parameter that can be used to connect to a different address.
 
 -   Publish to localhost: `https://quic.video/publish/?server=localhost:4443`
--   Watch from localhost: `https://quic.video/watch/<namespace>/?server=localhost:4443`
+-   Watch from localhost: `https://quic.video/watch/<name>/?server=localhost:4443`
 
 Note that self-signed certificates are ONLY supported if the server name starts with `localhost`.
 You'll need to add an entry to `/etc/hosts` if you want to use a self-signed certs and an IP address.

@@ -1,31 +1,17 @@
-use std::{fs, io, net, path, sync};
+use std::{fs, io, sync};
 
 use anyhow::Context;
 use clap::Parser;
 use ring::digest::{digest, SHA256};
 use warp::Filter;
 
+mod config;
 mod server;
 mod session;
 
-use server::*;
-use session::*;
-
-/// Search for a pattern in a file and display the lines that contain it.
-#[derive(Parser, Clone)]
-struct Cli {
-	/// Listen on this address
-	#[arg(short, long, default_value = "[::]:4443")]
-	addr: net::SocketAddr,
-
-	/// Use the certificate file at this path
-	#[arg(short, long, default_value = "dev/localhost.crt")]
-	cert: path::PathBuf,
-
-	/// Use the private key at this path
-	#[arg(short, long, default_value = "dev/localhost.key")]
-	key: path::PathBuf,
-}
+pub use config::*;
+pub use server::*;
+pub use session::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,32 +23,23 @@ async fn main() -> anyhow::Result<()> {
 		.finish();
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
-	let args = Cli::parse();
-
-	// Create a web server to serve the fingerprint
-	let serve = serve_http(args.clone());
+	let config = Config::parse();
 
 	// Create a server to actually serve the media
-	let config = ServerConfig {
-		addr: args.addr,
-		cert: args.cert,
-		key: args.key,
-	};
-
-	let server = Server::new(config).context("failed to create server")?;
+	let server = Server::new(config.clone()).context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {
 		res = server.run() => res.context("failed to run server"),
-		res = serve => res.context("failed to run HTTP server"),
+		res = serve_http(config), if config.fingerprint => res.context("failed to run HTTP server"),
 	}
 }
 
 // Run a HTTP server using Warp
 // TODO remove this when Chrome adds support for self-signed certificates using WebTransport
-async fn serve_http(args: Cli) -> anyhow::Result<()> {
+async fn serve_http(config: Config) -> anyhow::Result<()> {
 	// Read the PEM certificate file
-	let crt = fs::File::open(&args.cert)?;
+	let crt = fs::File::open(&config.cert)?;
 	let mut crt = io::BufReader::new(crt);
 
 	// Parse the DER certificate
@@ -84,9 +61,9 @@ async fn serve_http(args: Cli) -> anyhow::Result<()> {
 
 	warp::serve(routes)
 		.tls()
-		.cert_path(args.cert)
-		.key_path(args.key)
-		.run(args.addr)
+		.cert_path(config.cert)
+		.key_path(config.key)
+		.run(config.bind)
 		.await;
 
 	Ok(())

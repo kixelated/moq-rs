@@ -9,18 +9,13 @@ use media::*;
 
 use moq_transport::model::broadcast;
 
-use uuid::Uuid;
-
 // TODO: clap complete
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
-	let mut config = Config::parse();
-	if config.name.is_empty() {
-		config.name = Uuid::new_v4().to_string();
-	}
+	let config = Config::parse();
 
 	let (publisher, subscriber) = broadcast::new();
 	let mut media = Media::new(&config, publisher).await?;
@@ -44,14 +39,12 @@ async fn main() -> anyhow::Result<()> {
 	let mut endpoint = quinn::Endpoint::client(config.bind)?;
 	endpoint.set_default_client_config(quinn_client_config);
 
-	let uri = http::Uri::builder()
-		.scheme("https")
-		.authority(config.host.clone())
-		.path_and_query(format!("/{}", config.name))
-		.build()
-		.context("failed to build uri")?;
+	log::info!("connecting to {}", config.uri);
 
-	log::info!("connecting to {}", uri);
+	// Change the uri scheme to "https" for WebTransport
+	let mut parts = config.uri.into_parts();
+	parts.scheme = Some(http::uri::Scheme::HTTPS);
+	let uri = http::Uri::from_parts(parts)?;
 
 	let session = webtransport_quinn::connect(&endpoint, &uri)
 		.await
@@ -60,12 +53,6 @@ async fn main() -> anyhow::Result<()> {
 	let session = moq_transport::session::Client::publisher(session, subscriber)
 		.await
 		.context("failed to create MoQ Transport session")?;
-
-	log::info!(
-		"watch at: https://quic.video/watch/{}?server={}",
-		config.name,
-		config.host
-	);
 
 	// TODO run a task that returns a 404 for all unknown subscriptions.
 	tokio::select! {

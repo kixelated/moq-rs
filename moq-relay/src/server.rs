@@ -1,6 +1,6 @@
 use std::{
 	collections::HashMap,
-	fs, io, net, path,
+	fs, io,
 	sync::{Arc, Mutex},
 	time,
 };
@@ -10,7 +10,7 @@ use anyhow::Context;
 use moq_transport::model::broadcast;
 use tokio::task::JoinSet;
 
-use crate::Session;
+use crate::{Config, Session};
 
 pub struct Server {
 	server: quinn::Endpoint,
@@ -22,15 +22,9 @@ pub struct Server {
 	broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
 }
 
-pub struct ServerConfig {
-	pub addr: net::SocketAddr,
-	pub cert: path::PathBuf,
-	pub key: path::PathBuf,
-}
-
 impl Server {
 	// Create a new server
-	pub fn new(config: ServerConfig) -> anyhow::Result<Self> {
+	pub fn new(config: Config) -> anyhow::Result<Self> {
 		// Read the PEM certificate chain
 		let certs = fs::File::open(config.cert).context("failed to open cert file")?;
 		let mut certs = io::BufReader::new(certs);
@@ -67,7 +61,7 @@ impl Server {
 		transport_config.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
 
 		server_config.transport = Arc::new(transport_config);
-		let server = quinn::Endpoint::server(server_config, config.addr)?;
+		let server = quinn::Endpoint::server(server_config, config.bind)?;
 
 		let broadcasts = Default::default();
 		let conns = JoinSet::new();
