@@ -5,14 +5,14 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
+use crate::coding::{AsyncRead, AsyncWrite};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use webtransport_generic::{RecvStream, SendStream};
 
 use super::{DecodeError, EncodeError};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-#[error("value too large for varint encoding")]
+#[error("value out of range")]
 pub struct BoundsExceeded;
 
 /// An integer less than 2^62
@@ -24,7 +24,11 @@ pub struct BoundsExceeded;
 pub struct VarInt(u64);
 
 impl VarInt {
+	/// The largest possible value.
 	pub const MAX: Self = Self((1 << 62) - 1);
+
+	/// The smallest possible value.
+	pub const ZERO: Self = Self(0);
 
 	/// Construct a `VarInt` infallibly using the largest available type.
 	/// Larger values need to use `try_from` instead.
@@ -109,6 +113,45 @@ impl TryFrom<usize> for VarInt {
 	}
 }
 
+impl TryFrom<VarInt> for u32 {
+	type Error = BoundsExceeded;
+
+	/// Succeeds iff `x` < 2^32
+	fn try_from(x: VarInt) -> Result<Self, BoundsExceeded> {
+		if x.0 <= u32::MAX.into() {
+			Ok(x.0 as u32)
+		} else {
+			Err(BoundsExceeded)
+		}
+	}
+}
+
+impl TryFrom<VarInt> for u16 {
+	type Error = BoundsExceeded;
+
+	/// Succeeds iff `x` < 2^16
+	fn try_from(x: VarInt) -> Result<Self, BoundsExceeded> {
+		if x.0 <= u16::MAX.into() {
+			Ok(x.0 as u16)
+		} else {
+			Err(BoundsExceeded)
+		}
+	}
+}
+
+impl TryFrom<VarInt> for u8 {
+	type Error = BoundsExceeded;
+
+	/// Succeeds iff `x` < 2^8
+	fn try_from(x: VarInt) -> Result<Self, BoundsExceeded> {
+		if x.0 <= u8::MAX.into() {
+			Ok(x.0 as u8)
+		} else {
+			Err(BoundsExceeded)
+		}
+	}
+}
+
 impl fmt::Debug for VarInt {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
@@ -122,7 +165,8 @@ impl fmt::Display for VarInt {
 }
 
 impl VarInt {
-	pub async fn decode<R: RecvStream>(r: &mut R) -> Result<Self, DecodeError> {
+	/// Decode a varint from the given reader.
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let mut buf = [0u8; 8];
 		r.read_exact(buf[0..1].as_mut()).await?;
 
@@ -149,7 +193,8 @@ impl VarInt {
 		Ok(Self(x))
 	}
 
-	pub async fn encode<W: SendStream>(&self, w: &mut W) -> Result<(), EncodeError> {
+	/// Encode a varint to the given writer.
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
 			w.write_u8(x as u8).await?;
@@ -164,5 +209,12 @@ impl VarInt {
 		}
 
 		Ok(())
+	}
+}
+
+// This is a fork of quinn::VarInt.
+impl From<quinn::VarInt> for VarInt {
+	fn from(v: quinn::VarInt) -> Self {
+		Self(v.into_inner())
 	}
 }

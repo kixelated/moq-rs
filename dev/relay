@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Default to a self-signed certificate
+# TODO automatically generate if it doesn't exist.
+CERT="${CERT:-dev/localhost.crt}"
+KEY="${KEY:-dev/localhost.key}"
+
+# Run the relay and forward any arguments
+RUST_LOG=info cargo run --bin moq-relay -- --cert "$CERT" --key "$KEY" --fingerprint "$@"

@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Connect to localhost by default.
+HOST="${HOST:-localhost:4443}"
+
+# Generate a random 16 character name by default.
+NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
+
+# Combine the host and name into a URI.
+URI="${URI:-"moq://$HOST/$NAME"}"
+
+# Default to a source video
+MEDIA="${MEDIA:-dev/source.mp4}"
+
+# Run ffmpeg and pipe the output to moq-pub
+ffmpeg -hide_banner -v quiet \
+	-stream_loop -1 -re \
+	-i "$MEDIA" \
+	-an \
+	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
+	| RUST_LOG=info cargo run --bin moq-pub -- "$URI" "$@"
