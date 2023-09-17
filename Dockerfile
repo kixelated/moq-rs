@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM rust:latest
 
 LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs
-LABEL org.opencontainers.image.licenses=MIT OR Apache-2.0
+LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
 # Fly.io entrypoint
 ADD fly-relay.sh .
