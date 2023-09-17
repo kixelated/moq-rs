@@ -108,6 +108,11 @@ impl<'a, T> WatchRef<'a, T> {
 		}
 	}
 
+	// Release the lock and provide a context to wake when next updated.
+	pub fn waker(mut self, cx: &mut task::Context<'_>) {
+		self.lock.register(cx.waker());
+	}
+
 	// Upgrade to a mutable references that automatically calls notify on drop.
 	pub fn into_mut(self) -> WatchMut<'a, T> {
 		WatchMut { lock: self.lock }
