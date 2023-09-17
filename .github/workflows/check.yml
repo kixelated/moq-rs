@@ -1,29 +1,29 @@
-name: moq.rs
+name: Test & Lint
 
 on:
-  pull_request:
-    branches: [ "main" ]
+    pull_request:
+        branches: ["main"]
 
 env:
-  CARGO_TERM_COLOR: always
+    CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
+    check:
+        runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v3
+        steps:
+            - uses: actions/checkout@v3
 
-    - name: toolchain
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        components: clippy, rustfmt
+            - name: toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@v1
+              with:
+                  components: clippy, rustfmt
 
-    - name: test
-      run: cargo test --verbose
+            - name: test
+              run: cargo test --verbose
 
-    - name: clippy
-      run: cargo clippy
+            - name: clippy
+              run: cargo clippy
 
-    - name: fmt
-      run: cargo fmt --check
+            - name: fmt
+              run: cargo fmt --check
