@@ -1,3 +1,5 @@
+use std::io;
+
 use thiserror::Error;
 
 use crate::VarInt;
@@ -71,6 +73,21 @@ impl Error {
 			Self::Unknown => "unknown",
 			Self::Read => "read error",
 			Self::Write => "write error",
+		}
+	}
+
+	/// Crudely tries to convert the Error into an io::Error.
+	pub fn as_io(&self) -> io::Error {
+		match self {
+			Self::Closed => io::ErrorKind::ConnectionAborted.into(),
+			Self::Reset(_) => io::ErrorKind::ConnectionReset.into(),
+			Self::Stop => io::ErrorKind::ConnectionAborted.into(),
+			Self::NotFound => io::ErrorKind::NotFound.into(),
+			Self::Duplicate => io::ErrorKind::AlreadyExists.into(),
+			Self::Role(_) => io::ErrorKind::PermissionDenied.into(),
+			Self::Unknown => io::ErrorKind::Other.into(),
+			Self::Read => io::ErrorKind::BrokenPipe.into(),
+			Self::Write => io::ErrorKind::BrokenPipe.into(),
 		}
 	}
 }
