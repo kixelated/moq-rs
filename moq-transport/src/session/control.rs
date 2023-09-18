@@ -24,12 +24,19 @@ impl Control {
 	pub async fn send<T: Into<Message> + fmt::Debug>(&self, msg: T) -> Result<(), Error> {
 		let mut stream = self.send.lock().await;
 		log::info!("sending message: {:?}", msg);
-		msg.into().encode(&mut *stream).await.map_err(|_e| Error::Write)
+		msg.into()
+			.encode(&mut *stream)
+			.await
+			.map_err(|e| Error::Unknown(e.to_string()))?;
+		Ok(())
 	}
 
 	// It's likely a mistake to call this from two different tasks, but it's easier to just support it.
 	pub async fn recv(&self) -> Result<Message, Error> {
 		let mut stream = self.recv.lock().await;
-		Message::decode(&mut *stream).await.map_err(|_e| Error::Read)
+		let msg = Message::decode(&mut *stream)
+			.await
+			.map_err(|e| Error::Unknown(e.to_string()))?;
+		Ok(msg)
 	}
 }

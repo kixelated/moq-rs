@@ -54,13 +54,13 @@ struct State {
 
 impl State {
 	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		self.closed?;
+		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
 	}
 
 	pub fn insert(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
-		self.closed?;
+		self.closed.clone()?;
 
 		let entry = match self.lookup.entry(segment.sequence) {
 			indexmap::map::Entry::Occupied(_entry) => return Err(Error::Duplicate),
@@ -236,9 +236,9 @@ impl Subscriber {
 				}
 
 				// Otherwise check if we need to return an error.
-				match state.closed {
+				match &state.closed {
 					Err(Error::Closed) => return Ok(None),
-					Err(err) => return Err(err),
+					Err(err) => return Err(err.clone()),
 					Ok(()) => state.changed(),
 				}
 			};

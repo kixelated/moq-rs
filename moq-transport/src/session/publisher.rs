@@ -52,7 +52,7 @@ impl Publisher {
 				}
 				// NOTE: this is not cancel safe, but it's fine since the other branch is a fatal error.
 				msg = self.control.recv() => {
-					let msg = msg.map_err(|_x| Error::Read)?;
+					let msg = msg?;
 
 					log::info!("message received: {:?}", msg);
 					if let Err(err) = self.recv_message(&msg).await {
@@ -166,15 +166,16 @@ impl Publisher {
 
 		log::debug!("serving object: {:?}", object);
 
-		let mut stream = self.webtransport.open_uni().await.map_err(|_e| Error::Write)?;
-
+		let mut stream = self.webtransport.open_uni().await?;
 		stream.set_priority(object.priority).ok();
 
-		// TODO better handle the error.
-		object.encode(&mut stream).await.map_err(|_e| Error::Write)?;
+		object
+			.encode(&mut stream)
+			.await
+			.map_err(|e| Error::Unknown(e.to_string()))?;
 
 		while let Some(data) = segment.read_chunk().await? {
-			stream.write_chunk(data).await.map_err(|_e| Error::Write)?;
+			stream.write_chunk(data).await?;
 		}
 
 		Ok(())

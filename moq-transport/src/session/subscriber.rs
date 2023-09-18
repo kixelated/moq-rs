@@ -62,7 +62,7 @@ impl Subscriber {
 
 	async fn run_inbound(mut self) -> Result<(), Error> {
 		loop {
-			let msg = self.control.recv().await.map_err(|_e| Error::Read)?;
+			let msg = self.control.recv().await?;
 
 			log::info!("message received: {:?}", msg);
 			if let Err(err) = self.recv_message(&msg).await {
@@ -95,7 +95,7 @@ impl Subscriber {
 	async fn run_streams(self) -> Result<(), Error> {
 		loop {
 			// Accept all incoming unidirectional streams.
-			let stream = self.webtransport.accept_uni().await.map_err(|_| Error::Read)?;
+			let stream = self.webtransport.accept_uni().await?;
 			let this = self.clone();
 
 			tokio::spawn(async move {
@@ -108,7 +108,9 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), Error> {
 		// Decode the object on the data stream.
-		let object = message::Object::decode(&mut stream).await.map_err(|_| Error::Read)?;
+		let object = message::Object::decode(&mut stream)
+			.await
+			.map_err(|e| Error::Unknown(e.to_string()))?;
 
 		log::debug!("received object: {:?}", object);
 
@@ -124,7 +126,7 @@ impl Subscriber {
 			})?
 		};
 
-		while let Some(data) = stream.read_chunk(usize::MAX, true).await.map_err(|_| Error::Read)? {
+		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
 			publisher.write_chunk(data.bytes)?;
 		}
 

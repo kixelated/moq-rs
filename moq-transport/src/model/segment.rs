@@ -50,7 +50,7 @@ struct State {
 
 impl State {
 	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		self.closed?;
+		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
 	}
@@ -99,7 +99,7 @@ impl Publisher {
 	/// Write a new chunk of bytes.
 	pub fn write_chunk(&mut self, data: Bytes) -> Result<(), Error> {
 		let mut state = self.state.lock_mut();
-		state.closed?;
+		state.closed.clone()?;
 		state.data.push(data);
 		Ok(())
 	}
@@ -167,9 +167,9 @@ impl Subscriber {
 					return Ok(Some(chunk));
 				}
 
-				match state.closed {
+				match &state.closed {
 					Err(Error::Closed) => return Ok(None),
-					Err(err) => return Err(err),
+					Err(err) => return Err(err.clone()),
 					Ok(()) => state.changed(),
 				}
 			};
