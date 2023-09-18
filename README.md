@@ -1,16 +1,18 @@
 # Media over QUIC
 
 <p align="center">
-	<img height="256" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg">
+	<img height="128px" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg">
 </p>
 
 Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC streams.
-See the [MoQ working group](https://datatracker.ietf.org/wg/moq/about/) for more information.
+See [quic.video](https://quic.video) for more information.
 
-This repository contains reusable libraries and a relay server.
-It requires a client to actually publish/view content, such as [moq-js](https://github.com/kixelated/moq-js).
+This repository contains a few crates:
+- **moq-relay**: A relay server, accepting content from publishers and fanning it out to subscribers.
+- **moq-pub**: A publish client, accepting media from stdin (ex. via ffmpeg) and sending it to a remote server.
+- **moq-transport**: An async implementation of the underlying MoQ protocol.
 
-Join the [Discord](https://discord.gg/FCYF3p99mr) for updates and discussion.
+There's currently no way to actually view content with `moq-rs`; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
 
 ## Setup
 
