@@ -258,7 +258,7 @@ impl Track {
 
 		// Compute the timestamp in milliseconds.
 		// Overflows after 583 million years, so we're fine.
-		let _timestamp: i32 = fragment
+		let timestamp: i32 = fragment
 			.timestamp(self.timescale)
 			.as_millis()
 			.try_into()
@@ -267,7 +267,7 @@ impl Track {
 		// Create a new segment.
 		let mut segment = self.track.create_segment(segment::Info {
 			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
-			priority: i32::MAX, // TODO
+			priority: timestamp, // newer segments are higher priority
 
 			// Delete segments after 10s.
 			expires: Some(time::Duration::from_secs(10)),
