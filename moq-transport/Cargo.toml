@@ -23,4 +23,4 @@ log = "0.4"
 indexmap = "2"
 
 quinn = "0.10"
-webtransport-quinn = "0.5.2"
+webtransport-quinn = "0.5.3"
