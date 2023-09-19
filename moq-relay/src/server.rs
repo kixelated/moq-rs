@@ -89,6 +89,8 @@ impl Server {
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
+		log::info!("listening on {}", self.server.local_addr()?);
+
 		loop {
 			tokio::select! {
 				res = self.server.accept() => {
