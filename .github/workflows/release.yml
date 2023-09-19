@@ -22,6 +22,7 @@ jobs:
         permissions:
             contents: read
             packages: write
+            id-token: write
 
         # Only one release at a time and cancel prior releases
         concurrency:
