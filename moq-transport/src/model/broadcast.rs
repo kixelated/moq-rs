@@ -45,7 +45,7 @@ impl State {
 	}
 
 	pub fn insert(&mut self, track: track::Subscriber) -> Result<(), Error> {
-		self.closed?;
+		self.closed.clone()?;
 
 		match self.tracks.entry(track.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
@@ -56,7 +56,7 @@ impl State {
 	}
 
 	pub fn request(&mut self, name: &str) -> Result<track::Subscriber, Error> {
-		self.closed?;
+		self.closed.clone()?;
 
 		// Create a new track.
 		let (publisher, subscriber) = track::new(name);
@@ -76,7 +76,7 @@ impl State {
 			return Ok(true);
 		}
 
-		self.closed?;
+		self.closed.clone()?;
 		Ok(false)
 	}
 
@@ -86,7 +86,7 @@ impl State {
 	}
 
 	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		self.closed?;
+		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
 	}

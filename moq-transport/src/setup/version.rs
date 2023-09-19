@@ -6,7 +6,7 @@ use std::ops::Deref;
 
 /// A version number negotiated during the setup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(VarInt);
+pub struct Version(pub VarInt);
 
 impl Version {
 	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html>

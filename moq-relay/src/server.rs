@@ -1,6 +1,7 @@
 use std::{
 	collections::HashMap,
-	fs, io,
+	fs,
+	io::{self, Read},
 	sync::{Arc, Mutex},
 	time,
 };
@@ -34,11 +35,25 @@ impl Server {
 			.collect();
 
 		// Read the PEM private key
-		let keys = fs::File::open(config.key).context("failed to open key file")?;
-		let mut keys = io::BufReader::new(keys);
-		let mut keys = rustls_pemfile::pkcs8_private_keys(&mut keys)?;
+		let mut keys = fs::File::open(config.key).context("failed to open key file")?;
 
-		anyhow::ensure!(keys.len() == 1, "expected a single key");
+		// Read the keys into a Vec so we can try parsing it twice.
+		let mut buf = Vec::new();
+		keys.read_to_end(&mut buf)?;
+
+		// Try to parse a PKCS#8 key
+		// -----BEGIN PRIVATE KEY-----
+		let mut keys = rustls_pemfile::pkcs8_private_keys(&mut io::Cursor::new(&buf))?;
+
+		// Try again but with EC keys this time
+		// -----BEGIN EC PRIVATE KEY-----
+		if keys.is_empty() {
+			keys = rustls_pemfile::ec_private_keys(&mut io::Cursor::new(&buf))?
+		};
+
+		anyhow::ensure!(!keys.is_empty(), "could not find private key");
+		anyhow::ensure!(keys.len() < 2, "expected a single key");
+
 		let key = rustls::PrivateKey(keys.remove(0));
 
 		let mut tls_config = rustls::ServerConfig::builder()

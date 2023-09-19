@@ -3,12 +3,16 @@ use thiserror::Error;
 use crate::VarInt;
 
 /// A MoQTransport error with an associated error code.
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
 	/// A clean termination, represented as error code 0.
 	/// This error is automatically used when publishers or subscribers are dropped without calling close.
 	#[error("closed")]
 	Closed,
+
+	/// A session error occured.
+	#[error("session error: {0}")]
+	Session(#[from] webtransport_quinn::SessionError),
 
 	/// An ANNOUNCE_RESET or SUBSCRIBE_RESET was sent by the publisher.
 	#[error("reset code={0:?}")]
@@ -31,16 +35,16 @@ pub enum Error {
 	Role(VarInt),
 
 	/// An error occured while reading from the QUIC stream.
-	#[error("failed to read from stream")]
-	Read,
+	#[error("failed to read from stream: {0}")]
+	Read(#[from] webtransport_quinn::ReadError),
 
 	/// An error occured while writing to the QUIC stream.
-	#[error("failed to write to stream")]
-	Write,
+	#[error("failed to write to stream: {0}")]
+	Write(#[from] webtransport_quinn::WriteError),
 
 	/// An unclassified error because I'm lazy. TODO classify these errors
-	#[error("unknown error")]
-	Unknown,
+	#[error("unknown error: {0}")]
+	Unknown(String),
 }
 
 impl Error {
@@ -53,9 +57,10 @@ impl Error {
 			Self::NotFound => 404,
 			Self::Role(_) => 405,
 			Self::Duplicate => 409,
-			Self::Unknown => 500,
-			Self::Write => 501,
-			Self::Read => 502,
+			Self::Unknown(_) => 500,
+			Self::Write(_) => 501,
+			Self::Read(_) => 502,
+			Self::Session(_) => 503,
 		}
 	}
 
@@ -67,10 +72,11 @@ impl Error {
 			Self::Stop => "stop",
 			Self::NotFound => "not found",
 			Self::Duplicate => "duplicate",
-			Self::Role(_msg) => "role violation",
-			Self::Unknown => "unknown",
-			Self::Read => "read error",
-			Self::Write => "write error",
+			Self::Role(_) => "role violation",
+			Self::Read(_) => "read error",
+			Self::Write(_) => "write error",
+			Self::Session(_) => "session error",
+			Self::Unknown(_) => "unknown",
 		}
 	}
 }
