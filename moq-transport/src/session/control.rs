@@ -5,7 +5,7 @@ use std::{fmt, sync::Arc};
 use tokio::sync::Mutex;
 use webtransport_quinn::{RecvStream, SendStream};
 
-use crate::{message::Message, Error};
+use crate::{message::Message, MoqError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Control {
@@ -21,22 +21,22 @@ impl Control {
 		}
 	}
 
-	pub async fn send<T: Into<Message> + fmt::Debug>(&self, msg: T) -> Result<(), Error> {
+	pub async fn send<T: Into<Message> + fmt::Debug>(&self, msg: T) -> Result<(), MoqError> {
 		let mut stream = self.send.lock().await;
 		log::info!("sending message: {:?}", msg);
 		msg.into()
 			.encode(&mut *stream)
 			.await
-			.map_err(|e| Error::Unknown(e.to_string()))?;
+			.map_err(|e| MoqError::Unknown(e.to_string()))?;
 		Ok(())
 	}
 
 	// It's likely a mistake to call this from two different tasks, but it's easier to just support it.
-	pub async fn recv(&self) -> Result<Message, Error> {
+	pub async fn recv(&self) -> Result<Message, MoqError> {
 		let mut stream = self.recv.lock().await;
 		let msg = Message::decode(&mut *stream)
 			.await
-			.map_err(|e| Error::Unknown(e.to_string()))?;
+			.map_err(|e| MoqError::Unknown(e.to_string()))?;
 		Ok(msg)
 	}
 }

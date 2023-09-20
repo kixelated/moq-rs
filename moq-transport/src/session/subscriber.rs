@@ -9,7 +9,7 @@ use crate::{
 	message,
 	message::Message,
 	model::{broadcast, segment, track},
-	Error, VarInt,
+	MoqError, VarInt,
 };
 
 use super::Control;
@@ -47,7 +47,7 @@ impl Subscriber {
 		}
 	}
 
-	pub async fn run(self) -> Result<(), Error> {
+	pub async fn run(self) -> Result<(), MoqError> {
 		let inbound = self.clone().run_inbound();
 		let streams = self.clone().run_streams();
 		let source = self.clone().run_source();
@@ -60,7 +60,7 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_inbound(mut self) -> Result<(), Error> {
+	async fn run_inbound(mut self) -> Result<(), MoqError> {
 		loop {
 			let msg = self.control.recv().await?;
 
@@ -71,28 +71,28 @@ impl Subscriber {
 		}
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), Error> {
+	async fn recv_message(&mut self, msg: &Message) -> Result<(), MoqError> {
 		match msg {
 			Message::Announce(_) => Ok(()),      // don't care
 			Message::AnnounceReset(_) => Ok(()), // also don't care
 			Message::SubscribeOk(_) => Ok(()),   // guess what, don't care
 			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
-			_ => Err(Error::Role(msg.id())),
+			_ => Err(MoqError::Role(msg.id())),
 		}
 	}
 
-	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
-		let err = Error::Reset(msg.code);
+	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), MoqError> {
+		let err = MoqError::Reset(msg.code);
 
 		let mut subscribes = self.subscribes.lock().unwrap();
-		let subscribe = subscribes.remove(&msg.id).ok_or(Error::NotFound)?;
+		let subscribe = subscribes.remove(&msg.id).ok_or(MoqError::NotFound)?;
 		subscribe.close(err)?;
 
 		Ok(())
 	}
 
-	async fn run_streams(self) -> Result<(), Error> {
+	async fn run_streams(self) -> Result<(), MoqError> {
 		loop {
 			// Accept all incoming unidirectional streams.
 			let stream = self.webtransport.accept_uni().await?;
@@ -106,18 +106,18 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_stream(self, mut stream: RecvStream) -> Result<(), Error> {
+	async fn run_stream(self, mut stream: RecvStream) -> Result<(), MoqError> {
 		// Decode the object on the data stream.
 		let object = message::Object::decode(&mut stream)
 			.await
-			.map_err(|e| Error::Unknown(e.to_string()))?;
+			.map_err(|e| MoqError::Unknown(e.to_string()))?;
 
 		log::debug!("received object: {:?}", object);
 
 		// A new scope is needed because the async compiler is dumb
 		let mut publisher = {
 			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&object.track).ok_or(Error::NotFound)?;
+			let track = subscribes.get_mut(&object.track).ok_or(MoqError::NotFound)?;
 
 			track.create_segment(segment::Info {
 				sequence: object.sequence,
@@ -133,7 +133,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_source(mut self) -> Result<(), Error> {
+	async fn run_source(mut self) -> Result<(), MoqError> {
 		while let Some(track) = self.source.next_track().await? {
 			let name = track.name.clone();
 

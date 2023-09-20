@@ -7,11 +7,11 @@
 //! These chunks are returned directly from the QUIC connection, so they may be of any size or position.
 //! A closed [Subscriber] will receive a copy of all future chunks. (fanout)
 //!
-//! The segment is closed with [Error::Closed] when all publishers or subscribers are dropped.
+//! The segment is closed with [MoqError::Closed] when all publishers or subscribers are dropped.
 use core::fmt;
 use std::{ops::Deref, sync::Arc, time};
 
-use crate::{Error, VarInt};
+use crate::{MoqError, VarInt};
 use bytes::Bytes;
 
 use super::Watch;
@@ -45,11 +45,11 @@ struct State {
 	data: Vec<Bytes>,
 
 	// Set when the publisher is dropped.
-	closed: Result<(), Error>,
+	closed: Result<(), MoqError>,
 }
 
 impl State {
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
+	pub fn close(&mut self, err: MoqError) -> Result<(), MoqError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -97,7 +97,7 @@ impl Publisher {
 	}
 
 	/// Write a new chunk of bytes.
-	pub fn write_chunk(&mut self, data: Bytes) -> Result<(), Error> {
+	pub fn write_chunk(&mut self, data: Bytes) -> Result<(), MoqError> {
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.data.push(data);
@@ -105,7 +105,7 @@ impl Publisher {
 	}
 
 	/// Close the segment with an error.
-	pub fn close(self, err: Error) -> Result<(), Error> {
+	pub fn close(self, err: MoqError) -> Result<(), MoqError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -157,7 +157,7 @@ impl Subscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
+	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, MoqError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -168,7 +168,7 @@ impl Subscriber {
 				}
 
 				match &state.closed {
-					Err(Error::Closed) => return Ok(None),
+					Err(MoqError::Closed) => return Ok(None),
 					Err(err) => return Err(err.clone()),
 					Ok(()) => state.changed(),
 				}
@@ -210,6 +210,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(Error::Closed).ok();
+		self.state.lock_mut().close(MoqError::Closed).ok();
 	}
 }

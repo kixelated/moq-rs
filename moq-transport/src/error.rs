@@ -4,7 +4,7 @@ use crate::VarInt;
 
 /// A MoQTransport error with an associated error code.
 #[derive(Clone, Debug, Error)]
-pub enum Error {
+pub enum MoqError {
 	/// A clean termination, represented as error code 0.
 	/// This error is automatically used when publishers or subscribers are dropped without calling close.
 	#[error("closed")]
@@ -47,7 +47,7 @@ pub enum Error {
 	Unknown(String),
 }
 
-impl Error {
+impl MoqError {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u32 {
 		match self {
@@ -80,3 +80,5 @@ impl Error {
 		}
 	}
 }
+
+pub type MoqResult<T> = Result<T, MoqError>;

@@ -18,6 +18,7 @@ moq-transport = { path = "../moq-transport" }
 quinn = "0.10"
 webtransport-generic = "0.5"
 webtransport-quinn = "0.5"
+http = "0.2.9"
 
 # Crypto
 ring = "0.16.20"
@@ -31,10 +32,21 @@ tokio = { version = "1.27", features = ["full"] }
 warp = { version = "0.3.3", features = ["tls"] }
 hex = "0.4.3"
 
-# Logging
+# Redis to store origins
+redis = { version = "0.23", features = [
+	"tokio-rustls-comp",
+	"connection-manager",
+] }
+
+# Error handling
+anyhow = "1.0.70"
+thiserror = "1"
+
+# CLI
 clap = { version = "4.0", features = ["derive"] }
+
+# Logging
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9.3"
-anyhow = "1.0.70"
 tracing = "0.1"
 tracing-subscriber = "0.3.0"

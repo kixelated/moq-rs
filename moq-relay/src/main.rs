@@ -6,10 +6,12 @@ use ring::digest::{digest, SHA256};
 use warp::Filter;
 
 mod config;
+mod origin;
 mod server;
 mod session;
 
 pub use config::*;
+pub use origin::*;
 pub use server::*;
 pub use session::*;
 
@@ -26,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 
 	// Create a server to actually serve the media
-	let server = Server::new(config.clone()).context("failed to create server")?;
+	let server = Server::new(config.clone()).await.context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {
