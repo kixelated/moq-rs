@@ -24,6 +24,7 @@ http = "0.2.9"
 ring = "0.16.20"
 rustls = "0.21.2"
 rustls-pemfile = "1.0.2"
+rustls-native-certs = "0.6.3"
 
 # Async stuff
 tokio = { version = "1.27", features = ["full"] }

@@ -59,11 +59,18 @@ impl Server {
 
 		// Set up a QUIC endpoint that can act as both a client and server.
 
-		// Accept the server certificate only.
+		// Create a list of acceptable root certificates.
 		let mut client_roots = rustls::RootCertStore::empty();
-		client_roots
-			.add(certs.first().unwrap())
-			.context("failed to add root cert")?;
+
+		// For local development, we'll accept our own certificate.
+		for cert in &certs {
+			client_roots.add(cert).context("failed to add our cert to roots")?;
+		}
+
+		// Add the platform's native root certificates.
+		for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
+			client_roots.add(&rustls::Certificate(cert.0)).unwrap();
+		}
 
 		let mut client_config = rustls::ClientConfig::builder()
 			.with_safe_defaults()
@@ -85,7 +92,8 @@ impl Server {
 		// Enable BBR congestion control
 		// TODO validate the implementation
 		let mut transport_config = quinn::TransportConfig::default();
-		transport_config.keep_alive_interval(Some(time::Duration::from_secs(10)));
+		transport_config.max_idle_timeout(Some(time::Duration::from_secs(10).try_into().unwrap()));
+		transport_config.keep_alive_interval(Some(time::Duration::from_secs(4))); // TODO make this smarter
 		transport_config.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
 		let transport_config = Arc::new(transport_config);
 

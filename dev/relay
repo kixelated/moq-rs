@@ -26,15 +26,18 @@ fi
 
 REDIS_PORT=${REDIS_PORT:-6400} # The default is 6379, but we'll use 6400 to avoid conflicts
 
-# Run a Redis instance
-echo "starting redis"
-REDIS_CONTAINER=$($RUNTIME run --rm -d -p "$REDIS_PORT:6379" redis:latest)
-
 # Cleanup function to stop Redis when script exits
 cleanup() {
-	echo "stopping redis"
-    $RUNTIME stop "$REDIS_CONTAINER"
+    $RUNTIME rm -f moq-redis || true
 }
+
+# Stop the redis instance if it's still running
+cleanup
+
+# Run a Redis instance
+REDIS_CONTAINER=$($RUNTIME run --rm --name moq-redis -d -p "$REDIS_PORT:6379" redis:latest)
+
+# Cleanup function to stop Redis when script exits
 trap cleanup EXIT
 
 # Run the relay and forward any arguments

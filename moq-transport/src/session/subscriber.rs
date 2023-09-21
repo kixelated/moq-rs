@@ -127,6 +127,7 @@ impl Subscriber {
 		};
 
 		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
+			// NOTE: This does not make a copy! Bytes are immutable and can be cloned to increase a ref count.
 			publisher.write_chunk(data.bytes)?;
 		}
 

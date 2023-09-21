@@ -1013,6 +1013,7 @@ dependencies = [
  "redis",
  "ring",
  "rustls 0.21.7",
+ "rustls-native-certs",
  "rustls-pemfile",
  "thiserror",
  "tokio",
