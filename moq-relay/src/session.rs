@@ -32,7 +32,9 @@ impl Session {
 			.await
 			.context("failed to receive WebTransport request")?;
 
+		// Strip any leading and trailing slashes to get the broadcast name.
 		let path = request.uri().path().to_string();
+		let path = path.trim_matches('/');
 
 		log::debug!("received WebTransport CONNECT: id={} path={}", id, path);
 
@@ -41,8 +43,6 @@ impl Session {
 			.ok()
 			.await
 			.context("failed to respond to WebTransport request")?;
-
-		log::debug!("accepted WebTransport CONNECT: id={} path={}", id, path);
 
 		// Perform the MoQ handshake.
 		let request = moq_transport::session::Server::accept(session)
@@ -54,8 +54,8 @@ impl Session {
 		let role = request.role();
 
 		match role {
-			Role::Publisher => self.serve_publisher(id, request, &path).await,
-			Role::Subscriber => self.serve_subscriber(id, request, &path).await,
+			Role::Publisher => self.serve_publisher(id, request, path).await,
+			Role::Subscriber => self.serve_subscriber(id, request, path).await,
 			Role::Both => request.reject(300),
 		};
 
@@ -77,7 +77,7 @@ impl Session {
 		}
 
 		// TODO can we do this on drop? Otherwise we might miss it.
-		self.origin.remove_broadcast(path).ok();
+		self.origin.remove_broadcast(path).await.ok();
 	}
 
 	async fn run_publisher(&mut self, request: Request, publisher: broadcast::Publisher) -> anyhow::Result<()> {

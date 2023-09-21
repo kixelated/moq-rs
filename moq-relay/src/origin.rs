@@ -41,10 +41,24 @@ impl Origin {
 			hash_map::Entry::Vacant(v) => v.insert(subscriber),
 		};
 
+		let addr = self.addr.to_string();
 		let key = Self::broadcast_key(name);
 
+		log::debug!("inserting into redis: {} {}", key, addr);
+
+		let res = redis::cmd("SET")
+			.arg(&key)
+			.arg(self.addr.to_string())
+			.arg("NX")
+			.arg("EX")
+			.arg(60 * 60 * 24 * 7) // Set the key to expire in 7 days; just in case we forget to remove it.
+			.query_async(&mut self.redis)
+			.await;
+
+		log::debug!("inserted: {:?}", res);
+
 		// Store our origin address in redis.
-		match self.redis.set_nx(key, self.addr.to_string()).await {
+		match res {
 			// TODO we should create a separate error type for redis.
 			Err(err) => Err(MoqError::Unknown(err.to_string())),
 
@@ -81,33 +95,26 @@ impl Origin {
 		// However, the downside is that we don't return an error immediately.
 		// If that's important, it can be done but it gets a bit racey.
 		tokio::spawn(async move {
-			let session = match this.connect(&name).await {
-				Ok(session) => session,
+			match this.fetch_broadcast(&name).await {
+				Ok(session) => {
+					if let Err(err) = this.run_broadcast(session, publisher).await {
+						log::warn!("failed to run broadcast: name={} err={:?}", name, err);
+					}
+				}
 				Err(err) => {
 					log::warn!("failed to fetch broadcast: name={} err={:?}", name, err);
 					publisher.close(MoqError::NotFound).ok();
-					return;
 				}
-			};
-
-			let session = match moq_transport::session::Client::subscriber(session, publisher).await {
-				Ok(session) => session,
-				Err(err) => {
-					log::warn!("failed to establish moq session: name={} err={:?}", name, err);
-					return;
-				}
-			};
-
-			if let Err(err) = session.run().await {
-				log::warn!("failed to run broadcast: name={} err={:?}", name, err);
 			}
 		});
 
 		subscriber
 	}
 
-	async fn connect(&mut self, name: &str) -> anyhow::Result<webtransport_quinn::Session> {
+	async fn fetch_broadcast(&mut self, name: &str) -> anyhow::Result<webtransport_quinn::Session> {
 		let key = Self::broadcast_key(name);
+
+		log::debug!("getting from redis: {}", key);
 
 		// Get the origin from redis.
 		let uri: Option<String> = self.redis.get(&key).await?;
@@ -118,10 +125,15 @@ impl Origin {
 		};
 
 		// Change the uri scheme to "https" for WebTransport
+		// Also we need to add the broadcast name to the path.
 		let mut parts = uri.into_parts();
 		parts.scheme = Some(http::uri::Scheme::HTTPS);
+		parts.path_and_query = Some(format!("/{}", name).parse()?);
 		let uri = http::Uri::from_parts(parts).context("failed to change scheme")?;
 
+		log::debug!("connecting to origin: {}", uri);
+
+		// Establish the webtransport session.
 		let session = webtransport_quinn::connect(&self.quic, &uri)
 			.await
 			.context("failed to create WebTransport session")?;
@@ -129,8 +141,33 @@ impl Origin {
 		Ok(session)
 	}
 
-	pub fn remove_broadcast(&self, name: &str) -> Result<(), MoqError> {
+	async fn run_broadcast(
+		&mut self,
+		session: webtransport_quinn::Session,
+		broadcast: broadcast::Publisher,
+	) -> anyhow::Result<()> {
+		let session = moq_transport::session::Client::subscriber(session, broadcast)
+			.await
+			.context("failed to establish MoQ session")?;
+
+		session.run().await.context("failed to run MoQ session")?;
+
+		Ok(())
+	}
+
+	pub async fn remove_broadcast(&mut self, name: &str) -> Result<(), MoqError> {
 		self.lookup.lock().unwrap().remove(name).ok_or(MoqError::NotFound)?;
+
+		// TODO delete only if we're still the origin to be safe.
+		let key = Self::broadcast_key(name);
+
+		log::debug!("deleting from redis: {}", key);
+
+		self.redis
+			.del(key)
+			.await
+			.map_err(|e| MoqError::Unknown(e.to_string()))?;
+
 		Ok(())
 	}
 
