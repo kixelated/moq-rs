@@ -15,13 +15,19 @@ There's currently no way to actually view content with `moq-rs`; you'll need to 
 
 ## Setup
 
-### Certificates
+You'll need [Rust](https://rustup.rs/) to build the project (duh).
+The different crates have their own requirements.
+
+### moq-relay
+
+#### Certificate
 
 Unfortunately, QUIC mandates TLS and makes local development difficult.
 If you have a valid certificate you can use it instead of self-signing.
 
 Use [mkcert](https://github.com/FiloSottile/mkcert) to generate a self-signed certificate.
-Unfortunately, this currently requires Go in order to [fork](https://github.com/FiloSottile/mkcert/pull/513) the tool.
+Unfortunately, this currently requires [Go](https://golang.org/) to be installed in order to [fork](https://github.com/FiloSottile/mkcert/pull/513) the tool.
+Somebody should get that merged or make something similar in Rust...
 
 ```bash
 ./dev/cert
@@ -32,14 +38,33 @@ The workaround is to use the `serverFingerprints` options, which requires the ce
 This is also why we're using a fork of mkcert, because it generates certificates valid for years by default.
 This limitation will be removed once Chrome uses the system CA for WebTransport.
 
-### Media
+#### Redis
 
-If you're using `moq-pub` then you'll want some test footage to broadcast.
+`moq-relay` uses a redis instance to discover other relays and share broadcasts.
+This is not relevant for development, but we still flex some of the code to make sure it works.
+
+The `./dev/relay` script will automatically host a redis instance.
+You will need either [Docker](https://www.docker.com/) or [Podman](https://podman.io/) installed.
+Otherwise you can use the `--redis` flag to point to your own instance.
+
+### moq-pub
+
+#### Media
+
+You'll want some test footage to broadcast.
+Anything works, but make sure the codec is supported by the player since `moq-pub` does not re-encode.
+
+Here's a criticially acclaimed short film:
 
 ```bash
 mkdir media
 wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/source.mp4
 ```
+
+#### ffmpeg
+
+`moq-pub` uses [ffmpeg](https://ffmpeg.org/) to convert the media to fMP4.
+You should have it installed already if you're a video nerd.
 
 ## Usage
 
