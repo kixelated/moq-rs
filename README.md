@@ -6,9 +6,10 @@ Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC streams.
 See [quic.video](https://quic.video) for more information.
 
 This repository contains a few crates:
-- **moq-relay**: A relay server, accepting content from publishers and fanning it out to subscribers.
-- **moq-pub**: A publish client, accepting media from stdin (ex. via ffmpeg) and sending it to a remote server.
-- **moq-transport**: An async implementation of the underlying MoQ protocol.
+
+-   **moq-relay**: A relay server, accepting content from publishers and fanning it out to subscribers.
+-   **moq-pub**: A publish client, accepting media from stdin (ex. via ffmpeg) and sending it to a remote server.
+-   **moq-transport**: An async implementation of the underlying MoQ protocol.
 
 There's currently no way to actually view content with `moq-rs`; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
 
@@ -46,6 +47,7 @@ wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBun
 
 **moq-relay** is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
 It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
+The relays register themselves in a redis instance, which is used to discover other relays and share broadcasts.
 
 You can run the development server with the following command, automatically using the self-signed certificate generated earlier:
 

@@ -74,17 +74,16 @@ impl Origin {
 	}
 
 	pub fn get_broadcast(&self, name: &str) -> broadcast::Subscriber {
-		let (publisher, subscriber) = match self.lookup.lock().unwrap().entry(name.to_string()) {
-			// We're already subscribed, so return the existing broadcast.
-			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
+		let mut lookup = self.lookup.lock().unwrap();
 
-			// There's no existing broadcast, so we're going to create one.
-			hash_map::Entry::Vacant(entry) => {
-				let broadcast = broadcast::new();
-				entry.insert(broadcast.1.clone());
-				broadcast
+		if let Some(broadcast) = lookup.get(name) {
+			if broadcast.closed().is_none() {
+				return broadcast.clone();
 			}
-		};
+		}
+
+		let (publisher, subscriber) = broadcast::new();
+		lookup.insert(name.to_string(), subscriber.clone());
 
 		let mut this = self.clone();
 		let name = name.to_string();

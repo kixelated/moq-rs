@@ -183,6 +183,11 @@ impl Subscriber {
 		// Request a new track if it does not exist.
 		state.into_mut().request(name)
 	}
+
+	/// Return if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub fn closed(&self) -> Option<MoqError> {
+		self.state.lock().closed.as_ref().err().cloned()
+	}
 }
 
 impl fmt::Debug for Subscriber {
