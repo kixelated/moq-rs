@@ -16,8 +16,8 @@ moq-transport = { path = "../moq-transport" }
 
 # QUIC
 quinn = "0.10"
-webtransport-generic = "0.5"
-webtransport-quinn = "0.5"
+webtransport-generic = {path = "../../webtransport-rs/webtransport-generic", version = "0.5"}
+webtransport-quinn = {path = "../../webtransport-rs/webtransport-quinn", version = "0.5.3"}
 
 # Crypto
 ring = "0.16.20"
