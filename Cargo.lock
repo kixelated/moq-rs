@@ -2128,9 +2128,9 @@ dependencies = [
 
 [[package]]
 name = "webtransport-proto"
-version = "0.4.0"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21fefb5728651d507b444659853b47896116179ea8fd0348d02de080250892c7"
+checksum = "54d41127a79f4d34112114b626f71d197c3ddf4fc82d56ccddc03a851bd0ea4f"
 dependencies = [
  "bytes",
  "http",
@@ -2139,9 +2139,9 @@ dependencies = [
 
 [[package]]
 name = "webtransport-quinn"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10cfc3592022726f4e8e5a536e68fb1ecb0b077e6b5435bd7ac3b9c97670c18c"
+checksum = "5a7cccdcf10a2fb3a18ebd51fb8734e385624cb04fde38b239dbda0f1e40ba21"
 dependencies = [
  "async-std",
  "bytes",
