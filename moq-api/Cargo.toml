@@ -1,0 +1,45 @@
+[package]
+name = "moq-api"
+description = "Media over QUIC"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq-rs"
+license = "MIT OR Apache-2.0"
+
+version = "0.0.1"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# HTTP server
+axum = "0.6"
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# JSON encoding
+serde = "1"
+serde_json = "1"
+http-serde = "1.1"
+
+# CLI
+clap = "4.4"
+
+# Database
+redis = { version = "0.23", features = [
+	"tokio-rustls-comp",
+	"connection-manager",
+] }
+url = "2.4"
+uuid = { version = "1.4.1", features = ["v4", "fast-rng", "serde"] }
+
+# Error handling
+anyhow = "1"
+log = "0.4"
+env_logger = "0.9"
+thiserror = "1"

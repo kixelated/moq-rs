@@ -112,14 +112,8 @@ impl Server {
 			.context("failed to create QUIC endpoint")?;
 		quic.set_default_client_config(client_config);
 
-		// Create the redis client.
-		let redis = redis::Client::open(config.redis).context("failed to create redis client")?;
-		let redis = redis
-			.get_tokio_connection_manager() // TODO get_tokio_connection_manager_with_backoff?
-			.await
-			.context("failed to get async redis connection")?;
-
-		let origin = Origin::new(config.origin, redis, quic.clone());
+		let api = moq_api::Client::new(config.api);
+		let origin = Origin::new(api, config.node, quic.clone());
 		let conns = JoinSet::new();
 
 		Ok(Self { quic, origin, conns })

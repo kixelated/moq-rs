@@ -21,13 +21,13 @@ pub struct Config {
 	#[arg(long, action)]
 	pub fingerprint: bool,
 
-	/// Use the Redis address to store broadcast information
+	/// Use the moq-api via HTTP to store broadcast information.
 	#[arg(long)]
-	pub redis: String,
+	pub api: http::Uri,
 
 	/// Our internal address which we advertise to other origins.
-	/// We use QUIC, so it the certificate must be valid for this address.
+	/// We use QUIC, so the certificate must be valid for this address.
 	/// This needs to be prefixed with moq://
 	#[arg(long)]
-	pub origin: http::Uri,
+	pub node: http::Uri,
 }

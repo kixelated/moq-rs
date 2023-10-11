@@ -28,7 +28,7 @@ rustls = "0.21.2"
 rustls-pemfile = "1.0.2"
 
 # Async stuff
-tokio = { version = "1.27", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 # CLI, logging, error handling
 clap = { version = "4.0", features = ["derive"] }

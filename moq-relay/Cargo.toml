@@ -13,12 +13,14 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
+moq-api = { path = "../moq-api" }
 
 # QUIC
 quinn = "0.10"
 webtransport-generic = "0.5"
 webtransport-quinn = "0.5"
-http = "0.2.9"
+http = "0.2"
+url = "2.4"
 
 # Crypto
 ring = "0.16.20"
@@ -27,17 +29,11 @@ rustls-pemfile = "1.0.2"
 rustls-native-certs = "0.6.3"
 
 # Async stuff
-tokio = { version = "1.27", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 # Web server to serve the fingerprint
 warp = { version = "0.3.3", features = ["tls"] }
 hex = "0.4.3"
-
-# Redis to store origins
-redis = { version = "0.23", features = [
-	"tokio-rustls-comp",
-	"connection-manager",
-] }
 
 # Error handling
 anyhow = "1.0.70"

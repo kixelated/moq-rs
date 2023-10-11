@@ -5,103 +5,83 @@ use std::{
 
 use anyhow::Context;
 use moq_transport::{model::broadcast, MoqError};
-use redis::{aio::ConnectionManager, AsyncCommands};
 
 #[derive(Clone)]
 pub struct Origin {
+	// An API client used to get/set broadcasts.
+	api: moq_api::Client,
+
 	// The internal address of our node, prefixed with moq://
-	addr: http::Uri,
+	node: http::Uri,
 
 	// A map of active broadcasts.
 	lookup: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
-
-	// A redis database to store active origins.
-	redis: ConnectionManager,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
 	quic: quinn::Endpoint,
 }
 
 impl Origin {
-	pub fn new(addr: http::Uri, redis: ConnectionManager, quic: quinn::Endpoint) -> Self {
+	pub fn new(api: moq_api::Client, node: http::Uri, quic: quinn::Endpoint) -> Self {
 		Self {
-			addr,
+			api,
+			node,
 			lookup: Default::default(),
-			redis,
 			quic,
 		}
 	}
 
-	pub async fn create_broadcast(&mut self, name: &str) -> Result<broadcast::Publisher, MoqError> {
+	pub async fn create_broadcast(&mut self, id: &str) -> Result<broadcast::Publisher, MoqError> {
 		let (publisher, subscriber) = broadcast::new();
 
-		// Check if a broadcast already exists by that name.
-		match self.lookup.lock().unwrap().entry(name.to_string()) {
+		// Check if a broadcast already exists by that id.
+		match self.lookup.lock().unwrap().entry(id.to_string()) {
 			hash_map::Entry::Occupied(_) => return Err(MoqError::Duplicate),
 			hash_map::Entry::Vacant(v) => v.insert(subscriber),
 		};
 
-		let addr = self.addr.to_string();
-		let key = Self::broadcast_key(name);
+		let entry = moq_api::Broadcast {
+			origin: self.node.clone(),
+		};
 
-		log::debug!("inserting into redis: {} {}", key, addr);
-
-		let res = redis::cmd("SET")
-			.arg(&key)
-			.arg(self.addr.to_string())
-			.arg("NX")
-			.arg("EX")
-			.arg(60 * 60 * 24 * 7) // Set the key to expire in 7 days; just in case we forget to remove it.
-			.query_async(&mut self.redis)
-			.await;
-
-		log::debug!("inserted: {:?}", res);
-
-		// Store our origin address in redis.
-		match res {
-			// TODO we should create a separate error type for redis.
-			Err(err) => Err(MoqError::Unknown(err.to_string())),
-
-			// We successfully inserted our origin address, so return the broadcast.
-			Ok(true) => Ok(publisher),
-
-			// A broadcast already exists with the same name, so return an error.
-			Ok(false) => {
-				self.lookup.lock().unwrap().remove(name);
-				Err(MoqError::Duplicate)
+		match self.api.set_broadcast(id, entry).await {
+			Ok(_) => Ok(publisher),
+			Err(err) => {
+				self.lookup.lock().unwrap().remove(id);
+				Err(MoqError::Unknown(err.to_string()))
 			}
 		}
 	}
 
-	pub fn get_broadcast(&self, name: &str) -> broadcast::Subscriber {
+	pub fn get_broadcast(&self, id: &str) -> broadcast::Subscriber {
 		let mut lookup = self.lookup.lock().unwrap();
 
-		if let Some(broadcast) = lookup.get(name) {
+		if let Some(broadcast) = lookup.get(id) {
 			if broadcast.closed().is_none() {
 				return broadcast.clone();
 			}
 		}
 
 		let (publisher, subscriber) = broadcast::new();
-		lookup.insert(name.to_string(), subscriber.clone());
+		lookup.insert(id.to_string(), subscriber.clone());
 
 		let mut this = self.clone();
-		let name = name.to_string();
+		let id = id.to_string();
 
-		// Rather than fetching from Redis and connecting via QUIC inline, we'll spawn a task to do it.
+		// Rather than fetching from the API and connecting via QUIC inline, we'll spawn a task to do it.
 		// This way we could stop polling this session and it won't impact other session.
-		// It also means we'll only connect to Redis and QUIC once if N subscribers suddenly show up.
+		// It also means we'll only connect the API and QUIC once if N subscribers suddenly show up.
 		// However, the downside is that we don't return an error immediately.
 		// If that's important, it can be done but it gets a bit racey.
 		tokio::spawn(async move {
-			match this.fetch_broadcast(&name).await {
+			match this.fetch_broadcast(&id).await {
 				Ok(session) => {
 					if let Err(err) = this.run_broadcast(session, publisher).await {
-						log::warn!("failed to run broadcast: name={} err={:?}", name, err);
+						log::warn!("failed to run broadcast: id={} err={:?}", id, err);
 					}
 				}
 				Err(err) => {
-					log::warn!("failed to fetch broadcast: name={} err={:?}", name, err);
+					log::warn!("failed to fetch broadcast: id={} err={:?}", id, err);
 					publisher.close(MoqError::NotFound).ok();
 				}
 			}
@@ -110,24 +90,17 @@ impl Origin {
 		subscriber
 	}
 
-	async fn fetch_broadcast(&mut self, name: &str) -> anyhow::Result<webtransport_quinn::Session> {
-		let key = Self::broadcast_key(name);
-
-		log::debug!("getting from redis: {}", key);
-
-		// Get the origin from redis.
-		let uri: Option<String> = self.redis.get(&key).await?;
-
-		let uri = match &uri {
-			Some(uri) => http::Uri::try_from(uri)?,
+	async fn fetch_broadcast(&mut self, id: &str) -> anyhow::Result<webtransport_quinn::Session> {
+		let broadcast = match self.api.get_broadcast(id).await? {
+			Some(broadcast) => broadcast,
 			None => return Err(MoqError::NotFound.into()),
 		};
 
 		// Change the uri scheme to "https" for WebTransport
-		// Also we need to add the broadcast name to the path.
-		let mut parts = uri.into_parts();
+		// Also we need to add the broadcast id to the path.
+		let mut parts = broadcast.origin.into_parts();
 		parts.scheme = Some(http::uri::Scheme::HTTPS);
-		parts.path_and_query = Some(format!("/{}", name).parse()?);
+		parts.path_and_query = Some(format!("/{}", id).parse()?);
 		let uri = http::Uri::from_parts(parts).context("failed to change scheme")?;
 
 		log::debug!("connecting to origin: {}", uri);
@@ -154,23 +127,10 @@ impl Origin {
 		Ok(())
 	}
 
-	pub async fn remove_broadcast(&mut self, name: &str) -> Result<(), MoqError> {
-		self.lookup.lock().unwrap().remove(name).ok_or(MoqError::NotFound)?;
-
-		// TODO delete only if we're still the origin to be safe.
-		let key = Self::broadcast_key(name);
-
-		log::debug!("deleting from redis: {}", key);
-
-		self.redis
-			.del(key)
-			.await
-			.map_err(|e| MoqError::Unknown(e.to_string()))?;
+	pub async fn remove_broadcast(&mut self, id: &str) -> anyhow::Result<()> {
+		self.lookup.lock().unwrap().remove(id).ok_or(MoqError::NotFound)?;
+		self.api.delete_broadcast(id).await?;
 
 		Ok(())
-	}
-
-	fn broadcast_key(name: &str) -> String {
-		format!("broadcast.{}", name)
 	}
 }
