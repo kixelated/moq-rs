@@ -22,12 +22,12 @@ ARGS=""
 
 # Connect to the given URL to get origins.
 # TODO default to a public instance?
-if [ -n "$API" ]; then
+if [ -n "${API-}" ]; then
 	ARGS="$ARGS --api $API"
 fi
 
 # Provide our node URL when registering origins.
-if [ -n "$NODE" ]; then
+if [ -n "${NODE-}" ]; then
 	ARGS="$ARGS --node $NODE"
 fi
 
