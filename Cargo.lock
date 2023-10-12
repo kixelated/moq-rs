@@ -856,16 +856,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-serde"
-version = "1.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f560b665ad9f1572cfcaf034f7fb84338a7ce945216d64a90fd81f046a3caee"
-dependencies = [
- "http",
- "serde",
-]
-
-[[package]]
 name = "httparse"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1121,7 +1111,6 @@ dependencies = [
  "axum",
  "clap",
  "env_logger",
- "http-serde",
  "hyper",
  "log",
  "redis",
@@ -1178,10 +1167,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "url",
  "warp",
- "webtransport-generic 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "webtransport-quinn",
 ]
 

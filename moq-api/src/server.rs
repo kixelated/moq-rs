@@ -7,14 +7,14 @@ use axum::{
 	routing::get,
 	Json, Router,
 };
-use clap::Parser;
+
 
 use redis::{aio::ConnectionManager, AsyncCommands};
 
 use moq_api::{ApiError, Origin};
 
 /// Runs a HTTP API to create/get origins for broadcasts.
-#[derive(Parser, Debug)]
+#[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct ServerConfig {
 	/// Listen for HTTP requests on the given address

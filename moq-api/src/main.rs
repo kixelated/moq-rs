@@ -6,7 +6,7 @@ use server::{Server, ServerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), ApiError> {
-	tracing_subscriber::fmt::init();
+	env_logger::init();
 
 	let config = ServerConfig::parse();
 	let server = Server::new(config);

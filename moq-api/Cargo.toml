@@ -28,10 +28,9 @@ reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 # JSON encoding
 serde = "1"
 serde_json = "1"
-http-serde = "1.1"
 
 # CLI
-clap = "4.4"
+clap = { version = "4", features = ["derive"] }
 
 # Database
 redis = { version = "0.23", features = [
