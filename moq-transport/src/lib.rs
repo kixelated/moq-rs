@@ -11,10 +11,10 @@
 mod coding;
 mod error;
 
+pub mod cache;
 pub mod message;
-pub mod model;
 pub mod session;
 pub mod setup;
 
 pub use coding::VarInt;
-pub use error::*;
+pub use error::MoqError;

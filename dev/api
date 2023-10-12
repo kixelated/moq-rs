@@ -1,0 +1,45 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Run the API server on port 4442 by default
+HOST="${HOST:-[::]}"
+PORT="${PORT:-4442}"
+LISTEN="${LISTEN:-$HOST:$PORT}"
+
+# Default to info log level
+export RUST_LOG="${RUST_LOG:-info}"
+
+# Check for Podman/Docker and set runtime accordingly
+if command -v podman &> /dev/null; then
+    RUNTIME=podman
+elif command -v docker &> /dev/null; then
+    RUNTIME=docker
+else
+    echo "Neither podman or docker found in PATH. Exiting."
+    exit 1
+fi
+
+REDIS_PORT=${REDIS_PORT:-6400} # The default is 6379, but we'll use 6400 to avoid conflicts
+
+# Cleanup function to stop Redis when script exits
+cleanup() {
+    $RUNTIME rm -f moq-redis || true
+}
+
+# Stop the redis instance if it's still running
+cleanup
+
+# Run a Redis instance
+REDIS_CONTAINER=$($RUNTIME run --rm --name moq-redis -d -p "$REDIS_PORT:6379" redis:latest)
+
+# Cleanup function to stop Redis when script exits
+trap cleanup EXIT
+
+# Default to a sqlite database in memory
+DATABASE="${DATABASE-sqlite::memory:}"
+
+# Run the relay and forward any arguments
+cargo run --bin moq-api -- --listen "$LISTEN" --redis "redis://localhost:$REDIS_PORT" "$@"

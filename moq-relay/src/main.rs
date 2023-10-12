@@ -6,10 +6,14 @@ use ring::digest::{digest, SHA256};
 use warp::Filter;
 
 mod config;
+mod error;
+mod origin;
 mod server;
 mod session;
 
 pub use config::*;
+pub use error::*;
+pub use origin::*;
 pub use server::*;
 pub use session::*;
 
@@ -18,15 +22,17 @@ async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
 	// Disable tracing so we don't get a bunch of Quinn spam.
+	/*
 	let tracer = tracing_subscriber::FmtSubscriber::builder()
 		.with_max_level(tracing::Level::WARN)
 		.finish();
 	tracing::subscriber::set_global_default(tracer).unwrap();
+	*/
 
 	let config = Config::parse();
 
 	// Create a server to actually serve the media
-	let server = Server::new(config.clone()).context("failed to create server")?;
+	let server = Server::new(config.clone()).await.context("failed to create server")?;
 
 	// Run all of the above
 	tokio::select! {
@@ -63,7 +69,7 @@ async fn serve_http(config: Config) -> anyhow::Result<()> {
 		.tls()
 		.cert_path(config.cert)
 		.key_path(config.key)
-		.run(config.bind)
+		.run(config.listen)
 		.await;
 
 	Ok(())

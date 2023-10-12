@@ -1,15 +1,13 @@
-use super::{Publisher, Subscriber};
-use crate::{model::broadcast, setup};
+use super::{Publisher, SessionError, Subscriber};
+use crate::{cache::broadcast, setup};
 use webtransport_quinn::{RecvStream, SendStream, Session};
-
-use anyhow::Context;
 
 /// An endpoint that connects to a URL to publish and/or consume live streams.
 pub struct Client {}
 
 impl Client {
 	/// Connect using an established WebTransport session, performing the MoQ handshake as a publisher.
-	pub async fn publisher(session: Session, source: broadcast::Subscriber) -> anyhow::Result<Publisher> {
+	pub async fn publisher(session: Session, source: broadcast::Subscriber) -> Result<Publisher, SessionError> {
 		let control = Self::send_setup(&session, setup::Role::Publisher).await?;
 
 		let publisher = Publisher::new(session, control, source);
@@ -17,7 +15,7 @@ impl Client {
 	}
 
 	/// Connect using an established WebTransport session, performing the MoQ handshake as a subscriber.
-	pub async fn subscriber(session: Session, source: broadcast::Publisher) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(session: Session, source: broadcast::Publisher) -> Result<Subscriber, SessionError> {
 		let control = Self::send_setup(&session, setup::Role::Subscriber).await?;
 
 		let subscriber = Subscriber::new(session, control, source);
@@ -31,30 +29,25 @@ impl Client {
 		}
 	*/
 
-	async fn send_setup(session: &Session, role: setup::Role) -> anyhow::Result<(SendStream, RecvStream)> {
-		let mut control = session.open_bi().await.context("failed to oen bidi stream")?;
+	async fn send_setup(session: &Session, role: setup::Role) -> Result<(SendStream, RecvStream), SessionError> {
+		let mut control = session.open_bi().await?;
 
 		let client = setup::Client {
 			role,
 			versions: vec![setup::Version::KIXEL_00].into(),
 		};
 
-		client
-			.encode(&mut control.0)
-			.await
-			.context("failed to send SETUP CLIENT")?;
+		client.encode(&mut control.0).await?;
 
-		let server = setup::Server::decode(&mut control.1)
-			.await
-			.context("failed to read SETUP")?;
+		let server = setup::Server::decode(&mut control.1).await?;
 
 		if server.version != setup::Version::KIXEL_00 {
-			anyhow::bail!("unsupported version: {:?}", server.version);
+			return Err(SessionError::Version(Some(server.version)));
 		}
 
 		// Make sure the server replied with the
 		if !client.role.is_compatible(server.role) {
-			anyhow::bail!("incompatible roles: client={:?} server={:?}", client.role, server.role);
+			return Err(SessionError::RoleIncompatible(client.role, server.role));
 		}
 
 		Ok(control)

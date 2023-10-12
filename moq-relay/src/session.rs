@@ -1,20 +1,17 @@
-use std::{
-	collections::{hash_map, HashMap},
-	sync::{Arc, Mutex},
-};
-
 use anyhow::Context;
 
-use moq_transport::{model::broadcast, session::Request, setup::Role};
+use moq_transport::{cache::broadcast, session::Request, setup::Role, MoqError};
+
+use crate::Origin;
 
 #[derive(Clone)]
 pub struct Session {
-	broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
+	origin: Origin,
 }
 
 impl Session {
-	pub fn new(broadcasts: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>) -> Self {
-		Self { broadcasts }
+	pub fn new(origin: Origin) -> Self {
+		Self { origin }
 	}
 
 	pub async fn run(&mut self, conn: quinn::Connecting) -> anyhow::Result<()> {
@@ -35,7 +32,8 @@ impl Session {
 			.await
 			.context("failed to receive WebTransport request")?;
 
-		let path = request.uri().path().to_string();
+		// Strip any leading and trailing slashes to get the broadcast name.
+		let path = request.url().path().trim_matches('/').to_string();
 
 		log::debug!("received WebTransport CONNECT: id={} path={}", id, path);
 
@@ -44,8 +42,6 @@ impl Session {
 			.ok()
 			.await
 			.context("failed to respond to WebTransport request")?;
-
-		log::debug!("accepted WebTransport CONNECT: id={} path={}", id, path);
 
 		// Perform the MoQ handshake.
 		let request = moq_transport::session::Server::accept(session)
@@ -59,7 +55,10 @@ impl Session {
 		match role {
 			Role::Publisher => self.serve_publisher(id, request, &path).await,
 			Role::Subscriber => self.serve_subscriber(id, request, &path).await,
-			Role::Both => request.reject(300),
+			Role::Both => {
+				log::warn!("role both not supported: id={}", id);
+				request.reject(300);
+			}
 		};
 
 		log::debug!("closing connection: id={}", id);
@@ -70,18 +69,20 @@ impl Session {
 	async fn serve_publisher(&mut self, id: usize, request: Request, path: &str) {
 		log::info!("serving publisher: id={}, path={}", id, path);
 
-		let (publisher, subscriber) = broadcast::new();
-
-		match self.broadcasts.lock().unwrap().entry(path.to_string()) {
-			hash_map::Entry::Occupied(_) => return request.reject(409),
-			hash_map::Entry::Vacant(entry) => entry.insert(subscriber),
+		let broadcast = match self.origin.create_broadcast(path).await {
+			Ok(broadcast) => broadcast,
+			Err(err) => {
+				log::warn!("error accepting publisher: id={} path={} err={:#?}", id, path, err);
+				return request.reject(err.code());
+			}
 		};
 
-		if let Err(err) = self.run_publisher(request, publisher).await {
-			log::warn!("error serving pubisher: id={} path={} err={:?}", id, path, err);
+		if let Err(err) = self.run_publisher(request, broadcast).await {
+			log::warn!("error serving publisher: id={} path={} err={:#?}", id, path, err);
 		}
 
-		self.broadcasts.lock().unwrap().remove(path);
+		// TODO can we do this on drop? Otherwise we might miss it.
+		self.origin.remove_broadcast(path).await.ok();
 	}
 
 	async fn run_publisher(&mut self, request: Request, publisher: broadcast::Publisher) -> anyhow::Result<()> {
@@ -93,15 +94,10 @@ impl Session {
 	async fn serve_subscriber(&mut self, id: usize, request: Request, path: &str) {
 		log::info!("serving subscriber: id={} path={}", id, path);
 
-		let broadcast = match self.broadcasts.lock().unwrap().get(path) {
-			Some(broadcast) => broadcast.clone(),
-			None => {
-				return request.reject(404);
-			}
-		};
+		let broadcast = self.origin.get_broadcast(path);
 
 		if let Err(err) = self.run_subscriber(request, broadcast).await {
-			log::warn!("error serving subscriber: id={} path={} err={:?}", id, path, err);
+			log::warn!("error serving subscriber: id={} path={} err={:#?}", id, path, err);
 		}
 	}
 

@@ -10,14 +10,14 @@
 //! Segments will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Subscriber] will receive a copy of all new segment going forward (fanout).
 //!
-//! The track is closed with [Error::Closed] when all publishers or subscribers are dropped.
+//! The track is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 
 use std::{collections::BinaryHeap, fmt, ops::Deref, sync::Arc, time};
 
 use indexmap::IndexMap;
 
-use super::{segment, Watch};
-use crate::{Error, VarInt};
+use super::{segment, CacheError, Watch};
+use crate::VarInt;
 
 /// Create a track with the given name.
 pub fn new(name: &str) -> (Publisher, Subscriber) {
@@ -49,21 +49,21 @@ struct State {
 	pruned: usize,
 
 	// Set when the publisher is closed/dropped, or all subscribers are dropped.
-	closed: Result<(), Error>,
+	closed: Result<(), CacheError>,
 }
 
 impl State {
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
+	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
 	}
 
-	pub fn insert(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
+	pub fn insert(&mut self, segment: segment::Subscriber) -> Result<(), CacheError> {
 		self.closed.clone()?;
 
 		let entry = match self.lookup.entry(segment.sequence) {
-			indexmap::map::Entry::Occupied(_entry) => return Err(Error::Duplicate),
+			indexmap::map::Entry::Occupied(_entry) => return Err(CacheError::Duplicate),
 			indexmap::map::Entry::Vacant(entry) => entry,
 		};
 
@@ -144,19 +144,19 @@ impl Publisher {
 	}
 
 	/// Insert a new segment.
-	pub fn insert_segment(&mut self, segment: segment::Subscriber) -> Result<(), Error> {
+	pub fn insert_segment(&mut self, segment: segment::Subscriber) -> Result<(), CacheError> {
 		self.state.lock_mut().insert(segment)
 	}
 
 	/// Create an insert a segment with the given info.
-	pub fn create_segment(&mut self, info: segment::Info) -> Result<segment::Publisher, Error> {
+	pub fn create_segment(&mut self, info: segment::Info) -> Result<segment::Publisher, CacheError> {
 		let (publisher, subscriber) = segment::new(info);
 		self.insert_segment(subscriber)?;
 		Ok(publisher)
 	}
 
 	/// Close the segment with an error.
-	pub fn close(self, err: Error) -> Result<(), Error> {
+	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -206,8 +206,8 @@ impl Subscriber {
 		}
 	}
 
-	/// Block until the next segment arrives, or return None if the track is [Error::Closed].
-	pub async fn next_segment(&mut self) -> Result<Option<segment::Subscriber>, Error> {
+	/// Block until the next segment arrives, or return None if the track is [CacheError::Closed].
+	pub async fn next_segment(&mut self) -> Result<Option<segment::Subscriber>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -237,7 +237,7 @@ impl Subscriber {
 
 				// Otherwise check if we need to return an error.
 				match &state.closed {
-					Err(Error::Closed) => return Ok(None),
+					Err(CacheError::Closed) => return Ok(None),
 					Err(err) => return Err(err.clone()),
 					Ok(()) => state.changed(),
 				}
@@ -279,7 +279,7 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(Error::Closed).ok();
+		self.state.lock_mut().close(CacheError::Closed).ok();
 	}
 }
 

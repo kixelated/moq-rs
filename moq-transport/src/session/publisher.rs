@@ -7,13 +7,13 @@ use tokio::task::AbortHandle;
 use webtransport_quinn::{RecvStream, SendStream, Session};
 
 use crate::{
+	cache::{broadcast, segment, track, CacheError},
 	message,
 	message::Message,
-	model::{broadcast, segment, track},
-	Error, VarInt,
+	MoqError, VarInt,
 };
 
-use super::Control;
+use super::{Control, SessionError};
 
 /// Serves broadcasts over the network, automatically handling subscriptions and caching.
 // TODO Clone specific fields when a task actually needs it.
@@ -39,16 +39,30 @@ impl Publisher {
 	}
 
 	// TODO Serve a broadcast without sending an ANNOUNCE.
-	// fn serve(&mut self, broadcast: broadcast::Subscriber) -> Result<(), Error> {
+	// fn serve(&mut self, broadcast: broadcast::Subscriber) -> Result<(), SessionError> {
 
 	// TODO Wait until the next subscribe that doesn't route to an ANNOUNCE.
-	// pub async fn subscribed(&mut self) -> Result<track::Producer, Error> {
+	// pub async fn subscribed(&mut self) -> Result<track::Producer, SessionError> {
 
-	pub async fn run(mut self) -> Result<(), Error> {
+	pub async fn run(mut self) -> Result<(), SessionError> {
+		let res = self.run_inner().await;
+
+		// Terminate all active subscribes on error.
+		self.subscribes
+			.lock()
+			.unwrap()
+			.drain()
+			.for_each(|(_, abort)| abort.abort());
+
+		res
+	}
+
+	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
 		loop {
 			tokio::select! {
-				_stream = self.webtransport.accept_uni() => {
-					return Err(Error::Role(VarInt::ZERO));
+				stream = self.webtransport.accept_uni() => {
+					stream?;
+					return Err(SessionError::RoleViolation(VarInt::ZERO));
 				}
 				// NOTE: this is not cancel safe, but it's fine since the other branch is a fatal error.
 				msg = self.control.recv() => {
@@ -63,27 +77,27 @@ impl Publisher {
 		}
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), Error> {
+	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
 			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
 			Message::AnnounceStop(msg) => self.recv_announce_stop(msg).await,
 			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
 			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
-			_ => Err(Error::Role(msg.id())),
+			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
 
-	async fn recv_announce_ok(&mut self, _msg: &message::AnnounceOk) -> Result<(), Error> {
+	async fn recv_announce_ok(&mut self, _msg: &message::AnnounceOk) -> Result<(), SessionError> {
 		// We didn't send an announce.
-		Err(Error::NotFound)
+		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), Error> {
+	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), SessionError> {
 		// We didn't send an announce.
-		Err(Error::NotFound)
+		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_subscribe(&mut self, msg: &message::Subscribe) -> Result<(), Error> {
+	async fn recv_subscribe(&mut self, msg: &message::Subscribe) -> Result<(), SessionError> {
 		// Assume that the subscribe ID is unique for now.
 		let abort = match self.start_subscribe(msg.clone()) {
 			Ok(abort) => abort,
@@ -92,14 +106,14 @@ impl Publisher {
 
 		// Insert the abort handle into the lookup table.
 		match self.subscribes.lock().unwrap().entry(msg.id) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate), // TODO fatal, because we already started the task
+			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate.into()), // TODO fatal, because we already started the task
 			hash_map::Entry::Vacant(entry) => entry.insert(abort),
 		};
 
 		self.control.send(message::SubscribeOk { id: msg.id }).await
 	}
 
-	async fn reset_subscribe(&mut self, id: VarInt, err: Error) -> Result<(), Error> {
+	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
 		let msg = message::SubscribeReset {
 			id,
 			code: err.code(),
@@ -109,10 +123,10 @@ impl Publisher {
 		self.control.send(msg).await
 	}
 
-	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, Error> {
+	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
 		// We currently don't use the namespace field in SUBSCRIBE
 		if !msg.namespace.is_empty() {
-			return Err(Error::NotFound);
+			return Err(CacheError::NotFound.into());
 		}
 
 		let mut track = self.source.get_track(&msg.name)?;
@@ -125,11 +139,11 @@ impl Publisher {
 
 			let res = this.run_subscribe(msg.id, &mut track).await;
 			if let Err(err) = &res {
-				log::warn!("failed to serve track: name={} err={:?}", track.name, err);
+				log::warn!("failed to serve track: name={} err={:#?}", track.name, err);
 			}
 
 			// Make sure we send a reset at the end.
-			let err = res.err().unwrap_or(Error::Closed);
+			let err = res.err().unwrap_or(CacheError::Closed.into());
 			this.reset_subscribe(msg.id, err).await.ok();
 
 			// We're all done, so clean up the abort handle.
@@ -139,7 +153,7 @@ impl Publisher {
 		Ok(handle.abort_handle())
 	}
 
-	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), Error> {
+	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), SessionError> {
 		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
 
 		while let Some(mut segment) = track.next_segment().await? {
@@ -156,7 +170,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), Error> {
+	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
 		let object = message::Object {
 			track: id,
 			sequence: segment.sequence,
@@ -172,7 +186,7 @@ impl Publisher {
 		object
 			.encode(&mut stream)
 			.await
-			.map_err(|e| Error::Unknown(e.to_string()))?;
+			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
 		while let Some(data) = segment.read_chunk().await? {
 			stream.write_chunk(data).await?;
@@ -181,10 +195,15 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), Error> {
-		let abort = self.subscribes.lock().unwrap().remove(&msg.id).ok_or(Error::NotFound)?;
+	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), SessionError> {
+		let abort = self
+			.subscribes
+			.lock()
+			.unwrap()
+			.remove(&msg.id)
+			.ok_or(CacheError::NotFound)?;
 		abort.abort();
 
-		self.reset_subscribe(msg.id, Error::Stop).await
+		self.reset_subscribe(msg.id, CacheError::Stop).await
 	}
 }

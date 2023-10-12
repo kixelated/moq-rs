@@ -6,13 +6,12 @@ use std::{
 };
 
 use crate::{
+	cache::{broadcast, segment, track, CacheError},
 	message,
 	message::Message,
-	model::{broadcast, segment, track},
-	Error, VarInt,
+	session::{Control, SessionError},
+	VarInt,
 };
-
-use super::Control;
 
 /// Receives broadcasts over the network, automatically handling subscriptions and caching.
 // TODO Clone specific fields when a task actually needs it.
@@ -47,7 +46,7 @@ impl Subscriber {
 		}
 	}
 
-	pub async fn run(self) -> Result<(), Error> {
+	pub async fn run(self) -> Result<(), SessionError> {
 		let inbound = self.clone().run_inbound();
 		let streams = self.clone().run_streams();
 		let source = self.clone().run_source();
@@ -60,7 +59,7 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_inbound(mut self) -> Result<(), Error> {
+	async fn run_inbound(mut self) -> Result<(), SessionError> {
 		loop {
 			let msg = self.control.recv().await?;
 
@@ -71,28 +70,28 @@ impl Subscriber {
 		}
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), Error> {
+	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
 			Message::Announce(_) => Ok(()),      // don't care
 			Message::AnnounceReset(_) => Ok(()), // also don't care
 			Message::SubscribeOk(_) => Ok(()),   // guess what, don't care
 			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
-			_ => Err(Error::Role(msg.id())),
+			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
 
-	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), Error> {
-		let err = Error::Reset(msg.code);
+	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), SessionError> {
+		let err = CacheError::Reset(msg.code);
 
 		let mut subscribes = self.subscribes.lock().unwrap();
-		let subscribe = subscribes.remove(&msg.id).ok_or(Error::NotFound)?;
+		let subscribe = subscribes.remove(&msg.id).ok_or(CacheError::NotFound)?;
 		subscribe.close(err)?;
 
 		Ok(())
 	}
 
-	async fn run_streams(self) -> Result<(), Error> {
+	async fn run_streams(self) -> Result<(), SessionError> {
 		loop {
 			// Accept all incoming unidirectional streams.
 			let stream = self.webtransport.accept_uni().await?;
@@ -100,24 +99,24 @@ impl Subscriber {
 
 			tokio::spawn(async move {
 				if let Err(err) = this.run_stream(stream).await {
-					log::warn!("failed to receive stream: err={:?}", err);
+					log::warn!("failed to receive stream: err={:#?}", err);
 				}
 			});
 		}
 	}
 
-	async fn run_stream(self, mut stream: RecvStream) -> Result<(), Error> {
+	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
 		let object = message::Object::decode(&mut stream)
 			.await
-			.map_err(|e| Error::Unknown(e.to_string()))?;
+			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
 		log::debug!("received object: {:?}", object);
 
 		// A new scope is needed because the async compiler is dumb
 		let mut publisher = {
 			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&object.track).ok_or(Error::NotFound)?;
+			let track = subscribes.get_mut(&object.track).ok_or(CacheError::NotFound)?;
 
 			track.create_segment(segment::Info {
 				sequence: object.sequence,
@@ -127,13 +126,15 @@ impl Subscriber {
 		};
 
 		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
+			// NOTE: This does not make a copy!
+			// Bytes are immutable and ref counted.
 			publisher.write_chunk(data.bytes)?;
 		}
 
 		Ok(())
 	}
 
-	async fn run_source(mut self) -> Result<(), Error> {
+	async fn run_source(mut self) -> Result<(), SessionError> {
 		while let Some(track) = self.source.next_track().await? {
 			let name = track.name.clone();
 

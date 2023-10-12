@@ -2,23 +2,21 @@
 //!
 //! The [Publisher] can create tracks, either manually or on request.
 //! It receives all requests by a [Subscriber] for a tracks that don't exist.
-//! The simplest implementation is to close every unknown track with [Error::NotFound].
+//! The simplest implementation is to close every unknown track with [CacheError::NotFound].
 //!
 //! A [Subscriber] can request tracks by name.
 //! If the track already exists, it will be returned.
 //! If the track doesn't exist, it will be sent to [Unknown] to be handled.
 //! A [Subscriber] can be cloned to create multiple subscriptions.
 //!
-//! The broadcast is automatically closed with [Error::Closed] when [Publisher] is dropped, or all [Subscriber]s are dropped.
+//! The broadcast is automatically closed with [CacheError::Closed] when [Publisher] is dropped, or all [Subscriber]s are dropped.
 use std::{
 	collections::{hash_map, HashMap, VecDeque},
 	fmt,
 	sync::Arc,
 };
 
-use crate::Error;
-
-use super::{track, Watch};
+use super::{track, CacheError, Watch};
 
 /// Create a new broadcast.
 pub fn new() -> (Publisher, Subscriber) {
@@ -35,27 +33,27 @@ pub fn new() -> (Publisher, Subscriber) {
 struct State {
 	tracks: HashMap<String, track::Subscriber>,
 	requested: VecDeque<track::Publisher>,
-	closed: Result<(), Error>,
+	closed: Result<(), CacheError>,
 }
 
 impl State {
-	pub fn get(&self, name: &str) -> Result<Option<track::Subscriber>, Error> {
+	pub fn get(&self, name: &str) -> Result<Option<track::Subscriber>, CacheError> {
 		// Don't check closed, so we can return from cache.
 		Ok(self.tracks.get(name).cloned())
 	}
 
-	pub fn insert(&mut self, track: track::Subscriber) -> Result<(), Error> {
+	pub fn insert(&mut self, track: track::Subscriber) -> Result<(), CacheError> {
 		self.closed.clone()?;
 
 		match self.tracks.entry(track.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
+			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate),
 			hash_map::Entry::Vacant(v) => v.insert(track),
 		};
 
 		Ok(())
 	}
 
-	pub fn request(&mut self, name: &str) -> Result<track::Subscriber, Error> {
+	pub fn request(&mut self, name: &str) -> Result<track::Subscriber, CacheError> {
 		self.closed.clone()?;
 
 		// Create a new track.
@@ -70,7 +68,7 @@ impl State {
 		Ok(subscriber)
 	}
 
-	pub fn has_next(&self) -> Result<bool, Error> {
+	pub fn has_next(&self) -> Result<bool, CacheError> {
 		// Check if there's any elements in the queue before checking closed.
 		if !self.requested.is_empty() {
 			return Ok(true);
@@ -85,7 +83,7 @@ impl State {
 		self.requested.pop_front().expect("no entry in queue")
 	}
 
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
+	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -117,19 +115,19 @@ impl Publisher {
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
-	pub fn create_track(&mut self, name: &str) -> Result<track::Publisher, Error> {
+	pub fn create_track(&mut self, name: &str) -> Result<track::Publisher, CacheError> {
 		let (publisher, subscriber) = track::new(name);
 		self.state.lock_mut().insert(subscriber)?;
 		Ok(publisher)
 	}
 
 	/// Insert a track into the broadcast.
-	pub fn insert_track(&mut self, track: track::Subscriber) -> Result<(), Error> {
+	pub fn insert_track(&mut self, track: track::Subscriber) -> Result<(), CacheError> {
 		self.state.lock_mut().insert(track)
 	}
 
 	/// Block until the next track requested by a subscriber.
-	pub async fn next_track(&mut self) -> Result<Option<track::Publisher>, Error> {
+	pub async fn next_track(&mut self) -> Result<Option<track::Publisher>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -145,7 +143,7 @@ impl Publisher {
 	}
 
 	/// Close the broadcast with an error.
-	pub fn close(self, err: Error) -> Result<(), Error> {
+	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -173,8 +171,8 @@ impl Subscriber {
 
 	/// Get a track from the broadcast by name.
 	/// If the track does not exist, it will be created and potentially fufilled by the publisher (via Unknown).
-	/// Otherwise, it will return [Error::NotFound].
-	pub fn get_track(&self, name: &str) -> Result<track::Subscriber, Error> {
+	/// Otherwise, it will return [CacheError::NotFound].
+	pub fn get_track(&self, name: &str) -> Result<track::Subscriber, CacheError> {
 		let state = self.state.lock();
 		if let Some(track) = state.get(name)? {
 			return Ok(track);
@@ -182,6 +180,11 @@ impl Subscriber {
 
 		// Request a new track if it does not exist.
 		state.into_mut().request(name)
+	}
+
+	/// Return if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub fn closed(&self) -> Option<CacheError> {
+		self.state.lock().closed.as_ref().err().cloned()
 	}
 }
 
@@ -206,6 +209,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(Error::Closed).ok();
+		self.state.lock_mut().close(CacheError::Closed).ok();
 	}
 }

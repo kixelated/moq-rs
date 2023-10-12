@@ -14,12 +14,14 @@
 
 mod client;
 mod control;
+mod error;
 mod publisher;
 mod server;
 mod subscriber;
 
 pub use client::*;
 pub(crate) use control::*;
+pub use error::*;
 pub use publisher::*;
 pub use server::*;
 pub use subscriber::*;
