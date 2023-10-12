@@ -45,7 +45,7 @@ Notable arguments:
 
 -   `<URL>` connect to the given address, which must start with `https://` for WebTransport.
 
-**NOTE**: We're very particular about the fMP4 ingested. See [this script](dev/pub] for the required ffmpeg flags.
+**NOTE**: We're very particular about the fMP4 ingested. See [this script](dev/pub) for the required ffmpeg flags.
 
 ### moq-transport
 
