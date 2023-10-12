@@ -4,41 +4,34 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
+# Use info logging by default
+export RUST_LOG="${RUST_LOG:-info}"
+
 # Default to a self-signed certificate
 # TODO automatically generate if it doesn't exist.
 CERT="${CERT:-dev/localhost.crt}"
 KEY="${KEY:-dev/localhost.key}"
 
-BIND="${BIND:-[::]}"
+# Default to listening on localhost:4443
+HOST="${HOST:-[::]}"
 PORT="${PORT:-4443}"
+LISTEN="${LISTEN:-$HOST:$PORT}"
 
-export RUST_LOG="${RUST_LOG:-debug}"
+# A list of optional args
+ARGS=""
 
-# Check for Podman/Docker and set runtime accordingly
-if command -v podman &> /dev/null; then
-    RUNTIME=podman
-elif command -v docker &> /dev/null; then
-    RUNTIME=docker
-else
-    echo "Neither podman or docker found in PATH. Exiting."
-    exit 1
+# Connect to the given URL to get origins.
+# TODO default to a public instance?
+if [ -n "$API" ]; then
+	ARGS="$ARGS --api $API"
 fi
 
-REDIS_PORT=${REDIS_PORT:-6400} # The default is 6379, but we'll use 6400 to avoid conflicts
+# Provide our node URL when registering origins.
+if [ -n "$NODE" ]; then
+	ARGS="$ARGS --node $NODE"
+fi
 
-# Cleanup function to stop Redis when script exits
-cleanup() {
-    $RUNTIME rm -f moq-redis || true
-}
-
-# Stop the redis instance if it's still running
-cleanup
-
-# Run a Redis instance
-REDIS_CONTAINER=$($RUNTIME run --rm --name moq-redis -d -p "$REDIS_PORT:6379" redis:latest)
-
-# Cleanup function to stop Redis when script exits
-trap cleanup EXIT
+echo "Publish URL: https://quic.video/publish/?server=localhost:${PORT}"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "${BIND}:${PORT}" --cert "$CERT" --key "$KEY" --fingerprint --redis "redis://localhost:$REDIS_PORT" --origin "moq://localhost:$PORT" -- "$@"
+cargo run --bin moq-relay -- --listen "$LISTEN" --cert "$CERT" --key "$KEY" --fingerprint $ARGS -- "$@"

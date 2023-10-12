@@ -7,7 +7,7 @@ use cli::*;
 mod media;
 use media::*;
 
-use moq_transport::model::broadcast;
+use moq_transport::cache::broadcast;
 
 // TODO: clap complete
 
@@ -39,14 +39,9 @@ async fn main() -> anyhow::Result<()> {
 	let mut endpoint = quinn::Endpoint::client(config.bind)?;
 	endpoint.set_default_client_config(quinn_client_config);
 
-	log::info!("connecting to {}", config.uri);
+	log::info!("connecting to relay: url={}", config.url);
 
-	// Change the uri scheme to "https" for WebTransport
-	let mut parts = config.uri.into_parts();
-	parts.scheme = Some(http::uri::Scheme::HTTPS);
-	let uri = http::Uri::from_parts(parts)?;
-
-	let session = webtransport_quinn::connect(&endpoint, &uri)
+	let session = webtransport_quinn::connect(&endpoint, &config.url)
 		.await
 		.context("failed to create WebTransport session")?;
 

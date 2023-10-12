@@ -1,7 +1,7 @@
 mod client;
+mod error;
 mod model;
-mod server;
 
 pub use client::*;
+pub use error::*;
 pub use model::*;
-pub use server::*;

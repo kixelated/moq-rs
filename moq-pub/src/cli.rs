@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::net;
+use url::Url;
 
 #[derive(Parser, Clone, Debug)]
 pub struct Config {
@@ -17,18 +18,18 @@ pub struct Config {
 	#[arg(long, default_value = "1500000")]
 	pub bitrate: u32,
 
-	/// Connect to the given URI starting with moq://
-	#[arg(value_parser = moq_uri)]
-	pub uri: http::Uri,
+	/// Connect to the given URL starting with https://
+	#[arg(value_parser = moq_url)]
+	pub url: Url,
 }
 
-fn moq_uri(s: &str) -> Result<http::Uri, String> {
-	let uri = http::Uri::try_from(s).map_err(|e| e.to_string())?;
+fn moq_url(s: &str) -> Result<Url, String> {
+	let url = Url::try_from(s).map_err(|e| e.to_string())?;
 
 	// Make sure the scheme is moq
-	if uri.scheme_str() != Some("moq") {
-		return Err("uri scheme must be moq".to_string());
+	if url.scheme() != "https" {
+		return Err("url scheme must be https:// for WebTransport".to_string());
 	}
 
-	Ok(uri)
+	Ok(url)
 }

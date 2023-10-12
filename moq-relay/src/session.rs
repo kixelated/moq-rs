@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use moq_transport::{model::broadcast, session::Request, setup::Role};
+use moq_transport::{cache::broadcast, session::Request, setup::Role, MoqError};
 
 use crate::Origin;
 
@@ -33,8 +33,7 @@ impl Session {
 			.context("failed to receive WebTransport request")?;
 
 		// Strip any leading and trailing slashes to get the broadcast name.
-		let path = request.uri().path().to_string();
-		let path = path.trim_matches('/');
+		let path = request.url().path().trim_matches('/').to_string();
 
 		log::debug!("received WebTransport CONNECT: id={} path={}", id, path);
 
@@ -54,9 +53,12 @@ impl Session {
 		let role = request.role();
 
 		match role {
-			Role::Publisher => self.serve_publisher(id, request, path).await,
-			Role::Subscriber => self.serve_subscriber(id, request, path).await,
-			Role::Both => request.reject(300),
+			Role::Publisher => self.serve_publisher(id, request, &path).await,
+			Role::Subscriber => self.serve_subscriber(id, request, &path).await,
+			Role::Both => {
+				log::warn!("role both not supported: id={}", id);
+				request.reject(300);
+			}
 		};
 
 		log::debug!("closing connection: id={}", id);
@@ -69,11 +71,14 @@ impl Session {
 
 		let broadcast = match self.origin.create_broadcast(path).await {
 			Ok(broadcast) => broadcast,
-			Err(err) => return request.reject(err.code()),
+			Err(err) => {
+				log::warn!("error accepting publisher: id={} path={} err={:#?}", id, path, err);
+				return request.reject(err.code());
+			}
 		};
 
 		if let Err(err) = self.run_publisher(request, broadcast).await {
-			log::warn!("error serving pubisher: id={} path={} err={:?}", id, path, err);
+			log::warn!("error serving publisher: id={} path={} err={:#?}", id, path, err);
 		}
 
 		// TODO can we do this on drop? Otherwise we might miss it.
@@ -92,7 +97,7 @@ impl Session {
 		let broadcast = self.origin.get_broadcast(path);
 
 		if let Err(err) = self.run_subscriber(request, broadcast).await {
-			log::warn!("error serving subscriber: id={} path={} err={:?}", id, path, err);
+			log::warn!("error serving subscriber: id={} path={} err={:#?}", id, path, err);
 		}
 	}
 

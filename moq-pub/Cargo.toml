@@ -18,9 +18,10 @@ moq-transport = { path = "../moq-transport" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.5"
+#webtransport-quinn = "0.5"
+webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn", version = "0.6" }
 webtransport-generic = "0.5"
-http = "0.2.9"
+url = "2"
 
 # Crypto
 ring = "0.16.20"
@@ -41,6 +42,6 @@ serde_json = "1.0.105"
 rfc6381-codec = "0.1.0"
 
 [build-dependencies]
-http = "0.2.9"
 clap = { version = "4.0", features = ["derive"] }
 clap_mangen = "0.2.12"
+url = "2"

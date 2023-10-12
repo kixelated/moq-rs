@@ -1,9 +1,7 @@
-use super::{Publisher, Subscriber};
-use crate::{model::broadcast, setup};
+use super::{Publisher, SessionError, Subscriber};
+use crate::{cache::broadcast, setup};
 
 use webtransport_quinn::{RecvStream, SendStream, Session};
-
-use anyhow::Context;
 
 /// An endpoint that accepts connections, publishing and/or consuming live streams.
 pub struct Server {}
@@ -12,18 +10,16 @@ impl Server {
 	/// Accept an established Webtransport session, performing the MoQ handshake.
 	///
 	/// This returns a [Request] half-way through the handshake that allows the application to accept or deny the session.
-	pub async fn accept(session: Session) -> anyhow::Result<Request> {
-		let mut control = session.accept_bi().await.context("failed to accept bidi stream")?;
+	pub async fn accept(session: Session) -> Result<Request, SessionError> {
+		let mut control = session.accept_bi().await?;
 
-		let client = setup::Client::decode(&mut control.1)
-			.await
-			.context("failed to read CLIENT SETUP")?;
+		let client = setup::Client::decode(&mut control.1).await?;
 
 		client
 			.versions
 			.iter()
 			.find(|version| **version == setup::Version::KIXEL_00)
-			.context("no supported versions")?;
+			.ok_or_else(|| SessionError::Version(client.versions.last().cloned()))?;
 
 		Ok(Request {
 			session,
@@ -42,7 +38,7 @@ pub struct Request {
 
 impl Request {
 	/// Accept the session as a publisher, using the provided broadcast to serve subscriptions.
-	pub async fn publisher(mut self, source: broadcast::Subscriber) -> anyhow::Result<Publisher> {
+	pub async fn publisher(mut self, source: broadcast::Subscriber) -> Result<Publisher, SessionError> {
 		self.send_setup(setup::Role::Publisher).await?;
 
 		let publisher = Publisher::new(self.session, self.control, source);
@@ -50,7 +46,7 @@ impl Request {
 	}
 
 	/// Accept the session as a subscriber only.
-	pub async fn subscriber(mut self, source: broadcast::Publisher) -> anyhow::Result<Subscriber> {
+	pub async fn subscriber(mut self, source: broadcast::Publisher) -> Result<Subscriber, SessionError> {
 		self.send_setup(setup::Role::Subscriber).await?;
 
 		let subscriber = Subscriber::new(self.session, self.control, source);
@@ -64,7 +60,7 @@ impl Request {
 	}
 	*/
 
-	async fn send_setup(&mut self, role: setup::Role) -> anyhow::Result<()> {
+	async fn send_setup(&mut self, role: setup::Role) -> Result<(), SessionError> {
 		let server = setup::Server {
 			role,
 			version: setup::Version::KIXEL_00,
@@ -73,17 +69,10 @@ impl Request {
 		// We need to sure we support the opposite of the client's role.
 		// ex. if the client is a publisher, we must be a subscriber ONLY.
 		if !self.client.role.is_compatible(server.role) {
-			anyhow::bail!(
-				"incompatible roles: client={:?} server={:?}",
-				self.client.role,
-				server.role
-			);
+			return Err(SessionError::RoleIncompatible(self.client.role, server.role));
 		}
 
-		server
-			.encode(&mut self.control.0)
-			.await
-			.context("failed to send setup server")?;
+		server.encode(&mut self.control.0).await?;
 
 		Ok(())
 	}

@@ -3,16 +3,20 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use anyhow::Context;
-use moq_transport::{model::broadcast, MoqError};
+use moq_transport::cache::{broadcast, CacheError};
+use url::Url;
+
+use crate::RelayError;
 
 #[derive(Clone)]
 pub struct Origin {
 	// An API client used to get/set broadcasts.
-	api: moq_api::Client,
+	// If None then we never use a remote origin.
+	api: Option<moq_api::Client>,
 
-	// The internal address of our node, prefixed with moq://
-	node: http::Uri,
+	// The internal address of our node.
+	// If None then we can never advertise ourselves as an origin.
+	node: Option<Url>,
 
 	// A map of active broadcasts.
 	lookup: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
@@ -22,7 +26,7 @@ pub struct Origin {
 }
 
 impl Origin {
-	pub fn new(api: moq_api::Client, node: http::Uri, quic: quinn::Endpoint) -> Self {
+	pub fn new(api: Option<moq_api::Client>, node: Option<Url>, quic: quinn::Endpoint) -> Self {
 		Self {
 			api,
 			node,
@@ -31,26 +35,30 @@ impl Origin {
 		}
 	}
 
-	pub async fn create_broadcast(&mut self, id: &str) -> Result<broadcast::Publisher, MoqError> {
+	pub async fn create_broadcast(&mut self, id: &str) -> Result<broadcast::Publisher, RelayError> {
 		let (publisher, subscriber) = broadcast::new();
 
 		// Check if a broadcast already exists by that id.
 		match self.lookup.lock().unwrap().entry(id.to_string()) {
-			hash_map::Entry::Occupied(_) => return Err(MoqError::Duplicate),
+			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate.into()),
 			hash_map::Entry::Vacant(v) => v.insert(subscriber),
 		};
 
-		let entry = moq_api::Broadcast {
-			origin: self.node.clone(),
-		};
+		if let Some(ref mut api) = self.api {
+			// Make a URL for the broadcast.
+			let url = self.node.as_ref().ok_or(RelayError::MissingNode)?.clone().join(id)?;
 
-		match self.api.set_broadcast(id, entry).await {
-			Ok(_) => Ok(publisher),
-			Err(err) => {
+			log::info!("announcing origin: id={} url={}", id, url);
+
+			let entry = moq_api::Origin { url };
+
+			if let Err(err) = api.set_origin(id, entry).await {
 				self.lookup.lock().unwrap().remove(id);
-				Err(MoqError::Unknown(err.to_string()))
+				return Err(err.into());
 			}
 		}
+
+		Ok(publisher)
 	}
 
 	pub fn get_broadcast(&self, id: &str) -> broadcast::Subscriber {
@@ -77,12 +85,12 @@ impl Origin {
 			match this.fetch_broadcast(&id).await {
 				Ok(session) => {
 					if let Err(err) = this.run_broadcast(session, publisher).await {
-						log::warn!("failed to run broadcast: id={} err={:?}", id, err);
+						log::warn!("failed to run broadcast: id={} err={:#?}", id, err);
 					}
 				}
 				Err(err) => {
-					log::warn!("failed to fetch broadcast: id={} err={:?}", id, err);
-					publisher.close(MoqError::NotFound).ok();
+					log::warn!("failed to fetch broadcast: id={} err={:#?}", id, err);
+					publisher.close(CacheError::NotFound).ok();
 				}
 			}
 		});
@@ -90,25 +98,23 @@ impl Origin {
 		subscriber
 	}
 
-	async fn fetch_broadcast(&mut self, id: &str) -> anyhow::Result<webtransport_quinn::Session> {
-		let broadcast = match self.api.get_broadcast(id).await? {
-			Some(broadcast) => broadcast,
-			None => return Err(MoqError::NotFound.into()),
+	async fn fetch_broadcast(&mut self, id: &str) -> Result<webtransport_quinn::Session, RelayError> {
+		// Fetch the origin from the API.
+		let api = match self.api {
+			Some(ref mut api) => api,
+
+			// We return NotFound here instead of earlier just to simulate an API fetch.
+			None => return Err(CacheError::NotFound.into()),
 		};
 
-		// Change the uri scheme to "https" for WebTransport
-		// Also we need to add the broadcast id to the path.
-		let mut parts = broadcast.origin.into_parts();
-		parts.scheme = Some(http::uri::Scheme::HTTPS);
-		parts.path_and_query = Some(format!("/{}", id).parse()?);
-		let uri = http::Uri::from_parts(parts).context("failed to change scheme")?;
+		log::info!("fetching origin: id={}", id);
 
-		log::debug!("connecting to origin: {}", uri);
+		let origin = api.get_origin(id).await?.ok_or(CacheError::NotFound)?;
+
+		log::info!("connecting to origin: url={}", origin.url);
 
 		// Establish the webtransport session.
-		let session = webtransport_quinn::connect(&self.quic, &uri)
-			.await
-			.context("failed to create WebTransport session")?;
+		let session = webtransport_quinn::connect(&self.quic, &origin.url).await?;
 
 		Ok(session)
 	}
@@ -117,19 +123,21 @@ impl Origin {
 		&mut self,
 		session: webtransport_quinn::Session,
 		broadcast: broadcast::Publisher,
-	) -> anyhow::Result<()> {
-		let session = moq_transport::session::Client::subscriber(session, broadcast)
-			.await
-			.context("failed to establish MoQ session")?;
+	) -> Result<(), RelayError> {
+		let session = moq_transport::session::Client::subscriber(session, broadcast).await?;
 
-		session.run().await.context("failed to run MoQ session")?;
+		session.run().await?;
 
 		Ok(())
 	}
 
-	pub async fn remove_broadcast(&mut self, id: &str) -> anyhow::Result<()> {
-		self.lookup.lock().unwrap().remove(id).ok_or(MoqError::NotFound)?;
-		self.api.delete_broadcast(id).await?;
+	pub async fn remove_broadcast(&mut self, id: &str) -> Result<(), RelayError> {
+		self.lookup.lock().unwrap().remove(id).ok_or(CacheError::NotFound)?;
+
+		if let Some(ref mut api) = self.api {
+			log::info!("deleting origin: id={}", id);
+			api.delete_origin(id).await?;
+		}
 
 		Ok(())
 	}

@@ -1,9 +1,11 @@
 use clap::Parser;
 
-use moq_api::{Server, ServerConfig};
+mod server;
+use moq_api::ApiError;
+use server::{Server, ServerConfig};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), ApiError> {
 	tracing_subscriber::fmt::init();
 
 	let config = ServerConfig::parse();

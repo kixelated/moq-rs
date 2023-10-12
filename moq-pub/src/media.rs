@@ -1,6 +1,6 @@
 use crate::cli::Config;
 use anyhow::{self, Context};
-use moq_transport::model::{broadcast, segment, track};
+use moq_transport::cache::{broadcast, segment, track};
 use moq_transport::VarInt;
 use mp4::{self, ReadBox};
 use serde_json::json;

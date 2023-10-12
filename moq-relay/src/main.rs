@@ -6,11 +6,13 @@ use ring::digest::{digest, SHA256};
 use warp::Filter;
 
 mod config;
+mod error;
 mod origin;
 mod server;
 mod session;
 
 pub use config::*;
+pub use error::*;
 pub use origin::*;
 pub use server::*;
 pub use session::*;
@@ -67,7 +69,7 @@ async fn serve_http(config: Config) -> anyhow::Result<()> {
 		.tls()
 		.cert_path(config.cert)
 		.key_path(config.key)
-		.run(config.bind)
+		.run(config.listen)
 		.await;
 
 	Ok(())

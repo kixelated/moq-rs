@@ -4,8 +4,11 @@
 //! The hierarchy is: [broadcast] -> [track] -> [segment] -> [Bytes](bytes::Bytes)
 
 pub mod broadcast;
+mod error;
 pub mod segment;
 pub mod track;
 
 pub(crate) mod watch;
 pub(crate) use watch::*;
+
+pub use error::*;

@@ -11,18 +11,15 @@ use clap::Parser;
 
 use redis::{aio::ConnectionManager, AsyncCommands};
 
-use anyhow::Context;
-use uuid::Uuid;
-
-use super::{Broadcast, Broadcasts};
+use moq_api::{ApiError, Origin};
 
 /// Runs a HTTP API to create/get origins for broadcasts.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct ServerConfig {
-	/// Bind to the given address
+	/// Listen for HTTP requests on the given address
 	#[arg(long)]
-	pub bind: net::SocketAddr,
+	pub listen: net::SocketAddr,
 
 	/// Connect to the given redis instance
 	#[arg(long)]
@@ -38,23 +35,22 @@ impl Server {
 		Self { config }
 	}
 
-	pub async fn run(self) -> anyhow::Result<()> {
+	pub async fn run(self) -> Result<(), ApiError> {
+		log::info!("connecting to redis: url={}", self.config.redis);
+
 		// Create the redis client.
-		let redis = redis::Client::open(self.config.redis).context("failed to create redis client")?;
+		let redis = redis::Client::open(self.config.redis)?;
 		let redis = redis
 			.get_tokio_connection_manager() // TODO get_tokio_connection_manager_with_backoff?
-			.await
-			.context("failed to get async redis connection")?;
+			.await?;
 
 		let app = Router::new()
-			.route("/broadcasts", get(get_broadcasts).post(create_broadcast))
-			.route(
-				"/broadcast/:id",
-				get(get_broadcast).post(set_broadcast).delete(delete_broadcast),
-			)
+			.route("/origin/:id", get(get_origin).post(set_origin).delete(delete_origin))
 			.with_state(redis);
 
-		axum::Server::bind(&self.config.bind)
+		log::info!("serving requests: bind={}", self.config.listen);
+
+		axum::Server::bind(&self.config.listen)
 			.serve(app.into_make_service())
 			.await?;
 
@@ -62,66 +58,35 @@ impl Server {
 	}
 }
 
-async fn get_broadcasts(State(_redis): State<ConnectionManager>) -> Json<Broadcasts> {
-	let broadcasts = Default::default();
-	Json(broadcasts)
-}
-
-async fn create_broadcast(
+async fn get_origin(
+	Path(id): Path<String>,
 	State(mut redis): State<ConnectionManager>,
-	Json(broadcast): Json<Broadcast>,
-) -> Result<Json<Uuid>, AppError> {
-	// TODO validate broadcast
+) -> Result<Json<Origin>, AppError> {
+	let key = origin_key(&id);
 
-	let id = Uuid::new_v4();
-	let key = broadcast_key(&id);
-
-	// Convert the input back to JSON after validating it add adding any fields (TODO)
-	let payload = serde_json::to_string(&broadcast)?;
-
-	let res: Option<String> = redis::cmd("SET")
-		.arg(key)
-		.arg(payload)
-		.arg("NX")
-		.arg("EX")
-		.arg(60 * 60 * 24 * 2) // Set the key to expire in 2 days; just in case we forget to remove it.
-		.query_async(&mut redis)
-		.await?;
-
-	if res.is_none() {
-		return Err(AppError::Duplicate);
-	}
-
-	Ok(Json(id))
-}
-
-async fn get_broadcast(
-	Path(id): Path<Uuid>,
-	State(mut redis): State<ConnectionManager>,
-) -> Result<Json<Broadcast>, AppError> {
-	let key = broadcast_key(&id);
+	log::debug!("get_origin: id={}", id);
 
 	let payload: String = match redis.get(&key).await? {
 		Some(payload) => payload,
 		None => return Err(AppError::NotFound),
 	};
 
-	let broadcast: Broadcast = serde_json::from_str(&payload)?;
+	let origin: Origin = serde_json::from_str(&payload)?;
 
-	Ok(Json(broadcast))
+	Ok(Json(origin))
 }
 
-async fn set_broadcast(
+async fn set_origin(
 	State(mut redis): State<ConnectionManager>,
-	Path(id): Path<Uuid>,
-	Json(broadcast): Json<Broadcast>,
+	Path(id): Path<String>,
+	Json(origin): Json<Origin>,
 ) -> Result<(), AppError> {
-	// TODO validate broadcast
+	// TODO validate origin
 
-	let key = broadcast_key(&id);
+	let key = origin_key(&id);
 
 	// Convert the input back to JSON after validating it add adding any fields (TODO)
-	let payload = serde_json::to_string(&broadcast)?;
+	let payload = serde_json::to_string(&origin)?;
 
 	let res: Option<String> = redis::cmd("SET")
 		.arg(key)
@@ -139,16 +104,16 @@ async fn set_broadcast(
 	Ok(())
 }
 
-async fn delete_broadcast(Path(id): Path<Uuid>, State(mut redis): State<ConnectionManager>) -> Result<(), AppError> {
-	let key = broadcast_key(&id);
+async fn delete_origin(Path(id): Path<String>, State(mut redis): State<ConnectionManager>) -> Result<(), AppError> {
+	let key = origin_key(&id);
 	match redis.del(key).await? {
 		0 => Err(AppError::NotFound),
 		_ => Ok(()),
 	}
 }
 
-fn broadcast_key(id: &Uuid) -> String {
-	format!("broadcast.{}", id.hyphenated())
+fn origin_key(id: &str) -> String {
+	format!("origin.{}", id)
 }
 
 #[derive(thiserror::Error, Debug)]

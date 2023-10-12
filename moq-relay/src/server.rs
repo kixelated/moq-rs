@@ -105,14 +105,22 @@ impl Server {
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
 		let endpoint_config = quinn::EndpointConfig::default();
-		let socket = std::net::UdpSocket::bind(config.bind).context("failed to bind UDP socket")?;
+		let socket = std::net::UdpSocket::bind(config.listen).context("failed to bind UDP socket")?;
 
 		// Create the generic QUIC endpoint.
 		let mut quic = quinn::Endpoint::new(endpoint_config, Some(server_config), socket, runtime)
 			.context("failed to create QUIC endpoint")?;
 		quic.set_default_client_config(client_config);
 
-		let api = moq_api::Client::new(config.api);
+		let api = config.api.map(|url| {
+			log::info!("using moq-api: url={}", url);
+			moq_api::Client::new(url)
+		});
+
+		if let Some(ref node) = config.node {
+			log::info!("advertising origin: url={}", node);
+		}
+
 		let origin = Origin::new(api, config.node, quic.clone());
 		let conns = JoinSet::new();
 
