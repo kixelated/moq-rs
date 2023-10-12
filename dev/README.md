@@ -1,6 +1,6 @@
-# dev
+# Local Development
 
-This is a collection of helpful scripts for local development ONLY.
+This is a collection of helpful scripts for local development.
 
 ## Setup
 
@@ -70,6 +70,10 @@ This listens for WebTransport connections on WebTransport `https://localhost:444
 ./dev/relay
 ```
 
+It will print out a URL when you can use to publish. Alternatively, you can use `dev/pub` instead.
+
+> Publish URL: https://quic.video/publish/?server=localhost:4443
+
 ### moq-pub
 
 The following command runs a development instance, broadcasing `dev/source.mp4` to WebTransport `https://localhost:4443`:
@@ -77,6 +81,11 @@ The following command runs a development instance, broadcasing `dev/source.mp4` 
 ```bash
 ./dev/pub
 ```
+
+It will print out a URL when you can use to watch.
+This will contain a random broadcast name so the below link won't work:
+
+> Watch URL: https://quic.video/watch/REPLACE_WITH_NAME?server=localhost:4443
 
 ### moq-api
 
