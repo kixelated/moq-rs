@@ -22,4 +22,5 @@ log = "0.4"
 indexmap = "2"
 
 quinn = "0.10"
-webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn", version = "0.6" }
+webtransport-quinn = "0.6"
+#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }

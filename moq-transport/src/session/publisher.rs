@@ -134,7 +134,6 @@ impl Publisher {
 		// TODO only clone the fields we need
 		let mut this = self.clone();
 
-		// TODO cancel this task on connection close
 		let handle = tokio::spawn(async move {
 			log::info!("serving track: name={}", track.name);
 
