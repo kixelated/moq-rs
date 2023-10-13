@@ -45,3 +45,4 @@ clap = { version = "4", features = ["derive"] }
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9"
 tracing = "0.1"
+tracing-subscriber = "0.3"
