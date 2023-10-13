@@ -31,7 +31,7 @@ rustls-native-certs = "0.6"
 tokio = { version = "1", features = ["full"] }
 
 # Web server to serve the fingerprint
-warp = { version = "0.3", features = ["tls"] }
+warp = { version = "0.3.6", features = ["tls"] }
 hex = "0.4"
 
 # Error handling
