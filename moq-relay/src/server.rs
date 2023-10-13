@@ -62,15 +62,17 @@ impl Server {
 		// Create a list of acceptable root certificates.
 		let mut client_roots = rustls::RootCertStore::empty();
 
-		// For local development, we'll accept our own certificate.
-		for cert in &certs {
-			client_roots.add(cert).context("failed to add our cert to roots")?;
+		// Add the platform's native root certificates.
+		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
+			client_roots
+				.add(&rustls::Certificate(cert.0))
+				.context("failed to add root cert")?;
 		}
 
-		// Add the platform's native root certificates.
-		for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
-			client_roots.add(&rustls::Certificate(cert.0)).unwrap();
-		}
+		// For local development, we'll accept our own certificate.
+		client_roots
+			.add(certs.first().unwrap())
+			.context("failed to add our cert to roots")?;
 
 		let mut client_config = rustls::ClientConfig::builder()
 			.with_safe_defaults()
@@ -78,10 +80,7 @@ impl Server {
 			.with_no_client_auth();
 
 		let mut server_config = rustls::ServerConfig::builder()
-			.with_safe_default_cipher_suites()
-			.with_safe_default_kx_groups()
-			.with_protocol_versions(&[&rustls::version::TLS13])
-			.context("failed to create server config")?
+			.with_safe_defaults()
 			.with_no_client_auth()
 			.with_single_cert(certs, key)?;
 
