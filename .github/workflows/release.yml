@@ -1,64 +1,56 @@
-name: Release Docker Image
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 on:
-    push:
-        branches: ["main"]
-        # Publish semver tags as releases.
-        tags: ["v*.*.*"]
+  push:
+    branches: ["main"]
 
 env:
-    # Use the free Github repository
-    REGISTRY: ghcr.io
-    IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: us-central1-docker.pkg.dev
+  IMAGE: quic-video/deploy/moq-rs:latest
+  SERVICE: api # Restart the API service TODO and relays
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-            packages: write
-            id-token: write
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
 
-        # Only one release at a time and cancel prior releases
-        concurrency:
-            group: release
-            cancel-in-progress: true
+    # Only one release at a time and cancel prior releases
+    concurrency:
+      group: release
+      cancel-in-progress: true
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v3
+    steps:
+      - uses: actions/checkout@v3
 
-            # I'm paying for Depot for faster ARM builds.
-            - uses: depot/setup-action@v1
+      # I'm paying for Depot for faster ARM builds.
+      - uses: depot/setup-action@v1
 
-            # Login against a Docker registry
-            - name: Log into registry ${{ env.REGISTRY }}
-              uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
-              with:
-                  registry: ${{ env.REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+      # Log in to GCP
+      - uses: google-github-actions/auth@v1
+        id: auth
+        with:
+          token_format: access_token
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
-            # Extract metadata (tags, labels) for Docker
-            - name: Extract Docker metadata
-              id: meta
-              uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
-              with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      # Log into the docker registry via the GCP token
+      - uses: docker/login-action@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
 
-            # Build and push Docker image with Depot
-            - name: Build and push Docker image
-              id: build-and-push
-              uses: depot/build-push-action@v1
-              with:
-                  project: r257ctfqm6
-                  context: .
-                  push: true
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-                  platforms: linux/amd64,linux/arm64
+      # Build and push Docker image with Depot
+      - uses: depot/build-push-action@v1
+        with:
+          project: r257ctfqm6
+          context: .
+          push: true
+          tags: ${{env.REGISTRY}}/${{env.IMAGE}}
+          platforms: linux/amd64,linux/arm64
+
+      # Deploy to cloud run
+      - uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: ${{env.SERVICE}}
+          image: ${{env.REGISTRY}}/${{env.IMAGE}}
