@@ -1,3 +1,5 @@
+name: pr
+
 on:
   pull_request:
     branches: ["main"]
@@ -6,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
 
     steps:

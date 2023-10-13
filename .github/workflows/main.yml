@@ -1,3 +1,5 @@
+name: main
+
 on:
   push:
     branches: ["main"]
@@ -8,7 +10,7 @@ env:
   SERVICE: api # Restart the API service TODO and relays
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
