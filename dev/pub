@@ -29,4 +29,4 @@ ffmpeg -hide_banner -v quiet \
 	-i "$MEDIA" \
 	-an \
 	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
-	| RUST_LOG=info cargo run --bin moq-pub -- "$URL" "$@"
+	| cargo run --bin moq-pub -- "$URL" "$@"

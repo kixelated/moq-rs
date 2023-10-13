@@ -70,10 +70,6 @@ impl Server {
 		}
 
 		// For local development, we'll accept our own certificate.
-		client_roots
-			.add(certs.first().unwrap())
-			.context("failed to add our cert to roots")?;
-
 		let mut client_config = rustls::ClientConfig::builder()
 			.with_safe_defaults()
 			.with_root_certificates(client_roots)
@@ -84,7 +80,6 @@ impl Server {
 			.with_no_client_auth()
 			.with_single_cert(certs, key)?;
 
-		server_config.max_early_data_size = u32::MAX;
 		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 
