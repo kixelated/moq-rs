@@ -26,13 +26,16 @@ ring = "0.16"
 rustls = "0.21"
 rustls-pemfile = "1"
 rustls-native-certs = "0.6"
+webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
 
 # Web server to serve the fingerprint
-warp = { version = "0.3.6", features = ["tls"] }
+axum = { version = "0.6", features = ["tokio"] }
+axum-server = { version = "0.5", features = ["tls-rustls"] }
 hex = "0.4"
+tower-http = { version = "0.4", features = ["cors"] }
 
 # Error handling
 anyhow = { version = "1", features = ["backtrace"] }

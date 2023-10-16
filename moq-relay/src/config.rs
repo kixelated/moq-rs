@@ -10,13 +10,19 @@ pub struct Config {
 	#[arg(long, default_value = "[::]:4443")]
 	pub listen: net::SocketAddr,
 
-	/// Use the certificate file at this path
+	/// Use the certificates at this path, encoded as PEM.
+	///
+	/// You can use this option multiple times for multiple certificates.
+	/// The first match for the provided SNI will be used, otherwise the last cert will be used.
+	/// You also need to provide the private key multiple times via `key``.
 	#[arg(long)]
-	pub cert: path::PathBuf,
+	pub cert: Vec<path::PathBuf>,
 
-	/// Use the private key at this path
+	/// Use the private key at this path, encoded as PEM.
+	///
+	/// There must be a key for every certificate provided via `cert`.
 	#[arg(long)]
-	pub key: path::PathBuf,
+	pub key: Vec<path::PathBuf>,
 
 	/// Listen on HTTPS and serve /fingerprint, for self-signed certificates
 	#[arg(long, action)]

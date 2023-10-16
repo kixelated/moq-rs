@@ -1,21 +1,21 @@
-use std::{fs, io, sync};
-
 use anyhow::Context;
 use clap::Parser;
-use ring::digest::{digest, SHA256};
-use warp::Filter;
 
 mod config;
 mod error;
 mod origin;
-mod server;
+mod quic;
 mod session;
+mod tls;
+mod web;
 
 pub use config::*;
 pub use error::*;
 pub use origin::*;
-pub use server::*;
+pub use quic::*;
 pub use session::*;
+pub use tls::*;
+pub use web::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,47 +28,20 @@ async fn main() -> anyhow::Result<()> {
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
 	let config = Config::parse();
+	let tls = Tls::load(&config)?;
 
-	// Create a server to actually serve the media
-	let server = Server::new(config.clone()).await.context("failed to create server")?;
+	// Create a QUIC server for media.
+	let quic = Quic::new(config.clone(), tls.clone())
+		.await
+		.context("failed to create server")?;
+
+	// Create the web server if the --fingerprint flag was set.
+	// This is currently only useful in local development so it's not enabled by default.
+	let web = config.fingerprint.then(|| Web::new(config, tls));
 
 	// Run all of the above
 	tokio::select! {
-		res = server.run() => res.context("failed to run server"),
-		res = serve_http(config), if config.fingerprint => res.context("failed to run HTTP server"),
+		res = quic.serve() => res.context("failed to run server"),
+		res = web.unwrap().serve(), if web.is_some() => res.context("failed to run HTTP server"),
 	}
-}
-
-// Run a HTTP server using Warp
-// TODO remove this when Chrome adds support for self-signed certificates using WebTransport
-async fn serve_http(config: Config) -> anyhow::Result<()> {
-	// Read the PEM certificate file
-	let crt = fs::File::open(&config.cert)?;
-	let mut crt = io::BufReader::new(crt);
-
-	// Parse the DER certificate
-	let certs = rustls_pemfile::certs(&mut crt)?;
-	let cert = certs.first().expect("no certificate found");
-
-	// Compute the SHA-256 digest
-	let fingerprint = digest(&SHA256, cert.as_ref());
-	let fingerprint = hex::encode(fingerprint.as_ref());
-	let fingerprint = sync::Arc::new(fingerprint);
-
-	let cors = warp::cors().allow_any_origin();
-
-	// What an annoyingly complicated way to serve a static String
-	// I spent a long time trying to find the exact way of cloning and dereferencing the Arc.
-	let routes = warp::path!("fingerprint")
-		.map(move || (*(fingerprint.clone())).clone())
-		.with(cors);
-
-	warp::serve(routes)
-		.tls()
-		.cert_path(config.cert)
-		.key_path(config.key)
-		.run(config.listen)
-		.await;
-
-	Ok(())
 }

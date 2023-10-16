@@ -1,17 +1,12 @@
-use std::{
-	fs,
-	io::{self, Read},
-	sync::Arc,
-	time,
-};
+use std::{sync::Arc, time};
 
 use anyhow::Context;
 
 use tokio::task::JoinSet;
 
-use crate::{Config, Origin, Session};
+use crate::{Config, Origin, Session, Tls};
 
-pub struct Server {
+pub struct Quic {
 	quic: quinn::Endpoint,
 
 	// The active connections.
@@ -21,65 +16,11 @@ pub struct Server {
 	origin: Origin,
 }
 
-impl Server {
-	// Create a new server
-	pub async fn new(config: Config) -> anyhow::Result<Self> {
-		// Read the PEM certificate chain
-		let certs = fs::File::open(config.cert).context("failed to open cert file")?;
-		let mut certs = io::BufReader::new(certs);
-
-		let certs: Vec<rustls::Certificate> = rustls_pemfile::certs(&mut certs)?
-			.into_iter()
-			.map(rustls::Certificate)
-			.collect();
-
-		anyhow::ensure!(!certs.is_empty(), "could not find certificate");
-
-		// Read the PEM private key
-		let mut keys = fs::File::open(config.key).context("failed to open key file")?;
-
-		// Read the keys into a Vec so we can try parsing it twice.
-		let mut buf = Vec::new();
-		keys.read_to_end(&mut buf)?;
-
-		// Try to parse a PKCS#8 key
-		// -----BEGIN PRIVATE KEY-----
-		let mut keys = rustls_pemfile::pkcs8_private_keys(&mut io::Cursor::new(&buf))?;
-
-		// Try again but with EC keys this time
-		// -----BEGIN EC PRIVATE KEY-----
-		if keys.is_empty() {
-			keys = rustls_pemfile::ec_private_keys(&mut io::Cursor::new(&buf))?
-		};
-
-		anyhow::ensure!(!keys.is_empty(), "could not find private key");
-		anyhow::ensure!(keys.len() < 2, "expected a single key");
-
-		let key = rustls::PrivateKey(keys.remove(0));
-
-		// Set up a QUIC endpoint that can act as both a client and server.
-
-		// Create a list of acceptable root certificates.
-		let mut client_roots = rustls::RootCertStore::empty();
-
-		// Add the platform's native root certificates.
-		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
-			client_roots
-				.add(&rustls::Certificate(cert.0))
-				.context("failed to add root cert")?;
-		}
-
-		// For local development, we'll accept our own certificate.
-		let mut client_config = rustls::ClientConfig::builder()
-			.with_safe_defaults()
-			.with_root_certificates(client_roots)
-			.with_no_client_auth();
-
-		let mut server_config = rustls::ServerConfig::builder()
-			.with_safe_defaults()
-			.with_no_client_auth()
-			.with_single_cert(certs, key)?;
-
+impl Quic {
+	// Create a QUIC endpoint that can be used for both clients and servers.
+	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
+		let mut client_config = tls.client();
+		let mut server_config = tls.server();
 		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
 
@@ -121,7 +62,7 @@ impl Server {
 		Ok(Self { quic, origin, conns })
 	}
 
-	pub async fn run(mut self) -> anyhow::Result<()> {
+	pub async fn serve(mut self) -> anyhow::Result<()> {
 		log::info!("listening on {}", self.quic.local_addr()?);
 
 		loop {
