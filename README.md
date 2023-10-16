@@ -31,7 +31,7 @@ Notable arguments:
 -   `--listen <ADDR>` Listen on this address, default: `[::]:4443`
 -   `--cert <CERT>` Use the certificate file at this path
 -   `--key <KEY>` Use the private key at this path
--   `--fingerprint` Listen via HTTPS as well, serving the `/fingerprint` of the self-signed certificate. (dev only)
+-   `--dev` Listen via HTTPS as well, serving the `/fingerprint` of the self-signed certificate. (dev only)
 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.

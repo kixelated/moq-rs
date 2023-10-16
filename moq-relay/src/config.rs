@@ -26,7 +26,7 @@ pub struct Config {
 
 	/// Listen on HTTPS and serve /fingerprint, for self-signed certificates
 	#[arg(long, action)]
-	pub fingerprint: bool,
+	pub dev: bool,
 
 	/// Optional: Use the moq-api via HTTP to store origin information.
 	#[arg(long)]
