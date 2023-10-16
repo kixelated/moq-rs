@@ -35,13 +35,17 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create server")?;
 
-	// Create the web server if the --fingerprint flag was set.
+	// Create the web server if the --dev flag was set.
 	// This is currently only useful in local development so it's not enabled by default.
-	let web = config.fingerprint.then(|| Web::new(config, tls));
+	if config.dev {
+		let web = Web::new(config, tls);
 
-	// Run all of the above
-	tokio::select! {
-		res = quic.serve() => res.context("failed to run server"),
-		res = web.unwrap().serve(), if web.is_some() => res.context("failed to run HTTP server"),
+		// Unfortunately we can't use preconditions because Tokio still executes the branch; just ignore the result
+		tokio::select! {
+			res = quic.serve() => res.context("failed to run quic server"),
+			res = web.serve() => res.context("failed to run web server"),
+		}
+	} else {
+		quic.serve().await.context("failed to run quic server")
 	}
 }
