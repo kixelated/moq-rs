@@ -23,3 +23,6 @@ jobs:
       - run: cargo test --verbose
       - run: cargo clippy --no-deps
       - run: cargo fmt --check
+
+      # Check for unused dependencies
+      - uses: bnjbvr/cargo-machete@main

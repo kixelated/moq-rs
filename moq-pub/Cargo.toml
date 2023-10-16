@@ -23,9 +23,7 @@ webtransport-quinn = "0.6"
 url = "2"
 
 # Crypto
-ring = "0.16"
 rustls = "0.21"
-rustls-pemfile = "1"
 rustls-native-certs = "0.6"
 
 # Async stuff
