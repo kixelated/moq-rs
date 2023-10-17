@@ -24,6 +24,13 @@ pub struct Config {
 	#[arg(long)]
 	pub tls_key: Vec<path::PathBuf>,
 
+	/// Use the TLS root at this path, encoded as PEM.
+	///
+	/// This value can be provided multiple times for multiple roots.
+	/// If this is empty, system roots will be used instead
+	#[arg(long)]
+	pub tls_root: Vec<path::PathBuf>,
+
 	/// Optional: Use the moq-api via HTTP to store origin information.
 	#[arg(long)]
 	pub api: Option<Url>,
