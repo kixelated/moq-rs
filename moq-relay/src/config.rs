@@ -16,17 +16,13 @@ pub struct Config {
 	/// The first match for the provided SNI will be used, otherwise the last cert will be used.
 	/// You also need to provide the private key multiple times via `key``.
 	#[arg(long)]
-	pub cert: Vec<path::PathBuf>,
+	pub tls_cert: Vec<path::PathBuf>,
 
 	/// Use the private key at this path, encoded as PEM.
 	///
 	/// There must be a key for every certificate provided via `cert`.
 	#[arg(long)]
-	pub key: Vec<path::PathBuf>,
-
-	/// Listen on HTTPS and serve /fingerprint, for self-signed certificates
-	#[arg(long, action)]
-	pub dev: bool,
+	pub tls_key: Vec<path::PathBuf>,
 
 	/// Optional: Use the moq-api via HTTP to store origin information.
 	#[arg(long)]
@@ -34,8 +30,13 @@ pub struct Config {
 
 	/// Our internal address which we advertise to other origins.
 	/// We use QUIC, so the certificate must be valid for this address.
-	/// This needs to be prefixed with https:// to use WebTransport
-	/// This is only used when --api is set.
+	/// This needs to be prefixed with https:// to use WebTransport.
+	/// This is only used when --api is set and only for publishing broadcasts.
 	#[arg(long)]
-	pub node: Option<Url>,
+	pub api_node: Option<Url>,
+
+	/// Enable development mode.
+	/// Currently, this only listens on HTTPS and serves /fingerprint, for self-signed certificates
+	#[arg(long, action)]
+	pub dev: bool,
 }

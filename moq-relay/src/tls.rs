@@ -27,8 +27,11 @@ impl Tls {
 		let mut serve = ServeCerts::default();
 
 		// Load the certificate and key files based on their index.
-		anyhow::ensure!(config.cert.len() == config.key.len(), "--cert and --key mismatch");
-		for (chain, key) in config.cert.iter().zip(config.key.iter()) {
+		anyhow::ensure!(
+			config.tls_cert.len() == config.tls_key.len(),
+			"--tls-cert and --tls-key counts differ"
+		);
+		for (chain, key) in config.tls_cert.iter().zip(config.tls_key.iter()) {
 			serve.load(chain, key)?;
 		}
 
