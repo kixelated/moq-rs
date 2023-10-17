@@ -52,11 +52,11 @@ impl Quic {
 			moq_api::Client::new(url)
 		});
 
-		if let Some(ref node) = config.node {
+		if let Some(ref node) = config.api_node {
 			log::info!("advertising origin: url={}", node);
 		}
 
-		let origin = Origin::new(api, config.node, quic.clone());
+		let origin = Origin::new(api, config.api_node, quic.clone());
 		let conns = JoinSet::new();
 
 		Ok(Self { quic, origin, conns })

@@ -28,10 +28,10 @@ fi
 
 # Provide our node URL when registering origins.
 if [ -n "${NODE-}" ]; then
-	ARGS="$ARGS --node $NODE"
+	ARGS="$ARGS --api-node $NODE"
 fi
 
 echo "Publish URL: https://quic.video/publish/?server=localhost:${PORT}"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --listen "$LISTEN" --cert "$CERT" --key "$KEY" --dev $ARGS -- "$@"
+cargo run --bin moq-relay -- --listen "$LISTEN" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
