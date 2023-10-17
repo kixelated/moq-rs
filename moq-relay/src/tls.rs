@@ -38,9 +38,22 @@ impl Tls {
 		// Create a list of acceptable root certificates.
 		let mut roots = RootCertStore::empty();
 
-		// Add the platform's native root certificates.
-		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
-			roots.add(&Certificate(cert.0)).context("failed to add root cert")?;
+		if config.tls_root.is_empty() {
+			// Add the platform's native root certificates.
+			for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
+				roots.add(&Certificate(cert.0)).context("failed to add root cert")?;
+			}
+		} else {
+			// Add the specified root certificates.
+			for root in &config.tls_root {
+				let root = fs::File::open(root).context("failed to open root cert file")?;
+				let mut root = io::BufReader::new(root);
+				let root = rustls_pemfile::certs(&mut root).context("failed to read root cert")?;
+				anyhow::ensure!(root.len() == 1, "expected a single root cert");
+				let root = Certificate(root[0].to_owned());
+
+				roots.add(&root).context("failed to add root cert")?;
+			}
 		}
 
 		let certs = Self {
