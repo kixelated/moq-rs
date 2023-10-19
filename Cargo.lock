@@ -1068,6 +1068,8 @@ dependencies = [
  "rustls-native-certs",
  "serde_json",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "url",
  "webtransport-quinn",
 ]

@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use moq_transport::{cache::broadcast, session::Request, setup::Role, MoqError};
+use moq_transport::{session::Request, setup::Role, MoqError};
 
 use crate::Origin;
 
@@ -53,8 +53,16 @@ impl Session {
 		let role = request.role();
 
 		match role {
-			Role::Publisher => self.serve_publisher(id, request, &path).await,
-			Role::Subscriber => self.serve_subscriber(id, request, &path).await,
+			Role::Publisher => {
+				if let Err(err) = self.serve_publisher(id, request, &path).await {
+					log::warn!("error serving publisher: id={} path={} err={:#?}", id, path, err);
+				}
+			}
+			Role::Subscriber => {
+				if let Err(err) = self.serve_subscriber(id, request, &path).await {
+					log::warn!("error serving subscriber: id={} path={} err={:#?}", id, path, err);
+				}
+			}
 			Role::Both => {
 				log::warn!("role both not supported: id={}", id);
 				request.reject(300);
@@ -66,44 +74,38 @@ impl Session {
 		Ok(())
 	}
 
-	async fn serve_publisher(&mut self, id: usize, request: Request, path: &str) {
+	async fn serve_publisher(&mut self, id: usize, request: Request, path: &str) -> anyhow::Result<()> {
 		log::info!("serving publisher: id={}, path={}", id, path);
 
-		let broadcast = match self.origin.create_broadcast(path).await {
-			Ok(broadcast) => broadcast,
+		let mut origin = match self.origin.publish(path).await {
+			Ok(origin) => origin,
 			Err(err) => {
-				log::warn!("error accepting publisher: id={} path={} err={:#?}", id, path, err);
-				return request.reject(err.code());
+				request.reject(err.code());
+				return Err(err.into());
 			}
 		};
 
-		if let Err(err) = self.run_publisher(request, broadcast).await {
-			log::warn!("error serving publisher: id={} path={} err={:#?}", id, path, err);
-		}
+		let session = request.subscriber(origin.broadcast.clone()).await?;
 
-		// TODO can we do this on drop? Otherwise we might miss it.
-		self.origin.remove_broadcast(path).await.ok();
-	}
+		tokio::select! {
+			_ = session.run() => origin.close().await?,
+			_ = origin.run() => (), // TODO send error to session
+		};
 
-	async fn run_publisher(&mut self, request: Request, publisher: broadcast::Publisher) -> anyhow::Result<()> {
-		let session = request.subscriber(publisher).await?;
-		session.run().await?;
 		Ok(())
 	}
 
-	async fn serve_subscriber(&mut self, id: usize, request: Request, path: &str) {
+	async fn serve_subscriber(&mut self, id: usize, request: Request, path: &str) -> anyhow::Result<()> {
 		log::info!("serving subscriber: id={} path={}", id, path);
 
-		let broadcast = self.origin.get_broadcast(path);
+		let subscriber = self.origin.subscribe(path);
 
-		if let Err(err) = self.run_subscriber(request, broadcast).await {
-			log::warn!("error serving subscriber: id={} path={} err={:#?}", id, path, err);
-		}
-	}
-
-	async fn run_subscriber(&mut self, request: Request, broadcast: broadcast::Subscriber) -> anyhow::Result<()> {
-		let session = request.publisher(broadcast).await?;
+		let session = request.publisher(subscriber.broadcast.clone()).await?;
 		session.run().await?;
+
+		// Make sure this doesn't get dropped too early
+		drop(subscriber);
+
 		Ok(())
 	}
 }
