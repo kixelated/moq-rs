@@ -135,6 +135,7 @@ impl Subscriber {
 	}
 
 	async fn run_source(mut self) -> Result<(), SessionError> {
+		// NOTE: This returns Closed when the source is closed.
 		while let Some(track) = self.source.next_track().await? {
 			let name = track.name.clone();
 

@@ -203,9 +203,25 @@ impl Subscriber {
 		state.into_mut().request(name)
 	}
 
-	/// Return if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub fn closed(&self) -> Option<CacheError> {
+	/// Check if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub fn is_closed(&self) -> Option<CacheError> {
 		self.state.lock().closed.as_ref().err().cloned()
+	}
+
+	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub async fn closed(&self) -> CacheError {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if let Some(err) = state.closed.as_ref().err() {
+					return err.clone();
+				}
+
+				state.changed()
+			};
+
+			notify.await;
+		}
 	}
 }
 

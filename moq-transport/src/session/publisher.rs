@@ -64,7 +64,7 @@ impl Publisher {
 					stream?;
 					return Err(SessionError::RoleViolation(VarInt::ZERO));
 				}
-				// NOTE: this is not cancel safe, but it's fine since the other branch is a fatal error.
+				// NOTE: this is not cancel safe, but it's fine since the other branchs are fatal.
 				msg = self.control.recv() => {
 					let msg = msg?;
 
@@ -72,7 +72,12 @@ impl Publisher {
 					if let Err(err) = self.recv_message(&msg).await {
 						log::warn!("message error: {:?} {:?}", err, msg);
 					}
-				}
+				},
+				// No more broadcasts are available.
+				err = self.source.closed() => {
+					self.webtransport.close(err.code(), err.reason().as_bytes());
+					return Ok(());
+				},
 			}
 		}
 	}
@@ -178,7 +183,7 @@ impl Publisher {
 			expires: segment.expires,
 		};
 
-		log::debug!("serving object: {:?}", object);
+		log::trace!("serving object: {:?}", object);
 
 		let mut stream = self.webtransport.open_uni().await?;
 		stream.set_priority(object.priority).ok();

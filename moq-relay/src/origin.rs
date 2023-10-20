@@ -86,8 +86,6 @@ impl Origin {
 			publisher.api = Some((api.clone(), origin));
 		}
 
-		log::debug!("inserted broadcast into cache: id={}", id);
-
 		Ok(publisher)
 	}
 
@@ -131,7 +129,7 @@ impl Origin {
 	}
 
 	async fn serve(&mut self, id: &str, publisher: broadcast::Publisher) -> Result<(), RelayError> {
-		log::debug!("fetching origin: id={}", id);
+		log::debug!("finding origin: id={}", id);
 
 		// Fetch the origin from the API.
 		let origin = self
@@ -142,13 +140,11 @@ impl Origin {
 			.await?
 			.ok_or(CacheError::NotFound)?;
 
-		log::debug!("connecting to origin: url={}", origin.url);
+		log::debug!("fetching from origin: id={} url={}", id, origin.url);
 
 		// Establish the webtransport session.
 		let session = webtransport_quinn::connect(&self.quic, &origin.url).await?;
 		let session = moq_transport::session::Client::subscriber(session, publisher).await?;
-
-		log::debug!("connected to origin: url={}", origin.url);
 
 		session.run().await?;
 
@@ -194,6 +190,7 @@ impl Publisher {
 
 		loop {
 			if let Some((api, origin)) = self.api.as_mut() {
+				log::debug!("refreshing origin: id={}", self.broadcast.id);
 				api.patch_origin(&self.broadcast.id, origin).await?;
 			}
 
