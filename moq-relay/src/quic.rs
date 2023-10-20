@@ -30,6 +30,7 @@ impl Quic {
 		transport_config.max_idle_timeout(Some(time::Duration::from_secs(10).try_into().unwrap()));
 		transport_config.keep_alive_interval(Some(time::Duration::from_secs(4))); // TODO make this smarter
 		transport_config.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
+		transport_config.mtu_discovery_config(None); // Disable MTU discovery
 		let transport_config = Arc::new(transport_config);
 
 		let mut client_config = quinn::ClientConfig::new(Arc::new(client_config));

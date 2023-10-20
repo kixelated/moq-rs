@@ -4,13 +4,13 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
+# Use debug logging by default
+export RUST_LOG="${RUST_LOG:-debug}"
+
 # Run the API server on port 4442 by default
 HOST="${HOST:-[::]}"
 PORT="${PORT:-4442}"
 LISTEN="${LISTEN:-$HOST:$PORT}"
-
-# Default to info log level
-export RUST_LOG="${RUST_LOG:-info}"
 
 # Check for Podman/Docker and set runtime accordingly
 if command -v podman &> /dev/null; then

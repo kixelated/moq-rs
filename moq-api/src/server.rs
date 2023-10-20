@@ -46,7 +46,13 @@ impl Server {
 			.await?;
 
 		let app = Router::new()
-			.route("/origin/:id", get(get_origin).post(set_origin).delete(delete_origin))
+			.route(
+				"/origin/:id",
+				get(get_origin)
+					.post(set_origin)
+					.delete(delete_origin)
+					.patch(patch_origin),
+			)
 			.with_state(redis);
 
 		log::info!("serving requests: bind={}", self.config.listen);
@@ -67,11 +73,8 @@ async fn get_origin(
 
 	log::debug!("get_origin: id={}", id);
 
-	let payload: String = match redis.get(&key).await? {
-		Some(payload) => payload,
-		None => return Err(AppError::NotFound),
-	};
-
+	let payload: Option<String> = redis.get(&key).await?;
+	let payload = payload.ok_or(AppError::NotFound)?;
 	let origin: Origin = serde_json::from_str(&payload)?;
 
 	Ok(Json(origin))
@@ -94,7 +97,7 @@ async fn set_origin(
 		.arg(payload)
 		.arg("NX")
 		.arg("EX")
-		.arg(60 * 60 * 24 * 2) // Set the key to expire in 2 days; just in case we forget to remove it.
+		.arg(600) // Set the key to expire in 10 minutes; the origin needs to keep refreshing it.
 		.query_async(&mut redis)
 		.await?;
 
@@ -108,6 +111,31 @@ async fn set_origin(
 async fn delete_origin(Path(id): Path<String>, State(mut redis): State<ConnectionManager>) -> Result<(), AppError> {
 	let key = origin_key(&id);
 	match redis.del(key).await? {
+		0 => Err(AppError::NotFound),
+		_ => Ok(()),
+	}
+}
+
+// Update the expiration deadline.
+async fn patch_origin(
+	Path(id): Path<String>,
+	State(mut redis): State<ConnectionManager>,
+	Json(origin): Json<Origin>,
+) -> Result<(), AppError> {
+	let key = origin_key(&id);
+
+	// Make sure the contents haven't changed
+	// TODO make a LUA script to do this all in one operation.
+	let payload: Option<String> = redis.get(&key).await?;
+	let payload = payload.ok_or(AppError::NotFound)?;
+	let expected: Origin = serde_json::from_str(&payload)?;
+
+	if expected != origin {
+		return Err(AppError::Duplicate);
+	}
+
+	// Reset the timeout to 10 minutes.
+	match redis.expire(key, 600).await? {
 		0 => Err(AppError::NotFound),
 		_ => Ok(()),
 	}

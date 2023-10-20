@@ -1,10 +1,14 @@
+use std::ops::{Deref, DerefMut};
 use std::{
-	collections::{hash_map, HashMap},
-	sync::{Arc, Mutex},
+	collections::HashMap,
+	sync::{Arc, Mutex, Weak},
 };
 
+use moq_api::ApiError;
 use moq_transport::cache::{broadcast, CacheError};
 use url::Url;
+
+use tokio::time;
 
 use crate::RelayError;
 
@@ -12,14 +16,16 @@ use crate::RelayError;
 pub struct Origin {
 	// An API client used to get/set broadcasts.
 	// If None then we never use a remote origin.
+	// TODO: Stub this out instead.
 	api: Option<moq_api::Client>,
 
 	// The internal address of our node.
 	// If None then we can never advertise ourselves as an origin.
+	// TODO: Stub this out instead.
 	node: Option<Url>,
 
-	// A map of active broadcasts.
-	lookup: Arc<Mutex<HashMap<String, broadcast::Subscriber>>>,
+	// A map of active broadcasts by ID.
+	cache: Arc<Mutex<HashMap<String, Weak<Subscriber>>>>,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
 	quic: quinn::Endpoint,
@@ -30,48 +36,80 @@ impl Origin {
 		Self {
 			api,
 			node,
-			lookup: Default::default(),
+			cache: Default::default(),
 			quic,
 		}
 	}
 
-	pub async fn create_broadcast(&mut self, id: &str) -> Result<broadcast::Publisher, RelayError> {
-		let (publisher, subscriber) = broadcast::new();
+	/// Create a new broadcast with the given ID.
+	///
+	/// Publisher::run needs to be called to periodically refresh the origin cache.
+	pub async fn publish(&mut self, id: &str) -> Result<Publisher, RelayError> {
+		let (publisher, subscriber) = broadcast::new(id);
 
-		// Check if a broadcast already exists by that id.
-		match self.lookup.lock().unwrap().entry(id.to_string()) {
-			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate.into()),
-			hash_map::Entry::Vacant(v) => v.insert(subscriber),
+		let subscriber = {
+			let mut cache = self.cache.lock().unwrap();
+
+			// Check if the broadcast already exists.
+			// TODO This is racey, because a new publisher could be created while existing subscribers are still active.
+			if cache.contains_key(id) {
+				return Err(CacheError::Duplicate.into());
+			}
+
+			// Create subscriber that will remove from the cache when dropped.
+			let subscriber = Arc::new(Subscriber {
+				broadcast: subscriber,
+				origin: self.clone(),
+			});
+
+			cache.insert(id.to_string(), Arc::downgrade(&subscriber));
+
+			subscriber
 		};
 
-		if let Some(ref mut api) = self.api {
+		// Create a publisher that constantly updates itself as the origin in moq-api.
+		// It holds a reference to the subscriber to prevent dropping early.
+		let mut publisher = Publisher {
+			broadcast: publisher,
+			subscriber,
+			api: None,
+		};
+
+		// Insert the publisher into the database.
+		if let Some(api) = self.api.as_mut() {
 			// Make a URL for the broadcast.
 			let url = self.node.as_ref().ok_or(RelayError::MissingNode)?.clone().join(id)?;
+			let origin = moq_api::Origin { url };
+			api.set_origin(id, &origin).await?;
 
-			log::info!("announcing origin: id={} url={}", id, url);
-
-			let entry = moq_api::Origin { url };
-
-			if let Err(err) = api.set_origin(id, entry).await {
-				self.lookup.lock().unwrap().remove(id);
-				return Err(err.into());
-			}
+			// Refresh every 5 minutes
+			publisher.api = Some((api.clone(), origin));
 		}
 
 		Ok(publisher)
 	}
 
-	pub fn get_broadcast(&self, id: &str) -> broadcast::Subscriber {
-		let mut lookup = self.lookup.lock().unwrap();
+	pub fn subscribe(&self, id: &str) -> Arc<Subscriber> {
+		let mut cache = self.cache.lock().unwrap();
 
-		if let Some(broadcast) = lookup.get(id) {
-			if broadcast.closed().is_none() {
-				return broadcast.clone();
+		if let Some(broadcast) = cache.get(id) {
+			if let Some(broadcast) = broadcast.upgrade() {
+				log::debug!("returned broadcast from cache: id={}", id);
+				return broadcast;
+			} else {
+				log::debug!("stale broadcast in cache somehow: id={}", id);
 			}
 		}
 
-		let (publisher, subscriber) = broadcast::new();
-		lookup.insert(id.to_string(), subscriber.clone());
+		let (publisher, subscriber) = broadcast::new(id);
+		let subscriber = Arc::new(Subscriber {
+			broadcast: subscriber,
+			origin: self.clone(),
+		});
+
+		cache.insert(id.to_string(), Arc::downgrade(&subscriber));
+
+		log::debug!("fetching into cache: id={}", id);
 
 		let mut this = self.clone();
 		let id = id.to_string();
@@ -82,63 +120,104 @@ impl Origin {
 		// However, the downside is that we don't return an error immediately.
 		// If that's important, it can be done but it gets a bit racey.
 		tokio::spawn(async move {
-			match this.fetch_broadcast(&id).await {
-				Ok(session) => {
-					if let Err(err) = this.run_broadcast(session, publisher).await {
-						log::warn!("failed to run broadcast: id={} err={:#?}", id, err);
-					}
-				}
-				Err(err) => {
-					log::warn!("failed to fetch broadcast: id={} err={:#?}", id, err);
-					publisher.close(CacheError::NotFound).ok();
-				}
+			if let Err(err) = this.serve(&id, publisher).await {
+				log::warn!("failed to serve remote broadcast: id={} err={}", id, err);
 			}
 		});
 
 		subscriber
 	}
 
-	async fn fetch_broadcast(&mut self, id: &str) -> Result<webtransport_quinn::Session, RelayError> {
+	async fn serve(&mut self, id: &str, publisher: broadcast::Publisher) -> Result<(), RelayError> {
+		log::debug!("finding origin: id={}", id);
+
 		// Fetch the origin from the API.
-		let api = match self.api {
-			Some(ref mut api) => api,
+		let origin = self
+			.api
+			.as_mut()
+			.ok_or(CacheError::NotFound)?
+			.get_origin(id)
+			.await?
+			.ok_or(CacheError::NotFound)?;
 
-			// We return NotFound here instead of earlier just to simulate an API fetch.
-			None => return Err(CacheError::NotFound.into()),
-		};
-
-		log::info!("fetching origin: id={}", id);
-
-		let origin = api.get_origin(id).await?.ok_or(CacheError::NotFound)?;
-
-		log::info!("connecting to origin: url={}", origin.url);
+		log::debug!("fetching from origin: id={} url={}", id, origin.url);
 
 		// Establish the webtransport session.
 		let session = webtransport_quinn::connect(&self.quic, &origin.url).await?;
-
-		Ok(session)
-	}
-
-	async fn run_broadcast(
-		&mut self,
-		session: webtransport_quinn::Session,
-		broadcast: broadcast::Publisher,
-	) -> Result<(), RelayError> {
-		let session = moq_transport::session::Client::subscriber(session, broadcast).await?;
+		let session = moq_transport::session::Client::subscriber(session, publisher).await?;
 
 		session.run().await?;
 
 		Ok(())
 	}
+}
 
-	pub async fn remove_broadcast(&mut self, id: &str) -> Result<(), RelayError> {
-		self.lookup.lock().unwrap().remove(id).ok_or(CacheError::NotFound)?;
+pub struct Subscriber {
+	pub broadcast: broadcast::Subscriber,
 
-		if let Some(ref mut api) = self.api {
-			log::info!("deleting origin: id={}", id);
-			api.delete_origin(id).await?;
+	origin: Origin,
+}
+
+impl Drop for Subscriber {
+	fn drop(&mut self) {
+		log::debug!("subscriber: removing from cache: id={}", self.id);
+		self.origin.cache.lock().unwrap().remove(&self.broadcast.id);
+	}
+}
+
+impl Deref for Subscriber {
+	type Target = broadcast::Subscriber;
+
+	fn deref(&self) -> &Self::Target {
+		&self.broadcast
+	}
+}
+
+pub struct Publisher {
+	pub broadcast: broadcast::Publisher,
+
+	api: Option<(moq_api::Client, moq_api::Origin)>,
+
+	#[allow(dead_code)]
+	subscriber: Arc<Subscriber>,
+}
+
+impl Publisher {
+	pub async fn run(&mut self) -> Result<(), ApiError> {
+		// Every 5m tell the API we're still alive.
+		// TODO don't hard-code these values
+		let mut interval = time::interval(time::Duration::from_secs(60 * 5));
+
+		loop {
+			if let Some((api, origin)) = self.api.as_mut() {
+				log::debug!("refreshing origin: id={}", self.broadcast.id);
+				api.patch_origin(&self.broadcast.id, origin).await?;
+			}
+
+			// TODO move to start of loop; this is just for testing
+			interval.tick().await;
+		}
+	}
+
+	pub async fn close(&mut self) -> Result<(), ApiError> {
+		if let Some((api, _)) = self.api.as_mut() {
+			api.delete_origin(&self.broadcast.id).await?;
 		}
 
 		Ok(())
+	}
+}
+
+impl Deref for Publisher {
+	type Target = broadcast::Publisher;
+
+	fn deref(&self) -> &Self::Target {
+		&self.broadcast
+	}
+}
+
+impl DerefMut for Publisher {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.broadcast
 	}
 }

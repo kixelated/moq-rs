@@ -13,19 +13,27 @@
 use std::{
 	collections::{hash_map, HashMap, VecDeque},
 	fmt,
+	ops::Deref,
 	sync::Arc,
 };
 
 use super::{track, CacheError, Watch};
 
 /// Create a new broadcast.
-pub fn new() -> (Publisher, Subscriber) {
+pub fn new(id: &str) -> (Publisher, Subscriber) {
 	let state = Watch::new(State::default());
+	let info = Arc::new(Info { id: id.to_string() });
 
-	let publisher = Publisher::new(state.clone());
-	let subscriber = Subscriber::new(state);
+	let publisher = Publisher::new(state.clone(), info.clone());
+	let subscriber = Subscriber::new(state, info);
 
 	(publisher, subscriber)
+}
+
+/// Static information about a broadcast.
+#[derive(Debug)]
+pub struct Info {
+	pub id: String,
 }
 
 /// Dynamic information about the broadcast.
@@ -105,13 +113,14 @@ impl Default for State {
 #[derive(Clone)]
 pub struct Publisher {
 	state: Watch<State>,
+	info: Arc<Info>,
 	_dropped: Arc<Dropped>,
 }
 
 impl Publisher {
-	fn new(state: Watch<State>) -> Self {
+	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, _dropped }
+		Self { state, info, _dropped }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
@@ -148,9 +157,20 @@ impl Publisher {
 	}
 }
 
+impl Deref for Publisher {
+	type Target = Info;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
+	}
+}
+
 impl fmt::Debug for Publisher {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Publisher").field("state", &self.state).finish()
+		f.debug_struct("Publisher")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.finish()
 	}
 }
 
@@ -160,13 +180,14 @@ impl fmt::Debug for Publisher {
 #[derive(Clone)]
 pub struct Subscriber {
 	state: Watch<State>,
+	info: Arc<Info>,
 	_dropped: Arc<Dropped>,
 }
 
 impl Subscriber {
-	fn new(state: Watch<State>) -> Self {
+	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, _dropped }
+		Self { state, info, _dropped }
 	}
 
 	/// Get a track from the broadcast by name.
@@ -182,15 +203,42 @@ impl Subscriber {
 		state.into_mut().request(name)
 	}
 
-	/// Return if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub fn closed(&self) -> Option<CacheError> {
+	/// Check if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub fn is_closed(&self) -> Option<CacheError> {
 		self.state.lock().closed.as_ref().err().cloned()
+	}
+
+	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub async fn closed(&self) -> CacheError {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if let Some(err) = state.closed.as_ref().err() {
+					return err.clone();
+				}
+
+				state.changed()
+			};
+
+			notify.await;
+		}
+	}
+}
+
+impl Deref for Subscriber {
+	type Target = Info;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
 	}
 }
 
 impl fmt::Debug for Subscriber {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Subscriber").field("state", &self.state).finish()
+		f.debug_struct("Subscriber")
+			.field("state", &self.state)
+			.field("info", &self.info)
+			.finish()
 	}
 }
 

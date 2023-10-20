@@ -15,9 +15,15 @@ use moq_transport::cache::broadcast;
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
+	// Disable tracing so we don't get a bunch of Quinn spam.
+	let tracer = tracing_subscriber::FmtSubscriber::builder()
+		.with_max_level(tracing::Level::WARN)
+		.finish();
+	tracing::subscriber::set_global_default(tracer).unwrap();
+
 	let config = Config::parse();
 
-	let (publisher, subscriber) = broadcast::new();
+	let (publisher, subscriber) = broadcast::new("");
 	let mut media = Media::new(&config, publisher).await?;
 
 	// Ugh, just let me use my native root certs already
