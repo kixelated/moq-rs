@@ -111,7 +111,7 @@ impl Subscriber {
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-		log::debug!("received object: {:?}", object);
+		log::trace!("received object: {:?}", object);
 
 		// A new scope is needed because the async compiler is dumb
 		let mut publisher = {

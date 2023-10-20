@@ -94,10 +94,7 @@ impl Origin {
 
 		if let Some(broadcast) = cache.get(id) {
 			if let Some(broadcast) = broadcast.upgrade() {
-				log::debug!("returned broadcast from cache: id={}", id);
 				return broadcast;
-			} else {
-				log::debug!("stale broadcast in cache somehow: id={}", id);
 			}
 		}
 
@@ -108,8 +105,6 @@ impl Origin {
 		});
 
 		cache.insert(id.to_string(), Arc::downgrade(&subscriber));
-
-		log::debug!("fetching into cache: id={}", id);
 
 		let mut this = self.clone();
 		let id = id.to_string();
@@ -160,7 +155,6 @@ pub struct Subscriber {
 
 impl Drop for Subscriber {
 	fn drop(&mut self) {
-		log::debug!("subscriber: removing from cache: id={}", self.id);
 		self.origin.cache.lock().unwrap().remove(&self.broadcast.id);
 	}
 }
@@ -190,7 +184,6 @@ impl Publisher {
 
 		loop {
 			if let Some((api, origin)) = self.api.as_mut() {
-				log::debug!("refreshing origin: id={}", self.broadcast.id);
 				api.patch_origin(&self.broadcast.id, origin).await?;
 			}
 

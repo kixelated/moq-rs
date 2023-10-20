@@ -71,8 +71,6 @@ async fn get_origin(
 ) -> Result<Json<Origin>, AppError> {
 	let key = origin_key(&id);
 
-	log::debug!("get_origin: id={}", id);
-
 	let payload: Option<String> = redis.get(&key).await?;
 	let payload = payload.ok_or(AppError::NotFound)?;
 	let origin: Origin = serde_json::from_str(&payload)?;
