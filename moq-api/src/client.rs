@@ -16,8 +16,12 @@ impl Client {
 		Self { url, client }
 	}
 
-	pub async fn get_origin(&self, id: &str) -> Result<Option<Origin>, ApiError> {
-		let url = self.url.join("origin/")?.join(id)?;
+	pub async fn get_next(&self, id: &str, next_relays: &Option<Vec<Url>>) -> Result<Option<Origin>, ApiError> {
+		let mut url = self.url.join("origin/")?.join(id)?;
+		if let Some(next_relays) = next_relays {
+			let url_list = next_relays.iter().map(|url| url.as_str()).collect::<Vec<_>>().join(",");
+			url = url.join("/")?.join(url_list.as_str())?;
+		}
 		let resp = self.client.get(url).send().await?;
 		if resp.status() == reqwest::StatusCode::NOT_FOUND {
 			return Ok(None);

@@ -53,6 +53,7 @@ impl Server {
 					.delete(delete_origin)
 					.patch(patch_origin),
 			)
+			.route("/origin/:id/:next_relay_urls", get(get_next))
 			.with_state(redis);
 
 		log::info!("serving requests: bind={}", self.config.listen);
@@ -63,6 +64,26 @@ impl Server {
 
 		Ok(())
 	}
+}
+
+/// Get next relay to ask for the track
+/// For now you can pass one or more relays as an argument.
+/// but it will tell you to go to the first one/
+/// This can later be used to create routing patterns
+async fn get_next(
+	Path(id): Path<String>,
+	Path(next_relay_urls): Path<String>,
+	State(mut redis): State<ConnectionManager>,
+) -> Result<Json<Origin>, AppError> {
+	let key = origin_key(&id);
+
+	let payload: Option<String> = redis.get(&key).await?;
+	payload.ok_or(AppError::NotFound)?; // idk what's the nice way for this
+
+	let next_relays = parse_relay_urls(next_relay_urls);
+	let next: Origin = serde_json::from_str(&next_relays[0].as_str())?;
+
+	Ok(Json(next))
 }
 
 async fn get_origin(
@@ -141,6 +162,18 @@ async fn patch_origin(
 
 fn origin_key(id: &str) -> String {
 	format!("origin.{}", id)
+}
+
+// Parse a list of URLs separated by commas
+fn parse_relay_urls(url_list_string: String) -> Vec<url::Url> {
+	let mut urls = Vec::new();
+	for url in url_list_string.split(',') {
+		let url_string = url;
+		if let Ok(url) = url_string.parse::<url::Url>() {
+			urls.push(url);
+		}
+	}
+	urls
 }
 
 #[derive(thiserror::Error, Debug)]
