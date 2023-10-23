@@ -44,7 +44,7 @@ pub struct Config {
 
 	/// Next hop relays this relays is connected to
 	/// Will be passed to moq_api for it to decide where to get the track from.
-	#[arg(num_args(0..))]
+	#[arg(long)]
 	pub next_relays: Option<Vec<Url>>,
 
 	/// Enable development mode.
