@@ -177,7 +177,7 @@ impl Media {
 				track["kind"] = json!("audio");
 				track["codec"] = json!(codec_str);
 				track["channel_count"] = json!(mp4a.channelcount);
-				track["sample_rate"] = json!(mp4a.samplerate);
+				track["sample_rate"] = json!(mp4a.samplerate.value());
 				track["sample_size"] = json!(mp4a.samplesize);
 
 				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
