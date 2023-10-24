@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Default to a source video
+MEDIA="${MEDIA:-dev/source.mp4}"
+
+# Output the fragmented MP4 to disk for testing.
+OUTPUT="${OUTPUT:-dev/output.mp4}"
+
+# Run ffmpeg the same as dev/pub, but:
+#   - print any errors/warnings
+#   - only loop twice
+#
+# Note this is artificially slowed down to real-time using the -re flag.
+ffmpeg \
+	-stream_loop 2 \
+	-re \
+	-i "$MEDIA" \
+	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset \
+	"${OUTPUT}"
