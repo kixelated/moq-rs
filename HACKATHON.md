@@ -15,7 +15,7 @@ The stream mapping right now is quite rigid: `stream == group == object`.
 
 The API and cache aren't designed to send/receive arbitrary objects over arbitrary streams as specified in the draft. I don't think it should, and it wouldn't be possible to implement in time for the hackathon anyway.
 
-**TODO** Make an extension to require this stream mapping?
+**TODO** Make an extension to enforce this stream mapping?
 
 ## Generic Relay
 
@@ -30,19 +30,18 @@ The traffic is sharded based on the WebTransport path to avoid namespace collisi
 ## CMAF Media
 
 You can [publish](https://quic.video/publish) and [watch](https://quic.video/watch) broadcasts.
-You can also use `moq-pub` to publish your own media if you would like.
+There's a [24/7 bunny stream](https://quic.video/watch/bbb) or you can publish your own using [moq-pub](https://github.com/kixelated/moq-rs/tree/main/moq-pub).
 
-I'm currently using a JSON catalog similar to the proposed [Warp catalog](https://datatracker.ietf.org/doc/draft-wilaw-moq-catalogformat/).
+If you want to fetch from the relay directly, the name of the broadcast is the path. For example, `https://quic.video/watch/bbb` can be accessed at `relay.quic.video/bbb`. 
 
-**TODO** update to the proposed format.
+The namespace is empty and the catalog track is `.catalog`. I'm currently using simple JSON catalog with no support for delta updates.
 
-If you want to fetch from the relay directly, the name of the broadcast is path. For example, `https://quic.video/watch/bbb` can be accessed at `relay.quic.video/bbb`. The namespace is empty and the catalog track is `.catalog`.
+**TODO** update to the proposed [Warp catalog](https://datatracker.ietf.org/doc/draft-wilaw-moq-catalogformat/).
 
-Each of the tracks uses a single object per groups. Video groups are per GoP, while audio groups are per frame. There's also an init track containing information required to initialize the decoder.
+The media tracks uses a single (unbounded) object per group. Video groups are per GoP, while audio groups are per frame. There's also an init track containing information required to initialize the decoder.
 
 **TODO** Base64 encode the init track in the catalog.
 
-**TODO** Add a flag for publishing LoC media? It shouldn't be difficult.
 
 ## Clock
 
