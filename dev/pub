@@ -13,21 +13,28 @@ PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
 
 # Generate a random 16 character name by default.
-NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
+#NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
+
+# JK use the name "dev" instead
+# TODO use that random name if the host is not localhost
+NAME="${NAME:-dev}"
 
 # Combine the host and name into a URL.
 URL="${URL:-"https://$ADDR/$NAME"}"
 
 # Default to a source video
-MEDIA="${MEDIA:-dev/source.mp4}"
+INPUT="${INPUT:-dev/source.mp4}"
 
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Run ffmpeg and pipe the output to moq-pub
+# TODO enable audio again once fixed.
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
-	-i "$MEDIA" \
+	-i "$INPUT" \
+	-c copy \
 	-an \
-	-f mp4 -movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset - \
-	| cargo run --bin moq-pub -- "$URL" "$@"
+	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
+	-frag_duration 1 \
+	- | cargo run --bin moq-pub -- "$URL" "$@"

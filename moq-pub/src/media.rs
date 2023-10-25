@@ -4,6 +4,7 @@ use moq_transport::cache::{broadcast, segment, track};
 use moq_transport::VarInt;
 use mp4::{self, ReadBox};
 use serde_json::json;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time;
@@ -15,11 +16,12 @@ pub struct Media {
 	_catalog: track::Publisher,
 	_init: track::Publisher,
 
-	tracks: HashMap<String, Track>,
+	// Tracks based on their track ID.
+	tracks: HashMap<u32, Track>,
 }
 
 impl Media {
-	pub async fn new(config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
+	pub async fn new(_config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
 		let mut stdin = tokio::io::stdin();
 		let ftyp = read_atom(&mut stdin).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
@@ -39,7 +41,7 @@ impl Media {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create_track("1.mp4")?;
+		let mut init_track = broadcast.create_track("0.mp4")?;
 		let mut init_segment = init_track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: i32::MAX,
@@ -52,20 +54,20 @@ impl Media {
 
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
-			let name = id.to_string();
+			let name = format!("{}.m4s", id);
 
 			let timescale = track_timescale(&moov, id);
 
 			// Store the track publisher in a map so we can update it later.
 			let track = broadcast.create_track(&name)?;
 			let track = Track::new(track, timescale);
-			tracks.insert(name, track);
+			tracks.insert(id, track);
 		}
 
 		let mut catalog = broadcast.create_track(".catalog")?;
 
 		// Create the catalog track
-		Self::serve_catalog(&mut catalog, config, init_track.name.to_string(), &moov, &tracks)?;
+		Self::serve_catalog(&mut catalog, &init_track.name, &moov)?;
 
 		Ok(Media {
 			_broadcast: broadcast,
@@ -78,7 +80,7 @@ impl Media {
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		let mut stdin = tokio::io::stdin();
 		// The current track name
-		let mut track_name = None;
+		let mut current = None;
 
 		loop {
 			let atom = read_atom(&mut stdin).await?;
@@ -92,22 +94,21 @@ impl Media {
 
 					// Process the moof.
 					let fragment = Fragment::new(moof)?;
-					let name = fragment.track.to_string();
 
 					// Get the track for this moof.
-					let track = self.tracks.get_mut(&name).context("failed to find track")?;
+					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
 
 					// Save the track ID for the next iteration, which must be a mdat.
-					anyhow::ensure!(track_name.is_none(), "multiple moof atoms");
-					track_name.replace(name);
+					anyhow::ensure!(current.is_none(), "multiple moof atoms");
+					current.replace(fragment.track);
 
 					// Publish the moof header, creating a new segment if it's a keyframe.
 					track.header(atom, fragment).context("failed to publish moof")?;
 				}
 				mp4::BoxType::MdatBox => {
 					// Get the track ID from the previous moof.
-					let name = track_name.take().context("missing moof")?;
-					let track = self.tracks.get_mut(&name).context("failed to find track")?;
+					let track = current.take().context("missing moof")?;
+					let track = self.tracks.get_mut(&track).context("failed to find track")?;
 
 					// Publish the mdat atom.
 					track.data(atom).context("failed to publish mdat")?;
@@ -122,10 +123,8 @@ impl Media {
 
 	fn serve_catalog(
 		track: &mut track::Publisher,
-		config: &Config,
-		init_track_name: String,
+		init_track_name: &str,
 		moov: &mp4::MoovBox,
-		_tracks: &HashMap<String, Track>,
 	) -> Result<(), anyhow::Error> {
 		let mut segment = track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
@@ -133,47 +132,82 @@ impl Media {
 			expires: None,
 		})?;
 
-		// avc1[.PPCCLL]
-		//
-		// let profile = 0x64;
-		// let constraints = 0x00;
-		// let level = 0x1f;
+		let mut tracks = Vec::new();
 
-		// TODO: do build multi-track catalog by looping through moov.traks
-		let trak = moov.traks[0].clone();
-		let avc1 = trak
-			.mdia
-			.minf
-			.stbl
-			.stsd
-			.avc1
-			.ok_or(anyhow::anyhow!("avc1 atom not found"))?;
+		for trak in &moov.traks {
+			let mut track = json!({
+				"container": "mp4",
+				"init_track": init_track_name,
+				"data_track": format!("{}.m4s", trak.tkhd.track_id),
+			});
 
-		let profile = avc1.avcc.avc_profile_indication;
-		let constraints = avc1.avcc.profile_compatibility; // Not 100% certain here, but it's 0x00 on my current test video
-		let level = avc1.avcc.avc_level_indication;
+			let stsd = &trak.mdia.minf.stbl.stsd;
+			if let Some(avc1) = &stsd.avc1 {
+				// avc1[.PPCCLL]
+				//
+				// let profile = 0x64;
+				// let constraints = 0x00;
+				// let level = 0x1f;
+				let profile = avc1.avcc.avc_profile_indication;
+				let constraints = avc1.avcc.profile_compatibility; // Not 100% certain here, but it's 0x00 on my current test video
+				let level = avc1.avcc.avc_level_indication;
 
-		let width = avc1.width;
-		let height = avc1.height;
+				let width = avc1.width;
+				let height = avc1.height;
 
-		let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
-		let codec_str = codec.to_string();
+				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
+				let codec_str = codec.to_string();
+
+				track["kind"] = json!("video");
+				track["codec"] = json!(codec_str);
+				track["width"] = json!(width);
+				track["height"] = json!(height);
+			} else if let Some(_hev1) = &stsd.hev1 {
+				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
+				anyhow::bail!("HEVC not yet supported")
+			} else if let Some(mp4a) = &stsd.mp4a {
+				let desc = &mp4a
+					.esds
+					.as_ref()
+					.context("missing esds box for MP4a")?
+					.es_desc
+					.dec_config;
+				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
+
+				track["kind"] = json!("audio");
+				track["codec"] = json!(codec_str);
+				track["channel_count"] = json!(mp4a.channelcount);
+				track["sample_rate"] = json!(mp4a.samplerate.value());
+				track["sample_size"] = json!(mp4a.samplesize);
+
+				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
+				if bitrate > 0 {
+					track["bit_rate"] = json!(bitrate);
+				}
+			} else if let Some(vp09) = &stsd.vp09 {
+				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
+				let vpcc = &vp09.vpcc;
+				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
+
+				track["kind"] = json!("video");
+				track["codec"] = json!(codec_str);
+				track["width"] = json!(vp09.width); // no idea if this needs to be multiplied
+				track["height"] = json!(vp09.height); // no idea if this needs to be multiplied
+
+				// TODO Test if this actually works; I'm just guessing based on mp4box.js
+				anyhow::bail!("VP9 not yet supported")
+			} else {
+				// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
+				anyhow::bail!("unknown codec for track: {}", trak.tkhd.track_id);
+			}
+
+			tracks.push(track);
+		}
 
 		let catalog = json!({
-			"tracks": [
-				{
-				"container": "mp4",
-				"kind": "video",
-				"init_track": init_track_name,
-				"data_track": "1", // assume just one track for now
-				"codec": codec_str,
-				"width": width,
-				"height": height,
-				"frame_rate": config.fps,
-				"bit_rate": config.bitrate,
-				}
-			]
+			"tracks": tracks
 		});
+
 		let catalog_str = serde_json::to_string_pretty(&catalog)?;
 		log::info!("catalog: {}", catalog_str);
 

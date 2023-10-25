@@ -83,9 +83,16 @@ The following command runs a development instance, broadcasing `dev/source.mp4` 
 ```
 
 It will print out a URL when you can use to watch.
-This will contain a random broadcast name so the below link won't work:
+By default, the broadcast name is `dev` but you can overwrite it with the `NAME` env.
 
-> Watch URL: https://quic.video/watch/REPLACE_WITH_NAME?server=localhost:4443
+> Watch URL: https://quic.video/watch/dev?server=localhost:4443
+
+If you're debugging encoding issues, you can use this script to dump the file to disk instead, defaulting to
+`dev/output.mp4`.
+
+```bash
+./dev/pub-file
+```
 
 ### moq-api
 
