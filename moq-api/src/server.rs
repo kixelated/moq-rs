@@ -29,7 +29,7 @@ pub struct ServerConfig {
 	pub redis: url::Url,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 struct OriginParams {
 	#[serde(default, deserialize_with = "empty_string_as_none")]
 	next_relays: Option<String>,
