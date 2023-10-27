@@ -1,7 +1,9 @@
-use std::net;
+use std::{fmt, net, str::FromStr};
+
+use serde::{de, Deserialize, Deserializer};
 
 use axum::{
-	extract::{Path, State},
+	extract::{Path, Query, State},
 	http::StatusCode,
 	response::{IntoResponse, Response},
 	routing::get,
@@ -25,6 +27,26 @@ pub struct ServerConfig {
 	/// Connect to the given redis instance
 	#[arg(long)]
 	pub redis: url::Url,
+}
+
+#[derive(serde::Deserialize)]
+struct OriginParams {
+	#[serde(default, deserialize_with = "empty_string_as_none")]
+	next_relays: Option<String>,
+}
+
+/// Serde deserialization decorator to map empty Strings to None,
+fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+where
+	D: Deserializer<'de>,
+	T: FromStr,
+	T::Err: fmt::Display,
+{
+	let opt = Option::<String>::deserialize(de)?;
+	match opt.as_deref() {
+		None | Some("") => Ok(None),
+		Some(s) => FromStr::from_str(s).map_err(de::Error::custom).map(Some),
+	}
 }
 
 pub struct Server {
@@ -53,7 +75,6 @@ impl Server {
 					.delete(delete_origin)
 					.patch(patch_origin),
 			)
-			.route("/origin/:id/:next_relay_urls", get(get_next))
 			.with_state(redis);
 
 		log::info!("serving requests: bind={}", self.config.listen);
@@ -66,35 +87,27 @@ impl Server {
 	}
 }
 
-/// Get next relay to ask for the track
-/// For now you can pass one or more relays as an argument.
-/// but it will tell you to go to the first one/
-/// This can later be used to create routing patterns
-async fn get_next(
-	Path(id): Path<String>,
-	Path(next_relay_urls): Path<String>,
-	State(mut redis): State<ConnectionManager>,
-) -> Result<Json<Origin>, AppError> {
-	let key = origin_key(&id);
-
-	let payload: Option<String> = redis.get(&key).await?;
-	payload.ok_or(AppError::NotFound)?; // idk what's the nice way for this
-
-	let next_relays = parse_relay_urls(next_relay_urls);
-	let next: Origin = serde_json::from_str(&next_relays[0].as_str())?;
-
-	Ok(Json(next))
-}
-
 async fn get_origin(
 	Path(id): Path<String>,
 	State(mut redis): State<ConnectionManager>,
+	Query(params): Query<OriginParams>,
 ) -> Result<Json<Origin>, AppError> {
 	let key = origin_key(&id);
 
 	let payload: Option<String> = redis.get(&key).await?;
 	let payload = payload.ok_or(AppError::NotFound)?;
+	if let Some(next_relays_string) = params.next_relays {
+		// Choose from provided next relays
+		// TODO error handling here in the parser
+		let next_relays = parse_relay_urls(next_relays_string);
+		// TODO load balancing here? anyway a smarter pick than just the first
+		let origin = Origin {
+			url: next_relays[0].clone(),
+		};
+		return Ok(Json(origin));
+	}
 	let origin: Origin = serde_json::from_str(&payload)?;
+	log::debug!("Forwarding to origin: {}", origin.url.as_str());
 
 	Ok(Json(origin))
 }
