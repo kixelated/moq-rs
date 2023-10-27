@@ -101,8 +101,9 @@ async fn get_origin(
 		// TODO error handling here in the parser
 		let next_relays = parse_relay_urls(next_relays_string);
 		// TODO load balancing here? anyway a smarter pick than just the first
+		let next_url = url::Url::from_str(format!("{}/{}", next_relays[0].as_str(), id).as_str());
 		let origin = Origin {
-			url: next_relays[0].clone(),
+			url: next_url.expect("you goofed up, do proper error checking, fool"),
 		};
 		return Ok(Json(origin));
 	}
