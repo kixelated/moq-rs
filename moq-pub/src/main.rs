@@ -1,3 +1,5 @@
+use std::{fs, io};
+
 use anyhow::Context;
 use clap::Parser;
 
@@ -26,10 +28,28 @@ async fn main() -> anyhow::Result<()> {
 	let (publisher, subscriber) = broadcast::new("");
 	let mut media = Media::new(&config, publisher).await?;
 
-	// Ugh, just let me use my native root certs already
+	// Create a list of acceptable root certificates.
 	let mut roots = rustls::RootCertStore::empty();
-	for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
-		roots.add(&rustls::Certificate(cert.0)).unwrap();
+
+	if config.tls_root.is_empty() {
+		// Add the platform's native root certificates.
+		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
+			roots
+				.add(&rustls::Certificate(cert.0))
+				.context("failed to add root cert")?;
+		}
+	} else {
+		// Add the specified root certificates.
+		for root in &config.tls_root {
+			let root = fs::File::open(root).context("failed to open root cert file")?;
+			let mut root = io::BufReader::new(root);
+
+			let root = rustls_pemfile::certs(&mut root).context("failed to read root cert")?;
+			anyhow::ensure!(root.len() == 1, "expected a single root cert");
+			let root = rustls::Certificate(root[0].to_owned());
+
+			roots.add(&root).context("failed to add root cert")?;
+		}
 	}
 
 	let mut tls_config = rustls::ClientConfig::builder()

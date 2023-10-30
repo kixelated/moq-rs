@@ -1066,6 +1066,7 @@ dependencies = [
  "rfc6381-codec",
  "rustls",
  "rustls-native-certs",
+ "rustls-pemfile",
  "serde_json",
  "tokio",
  "tracing",

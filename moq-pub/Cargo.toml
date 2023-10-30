@@ -25,6 +25,7 @@ url = "2"
 # Crypto
 rustls = "0.21"
 rustls-native-certs = "0.6"
+rustls-pemfile = "1"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
