@@ -34,14 +34,15 @@ impl Client {
 
 		let client = setup::Client {
 			role,
-			versions: vec![setup::Version::KIXEL_00].into(),
+			versions: vec![setup::Version::KIXEL_01].into(),
+			params: setup::Params::default(),
 		};
 
 		client.encode(&mut control.0).await?;
 
 		let server = setup::Server::decode(&mut control.1).await?;
 
-		if server.version != setup::Version::KIXEL_00 {
+		if server.version != setup::Version::KIXEL_01 {
 			return Err(SessionError::Version(Some(server.version)));
 		}
 

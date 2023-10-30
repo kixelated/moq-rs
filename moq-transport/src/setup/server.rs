@@ -1,6 +1,6 @@
-use super::{Role, Version};
+use super::{Params, Role, Version, PARAM_ROLE};
 use crate::{
-	coding::{DecodeError, EncodeError},
+	coding::{Decode, DecodeError, Encode, EncodeError},
 	VarInt,
 };
 
@@ -17,6 +17,9 @@ pub struct Server {
 	/// Indicate if the server is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
+
+	/// Unknown parameters.
+	pub params: Params,
 }
 
 impl Server {
@@ -28,16 +31,24 @@ impl Server {
 		}
 
 		let version = Version::decode(r).await?;
-		let role = Role::decode(r).await?;
+		let mut params = Params::decode(r).await?;
 
-		Ok(Self { version, role })
+		let role = params
+			.get::<Role>(PARAM_ROLE)
+			.await?
+			.ok_or(DecodeError::MissingParameter)?;
+
+		Ok(Self { version, role, params })
 	}
 
 	/// Encode the server setup.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from_u32(2).encode(w).await?;
 		self.version.encode(w).await?;
-		self.role.encode(w).await?;
+
+		let mut params = self.params.clone();
+		params.set(PARAM_ROLE, self.role).await?;
+		params.encode(w).await?;
 
 		Ok(())
 	}

@@ -5,11 +5,13 @@
 //! Both sides negotate the [Version] and [Role].
 
 mod client;
+mod params;
 mod role;
 mod server;
 mod version;
 
 pub use client::*;
+pub use params::*;
 pub use role::*;
 pub use server::*;
 pub use version::*;

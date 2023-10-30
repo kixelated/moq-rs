@@ -1,6 +1,6 @@
 use std::time;
 
-use crate::coding::{DecodeError, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

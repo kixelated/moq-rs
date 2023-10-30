@@ -1,6 +1,6 @@
 use crate::coding::{AsyncRead, AsyncWrite};
 
-use crate::coding::{DecodeError, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 /// Indicates the endpoint is a publisher, subscriber, or both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,15 +56,19 @@ impl TryFrom<VarInt> for Role {
 	}
 }
 
-impl Role {
+#[async_trait::async_trait]
+impl Decode for Role {
 	/// Decode the role.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let v = VarInt::decode(r).await?;
 		v.try_into()
 	}
+}
 
+#[async_trait::async_trait]
+impl Encode for Role {
 	/// Encode the role.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		VarInt::from(*self).encode(w).await
 	}
 }

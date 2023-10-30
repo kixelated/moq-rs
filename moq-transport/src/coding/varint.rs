@@ -9,7 +9,7 @@ use crate::coding::{AsyncRead, AsyncWrite};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::{DecodeError, EncodeError};
+use super::{Decode, DecodeError, Encode, EncodeError};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value out of range")]
@@ -164,9 +164,10 @@ impl fmt::Display for VarInt {
 	}
 }
 
-impl VarInt {
+#[async_trait::async_trait]
+impl Decode for VarInt {
 	/// Decode a varint from the given reader.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let mut buf = [0u8; 8];
 		r.read_exact(buf[0..1].as_mut()).await?;
 
@@ -192,9 +193,12 @@ impl VarInt {
 
 		Ok(Self(x))
 	}
+}
 
+#[async_trait::async_trait]
+impl Encode for VarInt {
 	/// Encode a varint to the given writer.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
 			w.write_u8(x as u8).await?;

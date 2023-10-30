@@ -85,9 +85,9 @@ impl Publisher {
 	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
 			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
-			Message::AnnounceStop(msg) => self.recv_announce_stop(msg).await,
+			Message::AnnounceError(msg) => self.recv_announce_error(msg).await,
 			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
-			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
+			Message::Unsubscribe(msg) => self.recv_unsubscribe(msg).await,
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
@@ -97,7 +97,7 @@ impl Publisher {
 		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), SessionError> {
+	async fn recv_announce_error(&mut self, _msg: &message::AnnounceError) -> Result<(), SessionError> {
 		// We didn't send an announce.
 		Err(CacheError::NotFound.into())
 	}
@@ -115,7 +115,12 @@ impl Publisher {
 			hash_map::Entry::Vacant(entry) => entry.insert(abort),
 		};
 
-		self.control.send(message::SubscribeOk { id: msg.id }).await
+		self.control
+			.send(message::SubscribeOk {
+				id: msg.id,
+				expires: VarInt::ZERO,
+			})
+			.await
 	}
 
 	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
@@ -200,7 +205,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), SessionError> {
+	async fn recv_unsubscribe(&mut self, msg: &message::Unsubscribe) -> Result<(), SessionError> {
 		let abort = self
 			.subscribes
 			.lock()

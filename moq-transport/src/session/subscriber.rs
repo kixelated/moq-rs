@@ -72,10 +72,11 @@ impl Subscriber {
 
 	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
-			Message::Announce(_) => Ok(()),      // don't care
-			Message::AnnounceReset(_) => Ok(()), // also don't care
-			Message::SubscribeOk(_) => Ok(()),   // guess what, don't care
+			Message::Announce(_) => Ok(()),   // don't care
+			Message::Unannounce(_) => Ok(()), // also don't care
+			Message::SubscribeOk(_) => unimplemented!("SUBSCRIBE_OK"),
 			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
+			Message::SubscribeError(_) => unimplemented!("SUBSCRIBE_ERROR"),
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}

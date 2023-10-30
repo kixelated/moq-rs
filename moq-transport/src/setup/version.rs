@@ -1,4 +1,4 @@
-use crate::coding::{DecodeError, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -56,6 +56,20 @@ impl Version {
 	/// # GROUP
 	/// - GROUP concept was removed, replaced with OBJECT as a QUIC stream.
 	pub const KIXEL_00: Version = Version(VarInt::from_u32(0xbad00));
+
+	/// Fork of draft-ietf-moq-transport-01.
+	///
+	/// Most of the KIXEL_00 changes made it into the draft, or were reverted.
+	/// Check out the referenced issue on: github.com/moq-wg/moq-transport
+	///
+	/// - SETUP `role` indicates the role of the sender, not the role of the server. [#151](https://github.com/moq-wg/moq-transport/issues/151)
+	/// - ANNOUNCE/SUBSCRIBE parameters have been replaced by an `auth` field. [#300](https://github.com/moq-wg/moq-transport/issues/300)
+	/// - SUBSCRIBE contains the `track_id` instead of SUBSCRIBE_OK. [#145](https://github.com/moq-wg/moq-transport/issues/145)
+	/// - SUBSCRIBE_* reference `track_id` the instead of the `track_full_name`. [#145](https://github.com/moq-wg/moq-transport/issues/145)
+	/// - SUBSCRIBE_RESET and SUBSCRIBE_FIN are merged, with error code 0 meaning FIN. [#310](https://github.com/moq-wg/moq-transport/issues/310)
+	/// - OBJECT `expires` was added, a varint in seconds. [#249](https://github.com/moq-wg/moq-transport/issues/249)
+	/// - OBJECT uses a QUIC stream per group.
+	pub const KIXEL_01: Version = Version(VarInt::from_u32(0xbad01));
 }
 
 impl From<VarInt> for Version {
@@ -88,9 +102,10 @@ impl Version {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Versions(Vec<Version>);
 
-impl Versions {
+#[async_trait::async_trait]
+impl Decode for Versions {
 	/// Decode the version list.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let count = VarInt::decode(r).await?.into_inner();
 		let mut vs = Vec::new();
 
@@ -101,9 +116,12 @@ impl Versions {
 
 		Ok(Self(vs))
 	}
+}
 
+#[async_trait::async_trait]
+impl Encode for Versions {
 	/// Encode the version list.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let size: VarInt = self.0.len().try_into()?;
 		size.encode(w).await?;
 
