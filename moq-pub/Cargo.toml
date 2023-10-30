@@ -23,8 +23,9 @@ webtransport-quinn = "0.6"
 url = "2"
 
 # Crypto
-rustls = "0.21"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6"
+rustls-pemfile = "1"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }

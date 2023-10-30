@@ -17,9 +17,9 @@ impl Web {
 	pub fn new(config: Config, tls: Tls) -> Self {
 		// Get the first certificate's fingerprint.
 		// TODO serve all of them so we can support multiple signature algorithms.
-		let fingerprint = tls.fingerprints().first().expect("missing certificate").clone();
+		let fingerprint = tls.fingerprints.first().expect("missing certificate").clone();
 
-		let mut tls_config = tls.server();
+		let mut tls_config = tls.server.clone();
 		tls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 		let tls_config = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(tls_config));
 
