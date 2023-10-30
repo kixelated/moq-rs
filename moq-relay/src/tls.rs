@@ -3,23 +3,19 @@ use ring::digest::{digest, SHA256};
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
 use rustls::{Certificate, PrivateKey, RootCertStore};
-use rustls::{ClientConfig, ServerConfig};
-use std::fs;
 use std::io::{self, Cursor, Read};
 use std::path;
 use std::sync::Arc;
+use std::{fs, time};
 use webpki::{DnsNameRef, EndEntityCert};
 
 use crate::Config;
 
 #[derive(Clone)]
 pub struct Tls {
-	// Support serving multiple certificates, choosing one that looks valid for the given SNI.
-	// We store the parsed certificate, and the certified cert/key that rustls expects
-	serve: Arc<ServeCerts>,
-
-	// Accept any cert that is trusted by the system's native trust store.
-	accept: Arc<RootCertStore>,
+	pub server: rustls::ServerConfig,
+	pub client: rustls::ClientConfig,
+	pub fingerprints: Vec<String>,
 }
 
 impl Tls {
@@ -56,31 +52,33 @@ impl Tls {
 			}
 		}
 
+		// Create the TLS configuration we'll use as a client (relay -> relay)
+		let mut client = rustls::ClientConfig::builder()
+			.with_safe_defaults()
+			.with_root_certificates(roots)
+			.with_no_client_auth();
+
+		// Allow disabling TLS verification altogether.
+		if config.tls_disable_verify {
+			let noop = NoCertificateVerification {};
+			client.dangerous().set_certificate_verifier(Arc::new(noop));
+		}
+
+		let fingerprints = serve.fingerprints();
+
+		// Create the TLS configuration we'll use as a server (relay <- browser)
+		let server = rustls::ServerConfig::builder()
+			.with_safe_defaults()
+			.with_no_client_auth()
+			.with_cert_resolver(Arc::new(serve));
+
 		let certs = Self {
-			serve: Arc::new(serve),
-			accept: Arc::new(roots),
+			server,
+			client,
+			fingerprints,
 		};
 
 		Ok(certs)
-	}
-
-	pub fn client(&self) -> ClientConfig {
-		rustls::ClientConfig::builder()
-			.with_safe_defaults()
-			.with_root_certificates(self.accept.clone())
-			.with_no_client_auth()
-	}
-
-	pub fn server(&self) -> ServerConfig {
-		rustls::ServerConfig::builder()
-			.with_safe_defaults()
-			.with_no_client_auth()
-			.with_cert_resolver(self.serve.clone())
-	}
-
-	// Return the SHA256 fingerprint of our certificates.
-	pub fn fingerprints(&self) -> Vec<String> {
-		self.serve.fingerprints()
 	}
 }
 
@@ -164,5 +162,21 @@ impl ResolvesServerCert for ServeCerts {
 
 		// Default to the last certificate if we couldn't find one.
 		self.list.last().cloned()
+	}
+}
+
+pub struct NoCertificateVerification {}
+
+impl rustls::client::ServerCertVerifier for NoCertificateVerification {
+	fn verify_server_cert(
+		&self,
+		_end_entity: &rustls::Certificate,
+		_intermediates: &[rustls::Certificate],
+		_server_name: &rustls::ServerName,
+		_scts: &mut dyn Iterator<Item = &[u8]>,
+		_ocsp_response: &[u8],
+		_now: time::SystemTime,
+	) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+		Ok(rustls::client::ServerCertVerified::assertion())
 	}
 }

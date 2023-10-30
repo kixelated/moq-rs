@@ -31,6 +31,12 @@ pub struct Config {
 	#[arg(long)]
 	pub tls_root: Vec<path::PathBuf>,
 
+	/// Danger: Disable TLS certificate verification.
+	///
+	/// Fine for local development and between relays, but should be used in caution in production.
+	#[arg(long)]
+	pub tls_disable_verify: bool,
+
 	/// Optional: Use the moq-api via HTTP to store origin information.
 	#[arg(long)]
 	pub api: Option<Url>,

@@ -1,4 +1,4 @@
-use std::{fs, io};
+use std::{fs, io, sync::Arc, time};
 
 use anyhow::Context;
 use clap::Parser;
@@ -57,6 +57,12 @@ async fn main() -> anyhow::Result<()> {
 		.with_root_certificates(roots)
 		.with_no_client_auth();
 
+	// Allow disabling TLS verification altogether.
+	if config.tls_disable_verify {
+		let noop = NoCertificateVerification {};
+		tls_config.dangerous().set_certificate_verifier(Arc::new(noop));
+	}
+
 	tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
 
 	let arc_tls_config = std::sync::Arc::new(tls_config);
@@ -82,4 +88,20 @@ async fn main() -> anyhow::Result<()> {
 	}
 
 	Ok(())
+}
+
+pub struct NoCertificateVerification {}
+
+impl rustls::client::ServerCertVerifier for NoCertificateVerification {
+	fn verify_server_cert(
+		&self,
+		_end_entity: &rustls::Certificate,
+		_intermediates: &[rustls::Certificate],
+		_server_name: &rustls::ServerName,
+		_scts: &mut dyn Iterator<Item = &[u8]>,
+		_ocsp_response: &[u8],
+		_now: time::SystemTime,
+	) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+		Ok(rustls::client::ServerCertVerified::assertion())
+	}
 }

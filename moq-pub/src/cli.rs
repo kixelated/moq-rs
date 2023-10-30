@@ -28,6 +28,12 @@ pub struct Config {
 	/// If this is empty, system roots will be used instead
 	#[arg(long)]
 	pub tls_root: Vec<path::PathBuf>,
+
+	/// Danger: Disable TLS certificate verification.
+	///
+	/// Fine for local development, but should be used in caution in production.
+	#[arg(long)]
+	pub tls_disable_verify: bool,
 }
 
 fn moq_url(s: &str) -> Result<Url, String> {
