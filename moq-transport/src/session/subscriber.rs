@@ -138,9 +138,15 @@ impl Subscriber {
 		loop {
 			if let Some(0) = remain {
 				// Decode the next object from the stream.
-				let next = message::Object::decode(&mut stream)
-					.await
-					.map_err(|e| SessionError::Unknown(e.to_string()))?;
+				let next = match message::Object::decode(&mut stream).await {
+					Ok(next) => next,
+
+					// No more objects
+					Err(DecodeError::Final) => break,
+
+					// Unknown error
+					Err(err) => return Err(err.into()),
+				};
 
 				// NOTE: This is a custom restriction; not part of the moq-transport draft.
 				// We require every OBJECT to contain the same priority since prioritization is done per-stream.
@@ -161,7 +167,7 @@ impl Subscriber {
 
 			match stream.read_chunk(remain.unwrap_or(usize::MAX), true).await? {
 				// Unbounded object has ended
-				None if remain.is_none() => return Ok(()),
+				None if remain.is_none() => break,
 
 				// Bounded object ended early, oops.
 				None => return Err(DecodeError::UnexpectedEnd.into()),
@@ -171,6 +177,8 @@ impl Subscriber {
 				Some(data) => fragment.write_chunk(data.bytes)?,
 			}
 		}
+
+		Ok(())
 	}
 
 	async fn run_source(mut self) -> Result<(), SessionError> {

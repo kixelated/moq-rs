@@ -1,4 +1,6 @@
-use std::time;
+use std::{io, time};
+
+use tokio::io::AsyncReadExt;
 
 use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
@@ -29,7 +31,13 @@ pub struct Object {
 
 impl Object {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = VarInt::decode(r).await?;
+		// Try reading the first byte, returning a special error if the stream naturally ended.
+		let typ = match r.read_u8().await {
+			Ok(b) => VarInt::decode_byte(b, r).await?,
+			Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Err(DecodeError::Final),
+			Err(e) => return Err(e.into()),
+		};
+
 		let size_present = match typ.into_inner() {
 			0 => false,
 			2 => true,

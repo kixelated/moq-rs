@@ -168,11 +168,19 @@ impl fmt::Display for VarInt {
 impl Decode for VarInt {
 	/// Decode a varint from the given reader.
 	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let mut buf = [0u8; 8];
-		r.read_exact(buf[0..1].as_mut()).await?;
+		let b = r.read_u8().await?;
+		Self::decode_byte(b, r).await
+	}
+}
 
-		let tag = buf[0] >> 6;
-		buf[0] &= 0b0011_1111;
+impl VarInt {
+	/// Decode a varint given the first byte, reading the rest as needed.
+	/// This is silly but useful for determining if the stream has ended.
+	pub async fn decode_byte<R: AsyncRead>(b: u8, r: &mut R) -> Result<Self, DecodeError> {
+		let tag = b >> 6;
+
+		let mut buf = [0u8; 8];
+		buf[0] = b & 0b0011_1111;
 
 		let x = match tag {
 			0b00 => u64::from(buf[0]),

@@ -45,4 +45,8 @@ pub enum DecodeError {
 
 	#[error("io error: {0}")]
 	IoError(#[from] std::io::Error),
+
+	// Used to signal that the stream has ended.
+	#[error("no more messages")]
+	Final,
 }
