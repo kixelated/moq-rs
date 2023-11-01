@@ -127,7 +127,7 @@ impl Publisher {
 		let msg = message::SubscribeReset {
 			id,
 			code: err.code(),
-			reason: err.reason().to_string(),
+			reason: err.reason(),
 
 			// TODO properly populate these
 			// But first: https://github.com/moq-wg/moq-transport/issues/313

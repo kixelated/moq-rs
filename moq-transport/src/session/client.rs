@@ -43,7 +43,10 @@ impl Client {
 		let server = setup::Server::decode(&mut control.1).await?;
 
 		if server.version != setup::Version::KIXEL_01 {
-			return Err(SessionError::Version(Some(server.version)));
+			return Err(SessionError::Version(
+				vec![setup::Version::KIXEL_01].into(),
+				vec![server.version].into(),
+			));
 		}
 
 		Ok(control)
