@@ -1,6 +1,6 @@
-use super::{Params, Role, Versions, PARAM_ROLE};
+use super::{Role, Versions};
 use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError},
+	coding::{Decode, DecodeError, Encode, EncodeError, Params},
 	VarInt,
 };
 
@@ -15,7 +15,6 @@ pub struct Client {
 	pub versions: Versions,
 
 	/// Indicate if the client is a publisher, a subscriber, or both.
-	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
 
 	/// Unknown parameters.
@@ -34,9 +33,15 @@ impl Client {
 		let mut params = Params::decode(r).await?;
 
 		let role = params
-			.get::<Role>(PARAM_ROLE)
+			.get::<Role>(VarInt::from_u32(0))
 			.await?
 			.ok_or(DecodeError::MissingParameter)?;
+
+		// Make sure the PATH parameter isn't used
+		// TODO: This assumes WebTransport support only
+		if params.has(VarInt::from_u32(1)) {
+			return Err(DecodeError::InvalidParameter);
+		}
 
 		Ok(Self { versions, role, params })
 	}
@@ -47,7 +52,7 @@ impl Client {
 		self.versions.encode(w).await?;
 
 		let mut params = self.params.clone();
-		params.set(PARAM_ROLE, self.role).await?;
+		params.set(VarInt::from_u32(0), self.role).await?;
 		params.encode(w).await?;
 
 		Ok(())

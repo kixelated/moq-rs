@@ -36,9 +36,9 @@ impl Role {
 impl From<Role> for VarInt {
 	fn from(r: Role) -> Self {
 		VarInt::from_u32(match r {
-			Role::Publisher => 0x0,
-			Role::Subscriber => 0x1,
-			Role::Both => 0x2,
+			Role::Publisher => 0x1,
+			Role::Subscriber => 0x2,
+			Role::Both => 0x3,
 		})
 	}
 }
@@ -48,9 +48,9 @@ impl TryFrom<VarInt> for Role {
 
 	fn try_from(v: VarInt) -> Result<Self, Self::Error> {
 		match v.into_inner() {
-			0x0 => Ok(Self::Publisher),
-			0x1 => Ok(Self::Subscriber),
-			0x2 => Ok(Self::Both),
+			0x1 => Ok(Self::Publisher),
+			0x2 => Ok(Self::Subscriber),
+			0x3 => Ok(Self::Both),
 			_ => Err(DecodeError::InvalidType(v)),
 		}
 	}

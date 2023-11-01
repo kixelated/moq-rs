@@ -128,6 +128,11 @@ impl Publisher {
 			id,
 			code: err.code(),
 			reason: err.reason().to_string(),
+
+			// TODO properly populate these
+			// But first: https://github.com/moq-wg/moq-transport/issues/313
+			final_group: VarInt::ZERO,
+			final_object: VarInt::ZERO,
 		};
 
 		self.control.send(msg).await
@@ -181,25 +186,36 @@ impl Publisher {
 	}
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let object = message::Object {
-			track: id,
-			sequence: segment.sequence,
-			priority: segment.priority,
-			expires: segment.expires,
-		};
-
-		log::trace!("serving object: {:?}", object);
+		log::trace!("serving group: {:?}", segment);
 
 		let mut stream = self.webtransport.open_uni().await?;
-		stream.set_priority(object.priority).ok();
 
-		object
-			.encode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		// Convert the u32 to a i32, since the Quinn set_priority is signed.
+		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
+		stream.set_priority(priority).ok();
 
-		while let Some(data) = segment.read_chunk().await? {
-			stream.write_chunk(data).await?;
+		while let Some(mut fragment) = segment.next_fragment().await? {
+			let object = message::Object {
+				track: id,
+
+				// Properties of the segment
+				group: segment.sequence,
+				priority: segment.priority,
+				expires: segment.expires,
+
+				// Properties of the fragment
+				sequence: fragment.sequence,
+				size: fragment.size,
+			};
+
+			object
+				.encode(&mut stream)
+				.await
+				.map_err(|e| SessionError::Unknown(e.to_string()))?;
+
+			while let Some(chunk) = fragment.read_chunk().await? {
+				stream.write_all(&chunk).await?;
+			}
 		}
 
 		Ok(())

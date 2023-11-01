@@ -1,4 +1,4 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -8,20 +8,22 @@ pub struct Announce {
 	/// The track namespace
 	pub namespace: String,
 
-	/// An optional auth token.
-	pub auth: String,
+	/// Optional parameters
+	pub params: Params,
 }
 
 impl Announce {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let namespace = String::decode(r).await?;
-		let auth = String::decode(r).await?;
-		Ok(Self { namespace, auth })
+		let params = Params::decode(r).await?;
+
+		Ok(Self { namespace, params })
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.namespace.encode(w).await?;
-		self.auth.encode(w).await?;
+		self.params.encode(w).await?;
+
 		Ok(())
 	}
 }

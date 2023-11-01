@@ -1,6 +1,6 @@
-use super::{Params, Role, Version, PARAM_ROLE};
+use super::{Role, Version};
 use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError},
+	coding::{Decode, DecodeError, Encode, EncodeError, Params},
 	VarInt,
 };
 
@@ -34,9 +34,14 @@ impl Server {
 		let mut params = Params::decode(r).await?;
 
 		let role = params
-			.get::<Role>(PARAM_ROLE)
+			.get::<Role>(VarInt::from_u32(0))
 			.await?
 			.ok_or(DecodeError::MissingParameter)?;
+
+		// Make sure the PATH parameter isn't used
+		if params.has(VarInt::from_u32(1)) {
+			return Err(DecodeError::InvalidParameter);
+		}
 
 		Ok(Self { version, role, params })
 	}
@@ -47,7 +52,7 @@ impl Server {
 		self.version.encode(w).await?;
 
 		let mut params = self.params.clone();
-		params.set(PARAM_ROLE, self.role).await?;
+		params.set(VarInt::from_u32(0), self.role).await?;
 		params.encode(w).await?;
 
 		Ok(())

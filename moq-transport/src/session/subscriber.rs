@@ -6,7 +6,8 @@ use std::{
 };
 
 use crate::{
-	cache::{broadcast, segment, track, CacheError},
+	cache::{broadcast, fragment, segment, track, CacheError},
+	coding::DecodeError,
 	message,
 	message::Message,
 	session::{Control, SessionError},
@@ -108,36 +109,74 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let object = message::Object::decode(&mut stream)
+		let mut object = message::Object::decode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
 		log::trace!("received object: {:?}", object);
 
 		// A new scope is needed because the async compiler is dumb
-		let mut publisher = {
+		let mut segment = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let track = subscribes.get_mut(&object.track).ok_or(CacheError::NotFound)?;
 
 			track.create_segment(segment::Info {
-				sequence: object.sequence,
+				sequence: object.group,
 				priority: object.priority,
 				expires: object.expires,
 			})?
 		};
 
-		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
-			// NOTE: This does not make a copy!
-			// Bytes are immutable and ref counted.
-			publisher.write_chunk(data.bytes)?;
-		}
+		// Create the first fragment
+		let mut fragment = segment.create_fragment(fragment::Info {
+			sequence: object.sequence,
+			size: object.size,
+		})?;
 
-		Ok(())
+		let mut remain = object.size.map(usize::from);
+
+		loop {
+			if let Some(0) = remain {
+				// Decode the next object from the stream.
+				let next = message::Object::decode(&mut stream)
+					.await
+					.map_err(|e| SessionError::Unknown(e.to_string()))?;
+
+				// NOTE: This is a custom restriction; not part of the moq-transport draft.
+				// We require every OBJECT to contain the same priority since prioritization is done per-stream.
+				// We also require every OBJECT to contain the same group so we know when the group ends, and can detect gaps.
+				if next.priority != object.priority && next.group != object.group {
+					return Err(SessionError::StreamMapping);
+				}
+
+				// Create a new object.
+				fragment = segment.create_fragment(fragment::Info {
+					sequence: object.sequence,
+					size: object.size,
+				})?;
+
+				object = next;
+				remain = object.size.map(usize::from);
+			}
+
+			match stream.read_chunk(remain.unwrap_or(usize::MAX), true).await? {
+				// Unbounded object has ended
+				None if remain.is_none() => return Ok(()),
+
+				// Bounded object ended early, oops.
+				None => return Err(DecodeError::UnexpectedEnd.into()),
+
+				// NOTE: This does not make a copy!
+				// Bytes are immutable and ref counted.
+				Some(data) => fragment.write_chunk(data.bytes)?,
+			}
+		}
 	}
 
 	async fn run_source(mut self) -> Result<(), SessionError> {
-		// NOTE: This returns Closed when the source is closed.
-		while let Some(track) = self.source.next_track().await? {
+		loop {
+			// NOTE: This returns Closed when the source is closed.
+			let track = self.source.next_track().await?;
 			let name = track.name.clone();
 
 			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
@@ -147,11 +186,17 @@ impl Subscriber {
 				id,
 				namespace: "".to_string(),
 				name,
+
+				// TODO correctly support these
+				start_group: message::SubscribeLocation::Latest(VarInt::ZERO),
+				start_object: message::SubscribeLocation::Absolute(VarInt::ZERO),
+				end_group: message::SubscribeLocation::None,
+				end_object: message::SubscribeLocation::None,
+
+				params: Default::default(),
 			};
 
 			self.control.send(msg).await?;
 		}
-
-		Ok(())
 	}
 }

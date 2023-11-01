@@ -32,10 +32,10 @@ impl Decode for Params {
 			// Instead, we allocate up to 1024 and keep appending as we read further.
 			let mut pr = r.take(size.into_inner() as u64);
 			let mut buf = Vec::with_capacity(max(1024, pr.limit() as usize));
-			pr.read_to_end(&mut buf);
-			r = pr.into_inner();
-
+			pr.read_to_end(&mut buf).await?;
 			params.insert(kind, buf);
+
+			r = pr.into_inner();
 		}
 
 		Ok(Params(params))
@@ -70,6 +70,10 @@ impl Params {
 		Ok(())
 	}
 
+	pub fn has(&self, kind: VarInt) -> bool {
+		self.0.contains_key(&kind)
+	}
+
 	pub async fn get<P: Decode>(&mut self, kind: VarInt) -> Result<Option<P>, DecodeError> {
 		if let Some(value) = self.0.remove(&kind) {
 			let mut cursor = Cursor::new(value);
@@ -79,5 +83,3 @@ impl Params {
 		}
 	}
 }
-
-pub const PARAM_ROLE: VarInt = VarInt::from_u32(0);

@@ -63,10 +63,12 @@ impl Version {
 	/// Check out the referenced issue on: github.com/moq-wg/moq-transport
 	///
 	/// - SETUP `role` indicates the role of the sender, not the role of the server. [#151](https://github.com/moq-wg/moq-transport/issues/151)
+	///     - NOTE: This is backwards compatible with CLIENT_SETUP, but not SERVER_SETUP
 	/// - ANNOUNCE/SUBSCRIBE parameters have been replaced by an `auth` field. [#300](https://github.com/moq-wg/moq-transport/issues/300)
 	/// - SUBSCRIBE contains the `track_id` instead of SUBSCRIBE_OK. [#145](https://github.com/moq-wg/moq-transport/issues/145)
 	/// - SUBSCRIBE_* reference `track_id` the instead of the `track_full_name`. [#145](https://github.com/moq-wg/moq-transport/issues/145)
 	/// - SUBSCRIBE_RESET and SUBSCRIBE_FIN are merged, with error code 0 meaning FIN. [#310](https://github.com/moq-wg/moq-transport/issues/310)
+	/// - OBJECT `priority` is still a VarInt, but the max value is a u32
 	/// - OBJECT `expires` was added, a varint in seconds. [#249](https://github.com/moq-wg/moq-transport/issues/249)
 	/// - OBJECT uses a QUIC stream per group.
 	pub const KIXEL_01: Version = Version(VarInt::from_u32(0xbad01));

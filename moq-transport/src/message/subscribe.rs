@@ -1,4 +1,4 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -23,9 +23,8 @@ pub struct Subscribe {
 	pub end_group: SubscribeLocation,
 	pub end_object: SubscribeLocation,
 
-	/// An optional auth token.
-	// TODO: > The value is an ASCII string.
-	pub auth: String,
+	/// Optional parameters
+	pub params: Params,
 }
 
 impl Subscribe {
@@ -51,7 +50,7 @@ impl Subscribe {
 
 		// NOTE: There's some more location restrictions in the draft, but they're enforced at a higher level.
 
-		let auth = String::decode(r).await?;
+		let params = Params::decode(r).await?;
 
 		Ok(Self {
 			id,
@@ -61,7 +60,7 @@ impl Subscribe {
 			start_object,
 			end_group,
 			end_object,
-			auth,
+			params,
 		})
 	}
 
@@ -75,7 +74,7 @@ impl Subscribe {
 		self.end_group.encode(w).await?;
 		self.end_object.encode(w).await?;
 
-		self.auth.encode(w).await?;
+		self.params.encode(w).await?;
 
 		Ok(())
 	}
@@ -86,8 +85,8 @@ impl Subscribe {
 pub enum SubscribeLocation {
 	None,
 	Absolute(VarInt),
-	Previous(VarInt),
-	Next(VarInt),
+	Latest(VarInt),
+	Future(VarInt),
 }
 
 impl SubscribeLocation {
@@ -97,8 +96,8 @@ impl SubscribeLocation {
 		match kind.into_inner() {
 			0 => Ok(Self::None),
 			1 => Ok(Self::Absolute(VarInt::decode(r).await?)),
-			2 => Ok(Self::Previous(VarInt::decode(r).await?)),
-			3 => Ok(Self::Next(VarInt::decode(r).await?)),
+			2 => Ok(Self::Latest(VarInt::decode(r).await?)),
+			3 => Ok(Self::Future(VarInt::decode(r).await?)),
 			_ => Err(DecodeError::InvalidSubscribeLocation),
 		}
 	}
@@ -112,11 +111,11 @@ impl SubscribeLocation {
 				VarInt::from_u32(1).encode(w).await?;
 				val.encode(w).await?;
 			}
-			Self::Previous(val) => {
+			Self::Latest(val) => {
 				VarInt::from_u32(2).encode(w).await?;
 				val.encode(w).await?;
 			}
-			Self::Next(val) => {
+			Self::Future(val) => {
 				VarInt::from_u32(3).encode(w).await?;
 				val.encode(w).await?;
 			}
