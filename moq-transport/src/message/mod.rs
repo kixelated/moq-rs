@@ -37,6 +37,7 @@ mod go_away;
 mod object;
 mod subscribe;
 mod subscribe_error;
+mod subscribe_fin;
 mod subscribe_ok;
 mod subscribe_reset;
 mod unannounce;
@@ -49,6 +50,7 @@ pub use go_away::*;
 pub use object::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
+pub use subscribe_fin::*;
 pub use subscribe_ok::*;
 pub use subscribe_reset::*;
 pub use unannounce::*;
@@ -141,6 +143,7 @@ message_types! {
 	// SUBSCRIBE family, sent by publisher
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,
+	SubscribeFin = 0xb,
 	SubscribeReset = 0xc,
 
 	// ANNOUNCE family, sent by publisher

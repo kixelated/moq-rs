@@ -65,29 +65,28 @@ impl Subscriber {
 			let msg = self.control.recv().await?;
 
 			log::info!("message received: {:?}", msg);
-			if let Err(err) = self.recv_message(&msg).await {
+			if let Err(err) = self.recv_message(&msg) {
 				log::warn!("message error: {:?} {:?}", err, msg);
 			}
 		}
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
+	fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
 			Message::Announce(_) => Ok(()),   // don't care
 			Message::Unannounce(_) => Ok(()), // also don't care
 			Message::SubscribeOk(_) => unimplemented!("SUBSCRIBE_OK"),
-			Message::SubscribeReset(msg) => self.recv_subscribe_reset(msg).await,
-			Message::SubscribeError(_) => unimplemented!("SUBSCRIBE_ERROR"),
+			Message::SubscribeReset(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
+			Message::SubscribeFin(msg) => self.recv_subscribe_error(msg.id, CacheError::Closed),
+			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
 
-	async fn recv_subscribe_reset(&mut self, msg: &message::SubscribeReset) -> Result<(), SessionError> {
-		let err = CacheError::Reset(msg.code);
-
+	fn recv_subscribe_error(&mut self, id: VarInt, err: CacheError) -> Result<(), SessionError> {
 		let mut subscribes = self.subscribes.lock().unwrap();
-		let subscribe = subscribes.remove(&msg.id).ok_or(CacheError::NotFound)?;
+		let subscribe = subscribes.remove(&id).ok_or(CacheError::NotFound)?;
 		subscribe.close(err)?;
 
 		Ok(())
