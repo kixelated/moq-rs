@@ -30,7 +30,7 @@ impl Decode for Params {
 
 			// Don't allocate the entire requested size to avoid a possible attack
 			// Instead, we allocate up to 1024 and keep appending as we read further.
-			let mut pr = r.take(size.into_inner() as u64);
+			let mut pr = r.take(size.into_inner());
 			let mut buf = Vec::with_capacity(max(1024, pr.limit() as usize));
 			pr.read_to_end(&mut buf).await?;
 			params.insert(kind, buf);
