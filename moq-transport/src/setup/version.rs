@@ -62,6 +62,7 @@ impl Version {
 	/// Most of the KIXEL_00 changes made it into the draft, or were reverted.
 	/// Check out the referenced issue on: github.com/moq-wg/moq-transport
 	///
+	/// - SUBSCRIBE contains a separate track namespace and track name field (accidental revert). [#277](https://github.com/moq-wg/moq-transport/pull/277)
 	/// - SUBSCRIBE contains the `track_id` instead of SUBSCRIBE_OK. [#145](https://github.com/moq-wg/moq-transport/issues/145)
 	/// - SUBSCRIBE_* reference `track_id` the instead of the `track_full_name`. [#145](https://github.com/moq-wg/moq-transport/issues/145)
 	/// - OBJECT `priority` is still a VarInt, but the max value is a u32 (implementation reasons)

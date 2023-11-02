@@ -41,7 +41,7 @@ impl Object {
 		let size_present = match typ.into_inner() {
 			0 => false,
 			2 => true,
-			_ => return Err(DecodeError::InvalidType(typ)),
+			_ => return Err(DecodeError::InvalidMessage(typ)),
 		};
 
 		let track = VarInt::decode(r).await?;

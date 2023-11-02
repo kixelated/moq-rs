@@ -73,9 +73,9 @@ impl Subscriber {
 
 	fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
-			Message::Announce(_) => Ok(()),   // don't care
-			Message::Unannounce(_) => Ok(()), // also don't care
-			Message::SubscribeOk(_) => unimplemented!("SUBSCRIBE_OK"),
+			Message::Announce(_) => Ok(()),      // don't care
+			Message::Unannounce(_) => Ok(()),    // also don't care
+			Message::SubscribeOk(_msg) => Ok(()), // don't care
 			Message::SubscribeReset(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
 			Message::SubscribeFin(msg) => self.recv_subscribe_error(msg.id, CacheError::Closed),
 			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),

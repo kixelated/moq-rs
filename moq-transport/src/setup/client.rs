@@ -26,7 +26,7 @@ impl Client {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r).await?;
 		if typ.into_inner() != 0x40 {
-			return Err(DecodeError::InvalidType(typ));
+			return Err(DecodeError::InvalidMessage(typ));
 		}
 
 		let versions = Versions::decode(r).await?;
@@ -48,7 +48,7 @@ impl Client {
 
 	/// Encode a server setup message.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from_u32(1).encode(w).await?;
+		VarInt::from_u32(0x40).encode(w).await?;
 		self.versions.encode(w).await?;
 
 		let mut params = self.params.clone();

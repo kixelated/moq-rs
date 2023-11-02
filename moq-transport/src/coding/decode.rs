@@ -24,8 +24,11 @@ pub enum DecodeError {
 	#[error("invalid string")]
 	InvalidString(#[from] str::Utf8Error),
 
-	#[error("invalid type: {0:?}")]
-	InvalidType(VarInt),
+	#[error("invalid message: {0:?}")]
+	InvalidMessage(VarInt),
+
+	#[error("invalid role: {0:?}")]
+	InvalidRole(VarInt),
 
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,

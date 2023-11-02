@@ -51,7 +51,7 @@ impl Media {
 		// Create a single fragment, optionally setting the size
 		let mut init_fragment = init_segment.create_fragment(fragment::Info {
 			sequence: VarInt::ZERO,
-			size: Some(init.len().try_into()?),
+			size: None, // size is only needed when we have multiple fragments.
 		})?;
 
 		init_fragment.write_chunk(init.into())?;
@@ -220,9 +220,7 @@ impl Media {
 		// Create a single fragment for the segment.
 		let mut fragment = segment.create_fragment(fragment::Info {
 			sequence: VarInt::ZERO,
-
-			// Optional to set the object size, but we do it just to test implementations.
-			size: Some(catalog_str.len().try_into()?),
+			size: None, // Size is only needed when we have multiple fragments.
 		})?;
 
 		// Add the segment and add the fragment.

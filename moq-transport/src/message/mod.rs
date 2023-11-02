@@ -81,7 +81,7 @@ macro_rules! message_types {
 						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
-					_ => Err(DecodeError::InvalidType(t)),
+					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
 
