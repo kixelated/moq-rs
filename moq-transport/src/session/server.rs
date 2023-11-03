@@ -13,24 +13,31 @@ impl Server {
 	pub async fn accept(session: Session) -> Result<Request, SessionError> {
 		let mut control = session.accept_bi().await?;
 
-		let client = setup::Client::decode(&mut control.1).await?;
+		let mut client = setup::Client::decode(&mut control.1).await?;
 
-		if !client.versions.contains(&setup::Version::DRAFT_01) {
-			return Err(SessionError::Version(
-				client.versions,
-				[setup::Version::DRAFT_01].into(),
-			));
-		}
+		if client.versions.contains(&setup::Version::DRAFT_01) {
+			// We always require subscriber ID.
+			client.extensions.require_subscriber_id()?;
 
-		client.extensions.require_stream_per_group()?;
-		client.extensions.require_subscriber_id()?;
+			// We require OBJECT_EXPIRES for publishers only.
+			if client.role.is_publisher() {
+				client.extensions.require_object_expires()?;
+			}
 
 		// We don't require SUBSCRIBE_SPLIT since it's easy enough to support, but it's clearly an oversight.
 		// client.extensions.require(&Extension::SUBSCRIBE_SPLIT)?;
-
-		// We require OBJECT_EXPIRES for publishers only.
-		if client.role.is_publisher() {
-			client.extensions.require_object_expires()?;
+		} else if client.versions.contains(&setup::Version::KIXEL_01) {
+			// Extensions didn't exist in KIXEL_01, so we set them manually.
+			client.extensions = setup::Extensions {
+				object_expires: true,
+				subscriber_id: true,
+				subscribe_split: true,
+			};
+		} else {
+			return Err(SessionError::Version(
+				client.versions,
+				[setup::Version::DRAFT_01, setup::Version::KIXEL_01].into(),
+			));
 		}
 
 		Ok(Request {

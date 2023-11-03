@@ -72,11 +72,6 @@ impl Encode for ExtensionExists {
 }
 
 extensions! {
-	// One stream per GROUP, otherwise the library throws an error.
-	// There's no wire changes for this, just strict validation.
-	// TODO write up a PR
-	stream_per_group = 0xe00f4,
-
 	// OBJECT contains expires VarInt in seconds: https://github.com/moq-wg/moq-transport/issues/249
 	// TODO write up a PR
 	object_expires = 0xe00f9,
