@@ -1,6 +1,7 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
+use crate::setup::Extensions;
 
 /// Sent by the subscriber to request all future objects for the given track.
 ///
@@ -12,7 +13,9 @@ pub struct Subscribe {
 	pub id: VarInt,
 
 	/// The track namespace.
-	pub namespace: String,
+	///
+	/// Must be None if `extensions.subscribe_split` is false.
+	pub namespace: Option<String>,
 
 	/// The track name.
 	pub name: String,
@@ -28,9 +31,14 @@ pub struct Subscribe {
 }
 
 impl Subscribe {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R, ext: &Extensions) -> Result<Self, DecodeError> {
 		let id = VarInt::decode(r).await?;
-		let namespace = String::decode(r).await?;
+
+		let namespace = match ext.subscribe_split {
+			true => Some(String::decode(r).await?),
+			false => None,
+		};
+
 		let name = String::decode(r).await?;
 
 		let start_group = SubscribeLocation::decode(r).await?;
@@ -64,9 +72,17 @@ impl Subscribe {
 		})
 	}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W, ext: &Extensions) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
-		self.namespace.encode(w).await?;
+
+		if self.namespace.is_some() != ext.subscribe_split {
+			panic!("namespace must be None if subscribe_split is false");
+		}
+
+		if ext.subscribe_split {
+			self.namespace.as_ref().unwrap().encode(w).await?;
+		}
+
 		self.name.encode(w).await?;
 
 		self.start_group.encode(w).await?;

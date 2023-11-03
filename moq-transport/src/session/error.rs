@@ -44,6 +44,10 @@ pub enum SessionError {
 	#[error("invalid size: {0}")]
 	InvalidSize(VarInt),
 
+	/// A required extension was not offered.
+	#[error("required extension not offered: {0:?}")]
+	RequiredExtension(VarInt),
+
 	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error: {0}")]
 	Unknown(String),
@@ -66,6 +70,7 @@ impl MoqError for SessionError {
 			Self::Decode(_) => 500,
 			Self::InvalidPriority(_) => 400,
 			Self::InvalidSize(_) => 400,
+			Self::RequiredExtension(_) => 426,
 		}
 	}
 
@@ -90,6 +95,7 @@ impl MoqError for SessionError {
 			Self::StreamMapping => "streaming mapping conflict".to_owned(),
 			Self::InvalidPriority(priority) => format!("invalid priority: {}", priority),
 			Self::InvalidSize(size) => format!("invalid size: {}", size),
+			Self::RequiredExtension(id) => format!("required extension was missing: {:?}", id),
 		}
 	}
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use tokio::task::AbortHandle;
-use webtransport_quinn::{RecvStream, SendStream, Session};
+use webtransport_quinn::Session;
 
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
@@ -27,13 +27,11 @@ pub struct Publisher {
 }
 
 impl Publisher {
-	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Subscriber) -> Self {
-		let control = Control::new(control.0, control.1);
-
+	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Subscriber) -> Self {
 		Self {
 			webtransport,
-			subscribes: Default::default(),
 			control,
+			subscribes: Default::default(),
 			source,
 		}
 	}
@@ -140,7 +138,8 @@ impl Publisher {
 
 	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
 		// We currently don't use the namespace field in SUBSCRIBE
-		if !msg.namespace.is_empty() {
+		// Make sure the namespace is empty if it's provided.
+		if msg.namespace.as_ref().map_or(false, |namespace| !namespace.is_empty()) {
 			return Err(CacheError::NotFound.into());
 		}
 
@@ -209,7 +208,7 @@ impl Publisher {
 			};
 
 			object
-				.encode(&mut stream)
+				.encode(&mut stream, &self.control.ext)
 				.await
 				.map_err(|e| SessionError::Unknown(e.to_string()))?;
 

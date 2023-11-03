@@ -5,9 +5,7 @@
 //! The specification is a work in progress and will change.
 //! See the [specification](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and [github](https://github.com/moq-wg/moq-transport) for any updates.
 //!
-//! **FORKED**: This implementation makes some changes to the protocol.
-//! See [KIXEL_01](crate::setup::Version::KIXEL_01) for a list of differences.
-//! Many of these will get merged into the specification, so don't panic.
+//! This implementation has some required extensions until the draft stablizes. See: [Extensions](crate::setup::Extensions)
 mod coding;
 mod error;
 

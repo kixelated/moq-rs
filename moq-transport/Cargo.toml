@@ -26,3 +26,4 @@ webtransport-quinn = "0.6"
 #webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
 
 async-trait = "0.1"
+paste = "1"

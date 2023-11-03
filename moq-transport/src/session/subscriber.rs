@@ -1,4 +1,4 @@
-use webtransport_quinn::{RecvStream, SendStream, Session};
+use webtransport_quinn::{RecvStream, Session};
 
 use std::{
 	collections::HashMap,
@@ -35,9 +35,7 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Publisher) -> Self {
-		let control = Control::new(control.0, control.1);
-
+	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Publisher) -> Self {
 		Self {
 			webtransport,
 			subscribes: Default::default(),
@@ -108,7 +106,7 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let mut object = message::Object::decode(&mut stream)
+		let mut object = message::Object::decode(&mut stream, &self.control.ext)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
@@ -137,7 +135,7 @@ impl Subscriber {
 		loop {
 			if let Some(0) = remain {
 				// Decode the next object from the stream.
-				let next = match message::Object::decode(&mut stream).await {
+				let next = match message::Object::decode(&mut stream, &self.control.ext).await {
 					Ok(next) => next,
 
 					// No more objects
@@ -191,7 +189,7 @@ impl Subscriber {
 
 			let msg = message::Subscribe {
 				id,
-				namespace: "".to_string(),
+				namespace: self.control.ext.subscribe_split.then(|| "".to_string()),
 				name,
 
 				// TODO correctly support these
