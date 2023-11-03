@@ -72,13 +72,13 @@ impl Encode for ExtensionExists {
 }
 
 extensions! {
-	// OBJECT contains expires VarInt in seconds: https://github.com/moq-wg/moq-transport/issues/249
+	// required for publishers: OBJECT contains expires VarInt in seconds: https://github.com/moq-wg/moq-transport/issues/249
 	// TODO write up a PR
 	object_expires = 0xe00f9,
 
-	// SUBSCRIBE chooses track ID: https://github.com/moq-wg/moq-transport/pull/258
+	// required: SUBSCRIBE chooses track ID: https://github.com/moq-wg/moq-transport/pull/258
 	subscriber_id = 0xe0102,
 
-	// SUBSCRIBE contains namespace/name tuple: https://github.com/moq-wg/moq-transport/pull/277
+	// optional: SUBSCRIBE contains namespace/name tuple: https://github.com/moq-wg/moq-transport/pull/277
 	subscribe_split = 0xe0115,
 }
