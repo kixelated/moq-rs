@@ -1,4 +1,4 @@
-use super::{Publisher, SessionError, Subscriber};
+use super::{Control, Publisher, SessionError, Subscriber};
 use crate::{cache::broadcast, setup};
 
 use webtransport_quinn::{RecvStream, SendStream, Session};
@@ -15,11 +15,23 @@ impl Server {
 
 		let client = setup::Client::decode(&mut control.1).await?;
 
-		client
-			.versions
-			.iter()
-			.find(|version| **version == setup::Version::KIXEL_01)
-			.ok_or_else(|| SessionError::Version(client.versions.clone(), vec![setup::Version::KIXEL_01].into()))?;
+		if !client.versions.contains(&setup::Version::DRAFT_01) {
+			return Err(SessionError::Version(
+				client.versions,
+				[setup::Version::DRAFT_01].into(),
+			));
+		}
+
+		client.extensions.require_stream_per_group()?;
+		client.extensions.require_subscriber_id()?;
+
+		// We don't require SUBSCRIBE_SPLIT since it's easy enough to support, but it's clearly an oversight.
+		// client.extensions.require(&Extension::SUBSCRIBE_SPLIT)?;
+
+		// We require OBJECT_EXPIRES for publishers only.
+		if client.role.is_publisher() {
+			client.extensions.require_object_expires()?;
+		}
 
 		Ok(Request {
 			session,
@@ -39,17 +51,21 @@ pub struct Request {
 impl Request {
 	/// Accept the session as a publisher, using the provided broadcast to serve subscriptions.
 	pub async fn publisher(mut self, source: broadcast::Subscriber) -> Result<Publisher, SessionError> {
-		self.send_setup(setup::Role::Publisher).await?;
+		let setup = self.setup(setup::Role::Publisher)?;
+		setup.encode(&mut self.control.0).await?;
 
-		let publisher = Publisher::new(self.session, self.control, source);
+		let control = Control::new(self.control.0, self.control.1, setup.extensions);
+		let publisher = Publisher::new(self.session, control, source);
 		Ok(publisher)
 	}
 
 	/// Accept the session as a subscriber only.
 	pub async fn subscriber(mut self, source: broadcast::Publisher) -> Result<Subscriber, SessionError> {
-		self.send_setup(setup::Role::Subscriber).await?;
+		let setup = self.setup(setup::Role::Subscriber)?;
+		setup.encode(&mut self.control.0).await?;
 
-		let subscriber = Subscriber::new(self.session, self.control, source);
+		let control = Control::new(self.control.0, self.control.1, setup.extensions);
+		let subscriber = Subscriber::new(self.session, control, source);
 		Ok(subscriber)
 	}
 
@@ -60,10 +76,11 @@ impl Request {
 	}
 	*/
 
-	async fn send_setup(&mut self, role: setup::Role) -> Result<(), SessionError> {
+	fn setup(&mut self, role: setup::Role) -> Result<setup::Server, SessionError> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::KIXEL_01,
+			version: setup::Version::DRAFT_01,
+			extensions: self.client.extensions.clone(),
 			params: Default::default(),
 		};
 
@@ -73,9 +90,7 @@ impl Request {
 			return Err(SessionError::RoleIncompatible(self.client.role, server.role));
 		}
 
-		server.encode(&mut self.control.0).await?;
-
-		Ok(())
+		Ok(server)
 	}
 
 	/// Reject the request, closing the Webtransport session.

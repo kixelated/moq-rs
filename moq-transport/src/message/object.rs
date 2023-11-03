@@ -4,6 +4,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::setup;
 
 /// Sent by the publisher as the header of each data stream.
 #[derive(Clone, Debug)]
@@ -30,7 +31,7 @@ pub struct Object {
 }
 
 impl Object {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+	pub async fn decode<R: AsyncRead>(r: &mut R, extensions: &setup::Extensions) -> Result<Self, DecodeError> {
 		// Try reading the first byte, returning a special error if the stream naturally ended.
 		let typ = match r.read_u8().await {
 			Ok(b) => VarInt::decode_byte(b, r).await?,
@@ -49,9 +50,12 @@ impl Object {
 		let sequence = VarInt::decode(r).await?;
 		let priority = VarInt::decode(r).await?.try_into()?;
 
-		let expires = match VarInt::decode(r).await?.into_inner() {
-			0 => None,
-			secs => Some(time::Duration::from_secs(secs)),
+		let expires = match extensions.object_expires {
+			true => match VarInt::decode(r).await?.into_inner() {
+				0 => None,
+				secs => Some(time::Duration::from_secs(secs)),
+			},
+			false => None,
 		};
 
 		// The presence of the size field depends on the type.
@@ -70,7 +74,7 @@ impl Object {
 		})
 	}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	pub async fn encode<W: AsyncWrite>(&self, w: &mut W, extensions: &setup::Extensions) -> Result<(), EncodeError> {
 		// The kind changes based on the presence of the size.
 		let kind = match self.size {
 			Some(_) => VarInt::from_u32(2),
@@ -91,7 +95,9 @@ impl Object {
 			Some(expires) => expires.as_secs(),
 		};
 
-		VarInt::try_from(expires)?.encode(w).await?;
+		if extensions.object_expires {
+			VarInt::try_from(expires)?.encode(w).await?;
+		}
 
 		if let Some(size) = self.size {
 			size.encode(w).await?;
