@@ -14,8 +14,8 @@ pub enum SessionError {
 	#[error("decode error: {0}")]
 	Decode(#[from] coding::DecodeError),
 
-	#[error("unsupported version: {0:?}")]
-	Version(Option<setup::Version>),
+	#[error("unsupported versions: client={0:?} server={1:?}")]
+	Version(setup::Versions, setup::Versions),
 
 	#[error("incompatible roles: client={0:?} server={1:?}")]
 	RoleIncompatible(setup::Role, setup::Role),
@@ -32,6 +32,18 @@ pub enum SessionError {
 	#[error("role violation: msg={0}")]
 	RoleViolation(VarInt),
 
+	/// Our enforced stream mapping was disrespected.
+	#[error("stream mapping conflict")]
+	StreamMapping,
+
+	/// The priority was invalid.
+	#[error("invalid priority: {0}")]
+	InvalidPriority(VarInt),
+
+	/// The size was invalid.
+	#[error("invalid size: {0}")]
+	InvalidSize(VarInt),
+
 	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error: {0}")]
 	Unknown(String),
@@ -44,29 +56,40 @@ impl MoqError for SessionError {
 			Self::Cache(err) => err.code(),
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation(..) => 405,
+			Self::StreamMapping => 409,
 			Self::Unknown(_) => 500,
 			Self::Write(_) => 501,
 			Self::Read(_) => 502,
 			Self::Session(_) => 503,
-			Self::Version(_) => 406,
+			Self::Version(..) => 406,
 			Self::Encode(_) => 500,
 			Self::Decode(_) => 500,
+			Self::InvalidPriority(_) => 400,
+			Self::InvalidSize(_) => 400,
 		}
 	}
 
 	/// A reason that is sent over the wire.
-	fn reason(&self) -> &str {
+	fn reason(&self) -> String {
 		match self {
 			Self::Cache(err) => err.reason(),
-			Self::RoleViolation(_) => "role violation",
-			Self::RoleIncompatible(..) => "role incompatible",
-			Self::Read(_) => "read error",
-			Self::Write(_) => "write error",
-			Self::Session(_) => "session error",
-			Self::Unknown(_) => "unknown",
-			Self::Version(_) => "unsupported version",
-			Self::Encode(_) => "encode error",
-			Self::Decode(_) => "decode error",
+			Self::RoleViolation(kind) => format!("role violation for message type {:?}", kind),
+			Self::RoleIncompatible(client, server) => {
+				format!(
+					"role incompatible: client wanted {:?} but server wanted {:?}",
+					client, server
+				)
+			}
+			Self::Read(err) => format!("read error: {}", err),
+			Self::Write(err) => format!("write error: {}", err),
+			Self::Session(err) => format!("session error: {}", err),
+			Self::Unknown(err) => format!("unknown error: {}", err),
+			Self::Version(client, server) => format!("unsupported versions: client={:?} server={:?}", client, server),
+			Self::Encode(err) => format!("encode error: {}", err),
+			Self::Decode(err) => format!("decode error: {}", err),
+			Self::StreamMapping => "streaming mapping conflict".to_owned(),
+			Self::InvalidPriority(priority) => format!("invalid priority: {}", priority),
+			Self::InvalidSize(size) => format!("invalid size: {}", size),
 		}
 	}
 }

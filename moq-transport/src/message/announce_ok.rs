@@ -1,4 +1,4 @@
-use crate::coding::{decode_string, encode_string, AsyncRead, AsyncWrite, DecodeError, EncodeError};
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the subscriber to accept an Announce.
 #[derive(Clone, Debug)]
@@ -10,11 +10,11 @@ pub struct AnnounceOk {
 
 impl AnnounceOk {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let namespace = decode_string(r).await?;
+		let namespace = String::decode(r).await?;
 		Ok(Self { namespace })
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		encode_string(&self.namespace, w).await
+		self.namespace.encode(w).await
 	}
 }

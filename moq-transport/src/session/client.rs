@@ -34,20 +34,19 @@ impl Client {
 
 		let client = setup::Client {
 			role,
-			versions: vec![setup::Version::KIXEL_00].into(),
+			versions: vec![setup::Version::KIXEL_01].into(),
+			params: Default::default(),
 		};
 
 		client.encode(&mut control.0).await?;
 
 		let server = setup::Server::decode(&mut control.1).await?;
 
-		if server.version != setup::Version::KIXEL_00 {
-			return Err(SessionError::Version(Some(server.version)));
-		}
-
-		// Make sure the server replied with the
-		if !client.role.is_compatible(server.role) {
-			return Err(SessionError::RoleIncompatible(client.role, server.role));
+		if server.version != setup::Version::KIXEL_01 {
+			return Err(SessionError::Version(
+				vec![setup::Version::KIXEL_01].into(),
+				vec![server.version].into(),
+			));
 		}
 
 		Ok(control)

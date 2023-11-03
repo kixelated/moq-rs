@@ -1,5 +1,7 @@
 pub trait MoqError {
 	/// An integer code that is sent over the wire.
 	fn code(&self) -> u32;
-	fn reason(&self) -> &str;
+
+	/// An optional reason sometimes sent over the wire.
+	fn reason(&self) -> String;
 }

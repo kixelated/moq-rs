@@ -85,9 +85,9 @@ impl Publisher {
 	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
 		match msg {
 			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
-			Message::AnnounceStop(msg) => self.recv_announce_stop(msg).await,
+			Message::AnnounceError(msg) => self.recv_announce_error(msg).await,
 			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
-			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
+			Message::Unsubscribe(msg) => self.recv_unsubscribe(msg).await,
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
@@ -97,7 +97,7 @@ impl Publisher {
 		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), SessionError> {
+	async fn recv_announce_error(&mut self, _msg: &message::AnnounceError) -> Result<(), SessionError> {
 		// We didn't send an announce.
 		Err(CacheError::NotFound.into())
 	}
@@ -115,14 +115,24 @@ impl Publisher {
 			hash_map::Entry::Vacant(entry) => entry.insert(abort),
 		};
 
-		self.control.send(message::SubscribeOk { id: msg.id }).await
+		self.control
+			.send(message::SubscribeOk {
+				id: msg.id,
+				expires: VarInt::ZERO,
+			})
+			.await
 	}
 
 	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
 		let msg = message::SubscribeReset {
 			id,
 			code: err.code(),
-			reason: err.reason().to_string(),
+			reason: err.reason(),
+
+			// TODO properly populate these
+			// But first: https://github.com/moq-wg/moq-transport/issues/313
+			final_group: VarInt::ZERO,
+			final_object: VarInt::ZERO,
 		};
 
 		self.control.send(msg).await
@@ -176,31 +186,42 @@ impl Publisher {
 	}
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let object = message::Object {
-			track: id,
-			sequence: segment.sequence,
-			priority: segment.priority,
-			expires: segment.expires,
-		};
-
-		log::trace!("serving object: {:?}", object);
+		log::trace!("serving group: {:?}", segment);
 
 		let mut stream = self.webtransport.open_uni().await?;
-		stream.set_priority(object.priority).ok();
 
-		object
-			.encode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		// Convert the u32 to a i32, since the Quinn set_priority is signed.
+		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
+		stream.set_priority(priority).ok();
 
-		while let Some(data) = segment.read_chunk().await? {
-			stream.write_chunk(data).await?;
+		while let Some(mut fragment) = segment.next_fragment().await? {
+			let object = message::Object {
+				track: id,
+
+				// Properties of the segment
+				group: segment.sequence,
+				priority: segment.priority,
+				expires: segment.expires,
+
+				// Properties of the fragment
+				sequence: fragment.sequence,
+				size: fragment.size,
+			};
+
+			object
+				.encode(&mut stream)
+				.await
+				.map_err(|e| SessionError::Unknown(e.to_string()))?;
+
+			while let Some(chunk) = fragment.read_chunk().await? {
+				stream.write_all(&chunk).await?;
+			}
 		}
 
 		Ok(())
 	}
 
-	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), SessionError> {
+	async fn recv_unsubscribe(&mut self, msg: &message::Unsubscribe) -> Result<(), SessionError> {
 		let abort = self
 			.subscribes
 			.lock()

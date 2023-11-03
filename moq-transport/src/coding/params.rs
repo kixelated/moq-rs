@@ -1,69 +1,85 @@
-use std::cmp::min;
+use std::io::Cursor;
+use std::{cmp::max, collections::HashMap};
 
-use crate::VarInt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::{AsyncRead, AsyncWrite, DecodeError, EncodeError};
-use tokio::io::AsyncReadExt;
+use crate::coding::{AsyncRead, AsyncWrite, Decode, Encode};
 
-// I hate this parameter encoding so much.
-// i hate it i hate it i hate it
+use crate::{
+	coding::{DecodeError, EncodeError},
+	VarInt,
+};
 
-// TODO Use #[async_trait] so we can do Param<VarInt> instead.
-pub struct ParamInt(pub VarInt);
+#[derive(Default, Debug, Clone)]
+pub struct Params(pub HashMap<VarInt, Vec<u8>>);
 
-impl ParamInt {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		// Why do we have a redundant size in front of each VarInt?
-		let size = VarInt::decode(r).await?;
-		let mut take = r.take(size.into_inner());
-		let value = VarInt::decode(&mut take).await?;
+#[async_trait::async_trait]
+impl Decode for Params {
+	async fn decode<R: AsyncRead>(mut r: &mut R) -> Result<Self, DecodeError> {
+		let mut params = HashMap::new();
 
-		// Like seriously why do I have to check if the VarInt length mismatches.
-		if take.limit() != 0 {
-			return Err(DecodeError::InvalidSize);
+		// I hate this shit so much; let me encode my role and get on with my life.
+		let count = VarInt::decode(r).await?;
+		for _ in 0..count.into_inner() {
+			let kind = VarInt::decode(r).await?;
+			if params.contains_key(&kind) {
+				return Err(DecodeError::DupliateParameter);
+			}
+
+			let size = VarInt::decode(r).await?;
+
+			// Don't allocate the entire requested size to avoid a possible attack
+			// Instead, we allocate up to 1024 and keep appending as we read further.
+			let mut pr = r.take(size.into_inner());
+			let mut buf = Vec::with_capacity(max(1024, pr.limit() as usize));
+			pr.read_to_end(&mut buf).await?;
+			params.insert(kind, buf);
+
+			r = pr.into_inner();
 		}
 
-		Ok(Self(value))
+		Ok(Params(params))
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		// Seriously why do I have to compute the size.
-		let size = self.0.size();
-		VarInt::try_from(size)?.encode(w).await?;
+#[async_trait::async_trait]
+impl Encode for Params {
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		VarInt::try_from(self.0.len())?.encode(w).await?;
 
-		self.0.encode(w).await?;
+		for (kind, value) in self.0.iter() {
+			kind.encode(w).await?;
+			VarInt::try_from(value.len())?.encode(w).await?;
+			w.write_all(value).await?;
+		}
 
 		Ok(())
 	}
 }
 
-pub struct ParamBytes(pub Vec<u8>);
-
-impl ParamBytes {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let size = VarInt::decode(r).await?;
-		let mut take = r.take(size.into_inner());
-		let mut buf = Vec::with_capacity(min(take.limit() as usize, 1024));
-		take.read_to_end(&mut buf).await?;
-
-		Ok(Self(buf))
+impl Params {
+	pub fn new() -> Self {
+		Self::default()
 	}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let size = VarInt::try_from(self.0.len())?;
-		size.encode(w).await?;
-		w.write_all(&self.0).await?;
+	pub async fn set<P: Encode>(&mut self, kind: VarInt, p: P) -> Result<(), EncodeError> {
+		let mut value = Vec::new();
+		p.encode(&mut value).await?;
+		self.0.insert(kind, value);
 
 		Ok(())
 	}
-}
 
-pub struct ParamUnknown {}
+	pub fn has(&self, kind: VarInt) -> bool {
+		self.0.contains_key(&kind)
+	}
 
-impl ParamUnknown {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<(), DecodeError> {
-		// Really? Is there no way to advance without reading?
-		ParamBytes::decode(r).await?;
-		Ok(())
+	pub async fn get<P: Decode>(&mut self, kind: VarInt) -> Result<Option<P>, DecodeError> {
+		if let Some(value) = self.0.remove(&kind) {
+			let mut cursor = Cursor::new(value);
+			Ok(Some(P::decode(&mut cursor).await?))
+		} else {
+			Ok(None)
+		}
 	}
 }

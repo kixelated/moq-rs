@@ -1,4 +1,4 @@
-use crate::coding::{decode_string, encode_string, DecodeError, EncodeError};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -10,11 +10,11 @@ pub struct GoAway {
 
 impl GoAway {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let url = decode_string(r).await?;
+		let url = String::decode(r).await?;
 		Ok(Self { url })
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		encode_string(&self.url, w).await
+		self.url.encode(w).await
 	}
 }

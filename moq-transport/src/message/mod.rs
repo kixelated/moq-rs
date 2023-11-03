@@ -6,16 +6,17 @@
 //!
 //! Messages sent by the publisher:
 //! - [Announce]
-//! - [AnnounceReset]
+//! - [Unannounce]
 //! - [SubscribeOk]
+//! - [SubscribeError]
 //! - [SubscribeReset]
 //! - [Object]
 //!
 //! Messages sent by the subscriber:
 //! - [Subscribe]
-//! - [SubscribeStop]
+//! - [Unsubscribe]
 //! - [AnnounceOk]
-//! - [AnnounceStop]
+//! - [AnnounceError]
 //!
 //! Example flow:
 //! ```test
@@ -32,26 +33,30 @@
 mod announce;
 mod announce_ok;
 mod announce_reset;
-mod announce_stop;
 mod go_away;
 mod object;
 mod subscribe;
+mod subscribe_error;
+mod subscribe_fin;
 mod subscribe_ok;
 mod subscribe_reset;
-mod subscribe_stop;
+mod unannounce;
+mod unsubscribe;
 
 pub use announce::*;
 pub use announce_ok::*;
 pub use announce_reset::*;
-pub use announce_stop::*;
 pub use go_away::*;
 pub use object::*;
 pub use subscribe::*;
+pub use subscribe_error::*;
+pub use subscribe_fin::*;
 pub use subscribe_ok::*;
 pub use subscribe_reset::*;
-pub use subscribe_stop::*;
+pub use unannounce::*;
+pub use unsubscribe::*;
 
-use crate::coding::{DecodeError, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 use std::fmt;
 
@@ -76,7 +81,7 @@ macro_rules! message_types {
 						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
-					_ => Err(DecodeError::InvalidType(t)),
+					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
 
@@ -127,15 +132,28 @@ macro_rules! message_types {
 message_types! {
 	// NOTE: Object and Setup are in other modules.
 	// Object = 0x0
-	// SetupClient = 0x1
-	// SetupServer = 0x2
+	// ObjectUnbounded = 0x2
+	// SetupClient = 0x40
+	// SetupServer = 0x41
+
+	// SUBSCRIBE family, sent by subscriber
 	Subscribe = 0x3,
+	Unsubscribe = 0xa,
+
+	// SUBSCRIBE family, sent by publisher
 	SubscribeOk = 0x4,
-	SubscribeReset = 0x5,
-	SubscribeStop = 0x15,
+	SubscribeError = 0x5,
+	SubscribeFin = 0xb,
+	SubscribeReset = 0xc,
+
+	// ANNOUNCE family, sent by publisher
 	Announce = 0x6,
+	Unannounce = 0x9,
+
+	// ANNOUNCE family, sent by subscriber
 	AnnounceOk = 0x7,
-	AnnounceReset = 0x8,
-	AnnounceStop = 0x18,
+	AnnounceError = 0x8,
+
+	// Misc
 	GoAway = 0x10,
 }

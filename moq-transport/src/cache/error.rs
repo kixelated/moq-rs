@@ -39,13 +39,13 @@ impl MoqError for CacheError {
 	}
 
 	/// A reason that is sent over the wire.
-	fn reason(&self) -> &str {
+	fn reason(&self) -> String {
 		match self {
-			Self::Closed => "closed",
-			Self::Reset(_) => "reset",
-			Self::Stop => "stop",
-			Self::NotFound => "not found",
-			Self::Duplicate => "duplicate",
+			Self::Closed => "closed".to_owned(),
+			Self::Reset(code) => format!("reset code: {}", code),
+			Self::Stop => "stop".to_owned(),
+			Self::NotFound => "not found".to_owned(),
+			Self::Duplicate => "duplicate".to_owned(),
 		}
 	}
 }

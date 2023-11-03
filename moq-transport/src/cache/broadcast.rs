@@ -136,12 +136,12 @@ impl Publisher {
 	}
 
 	/// Block until the next track requested by a subscriber.
-	pub async fn next_track(&mut self) -> Result<Option<track::Publisher>, CacheError> {
+	pub async fn next_track(&mut self) -> Result<track::Publisher, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if state.has_next()? {
-					return Ok(Some(state.into_mut().next()));
+					return Ok(state.into_mut().next());
 				}
 
 				state.changed()

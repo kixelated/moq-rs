@@ -37,15 +37,15 @@ impl moq_transport::MoqError for RelayError {
 		}
 	}
 
-	fn reason(&self) -> &str {
+	fn reason(&self) -> String {
 		match self {
-			Self::Transport(err) => err.reason(),
-			Self::Cache(err) => err.reason(),
-			Self::MoqApi(_err) => "api error",
-			Self::Url(_) => "url error",
-			Self::MissingNode => "missing node",
-			Self::WebTransportServer(_) => "server error",
-			Self::WebTransportClient(_) => "upstream error",
+			Self::Transport(err) => format!("transport error: {}", err.reason()),
+			Self::Cache(err) => format!("cache error: {}", err.reason()),
+			Self::MoqApi(err) => format!("api error: {}", err),
+			Self::Url(err) => format!("url error: {}", err),
+			Self::MissingNode => "missing node".to_owned(),
+			Self::WebTransportServer(err) => format!("upstream server error: {}", err),
+			Self::WebTransportClient(err) => format!("upstream client error: {}", err),
 		}
 	}
 }

@@ -1107,6 +1107,7 @@ dependencies = [
 name = "moq-transport"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "indexmap 2.0.0",
  "log",

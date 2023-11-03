@@ -18,8 +18,8 @@ impl Server {
 		client
 			.versions
 			.iter()
-			.find(|version| **version == setup::Version::KIXEL_00)
-			.ok_or_else(|| SessionError::Version(client.versions.last().cloned()))?;
+			.find(|version| **version == setup::Version::KIXEL_01)
+			.ok_or_else(|| SessionError::Version(client.versions.clone(), vec![setup::Version::KIXEL_01].into()))?;
 
 		Ok(Request {
 			session,
@@ -63,7 +63,8 @@ impl Request {
 	async fn send_setup(&mut self, role: setup::Role) -> Result<(), SessionError> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::KIXEL_00,
+			version: setup::Version::KIXEL_01,
+			params: Default::default(),
 		};
 
 		// We need to sure we support the opposite of the client's role.

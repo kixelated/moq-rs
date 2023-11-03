@@ -206,7 +206,7 @@ impl Subscriber {
 		}
 	}
 
-	/// Block until the next segment arrives, or return None if the track is [CacheError::Closed].
+	/// Block until the next segment arrives
 	pub async fn next_segment(&mut self) -> Result<Option<segment::Subscriber>, CacheError> {
 		loop {
 			let notify = {
