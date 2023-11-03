@@ -6,11 +6,12 @@ kill_timeout = 5
 PORT = "4443"
 
 [experimental]
-cmd = "./deploy/fly-relay.sh"
+cmd = "./fly-relay.sh"
 
 [[services]]
 internal_port = 4443
 protocol = "udp"
+
 [services.concurrency]
 hard_limit = 25
 soft_limit = 20

@@ -35,5 +35,5 @@ LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 # Fly.io entrypoint
 ADD deploy/fly-relay.sh .
 
-# Copy the compiled binary
-COPY --from=builder /usr/local/cargo/bin/moq-relay /usr/local/cargo/bin/moq-relay
+# Copy the compiled binaries
+COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin
