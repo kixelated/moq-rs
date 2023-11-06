@@ -28,19 +28,14 @@ pub struct Origin {
 	cache: Arc<Mutex<HashMap<String, Weak<Subscriber>>>>,
 
 	// The next relays to provide to the moq_api for routing
-	next_relays: Option<Vec<Url>>,
+	next_relays: Vec<Url>,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
 	quic: quinn::Endpoint,
 }
 
 impl Origin {
-	pub fn new(
-		api: Option<moq_api::Client>,
-		node: Option<Url>,
-		next_relays: Option<Vec<Url>>,
-		quic: quinn::Endpoint,
-	) -> Self {
+	pub fn new(api: Option<moq_api::Client>, node: Option<Url>, next_relays: Vec<Url>, quic: quinn::Endpoint) -> Self {
 		Self {
 			api,
 			node,
@@ -140,7 +135,7 @@ impl Origin {
 			.api
 			.as_mut()
 			.ok_or(CacheError::NotFound)?
-			.get_next(id, &self.next_relays)
+			.get_origin(id, &self.next_relays)
 			.await?
 			.ok_or(CacheError::NotFound)?;
 

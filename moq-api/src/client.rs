@@ -16,9 +16,9 @@ impl Client {
 		Self { url, client }
 	}
 
-	pub async fn get_next(&self, id: &str, next_relays: &Option<Vec<Url>>) -> Result<Option<Origin>, ApiError> {
+	pub async fn get_origin(&self, id: &str, next_relays: &Vec<Url>) -> Result<Option<Origin>, ApiError> {
 		let mut url = self.url.join("origin/")?.join(format!("{}", id).as_str())?;
-		if let Some(next_relays) = next_relays {
+		if next_relays.len() > 0 {
 			let url_list = next_relays.iter().map(|url| url.as_str()).collect::<Vec<_>>().join(",");
 			url = url.join(format!("?next_relays={}", url_list).as_str())?;
 		}

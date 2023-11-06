@@ -45,7 +45,7 @@ pub struct Config {
 	/// Next hop relays this relays is connected to
 	/// Will be passed to moq_api for it to decide where to get the track from.
 	#[arg(long)]
-	pub next_relays: Option<Vec<Url>>,
+	pub next_relays: Vec<Url>,
 
 	/// Enable development mode.
 	/// Currently, this only listens on HTTPS and serves /fingerprint, for self-signed certificates
