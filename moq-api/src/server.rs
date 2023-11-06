@@ -98,8 +98,7 @@ async fn get_origin(
 	let payload = payload.ok_or(AppError::NotFound)?;
 	if let Some(next_relays_string) = params.next_relays {
 		// Choose from provided next relays
-		// TODO error handling here in the parser
-		let next_relays = parse_relay_urls(next_relays_string);
+		let next_relays = parse_relay_urls(next_relays_string)?;
 		// TODO load balancing here? anyway a smarter pick than just the first
 		let next_url = url::Url::from_str(format!("{}/{}", next_relays[0].as_str(), id).as_str());
 		let origin = Origin {
@@ -179,15 +178,14 @@ fn origin_key(id: &str) -> String {
 }
 
 // Parse a list of URLs separated by commas
-fn parse_relay_urls(url_list_string: String) -> Vec<url::Url> {
+fn parse_relay_urls(url_list_string: String) -> Result<Vec<url::Url>, url::ParseError> {
 	let mut urls = Vec::new();
-	for url in url_list_string.split(',') {
-		let url_string = url;
-		if let Ok(url) = url_string.parse::<url::Url>() {
-			urls.push(url);
-		}
+	for url_str in url_list_string.split(',') {
+		let url = url_str.parse::<url::Url>()?;
+		urls.push(url);
 	}
-	urls
+
+	Ok(urls)
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -203,6 +201,9 @@ enum AppError {
 
 	#[error("duplicate ID")]
 	Duplicate,
+
+	#[error("url error in parameter: {0}")]
+	Parameter(#[from] url::ParseError),
 }
 
 // Tell axum how to convert `AppError` into a response.
@@ -213,6 +214,7 @@ impl IntoResponse for AppError {
 			AppError::Json(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("json error: {}", e)).into_response(),
 			AppError::NotFound => StatusCode::NOT_FOUND.into_response(),
 			AppError::Duplicate => StatusCode::CONFLICT.into_response(),
+			AppError::Parameter(e) => (StatusCode::BAD_REQUEST, format!("parameter error: {}", e)).into_response(),
 		}
 	}
 }
