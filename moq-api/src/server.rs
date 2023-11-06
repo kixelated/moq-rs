@@ -102,10 +102,12 @@ async fn get_origin(
 		// Choose from provided next relays
 		let next_relays = parse_relay_urls(next_relays_string)?;
 
-		let chosen_relay = next_relays.choose(&mut rand::thread_rng()).expect("");
+		let chosen_relay = next_relays
+			.choose(&mut rand::thread_rng())
+			.expect("next_relays vec empty despite parameter validation");
 
-		let next_url = url::Url::from_str(format!("{}/{}", chosen_relay.as_str(), id).as_str())
-			.expect("relays list was empty despite parameter validation");
+		let next_url = chosen_relay.join(&id)?;
+
 		let origin = Origin { url: next_url };
 		return Ok(Json(origin));
 	}
