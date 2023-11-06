@@ -1,18 +1,20 @@
-//! A segment is a stream of fragments with a header, split into a [Publisher] and [Subscriber] handle.
+//! A fragment is a stream of bytes with a header, split into a [Publisher] and [Subscriber] handle.
 //!
-//! A [Publisher] writes an ordered stream of fragments.
-//! Each fragment can have a sequence number, allowing the subscriber to detect gaps fragments.
+//! A [Publisher] writes an ordered stream of bytes in chunks.
+//! There's no framing, so these chunks can be of any size or position, and won't be maintained over the network.
 //!
-//! A [Subscriber] reads an ordered stream of fragments.
-//! The subscriber can be cloned, in which case each subscriber receives a copy of each fragment. (fanout)
+//! A [Subscriber] reads an ordered stream of bytes in chunks.
+//! These chunks are returned directly from the QUIC connection, so they may be of any size or position.
+//! You can clone the [Subscriber] and each will read a copy of of all future chunks. (fanout)
 //!
-//! The segment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
+//! The fragment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 use core::fmt;
-use std::{ops::Deref, sync::Arc, time};
+use std::{ops::Deref, sync::Arc};
 
 use crate::VarInt;
+use bytes::Bytes;
 
-use super::{fragment, CacheError, Watch};
+use super::{CacheError, Watch};
 
 /// Create a new segment with the given info.
 pub fn new(info: Info) -> (Publisher, Subscriber) {
@@ -28,20 +30,18 @@ pub fn new(info: Info) -> (Publisher, Subscriber) {
 /// Static information about the segment.
 #[derive(Debug)]
 pub struct Info {
-	// The sequence number of the segment within the track.
+	// The sequence number of the fragment within the segment.
 	// NOTE: These may be received out of order or with gaps.
 	pub sequence: VarInt,
 
-	// The priority of the segment within the BROADCAST.
-	pub priority: u32,
-
-	// Cache the segment for at most this long.
-	pub expires: Option<time::Duration>,
+	// The size of the fragment, optionally None if this is the last fragment in a segment.
+	// TODO enforce this size.
+	pub size: Option<VarInt>,
 }
 
 struct State {
 	// The data that has been received thus far.
-	fragments: Vec<fragment::Subscriber>,
+	chunks: Vec<Bytes>,
 
 	// Set when the publisher is dropped.
 	closed: Result<(), CacheError>,
@@ -53,12 +53,16 @@ impl State {
 		self.closed = Err(err);
 		Ok(())
 	}
+
+	pub fn bytes(&self) -> usize {
+		self.chunks.iter().map(|f| f.len()).sum::<usize>()
+	}
 }
 
 impl Default for State {
 	fn default() -> Self {
 		Self {
-			fragments: Vec::new(),
+			chunks: Vec::new(),
 			closed: Ok(()),
 		}
 	}
@@ -66,8 +70,10 @@ impl Default for State {
 
 impl fmt::Debug for State {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// We don't want to print out the contents, so summarize.
 		f.debug_struct("State")
-			.field("fragments", &self.fragments)
+			.field("chunks", &self.chunks.len().to_string())
+			.field("bytes", &self.bytes().to_string())
 			.field("closed", &self.closed)
 			.finish()
 	}
@@ -91,18 +97,12 @@ impl Publisher {
 		Self { state, info, _dropped }
 	}
 
-	/// Write a fragment
-	pub fn push_fragment(&mut self, fragment: fragment::Subscriber) -> Result<(), CacheError> {
+	/// Write a new chunk of bytes.
+	pub fn write_chunk(&mut self, chunk: Bytes) -> Result<(), CacheError> {
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
-		state.fragments.push(fragment);
+		state.chunks.push(chunk);
 		Ok(())
-	}
-
-	pub fn create_fragment(&mut self, fragment: fragment::Info) -> Result<fragment::Publisher, CacheError> {
-		let (publisher, subscriber) = fragment::new(fragment);
-		self.push_fragment(subscriber)?;
-		Ok(publisher)
 	}
 
 	/// Close the segment with an error.
@@ -158,14 +158,14 @@ impl Subscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn next_fragment(&mut self) -> Result<Option<fragment::Subscriber>, CacheError> {
+	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
-				if self.index < state.fragments.len() {
-					let fragment = state.fragments[self.index].clone();
+				if self.index < state.chunks.len() {
+					let chunk = state.chunks[self.index].clone();
 					self.index += 1;
-					return Ok(Some(fragment));
+					return Ok(Some(chunk));
 				}
 
 				match &state.closed {

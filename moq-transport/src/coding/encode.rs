@@ -6,6 +6,12 @@ use thiserror::Error;
 // TODO Use trait aliases when they're stable, or add these bounds to every method.
 pub trait AsyncWrite: tokio::io::AsyncWrite + Unpin + Send {}
 impl AsyncWrite for webtransport_quinn::SendStream {}
+impl AsyncWrite for Vec<u8> {}
+
+#[async_trait::async_trait]
+pub trait Encode: Sized {
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError>;
+}
 
 /// An encode error.
 #[derive(Error, Debug)]

@@ -1,13 +1,14 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
-
 use crate::coding::{AsyncRead, AsyncWrite};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 use crate::setup::Extensions;
 
-/// Sent by the subscriber to reject an Announce.
+/// Sent by the publisher to reject a Subscribe.
 #[derive(Clone, Debug)]
-pub struct AnnounceError {
-	// Echo back the namespace that was reset
-	pub namespace: String,
+pub struct SubscribeError {
+	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
+
+	// The ID for this subscription.
+	pub id: VarInt,
 
 	// An error code.
 	pub code: u32,
@@ -16,21 +17,17 @@ pub struct AnnounceError {
 	pub reason: String,
 }
 
-impl AnnounceError {
+impl SubscribeError {
 	pub async fn decode<R: AsyncRead>(r: &mut R, _ext: &Extensions) -> Result<Self, DecodeError> {
-		let namespace = String::decode(r).await?;
+		let id = VarInt::decode(r).await?;
 		let code = VarInt::decode(r).await?.try_into()?;
 		let reason = String::decode(r).await?;
 
-		Ok(Self {
-			namespace,
-			code,
-			reason,
-		})
+		Ok(Self { id, code, reason })
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W, _ext: &Extensions) -> Result<(), EncodeError> {
-		self.namespace.encode(w).await?;
+		self.id.encode(w).await?;
 		VarInt::from_u32(self.code).encode(w).await?;
 		self.reason.encode(w).await?;
 

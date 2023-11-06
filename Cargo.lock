@@ -1067,6 +1067,7 @@ dependencies = [
  "rfc6381-codec",
  "rustls",
  "rustls-native-certs",
+ "rustls-pemfile",
  "serde_json",
  "tokio",
  "tracing",
@@ -1107,9 +1108,11 @@ dependencies = [
 name = "moq-transport"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "indexmap 2.0.0",
  "log",
+ "paste",
  "quinn",
  "thiserror",
  "tokio",
@@ -1319,6 +1322,12 @@ dependencies = [
  "smallvec",
  "windows-targets",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
 name = "percent-encoding"

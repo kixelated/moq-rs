@@ -12,14 +12,28 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
-# Runtime image
-FROM rust:latest
+# Special image for moq-pub with ffmpeg and a publish script included.
+FROM rust:latest as moq-pub
+
+# Install required utilities and ffmpeg
+RUN apt-get update && \
+    apt-get install -y ffmpeg wget
+
+# Copy the publish script into the image
+COPY deploy/publish.sh /usr/local/bin/publish
+
+# Copy the compiled binary
+COPY --from=builder /usr/local/cargo/bin/moq-pub /usr/local/cargo/bin/moq-pub
+CMD [ "publish" ]
+
+# moq-rs image with just the binaries
+FROM rust:latest as moq-rs
 
 LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs
 LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
 # Fly.io entrypoint
-ADD fly-relay.sh .
+ADD deploy/fly-relay.sh .
 
 # Copy the compiled binaries
 COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin

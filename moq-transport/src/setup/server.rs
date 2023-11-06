@@ -1,6 +1,6 @@
-use super::{Role, Version};
+use super::{Extensions, Role, Version};
 use crate::{
-	coding::{DecodeError, EncodeError},
+	coding::{Decode, DecodeError, Encode, EncodeError, Params},
 	VarInt,
 };
 
@@ -17,27 +17,54 @@ pub struct Server {
 	/// Indicate if the server is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
+
+	/// Custom extensions.
+	pub extensions: Extensions,
+
+	/// Unknown parameters.
+	pub params: Params,
 }
 
 impl Server {
 	/// Decode the server setup.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let typ = VarInt::decode(r).await?;
-		if typ.into_inner() != 2 {
-			return Err(DecodeError::InvalidType(typ));
+		if typ.into_inner() != 0x41 {
+			return Err(DecodeError::InvalidMessage(typ));
 		}
 
 		let version = Version::decode(r).await?;
-		let role = Role::decode(r).await?;
+		let mut params = Params::decode(r).await?;
 
-		Ok(Self { version, role })
+		let role = params
+			.get::<Role>(VarInt::from_u32(0))
+			.await?
+			.ok_or(DecodeError::MissingParameter)?;
+
+		// Make sure the PATH parameter isn't used
+		if params.has(VarInt::from_u32(1)) {
+			return Err(DecodeError::InvalidParameter);
+		}
+
+		let extensions = Extensions::load(&mut params).await?;
+
+		Ok(Self {
+			version,
+			role,
+			extensions,
+			params,
+		})
 	}
 
 	/// Encode the server setup.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from_u32(2).encode(w).await?;
+		VarInt::from_u32(0x41).encode(w).await?;
 		self.version.encode(w).await?;
-		self.role.encode(w).await?;
+
+		let mut params = self.params.clone();
+		params.set(VarInt::from_u32(0), self.role).await?;
+		self.extensions.store(&mut params).await?;
+		params.encode(w).await?;
 
 		Ok(())
 	}
