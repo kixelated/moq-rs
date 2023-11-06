@@ -99,9 +99,12 @@ async fn get_origin(
 	let payload: Option<String> = redis.get(&key).await?;
 	let payload = payload.ok_or(AppError::NotFound)?;
 	if let Some(next_relays_string) = params.next_relays {
-		// Choose from provided next relays
 		let next_relays = parse_relay_urls(next_relays_string)?;
 
+		// Choose from provided next relays
+		// For now this choice is random to serve as a load balancing method,
+		// but this is where we can implement data-based routing to make smarter
+		// decisions within the cluster
 		let chosen_relay = next_relays
 			.choose(&mut rand::thread_rng())
 			.expect("next_relays vec empty despite parameter validation");
