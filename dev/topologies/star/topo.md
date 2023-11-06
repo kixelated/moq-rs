@@ -2,7 +2,7 @@
 
 ```mermaid
 ---
-title: Data flow
+title: Data Flow
 ---
 flowchart TD
 	Hub <-..-> A
