@@ -41,3 +41,4 @@ url = { version = "2", features = ["serde"] }
 log = "0.4"
 env_logger = "0.9"
 thiserror = "1"
+rand = "0.8.5"

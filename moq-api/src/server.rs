@@ -2,6 +2,8 @@ use std::{fmt, net, str::FromStr};
 
 use serde::{de, Deserialize, Deserializer};
 
+use rand::prelude::*;
+
 use axum::{
 	extract::{Path, Query, State},
 	http::StatusCode,
@@ -99,11 +101,12 @@ async fn get_origin(
 	if let Some(next_relays_string) = params.next_relays {
 		// Choose from provided next relays
 		let next_relays = parse_relay_urls(next_relays_string)?;
-		// TODO load balancing here? anyway a smarter pick than just the first
-		let next_url = url::Url::from_str(format!("{}/{}", next_relays[0].as_str(), id).as_str());
-		let origin = Origin {
-			url: next_url.expect("you goofed up, do proper error checking, fool"),
-		};
+
+		let chosen_relay = next_relays.choose(&mut rand::thread_rng()).expect("");
+
+		let next_url = url::Url::from_str(format!("{}/{}", chosen_relay.as_str(), id).as_str())
+			.expect("relays list was empty despite parameter validation");
+		let origin = Origin { url: next_url };
 		return Ok(Json(origin));
 	}
 	let origin: Origin = serde_json::from_str(&payload)?;

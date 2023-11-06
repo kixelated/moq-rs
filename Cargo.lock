@@ -1042,6 +1042,7 @@ dependencies = [
  "env_logger",
  "hyper",
  "log",
+ "rand",
  "redis",
  "reqwest",
  "serde",
