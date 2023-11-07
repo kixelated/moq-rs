@@ -11,6 +11,7 @@ This repository contains a few crates:
 -   **moq-pub**: A publish client, accepting media from stdin (ex. via ffmpeg) and sending it to a remote server.
 -   **moq-transport**: An async implementation of the underlying MoQ protocol.
 -   **moq-api**: A HTTP API server that stores the origin for each broadcast, backed by redis.
+-   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
 
 There's currently no way to view media with this repo; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
 
