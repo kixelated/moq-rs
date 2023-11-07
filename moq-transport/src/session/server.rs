@@ -15,6 +15,8 @@ impl Server {
 
 		let mut client = setup::Client::decode(&mut control.1).await?;
 
+		log::debug!("received client SETUP: {:?}", client);
+
 		if client.versions.contains(&setup::Version::DRAFT_01) {
 			// We always require subscriber ID.
 			client.extensions.require_subscriber_id()?;
@@ -90,6 +92,8 @@ impl Request {
 			extensions: self.client.extensions.clone(),
 			params: Default::default(),
 		};
+
+		log::debug!("sending server SETUP: {:?}", server);
 
 		// We need to sure we support the opposite of the client's role.
 		// ex. if the client is a publisher, we must be a subscriber ONLY.
