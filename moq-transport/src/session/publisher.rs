@@ -170,7 +170,7 @@ impl Publisher {
 	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), SessionError> {
 		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
 
-		while let Some(mut segment) = track.next_segment().await? {
+		while let Some(mut segment) = track.segment().await? {
 			// TODO only clone the fields we need
 			let this = self.clone();
 
@@ -193,7 +193,9 @@ impl Publisher {
 		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
 		stream.set_priority(priority).ok();
 
-		while let Some(mut fragment) = segment.next_fragment().await? {
+		while let Some(mut fragment) = segment.fragment().await? {
+			log::trace!("serving fragment: {:?}", fragment);
+
 			let object = message::Object {
 				track: id,
 
@@ -204,7 +206,7 @@ impl Publisher {
 
 				// Properties of the fragment
 				sequence: fragment.sequence,
-				size: fragment.size,
+				size: fragment.size.map(VarInt::try_from).transpose()?,
 			};
 
 			object
@@ -212,7 +214,8 @@ impl Publisher {
 				.await
 				.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-			while let Some(chunk) = fragment.read_chunk().await? {
+			while let Some(chunk) = fragment.chunk().await? {
+				//log::trace!("writing chunk: {:?}", chunk);
 				stream.write_all(&chunk).await?;
 			}
 		}

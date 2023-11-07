@@ -207,7 +207,7 @@ impl Subscriber {
 	}
 
 	/// Block until the next segment arrives
-	pub async fn next_segment(&mut self) -> Result<Option<segment::Subscriber>, CacheError> {
+	pub async fn segment(&mut self) -> Result<Option<segment::Subscriber>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();

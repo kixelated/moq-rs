@@ -22,11 +22,11 @@ RUN apt-get update && \
 # Copy the publish script into the image
 COPY deploy/publish.sh /usr/local/bin/publish
 
-# Copy the compiled binary
-COPY --from=builder /usr/local/cargo/bin/moq-pub /usr/local/cargo/bin/moq-pub
+# Copy the compiled binaries
+COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin
 CMD [ "publish" ]
 
-# moq-rs image with just the binaries
+# moq-rs image with just the binaries (default)
 FROM rust:latest as moq-rs
 
 LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs

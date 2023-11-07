@@ -42,19 +42,16 @@ impl Media {
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?;
-		let mut init_segment = init_track.create_segment(segment::Info {
+		let init_segment = init_track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
 			expires: None,
 		})?;
 
 		// Create a single fragment, optionally setting the size
-		let mut init_fragment = init_segment.create_fragment(fragment::Info {
-			sequence: VarInt::ZERO,
-			size: None, // size is only needed when we have multiple fragments.
-		})?;
+		let mut init_fragment = init_segment.final_fragment(VarInt::ZERO)?;
 
-		init_fragment.write_chunk(init.into())?;
+		init_fragment.chunk(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -132,7 +129,7 @@ impl Media {
 		init_track_name: &str,
 		moov: &mp4::MoovBox,
 	) -> Result<(), anyhow::Error> {
-		let mut segment = track.create_segment(segment::Info {
+		let segment = track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
 			expires: None,
@@ -218,13 +215,10 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		let mut fragment = segment.create_fragment(fragment::Info {
-			sequence: VarInt::ZERO,
-			size: None, // Size is only needed when we have multiple fragments.
-		})?;
+		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
 
 		// Add the segment and add the fragment.
-		fragment.write_chunk(catalog_str.into())?;
+		fragment.chunk(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -295,7 +289,7 @@ impl Track {
 		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				current.write_chunk(raw.into())?;
+				current.chunk(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -311,7 +305,7 @@ impl Track {
 			.context("timestamp too large")?;
 
 		// Create a new segment.
-		let mut segment = self.track.create_segment(segment::Info {
+		let segment = self.track.create_segment(segment::Info {
 			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
 
 			// Newer segments are higher priority
@@ -322,15 +316,12 @@ impl Track {
 		})?;
 
 		// Create a single fragment for the segment that we will keep appending.
-		let mut fragment = segment.create_fragment(fragment::Info {
-			sequence: VarInt::ZERO,
-			size: None,
-		})?;
+		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
 
 		self.sequence += 1;
 
 		// Insert the raw atom into the segment.
-		fragment.write_chunk(raw.into())?;
+		fragment.chunk(raw.into())?;
 
 		// Save for the next iteration
 		self.current = Some(fragment);
@@ -340,7 +331,7 @@ impl Track {
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let fragment = self.current.as_mut().context("missing current fragment")?;
-		fragment.write_chunk(raw.into())?;
+		fragment.chunk(raw.into())?;
 
 		Ok(())
 	}

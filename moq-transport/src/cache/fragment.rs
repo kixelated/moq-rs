@@ -36,7 +36,7 @@ pub struct Info {
 
 	// The size of the fragment, optionally None if this is the last fragment in a segment.
 	// TODO enforce this size.
-	pub size: Option<VarInt>,
+	pub size: Option<usize>,
 }
 
 struct State {
@@ -53,10 +53,6 @@ impl State {
 		self.closed = Err(err);
 		Ok(())
 	}
-
-	pub fn bytes(&self) -> usize {
-		self.chunks.iter().map(|f| f.len()).sum::<usize>()
-	}
 }
 
 impl Default for State {
@@ -71,11 +67,7 @@ impl Default for State {
 impl fmt::Debug for State {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		// We don't want to print out the contents, so summarize.
-		f.debug_struct("State")
-			.field("chunks", &self.chunks.len().to_string())
-			.field("bytes", &self.bytes().to_string())
-			.field("closed", &self.closed)
-			.finish()
+		f.debug_struct("State").field("closed", &self.closed).finish()
 	}
 }
 
@@ -98,7 +90,7 @@ impl Publisher {
 	}
 
 	/// Write a new chunk of bytes.
-	pub fn write_chunk(&mut self, chunk: Bytes) -> Result<(), CacheError> {
+	pub fn chunk(&mut self, chunk: Bytes) -> Result<(), CacheError> {
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.chunks.push(chunk);
@@ -158,7 +150,7 @@ impl Subscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, CacheError> {
+	pub async fn chunk(&mut self) -> Result<Option<Bytes>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
