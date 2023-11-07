@@ -70,7 +70,7 @@ impl Publisher {
 				.chunk(delta.clone().into())
 				.context("failed to write delta")?;
 
-			log::info!("{}{}", base, delta);
+			println!("{}{}", base, delta);
 
 			let next = now + chrono::Duration::seconds(1);
 			let next = next.with_nanosecond(0).unwrap();
@@ -132,7 +132,7 @@ impl Subscriber {
 			let value = Self::recv_fragment(fragment, base.clone()).await?;
 			let str = String::from_utf8(value).context("invalid UTF-8")?;
 
-			log::info!("{}", str);
+			println!("{}", str);
 		}
 
 		Ok(())
