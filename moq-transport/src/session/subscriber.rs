@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-	cache::{broadcast, fragment, segment, track, CacheError},
+	cache::{broadcast, segment, track, CacheError},
 	coding::DecodeError,
 	message,
 	message::Message,
@@ -110,7 +110,7 @@ impl Subscriber {
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-		log::trace!("received object: {:?}", object);
+		log::trace!("first object: {:?}", object);
 
 		// A new scope is needed because the async compiler is dumb
 		let mut segment = {
@@ -124,12 +124,10 @@ impl Subscriber {
 			})?
 		};
 
-		// Create the first fragment
-		let mut fragment = segment.create_fragment(fragment::Info {
-			sequence: object.sequence,
-			size: object.size,
-		})?;
+		log::trace!("received segment: {:?}", segment);
 
+		// Create the first fragment
+		let mut fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
 		let mut remain = object.size.map(usize::from);
 
 		loop {
@@ -145,6 +143,8 @@ impl Subscriber {
 					Err(err) => return Err(err.into()),
 				};
 
+				log::trace!("next object: {:?}", object);
+
 				// NOTE: This is a custom restriction; not part of the moq-transport draft.
 				// We require every OBJECT to contain the same priority since prioritization is done per-stream.
 				// We also require every OBJECT to contain the same group so we know when the group ends, and can detect gaps.
@@ -152,14 +152,13 @@ impl Subscriber {
 					return Err(SessionError::StreamMapping);
 				}
 
-				// Create a new object.
-				fragment = segment.create_fragment(fragment::Info {
-					sequence: object.sequence,
-					size: object.size,
-				})?;
-
 				object = next;
+
+				// Create a new object.
+				fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
 				remain = object.size.map(usize::from);
+
+				log::trace!("next fragment: {:?}", fragment);
 			}
 
 			match stream.read_chunk(remain.unwrap_or(usize::MAX), true).await? {
@@ -171,7 +170,12 @@ impl Subscriber {
 
 				// NOTE: This does not make a copy!
 				// Bytes are immutable and ref counted.
-				Some(data) => fragment.write_chunk(data.bytes)?,
+				Some(data) => {
+					remain = remain.map(|r| r - data.bytes.len());
+
+					log::trace!("next chunk: {:?}", data);
+					fragment.chunk(data.bytes)?;
+				}
 			}
 		}
 

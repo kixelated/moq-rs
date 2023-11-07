@@ -48,6 +48,10 @@ pub enum SessionError {
 	#[error("required extension not offered: {0:?}")]
 	RequiredExtension(VarInt),
 
+	/// Some VarInt was too large and we were too lazy to handle it
+	#[error("varint bounds exceeded")]
+	BoundsExceeded(#[from] coding::BoundsExceeded),
+
 	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error: {0}")]
 	Unknown(String),
@@ -71,6 +75,7 @@ impl MoqError for SessionError {
 			Self::InvalidPriority(_) => 400,
 			Self::InvalidSize(_) => 400,
 			Self::RequiredExtension(_) => 426,
+			Self::BoundsExceeded(_) => 500,
 		}
 	}
 
@@ -96,6 +101,7 @@ impl MoqError for SessionError {
 			Self::InvalidPriority(priority) => format!("invalid priority: {}", priority),
 			Self::InvalidSize(size) => format!("invalid size: {}", size),
 			Self::RequiredExtension(id) => format!("required extension was missing: {:?}", id),
+			Self::BoundsExceeded(_) => "varint bounds exceeded".to_string(),
 		}
 	}
 }

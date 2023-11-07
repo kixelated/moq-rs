@@ -91,18 +91,28 @@ impl Publisher {
 		Self { state, info, _dropped }
 	}
 
-	/// Write a fragment
-	pub fn push_fragment(&mut self, fragment: fragment::Subscriber) -> Result<(), CacheError> {
+	// Not public because it's a footgun.
+	pub(crate) fn push_fragment(
+		&mut self,
+		sequence: VarInt,
+		size: Option<usize>,
+	) -> Result<fragment::Publisher, CacheError> {
+		let (publisher, subscriber) = fragment::new(fragment::Info { sequence, size });
+
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
-		state.fragments.push(fragment);
-		Ok(())
+		state.fragments.push(subscriber);
+		Ok(publisher)
 	}
 
-	pub fn create_fragment(&mut self, fragment: fragment::Info) -> Result<fragment::Publisher, CacheError> {
-		let (publisher, subscriber) = fragment::new(fragment);
-		self.push_fragment(subscriber)?;
-		Ok(publisher)
+	/// Write a fragment
+	pub fn fragment(&mut self, sequence: VarInt, size: usize) -> Result<fragment::Publisher, CacheError> {
+		self.push_fragment(sequence, Some(size))
+	}
+
+	/// Write the last fragment, which means size can be unknown.
+	pub fn final_fragment(mut self, sequence: VarInt) -> Result<fragment::Publisher, CacheError> {
+		self.push_fragment(sequence, None)
 	}
 
 	/// Close the segment with an error.
@@ -158,7 +168,7 @@ impl Subscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn next_fragment(&mut self) -> Result<Option<fragment::Subscriber>, CacheError> {
+	pub async fn fragment(&mut self) -> Result<Option<fragment::Subscriber>, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
