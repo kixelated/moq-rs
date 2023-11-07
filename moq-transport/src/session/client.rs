@@ -45,9 +45,12 @@ impl Client {
 			},
 		};
 
+		log::debug!("sending client SETUP: {:?}", client);
 		client.encode(&mut control.0).await?;
 
 		let mut server = setup::Server::decode(&mut control.1).await?;
+
+		log::debug!("received server SETUP: {:?}", server);
 
 		match server.version {
 			setup::Version::DRAFT_01 => {
