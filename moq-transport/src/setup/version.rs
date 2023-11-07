@@ -10,10 +10,10 @@ pub struct Version(pub VarInt);
 
 impl Version {
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html
-	pub const DRAFT_00: Version = Version(VarInt::from_u32(0xff00));
+	pub const DRAFT_00: Version = Version(VarInt::from_u32(0xff000000));
 
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html
-	pub const DRAFT_01: Version = Version(VarInt::from_u32(0xff01));
+	pub const DRAFT_01: Version = Version(VarInt::from_u32(0xff000001));
 
 	/// Fork of draft-ietf-moq-transport-00.
 	///
