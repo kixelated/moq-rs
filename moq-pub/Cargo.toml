@@ -18,7 +18,7 @@ moq-transport = { path = "../moq-transport" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.6"
+webtransport-quinn = "0.6.1"
 #webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
 url = "2"
 
