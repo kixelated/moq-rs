@@ -1,8 +1,8 @@
-FROM rust:latest as builder
+FROM rust:bookworm as builder
 
 # Create a build directory and copy over all of the files
 WORKDIR /build
-COPY . .
+COPY . ./
 
 # Reuse a cache between builds.
 # I tried to `cargo install`, but it doesn't seem to work with workspaces.
@@ -12,28 +12,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
-# Special image for moq-pub with ffmpeg and a publish script included.
-FROM rust:latest as moq-pub
+# moq-rs image with just the binaries
+FROM debian:bookworm-slim
 
-# Install required utilities and ffmpeg
 RUN apt-get update && \
-    apt-get install -y ffmpeg wget
-
-# Copy the publish script into the image
-COPY deploy/publish.sh /usr/local/bin/publish
-
-# Copy the compiled binaries
-COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin
-CMD [ "publish" ]
-
-# moq-rs image with just the binaries (default)
-FROM rust:latest as moq-rs
+	apt-get install -y --no-install-recommends curl libssl3 && \
+	rm -rf /var/lib/apt/lists/*
 
 LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs
 LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
-# Fly.io entrypoint
-ADD deploy/fly-relay.sh .
+COPY --from=builder /usr/local/cargo/bin /usr/local/bin
 
-# Copy the compiled binaries
-COPY --from=builder /usr/local/cargo/bin /usr/local/cargo/bin
+# Entrypoint to load relay TLS config in Fly:
+COPY deploy/fly-relay.sh .
+
+# Default to moq-relay:
+CMD ["moq-relay"]

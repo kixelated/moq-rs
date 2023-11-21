@@ -17,7 +17,15 @@ There's currently no way to view media with this repo; you'll need to use [moq-j
 
 ## Development
 
-Use the [dev helper scripts](dev/README.md) for local development.
+Launch a basic cluster, including provisioning certs and deploying root certificates:
+
+```
+make run
+```
+
+Then, visit https://quic.video/publish/?server=localhost:4443.
+
+Alternatively, use the [dev helper scripts](dev/README.md).
 
 ## Usage
 
