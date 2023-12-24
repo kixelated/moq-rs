@@ -7,7 +7,6 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE: kixelated/moq-rs
-  IMAGE-PUB: kixelated/moq-pub
   SERVICE: api # Restart the API service TODO and relays
 
 jobs:
@@ -41,16 +40,6 @@ jobs:
           context: .
           push: true
           tags: ${{env.REGISTRY}}/${{env.IMAGE}}
-          platforms: linux/amd64,linux/arm64
-
-      # Same, but include ffmpeg for publishing BBB
-      - uses: depot/build-push-action@v1
-        with:
-          project: r257ctfqm6
-          context: .
-          push: true
-          target: moq-pub # instead of the default target
-          tags: ${{env.REGISTRY}}/${{env.IMAGE-PUB}}
           platforms: linux/amd64,linux/arm64
 
       # Log in to GCP
