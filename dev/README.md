@@ -1,8 +1,19 @@
 # Local Development
 
-This is a collection of helpful scripts for local development.
+## Quickstart with Docker
 
-## Setup
+Launch a basic cluster, including provisioning certs and deploying root certificates:
+
+```
+# From repo root:
+make run
+```
+
+Then, visit https://quic.video/publish/?server=localhost:4443.
+
+## Manual setup
+
+This is a collection of helpful scripts for local development.
 
 ### moq-relay
 
