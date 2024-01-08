@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 
 RUN apt-get update && \
-	apt-get install -y --no-install-recommends curl libssl3 && \
+	apt-get install -y --no-install-recommends ca-certificates curl libssl3 && \
 	rm -rf /var/lib/apt/lists/*
 
 LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs
