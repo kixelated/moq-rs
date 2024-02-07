@@ -15,6 +15,9 @@ impl Version {
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html
 	pub const DRAFT_01: Version = Version(VarInt::from_u32(0xff000001));
 
+	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html
+	pub const DRAFT_02: Version = Version(VarInt::from_u32(0xff000002));
+
 	/// Fork of draft-ietf-moq-transport-00.
 	///
 	/// Rough list of differences:

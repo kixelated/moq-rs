@@ -8,7 +8,7 @@
 //!
 //! The segment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 use core::fmt;
-use std::{ops::Deref, sync::Arc, time};
+use std::{ops::Deref, sync::Arc};
 
 use crate::VarInt;
 
@@ -34,9 +34,6 @@ pub struct Info {
 
 	// The priority of the segment within the BROADCAST.
 	pub priority: u32,
-
-	// Cache the segment for at most this long.
-	pub expires: Option<time::Duration>,
 }
 
 struct State {
@@ -92,11 +89,7 @@ impl Publisher {
 	}
 
 	// Not public because it's a footgun.
-	pub(crate) fn push_fragment(
-		&mut self,
-		sequence: VarInt,
-		size: Option<usize>,
-	) -> Result<fragment::Publisher, CacheError> {
+	pub(crate) fn push_fragment(&mut self, sequence: VarInt, size: usize) -> Result<fragment::Publisher, CacheError> {
 		let (publisher, subscriber) = fragment::new(fragment::Info { sequence, size });
 
 		let mut state = self.state.lock_mut();
@@ -107,12 +100,7 @@ impl Publisher {
 
 	/// Write a fragment
 	pub fn fragment(&mut self, sequence: VarInt, size: usize) -> Result<fragment::Publisher, CacheError> {
-		self.push_fragment(sequence, Some(size))
-	}
-
-	/// Write the last fragment, which means size can be unknown.
-	pub fn final_fragment(mut self, sequence: VarInt) -> Result<fragment::Publisher, CacheError> {
-		self.push_fragment(sequence, None)
+		self.push_fragment(sequence, size)
 	}
 
 	/// Close the segment with an error.

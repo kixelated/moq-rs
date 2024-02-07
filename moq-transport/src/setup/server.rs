@@ -1,4 +1,4 @@
-use super::{Extensions, Role, Version};
+use super::{Role, Version};
 use crate::{
 	coding::{Decode, DecodeError, Encode, EncodeError, Params},
 	VarInt,
@@ -17,9 +17,6 @@ pub struct Server {
 	/// Indicate if the server is a publisher, a subscriber, or both.
 	// Proposal: moq-wg/moq-transport#151
 	pub role: Role,
-
-	/// Custom extensions.
-	pub extensions: Extensions,
 
 	/// Unknown parameters.
 	pub params: Params,
@@ -46,14 +43,7 @@ impl Server {
 			return Err(DecodeError::InvalidParameter);
 		}
 
-		let extensions = Extensions::load(&mut params).await?;
-
-		Ok(Self {
-			version,
-			role,
-			extensions,
-			params,
-		})
+		Ok(Self { version, role, params })
 	}
 
 	/// Encode the server setup.
@@ -63,7 +53,6 @@ impl Server {
 
 		let mut params = self.params.clone();
 		params.set(VarInt::from_u32(0), self.role).await?;
-		self.extensions.store(&mut params).await?;
 		params.encode(w).await?;
 
 		Ok(())

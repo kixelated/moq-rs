@@ -34,9 +34,8 @@ pub struct Info {
 	// NOTE: These may be received out of order or with gaps.
 	pub sequence: VarInt,
 
-	// The size of the fragment, optionally None if this is the last fragment in a segment.
-	// TODO enforce this size.
-	pub size: Option<usize>,
+	// The size of the fragment.
+	pub size: usize,
 }
 
 struct State {

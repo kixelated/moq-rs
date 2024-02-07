@@ -10,6 +10,7 @@ use crate::{
 	coding::DecodeError,
 	message,
 	message::Message,
+	object::{self, Object},
 	session::{Control, SessionError},
 	VarInt,
 };
@@ -106,80 +107,100 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let mut object = message::Object::decode(&mut stream, &self.control.ext)
+		let header = Object::decode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-		log::trace!("first object: {:?}", object);
+		match header {
+			Object::TrackHeader(header) => self.run_track(header, stream).await,
+			Object::GroupHeader(header) => self.run_group(header, stream).await,
+			Object::Stream(header) => self.run_object(header, stream).await,
+		}
+	}
 
-		// A new scope is needed because the async compiler is dumb
-		let mut segment = {
-			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&object.track).ok_or(CacheError::NotFound)?;
-
-			track.create_segment(segment::Info {
-				sequence: object.group,
-				priority: object.priority,
-				expires: object.expires,
-			})?
-		};
-
-		log::trace!("received segment: {:?}", segment);
-
-		// Create the first fragment
-		let mut fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
-		let mut remain = object.size.map(usize::from);
-
+	async fn run_track(self, header: object::TrackHeader, mut stream: RecvStream) -> Result<(), SessionError> {
 		loop {
-			if let Some(0) = remain {
-				// Decode the next object from the stream.
-				let next = match message::Object::decode(&mut stream, &self.control.ext).await {
-					Ok(next) => next,
+			let chunk = match object::TrackChunk::decode(&mut stream).await {
+				Ok(next) => next,
 
-					// No more objects
-					Err(DecodeError::Final) => break,
+				// No more objects
+				Err(DecodeError::Final) => break,
 
-					// Unknown error
-					Err(err) => return Err(err.into()),
-				};
+				// Unknown error
+				Err(err) => return Err(err.into()),
+			};
 
-				log::trace!("next object: {:?}", object);
+			// TODO error if we get a duplicate group
+			let mut segment = {
+				let mut subscribes = self.subscribes.lock().unwrap();
+				let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
 
-				// NOTE: This is a custom restriction; not part of the moq-transport draft.
-				// We require every OBJECT to contain the same priority since prioritization is done per-stream.
-				// We also require every OBJECT to contain the same group so we know when the group ends, and can detect gaps.
-				if next.priority != object.priority && next.group != object.group {
-					return Err(SessionError::StreamMapping);
-				}
+				track.create_segment(segment::Info {
+					sequence: chunk.group,
+					priority: header.priority,
+				})?
+			};
 
-				object = next;
+			let mut remain = chunk.size.into();
 
-				// Create a new object.
-				fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
-				remain = object.size.map(usize::from);
+			// Create a new obvject.
+			let mut fragment = segment.push_fragment(chunk.object, remain)?;
 
-				log::trace!("next fragment: {:?}", fragment);
-			}
-
-			match stream.read_chunk(remain.unwrap_or(usize::MAX), true).await? {
-				// Unbounded object has ended
-				None if remain.is_none() => break,
-
-				// Bounded object ended early, oops.
-				None => return Err(DecodeError::UnexpectedEnd.into()),
-
-				// NOTE: This does not make a copy!
-				// Bytes are immutable and ref counted.
-				Some(data) => {
-					remain = remain.map(|r| r - data.bytes.len());
-
-					log::trace!("next chunk: {:?}", data);
-					fragment.chunk(data.bytes)?;
-				}
+			while remain > 0 {
+				let data = stream
+					.read_chunk(remain, true)
+					.await?
+					.ok_or(DecodeError::UnexpectedEnd)?;
+				remain -= data.bytes.len();
+				fragment.chunk(data.bytes)?;
 			}
 		}
 
 		Ok(())
+	}
+
+	async fn run_group(self, header: object::GroupHeader, mut stream: RecvStream) -> Result<(), SessionError> {
+		let mut segment = {
+			let mut subscribes = self.subscribes.lock().unwrap();
+			let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
+
+			track.create_segment(segment::Info {
+				sequence: header.group,
+				priority: header.priority,
+			})?
+		};
+
+		loop {
+			let chunk = match object::GroupChunk::decode(&mut stream).await {
+				Ok(chunk) => chunk,
+
+				// No more objects
+				Err(DecodeError::Final) => break,
+
+				// Unknown error
+				Err(err) => return Err(err.into()),
+			};
+
+			let mut remain = chunk.size.into();
+
+			// Create a new obvject.
+			let mut fragment = segment.push_fragment(chunk.object, remain)?;
+
+			while remain > 0 {
+				let data = stream
+					.read_chunk(remain, true)
+					.await?
+					.ok_or(DecodeError::UnexpectedEnd)?;
+				remain -= data.bytes.len();
+				fragment.chunk(data.bytes)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	async fn run_object(self, _header: object::Stream, _stream: RecvStream) -> Result<(), SessionError> {
+		unimplemented!("TODO");
 	}
 
 	async fn run_source(mut self) -> Result<(), SessionError> {
@@ -193,7 +214,7 @@ impl Subscriber {
 
 			let msg = message::Subscribe {
 				id,
-				namespace: self.control.ext.subscribe_split.then(|| "".to_string()),
+				namespace: "".to_string(),
 				name,
 
 				// TODO correctly support these

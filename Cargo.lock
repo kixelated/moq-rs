@@ -1130,6 +1130,7 @@ name = "moq-pub"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "clap",
  "clap_mangen",
  "env_logger",

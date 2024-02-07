@@ -10,7 +10,7 @@ use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	message,
 	message::Message,
-	MoqError, VarInt,
+	object, MoqError, VarInt,
 };
 
 use super::{Control, SessionError};
@@ -129,20 +129,14 @@ impl Publisher {
 
 			// TODO properly populate these
 			// But first: https://github.com/moq-wg/moq-transport/issues/313
-			final_group: VarInt::ZERO,
-			final_object: VarInt::ZERO,
+			group: VarInt::ZERO,
+			object: VarInt::ZERO,
 		};
 
 		self.control.send(msg).await
 	}
 
 	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
-		// We currently don't use the namespace field in SUBSCRIBE
-		// Make sure the namespace is empty if it's provided.
-		if msg.namespace.as_ref().map_or(false, |namespace| !namespace.is_empty()) {
-			return Err(CacheError::NotFound.into());
-		}
-
 		let mut track = self.source.get_track(&msg.name)?;
 
 		// TODO only clone the fields we need
@@ -193,24 +187,28 @@ impl Publisher {
 		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
 		stream.set_priority(priority).ok();
 
+		let object = object::GroupHeader {
+			subscribe: id,
+			track: id,
+
+			// Properties of the segment
+			group: segment.sequence,
+			priority: segment.priority,
+		};
+
+		object
+			.encode(&mut stream)
+			.await
+			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+
 		while let Some(mut fragment) = segment.fragment().await? {
-			log::trace!("serving fragment: {:?}", fragment);
-
-			let object = message::Object {
-				track: id,
-
-				// Properties of the segment
-				group: segment.sequence,
-				priority: segment.priority,
-				expires: segment.expires,
-
-				// Properties of the fragment
-				sequence: fragment.sequence,
-				size: fragment.size.map(VarInt::try_from).transpose()?,
+			let object = object::GroupChunk {
+				object: fragment.sequence,
+				size: VarInt::try_from(fragment.size)?,
 			};
 
 			object
-				.encode(&mut stream, &self.control.ext)
+				.encode(&mut stream)
 				.await
 				.map_err(|e| SessionError::Unknown(e.to_string()))?;
 

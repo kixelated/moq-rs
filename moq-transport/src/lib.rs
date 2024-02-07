@@ -11,6 +11,7 @@ mod error;
 
 pub mod cache;
 pub mod message;
+pub mod object;
 pub mod session;
 pub mod setup;
 

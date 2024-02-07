@@ -1,5 +1,3 @@
-use std::time;
-
 use anyhow::Context;
 use moq_transport::{
 	cache::{fragment, segment, track},
@@ -30,7 +28,6 @@ impl Publisher {
 				.create_segment(segment::Info {
 					sequence: VarInt::from_u32(sequence),
 					priority: 0,
-					expires: Some(time::Duration::from_secs(60)),
 				})
 				.context("failed to create minute segment")?;
 

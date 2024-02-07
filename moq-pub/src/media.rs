@@ -42,15 +42,13 @@ impl Media {
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?;
-		let init_segment = init_track.create_segment(segment::Info {
+		let mut init_segment = init_track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
-			expires: None,
 		})?;
 
 		// Create a single fragment, optionally setting the size
-		let mut init_fragment = init_segment.final_fragment(VarInt::ZERO)?;
-
+		let mut init_fragment = init_segment.fragment(VarInt::ZERO, init.len())?;
 		init_fragment.chunk(init.into())?;
 
 		let mut tracks = HashMap::new();
@@ -129,10 +127,9 @@ impl Media {
 		init_track_name: &str,
 		moov: &mp4::MoovBox,
 	) -> Result<(), anyhow::Error> {
-		let segment = track.create_segment(segment::Info {
+		let mut segment = track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
-			expires: None,
 		})?;
 
 		let mut tracks = Vec::new();
@@ -215,10 +212,11 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
+		let data: bytes::Bytes = catalog_str.into();
+		let mut fragment = segment.fragment(VarInt::ZERO, data.len())?;
 
 		// Add the segment and add the fragment.
-		fragment.chunk(catalog_str.into())?;
+		fragment.chunk(data)?;
 
 		Ok(())
 	}
@@ -305,18 +303,15 @@ impl Track {
 			.context("timestamp too large")?;
 
 		// Create a new segment.
-		let segment = self.track.create_segment(segment::Info {
+		let mut segment = self.track.create_segment(segment::Info {
 			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
 
 			// Newer segments are higher priority
 			priority: u32::MAX.checked_sub(timestamp).context("priority too large")?,
-
-			// Delete segments after 10s.
-			expires: Some(time::Duration::from_secs(10)),
 		})?;
 
 		// Create a single fragment for the segment that we will keep appending.
-		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
+		let mut fragment = segment.fragment(VarInt::ZERO, raw.len())?;
 
 		self.sequence += 1;
 

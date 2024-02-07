@@ -34,7 +34,6 @@ mod announce;
 mod announce_ok;
 mod announce_reset;
 mod go_away;
-mod object;
 mod subscribe;
 mod subscribe_error;
 mod subscribe_fin;
@@ -47,7 +46,6 @@ pub use announce::*;
 pub use announce_ok::*;
 pub use announce_reset::*;
 pub use go_away::*;
-pub use object::*;
 pub use subscribe::*;
 pub use subscribe_error::*;
 pub use subscribe_fin::*;
@@ -56,12 +54,8 @@ pub use subscribe_reset::*;
 pub use unannounce::*;
 pub use unsubscribe::*;
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
-
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
 use std::fmt;
-
-use crate::coding::{AsyncRead, AsyncWrite};
-use crate::setup::Extensions;
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -74,23 +68,23 @@ macro_rules! message_types {
 		}
 
 		impl Message {
-			pub async fn decode<R: AsyncRead>(r: &mut R, ext: &Extensions) -> Result<Self, DecodeError> {
+			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 				let t = VarInt::decode(r).await?;
 
 				match t.into_inner() {
 					$($val => {
-						let msg = $name::decode(r, ext).await?;
+						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
 
-			pub async fn encode<W: AsyncWrite>(&self, w: &mut W, ext: &Extensions) -> Result<(), EncodeError> {
+			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
 						VarInt::from_u32($val).encode(w).await?;
-						m.encode(w, ext).await
+						m.encode(w).await
 					},)*
 				}
 			}
