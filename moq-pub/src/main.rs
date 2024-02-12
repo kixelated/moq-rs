@@ -6,10 +6,8 @@ use clap::Parser;
 mod cli;
 use cli::*;
 
-mod media;
-use media::*;
-
 use moq_transport::cache::broadcast;
+use moq_pub::media::Media;
 
 // TODO: clap complete
 
@@ -24,9 +22,11 @@ async fn main() -> anyhow::Result<()> {
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
 	let config = Config::parse();
+	log::debug!("config {config:?}");
 
+	let input = tokio::io::stdin();
 	let (publisher, subscriber) = broadcast::new("");
-	let mut media = Media::new(&config, publisher).await?;
+	let mut media = Media::new(input, publisher).await?;
 
 	// Create a list of acceptable root certificates.
 	let mut roots = rustls::RootCertStore::empty();
