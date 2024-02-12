@@ -1,30 +1,39 @@
-use std::io::{Cursor, Write};
+use std::{
+	io::{Cursor, Write},
+	sync::Arc,
+};
 
 use anyhow::Context;
 use log::{debug, info, trace, warn};
 use moq_transport::cache::{broadcast, fragment, segment, track};
 use mp4::ReadBox;
-use tokio::{io::AsyncReadExt, task::JoinSet};
+use tokio::{
+	io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
+	sync::Mutex,
+	task::JoinSet,
+};
 
-pub struct Media {
+pub struct Media<O> {
 	broadcast: broadcast::Subscriber,
+	output: Arc<Mutex<O>>,
 }
 
-impl Media {
-	pub async fn new(broadcast: broadcast::Subscriber) -> anyhow::Result<Self> {
-		Ok(Self { broadcast })
+impl<O: AsyncWrite + Send + Unpin + 'static> Media<O> {
+	pub async fn new(broadcast: broadcast::Subscriber, output: O) -> anyhow::Result<Self> {
+		Ok(Self {
+			broadcast,
+			output: Arc::new(Mutex::new(output)),
+		})
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		let mut out = std::io::stdout();
-
 		let moov = {
 			let init_track_name = "0.mp4";
 			let mut track = self.broadcast.get_track(&init_track_name)?;
 			let mut segment = track.segment().await?.context("no init segment")?;
 			let fragment = segment.fragment().await?.context("no init fragment")?;
 			let buf = Self::recv_fragment(fragment).await?;
-			out.write_all(&buf)?;
+			self.output.lock().await.write_all(&buf).await?;
 			let mut reader = Cursor::new(&buf);
 
 			let ftyp = read_atom(&mut reader).await?;
@@ -64,9 +73,10 @@ impl Media {
 		info!("playing {} tracks", tracks.len());
 		let mut tasks = JoinSet::new();
 		for track in tracks {
+			let out = self.output.clone();
 			tasks.spawn(async move {
 				let name = track.name.clone();
-				if let Err(err) = Self::recv_track(track).await {
+				if let Err(err) = Self::recv_track(track, out).await {
 					warn!("failed to play track {name}: {err:?}");
 				}
 			});
@@ -75,13 +85,13 @@ impl Media {
 		Ok(())
 	}
 
-	async fn recv_track(mut track: track::Subscriber) -> anyhow::Result<()> {
+	async fn recv_track(mut track: track::Subscriber, out: Arc<Mutex<O>>) -> anyhow::Result<()> {
 		let name = track.name.clone();
 		debug!("track {name}: start");
 		while let Some(segment) = track.segment().await? {
+			let out = out.clone();
 			tokio::task::spawn(async move {
-				let mut out = std::io::stdout();
-				if let Err(err) = Self::recv_segment(segment, &mut out).await {
+				if let Err(err) = Self::recv_segment(segment, out).await {
 					warn!("Failed to receive segment: {err:?}");
 				}
 			});
@@ -90,12 +100,12 @@ impl Media {
 		Ok(())
 	}
 
-	async fn recv_segment(mut segment: segment::Subscriber, out: &mut impl Write) -> anyhow::Result<()> {
+	async fn recv_segment(mut segment: segment::Subscriber, out: Arc<Mutex<O>>) -> anyhow::Result<()> {
 		trace!("segment={} start", segment.sequence);
 		while let Some(fragment) = segment.fragment().await? {
 			trace!("segment={} fragment={}", segment.sequence, fragment.sequence);
 			let buf = Self::recv_fragment(fragment).await?;
-			out.write_all(&buf)?;
+			out.lock().await.write_all(&buf).await?;
 		}
 		Ok(())
 	}

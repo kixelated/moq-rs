@@ -21,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
 	log::debug!("config {config:?}");
 
 	let (publisher, subscriber) = broadcast::new("");
-	let mut media = Media::new(subscriber).await?;
+	let out = tokio::io::stdout();
+	let mut media = Media::new(subscriber, out).await?;
 
 	// Create a list of acceptable root certificates.
 	let mut roots = rustls::RootCertStore::empty();
