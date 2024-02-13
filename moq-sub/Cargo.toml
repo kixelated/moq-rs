@@ -13,9 +13,6 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-# iroh = ["iroh-net"]
-
 [dependencies]
 moq-transport = { path = "../moq-transport" }
 

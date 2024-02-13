@@ -18,7 +18,6 @@ async fn main() -> anyhow::Result<()> {
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
 	let config = Config::parse();
-	log::debug!("config {config:?}");
 
 	let (publisher, subscriber) = broadcast::new("");
 	let out = tokio::io::stdout();
