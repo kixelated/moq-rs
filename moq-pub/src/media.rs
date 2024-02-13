@@ -17,7 +17,7 @@ pub struct Media<I> {
 
 	// Tracks based on their track ID.
 	tracks: HashMap<u32, Track>,
-	input: I
+	input: I,
 }
 
 impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
@@ -76,7 +76,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 			_catalog: catalog,
 			_init: init_track,
 			tracks,
-			input
+			input,
 		})
 	}
 

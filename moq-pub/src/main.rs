@@ -6,8 +6,8 @@ use clap::Parser;
 mod cli;
 use cli::*;
 
-use moq_transport::cache::broadcast;
 use moq_pub::media::Media;
+use moq_transport::cache::broadcast;
 
 // TODO: clap complete
 
@@ -22,7 +22,6 @@ async fn main() -> anyhow::Result<()> {
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
 	let config = Config::parse();
-	log::debug!("config {config:?}");
 
 	let input = tokio::io::stdin();
 	let (publisher, subscriber) = broadcast::new("");
