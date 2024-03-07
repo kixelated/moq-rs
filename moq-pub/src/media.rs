@@ -1,6 +1,6 @@
 use crate::cli::Config;
 use anyhow::{self, Context};
-use moq_transport::cache::{broadcast, fragment, segment, track};
+use moq_transport::cache::{broadcast, segment, track};
 use moq_transport::VarInt;
 use mp4::{self, ReadBox};
 use serde_json::json;
@@ -47,9 +47,8 @@ impl Media {
 			priority: 0,
 		})?;
 
-		// Create a single fragment, optionally setting the size
-		let mut init_fragment = init_segment.fragment(VarInt::ZERO, init.len())?;
-		init_fragment.chunk(init.into())?;
+		// Write the init segment to the track.
+		init_segment.write(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -212,11 +211,7 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		let data: bytes::Bytes = catalog_str.into();
-		let mut fragment = segment.fragment(VarInt::ZERO, data.len())?;
-
-		// Add the segment and add the fragment.
-		fragment.chunk(data)?;
+		segment.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -264,7 +259,7 @@ struct Track {
 	track: track::Publisher,
 
 	// The current segment
-	current: Option<fragment::Publisher>,
+	current: Option<segment::Publisher>,
 
 	// The number of units per second.
 	timescale: u64,
@@ -287,7 +282,7 @@ impl Track {
 		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				current.chunk(raw.into())?;
+				current.write(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -310,23 +305,20 @@ impl Track {
 			priority: u32::MAX.checked_sub(timestamp).context("priority too large")?,
 		})?;
 
-		// Create a single fragment for the segment that we will keep appending.
-		let mut fragment = segment.fragment(VarInt::ZERO, raw.len())?;
-
 		self.sequence += 1;
 
-		// Insert the raw atom into the segment.
-		fragment.chunk(raw.into())?;
+		// Create a single fragment for the segment that we will keep appending.
+		segment.write(raw.into())?;
 
 		// Save for the next iteration
-		self.current = Some(fragment);
+		self.current = Some(segment);
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		let fragment = self.current.as_mut().context("missing current fragment")?;
-		fragment.chunk(raw.into())?;
+		let segment = self.current.as_mut().context("missing current fragment")?;
+		segment.write(raw.into())?;
 
 		Ok(())
 	}

@@ -78,6 +78,9 @@ pub struct Publisher {
 	// Immutable segment state.
 	info: Arc<Info>,
 
+	// The amount of promised data that has yet to be written.
+	remain: usize,
+
 	// Closes the segment when all Publishers are dropped.
 	_dropped: Arc<Dropped>,
 }
@@ -85,20 +88,38 @@ pub struct Publisher {
 impl Publisher {
 	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+		let remain = info.size;
+
+		Self {
+			state,
+			info,
+			remain,
+			_dropped,
+		}
 	}
 
 	/// Write a new chunk of bytes.
 	pub fn chunk(&mut self, chunk: Bytes) -> Result<(), CacheError> {
+		if chunk.len() > self.remain {
+			return Err(CacheError::WrongSize);
+		}
+		self.remain -= chunk.len();
+
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.chunks.push(chunk);
+
 		Ok(())
 	}
 
 	/// Close the segment with an error.
 	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
-		self.state.lock_mut().close(err)
+		self.state.lock_mut().close(err)?;
+		if self.remain != 0 {
+			Err(CacheError::WrongSize)
+		} else {
+			Ok(())
+		}
 	}
 }
 

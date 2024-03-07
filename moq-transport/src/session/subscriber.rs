@@ -99,7 +99,7 @@ impl Subscriber {
 
 			tokio::spawn(async move {
 				if let Err(err) = this.run_stream(stream).await {
-					log::warn!("failed to receive stream: err={:#?}", err);
+					log::warn!("failed to receive stream: err={}", err);
 				}
 			});
 		}
@@ -110,6 +110,8 @@ impl Subscriber {
 		let header = Object::decode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+
+		log::trace!("receiving stream: {:?}", header);
 
 		match header {
 			Object::TrackHeader(header) => self.run_track(header, stream).await,
@@ -130,6 +132,8 @@ impl Subscriber {
 				Err(err) => return Err(err.into()),
 			};
 
+			log::trace!("receiving chunk: {:?}", chunk);
+
 			// TODO error if we get a duplicate group
 			let mut segment = {
 				let mut subscribes = self.subscribes.lock().unwrap();
@@ -144,15 +148,18 @@ impl Subscriber {
 			let mut remain = chunk.size.into();
 
 			// Create a new obvject.
-			let mut fragment = segment.push_fragment(chunk.object, remain)?;
+			let mut fragment = segment.fragment(remain)?;
 
 			while remain > 0 {
 				let data = stream
 					.read_chunk(remain, true)
 					.await?
-					.ok_or(DecodeError::UnexpectedEnd)?;
-				remain -= data.bytes.len();
-				fragment.chunk(data.bytes)?;
+					.ok_or(DecodeError::UnexpectedEnd)?
+					.bytes;
+
+				log::trace!("read data: len={}", data.len());
+				remain -= data.len();
+				fragment.chunk(data)?;
 			}
 		}
 
@@ -170,6 +177,10 @@ impl Subscriber {
 			})?
 		};
 
+		// Sanity check to make sure we receive in order
+		// The draft shouldn't even include sequence numbers but whatever
+		let mut expected = 0;
+
 		loop {
 			let chunk = match object::GroupChunk::decode(&mut stream).await {
 				Ok(chunk) => chunk,
@@ -181,10 +192,18 @@ impl Subscriber {
 				Err(err) => return Err(err.into()),
 			};
 
+			log::trace!("receiving chunk: {:?}", chunk);
+
+			if chunk.object.into_inner() != expected {
+				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object));
+			}
+
+			expected = chunk.object.into_inner();
+
 			let mut remain = chunk.size.into();
 
 			// Create a new obvject.
-			let mut fragment = segment.push_fragment(chunk.object, remain)?;
+			let mut fragment = segment.fragment(remain)?;
 
 			while remain > 0 {
 				let data = stream
@@ -207,15 +226,17 @@ impl Subscriber {
 		loop {
 			// NOTE: This returns Closed when the source is closed.
 			let track = self.source.next_track().await?;
-			let name = track.name.clone();
+			let track_name = track.name.clone();
 
 			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
 			self.subscribes.lock().unwrap().insert(id, track);
 
 			let msg = message::Subscribe {
 				id,
-				namespace: "".to_string(),
-				name,
+
+				track_alias: id, // This alias is useless but part of the spec.
+				track_namespace: "".to_string(),
+				track_name,
 
 				// TODO correctly support these
 				start_group: message::SubscribeLocation::Latest(VarInt::ZERO),

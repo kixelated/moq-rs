@@ -70,7 +70,7 @@ impl Request {
 	fn setup(&mut self, role: setup::Role) -> Result<setup::Server, SessionError> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_01,
+			version: setup::Version::DRAFT_02,
 			params: Default::default(),
 		};
 

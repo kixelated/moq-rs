@@ -73,7 +73,7 @@ impl Publisher {
 				},
 				// No more broadcasts are available.
 				err = self.source.closed() => {
-					self.webtransport.close(err.code(), err.reason().as_bytes());
+					self.webtransport.close(err.code(), err.to_string().as_bytes());
 					return Ok(());
 				},
 			}
@@ -116,7 +116,7 @@ impl Publisher {
 		self.control
 			.send(message::SubscribeOk {
 				id: msg.id,
-				expires: VarInt::ZERO,
+				expires: None,
 			})
 			.await
 	}
@@ -125,7 +125,7 @@ impl Publisher {
 		let msg = message::SubscribeReset {
 			id,
 			code: err.code(),
-			reason: err.reason(),
+			reason: err.to_string(),
 
 			// TODO properly populate these
 			// But first: https://github.com/moq-wg/moq-transport/issues/313
@@ -137,7 +137,7 @@ impl Publisher {
 	}
 
 	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
-		let mut track = self.source.get_track(&msg.name)?;
+		let mut track = self.source.get_track(&msg.track_name)?;
 
 		// TODO only clone the fields we need
 		let mut this = self.clone();
@@ -147,7 +147,7 @@ impl Publisher {
 
 			let res = this.run_subscribe(msg.id, &mut track).await;
 			if let Err(err) = &res {
-				log::warn!("failed to serve track: name={} err={:#?}", track.name, err);
+				log::warn!("failed to serve track: name={} err={}", track.name, err);
 			}
 
 			// Make sure we send a reset at the end.
@@ -179,24 +179,24 @@ impl Publisher {
 	}
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		log::trace!("serving group: {:?}", segment);
-
-		let mut stream = self.webtransport.open_uni().await?;
-
-		// Convert the u32 to a i32, since the Quinn set_priority is signed.
-		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
-		stream.set_priority(priority).ok();
-
-		let object = object::GroupHeader {
+		let header: object::Object = object::GroupHeader {
 			subscribe: id,
 			track: id,
 
 			// Properties of the segment
 			group: segment.sequence,
 			priority: segment.priority,
-		};
+		}
+		.into();
 
-		object
+		log::trace!("sending stream: {:?}", header);
+		let mut stream = self.webtransport.open_uni().await?;
+
+		// Convert the u32 to a i32, since the Quinn set_priority is signed.
+		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
+		stream.set_priority(priority).ok();
+
+		header
 			.encode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
@@ -207,14 +207,16 @@ impl Publisher {
 				size: VarInt::try_from(fragment.size)?,
 			};
 
+			log::trace!("sending chunk: {:?}", object);
+
 			object
 				.encode(&mut stream)
 				.await
 				.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-			while let Some(chunk) = fragment.chunk().await? {
-				//log::trace!("writing chunk: {:?}", chunk);
-				stream.write_all(&chunk).await?;
+			while let Some(data) = fragment.chunk().await? {
+				stream.write_all(&data).await?;
+				log::trace!("wrote data: len={}", data.len());
 			}
 		}
 

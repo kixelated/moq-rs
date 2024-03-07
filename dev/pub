@@ -15,9 +15,9 @@ ADDR="${ADDR:-$HOST:$PORT}"
 # Generate a random 16 character name by default.
 #NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
 
-# JK use the name "dev" instead
+# JK use the name "bbb" instead, matching the Big Buck Bunny demo.
 # TODO use that random name if the host is not localhost
-NAME="${NAME:-dev}"
+NAME="${NAME:-bbb}"
 
 # Combine the host and name into a URL.
 URL="${URL:-"https://$ADDR/$NAME"}"

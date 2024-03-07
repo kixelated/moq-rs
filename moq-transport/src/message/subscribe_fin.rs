@@ -8,23 +8,27 @@ pub struct SubscribeFin {
 	pub id: VarInt,
 
 	/// The final group/object sent on this subscription.
-	pub group: VarInt,
-	pub object: VarInt,
+	pub final_group: VarInt,
+	pub final_object: VarInt,
 }
 
 impl SubscribeFin {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = VarInt::decode(r).await?;
-		let group = VarInt::decode(r).await?;
-		let object = VarInt::decode(r).await?;
+		let final_group = VarInt::decode(r).await?;
+		let final_object = VarInt::decode(r).await?;
 
-		Ok(Self { id, group, object })
+		Ok(Self {
+			id,
+			final_group,
+			final_object,
+		})
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
-		self.group.encode(w).await?;
-		self.object.encode(w).await?;
+		self.final_group.encode(w).await?;
+		self.final_object.encode(w).await?;
 
 		Ok(())
 	}

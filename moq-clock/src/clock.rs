@@ -53,19 +53,11 @@ impl Publisher {
 		// Everything but the second.
 		let base = now.format("%Y-%m-%d %H:%M:").to_string();
 
-		segment
-			.fragment(VarInt::ZERO, base.len())?
-			.chunk(base.clone().into())
-			.context("failed to write base")?;
+		segment.write(base.clone().into()).context("failed to write base")?;
 
 		loop {
 			let delta = now.format("%S").to_string();
-			let sequence = VarInt::from_u32(now.second() + 1);
-
-			segment
-				.fragment(sequence, delta.len())?
-				.chunk(delta.clone().into())
-				.context("failed to write delta")?;
+			segment.write(delta.clone().into()).context("failed to write delta")?;
 
 			println!("{}{}", base, delta);
 
@@ -116,7 +108,7 @@ impl Subscriber {
 
 		log::debug!("got first: {:?}", first);
 
-		if first.sequence.into_inner() != 0 {
+		if first.sequence != VarInt::ZERO {
 			anyhow::bail!("first object must be zero; I'm not going to implement a reassembly buffer");
 		}
 

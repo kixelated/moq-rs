@@ -3,10 +3,10 @@ use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 #[derive(Clone, Debug)]
 pub struct TrackHeader {
-	// The subscribe ID for this track.
+	// The subscribe ID.
 	pub subscribe: VarInt,
 
-	// Identifies the name of the track
+	// The track ID.
 	pub track: VarInt,
 
 	// The priority, where **smaller** values are sent first.
@@ -35,6 +35,7 @@ impl TrackHeader {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct TrackChunk {
 	pub group: VarInt,
 	pub object: VarInt,

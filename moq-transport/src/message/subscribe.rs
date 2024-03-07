@@ -6,13 +6,13 @@ use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params, VarInt};
 /// Objects will use the provided ID instead of the full track name, to save bytes.
 #[derive(Clone, Debug)]
 pub struct Subscribe {
+	/// The subscription ID
 	pub id: VarInt,
 
-	/// The track namespace.
-	pub namespace: String,
-
-	/// The track name.
-	pub name: String,
+	/// Track properties
+	pub track_alias: VarInt, // This alias is useless but part of the spec
+	pub track_namespace: String,
+	pub track_name: String,
 
 	/// The start/end group/object.
 	pub start_group: SubscribeLocation,
@@ -27,8 +27,9 @@ pub struct Subscribe {
 impl Subscribe {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = VarInt::decode(r).await?;
-		let namespace = String::decode(r).await?;
-		let name = String::decode(r).await?;
+		let track_alias = VarInt::decode(r).await?;
+		let track_namespace = String::decode(r).await?;
+		let track_name = String::decode(r).await?;
 
 		let start_group = SubscribeLocation::decode(r).await?;
 		let start_object = SubscribeLocation::decode(r).await?;
@@ -51,8 +52,9 @@ impl Subscribe {
 
 		Ok(Self {
 			id,
-			namespace,
-			name,
+			track_alias,
+			track_namespace,
+			track_name,
 			start_group,
 			start_object,
 			end_group,
@@ -63,8 +65,9 @@ impl Subscribe {
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
-		self.namespace.encode(w).await?;
-		self.name.encode(w).await?;
+		self.track_alias.encode(w).await?;
+		self.track_namespace.encode(w).await?;
+		self.track_name.encode(w).await?;
 
 		self.start_group.encode(w).await?;
 		self.start_object.encode(w).await?;

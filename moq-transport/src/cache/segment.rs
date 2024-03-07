@@ -78,6 +78,9 @@ pub struct Publisher {
 	// Immutable segment state.
 	info: Arc<Info>,
 
+	// The next fragment sequence number to use.
+	next: u64,
+
 	// Closes the segment when all Publishers are dropped.
 	_dropped: Arc<Dropped>,
 }
@@ -85,22 +88,33 @@ pub struct Publisher {
 impl Publisher {
 	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+		Self {
+			state,
+			info,
+			next: 0,
+			_dropped,
+		}
 	}
 
-	// Not public because it's a footgun.
-	pub(crate) fn push_fragment(&mut self, sequence: VarInt, size: usize) -> Result<fragment::Publisher, CacheError> {
-		let (publisher, subscriber) = fragment::new(fragment::Info { sequence, size });
+	/// Write an object with the given payload.
+	pub fn write(&mut self, data: bytes::Bytes) -> Result<(), CacheError> {
+		self.fragment(data.len())?.chunk(data)
+	}
+
+	/// Write an object over multiple fragments.
+	///
+	/// BAD STUFF will happen if the size is wrong.
+	pub fn fragment(&mut self, size: usize) -> Result<fragment::Publisher, CacheError> {
+		let (publisher, subscriber) = fragment::new(fragment::Info {
+			sequence: self.next.try_into().unwrap(),
+			size,
+		});
+		self.next += 1;
 
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.fragments.push(subscriber);
 		Ok(publisher)
-	}
-
-	/// Write a fragment
-	pub fn fragment(&mut self, sequence: VarInt, size: usize) -> Result<fragment::Publisher, CacheError> {
-		self.push_fragment(sequence, size)
 	}
 
 	/// Close the segment with an error.

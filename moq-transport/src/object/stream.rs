@@ -4,10 +4,10 @@ use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 /// Sent by the publisher as the header of each data stream.
 #[derive(Clone, Debug)]
 pub struct Stream {
-	// The subscribe ID for this track.
+	// The subscribe ID.
 	pub subscribe: VarInt,
 
-	// Identifies the name of the track
+	// The track alias.
 	pub track: VarInt,
 
 	// The sequence number within the track.

@@ -2,10 +2,10 @@ use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeEr
 
 #[derive(Clone, Debug)]
 pub struct GroupHeader {
-	// The subscribe ID for this track.
+	// The subscribe ID.
 	pub subscribe: VarInt,
 
-	// Identifies the name of the track
+	// The track alias.
 	pub track: VarInt,
 
 	// The group sequence number
@@ -40,6 +40,7 @@ impl GroupHeader {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct GroupChunk {
 	pub object: VarInt,
 	pub size: VarInt,
