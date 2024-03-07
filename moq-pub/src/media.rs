@@ -1,4 +1,3 @@
-use crate::cli::Config;
 use anyhow::{self, Context};
 use moq_transport::cache::{broadcast, fragment, segment, track};
 use moq_transport::VarInt;
@@ -8,9 +7,9 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
-pub struct Media {
+pub struct Media<I> {
 	// We hold on to publisher so we don't close then while media is still being published.
 	_broadcast: broadcast::Publisher,
 	_catalog: track::Publisher,
@@ -18,15 +17,15 @@ pub struct Media {
 
 	// Tracks based on their track ID.
 	tracks: HashMap<u32, Track>,
+	input: I,
 }
 
-impl Media {
-	pub async fn new(_config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
-		let mut stdin = tokio::io::stdin();
-		let ftyp = read_atom(&mut stdin).await?;
+impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
+	pub async fn new(mut input: I, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
+		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
-		let moov = read_atom(&mut stdin).await?;
+		let moov = read_atom(&mut input).await?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
 		let mut init = ftyp;
@@ -77,16 +76,16 @@ impl Media {
 			_catalog: catalog,
 			_init: init_track,
 			tracks,
+			input,
 		})
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut current = None;
 
 		loop {
-			let atom = read_atom(&mut stdin).await?;
+			let atom = read_atom(&mut self.input).await?;
 
 			let mut reader = Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
