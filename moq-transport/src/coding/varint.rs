@@ -18,8 +18,8 @@ pub struct BoundsExceeded;
 /// An integer less than 2^62
 ///
 /// Values of this type are suitable for encoding as QUIC variable-length integer.
-// It would be neat if we could express to Rust that the top two bits are available for use as enum
-// discriminants
+/// It would be neat if we could express to Rust that the top two bits are available for use as enum
+/// discriminants
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct VarInt(u64);
 
@@ -83,8 +83,9 @@ impl TryFrom<u64> for VarInt {
 
 	/// Succeeds iff `x` < 2^62
 	fn try_from(x: u64) -> Result<Self, BoundsExceeded> {
-		if x <= Self::MAX.into_inner() {
-			Ok(Self(x))
+		let x = Self(x);
+		if x <= Self::MAX {
+			Ok(x)
 		} else {
 			Err(BoundsExceeded)
 		}
@@ -217,7 +218,7 @@ impl Encode for VarInt {
 		} else if x < 2u64.pow(62) {
 			w.write_u64(0b11 << 62 | x).await?;
 		} else {
-			unreachable!("malformed VarInt");
+			return Err(BoundsExceeded.into());
 		}
 
 		Ok(())

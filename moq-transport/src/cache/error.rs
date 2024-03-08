@@ -9,7 +9,7 @@ pub enum CacheError {
 	#[error("closed")]
 	Closed,
 
-	/// An ANNOUNCE_RESET or SUBSCRIBE_RESET was sent by the publisher.
+	/// A SUBSCRIBE_DONE or ANNOUNCE_CANCEL was received.
 	#[error("reset code={0:?}")]
 	Reset(u32),
 
@@ -24,6 +24,10 @@ pub enum CacheError {
 	/// A resource already exists with that ID.
 	#[error("duplicate")]
 	Duplicate,
+
+	/// We reported the wrong size for a fragment.
+	#[error("wrong size")]
+	WrongSize,
 }
 
 impl MoqError for CacheError {
@@ -35,17 +39,7 @@ impl MoqError for CacheError {
 			Self::Stop => 206,
 			Self::NotFound => 404,
 			Self::Duplicate => 409,
-		}
-	}
-
-	/// A reason that is sent over the wire.
-	fn reason(&self) -> String {
-		match self {
-			Self::Closed => "closed".to_owned(),
-			Self::Reset(code) => format!("reset code: {}", code),
-			Self::Stop => "stop".to_owned(),
-			Self::NotFound => "not found".to_owned(),
-			Self::Duplicate => "duplicate".to_owned(),
+			Self::WrongSize => 500,
 		}
 	}
 }

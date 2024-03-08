@@ -55,12 +55,12 @@ impl Session {
 		match role {
 			Role::Publisher => {
 				if let Err(err) = self.serve_publisher(id, request, &path).await {
-					log::warn!("error serving publisher: id={} path={} err={:#?}", id, path, err);
+					log::warn!("error serving publisher: id={} path={} err={}", id, path, err);
 				}
 			}
 			Role::Subscriber => {
 				if let Err(err) = self.serve_subscriber(id, request, &path).await {
-					log::warn!("error serving subscriber: id={} path={} err={:#?}", id, path, err);
+					log::warn!("error serving subscriber: id={} path={} err={}", id, path, err);
 				}
 			}
 			Role::Both => {

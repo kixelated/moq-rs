@@ -21,9 +21,9 @@ impl Encode for String {
 impl Decode for String {
 	/// Decode a string with a varint length prefix.
 	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let size = VarInt::decode(r).await?.into_inner();
-		let mut str = String::with_capacity(min(1024, size) as usize);
-		r.take(size).read_to_string(&mut str).await?;
+		let size = VarInt::decode(r).await?.into();
+		let mut str = String::with_capacity(min(1024, size));
+		r.take(size as u64).read_to_string(&mut str).await?;
 		Ok(str)
 	}
 }

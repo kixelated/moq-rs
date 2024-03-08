@@ -30,46 +30,22 @@ impl Client {
 	async fn send_setup(session: &Session, role: setup::Role) -> Result<Control, SessionError> {
 		let mut control = session.open_bi().await?;
 
-		let versions: setup::Versions = [setup::Version::DRAFT_01, setup::Version::KIXEL_01].into();
+		let versions: setup::Versions = [setup::Version::DRAFT_02].into();
 
 		let client = setup::Client {
 			role,
 			versions: versions.clone(),
 			params: Default::default(),
-
-			// Offer all extensions
-			extensions: setup::Extensions {
-				object_expires: true,
-				subscriber_id: true,
-				subscribe_split: true,
-			},
 		};
 
 		log::debug!("sending client SETUP: {:?}", client);
 		client.encode(&mut control.0).await?;
 
-		let mut server = setup::Server::decode(&mut control.1).await?;
+		let server = setup::Server::decode(&mut control.1).await?;
 
 		log::debug!("received server SETUP: {:?}", server);
 
-		match server.version {
-			setup::Version::DRAFT_01 => {
-				// We always require this extension
-				server.extensions.require_subscriber_id()?;
-
-				if server.role.is_publisher() {
-					// We only require object expires if we're a subscriber, so we don't cache objects indefinitely.
-					server.extensions.require_object_expires()?;
-				}
-			}
-			setup::Version::KIXEL_01 => {
-				// KIXEL_01 didn't support extensions; all were enabled.
-				server.extensions = client.extensions.clone()
-			}
-			_ => return Err(SessionError::Version(versions, [server.version].into())),
-		}
-
-		let control = Control::new(control.0, control.1, server.extensions);
+		let control = Control::new(control.0, control.1);
 
 		Ok(control)
 	}
