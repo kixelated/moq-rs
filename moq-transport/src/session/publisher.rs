@@ -179,15 +179,14 @@ impl Publisher {
 	}
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let header: data::Object = data::GroupHeader {
+		let header = data::Group {
 			subscribe: id,
 			track: id,
 
 			// Properties of the segment
 			group: segment.sequence,
 			priority: segment.priority,
-		}
-		.into();
+		};
 
 		log::trace!("sending stream: {:?}", header);
 		let mut stream = self.webtransport.open_uni().await?;
@@ -196,7 +195,7 @@ impl Publisher {
 		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
 		stream.set_priority(priority).ok();
 
-		header
+		Into::<data::Header>::into(header)
 			.encode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;

@@ -1,7 +1,7 @@
 use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
 
 #[derive(Clone, Debug)]
-pub struct GroupHeader {
+pub struct Group {
 	// The subscribe ID.
 	pub subscribe: VarInt,
 
@@ -15,7 +15,7 @@ pub struct GroupHeader {
 	pub priority: u32,
 }
 
-impl GroupHeader {
+impl Group {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let subscribe = VarInt::decode(r).await?;
 		let track = VarInt::decode(r).await?;

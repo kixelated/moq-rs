@@ -8,8 +8,7 @@ use std::{
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	coding::DecodeError,
-	data::{self, Object},
-	message,
+	data, message,
 	message::Message,
 	session::{Control, SessionError},
 	VarInt,
@@ -107,20 +106,20 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let header = Object::decode(&mut stream)
+		let header = data::Header::decode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
 		log::trace!("receiving stream: {:?}", header);
 
 		match header {
-			Object::TrackHeader(header) => self.run_track(header, stream).await,
-			Object::GroupHeader(header) => self.run_group(header, stream).await,
-			Object::Stream(header) => self.run_object(header, stream).await,
+			data::Header::Track(header) => self.run_track(header, stream).await,
+			data::Header::Group(header) => self.run_group(header, stream).await,
+			data::Header::Object(header) => self.run_object(header, stream).await,
 		}
 	}
 
-	async fn run_track(self, header: data::TrackHeader, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_track(self, header: data::Track, mut stream: RecvStream) -> Result<(), SessionError> {
 		loop {
 			let chunk = match data::TrackChunk::decode(&mut stream).await {
 				Ok(next) => next,
@@ -166,7 +165,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_group(self, header: data::GroupHeader, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_group(self, header: data::Group, mut stream: RecvStream) -> Result<(), SessionError> {
 		let mut segment = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
@@ -218,7 +217,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_object(self, _header: data::Stream, _stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_object(self, _header: data::Object, _stream: RecvStream) -> Result<(), SessionError> {
 		unimplemented!("TODO");
 	}
 

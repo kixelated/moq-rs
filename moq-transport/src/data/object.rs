@@ -1,9 +1,8 @@
 use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
-/// Sent by the publisher as the header of each data stream.
 #[derive(Clone, Debug)]
-pub struct Stream {
+pub struct Object {
 	// The subscribe ID.
 	pub subscribe: VarInt,
 
@@ -20,7 +19,7 @@ pub struct Stream {
 	pub priority: u32,
 }
 
-impl Stream {
+impl Object {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let subscribe = VarInt::decode(r).await?;
 		let track = VarInt::decode(r).await?;

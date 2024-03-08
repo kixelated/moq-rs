@@ -2,7 +2,7 @@ use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 #[derive(Clone, Debug)]
-pub struct TrackHeader {
+pub struct Track {
 	// The subscribe ID.
 	pub subscribe: VarInt,
 
@@ -13,7 +13,7 @@ pub struct TrackHeader {
 	pub priority: u32,
 }
 
-impl TrackHeader {
+impl Track {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let subscribe = VarInt::decode(r).await?;
 		let track = VarInt::decode(r).await?;
