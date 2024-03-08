@@ -56,6 +56,9 @@ pub enum SessionError {
 	#[error("sequence numbers out of order: expected={0} actual={1}")]
 	OutOfOrder(VarInt, VarInt),
 
+	#[error("message was used in an invalid context")]
+	InvalidMessage,
+
 	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error: {0}")]
 	Unknown(String),
@@ -80,6 +83,7 @@ impl MoqError for SessionError {
 			Self::InvalidSize(_) => 400,
 			Self::RequiredExtension(_) => 426,
 			Self::BoundsExceeded(_) => 500,
+			Self::InvalidMessage => 400,
 			Self::OutOfOrder(_, _) => 400,
 		}
 	}

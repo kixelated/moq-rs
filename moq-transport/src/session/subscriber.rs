@@ -8,8 +8,9 @@ use std::{
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	coding::DecodeError,
-	data, message,
-	message::Message,
+	control,
+	control::Message,
+	data,
 	session::{Control, SessionError},
 	VarInt,
 };
@@ -74,9 +75,8 @@ impl Subscriber {
 			Message::Announce(_) => Ok(()),       // don't care
 			Message::Unannounce(_) => Ok(()),     // also don't care
 			Message::SubscribeOk(_msg) => Ok(()), // don't care
-			Message::SubscribeReset(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
-			Message::SubscribeFin(msg) => self.recv_subscribe_error(msg.id, CacheError::Closed),
-			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
+			Message::SubscribeDone(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
+			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
@@ -116,6 +116,7 @@ impl Subscriber {
 			data::Header::Track(header) => self.run_track(header, stream).await,
 			data::Header::Group(header) => self.run_group(header, stream).await,
 			data::Header::Object(header) => self.run_object(header, stream).await,
+			data::Header::Datagram(_) => Err(SessionError::InvalidMessage),
 		}
 	}
 
@@ -136,11 +137,11 @@ impl Subscriber {
 			// TODO error if we get a duplicate group
 			let mut segment = {
 				let mut subscribes = self.subscribes.lock().unwrap();
-				let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
+				let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
 
 				track.create_segment(segment::Info {
-					sequence: chunk.group,
-					priority: header.priority,
+					sequence: chunk.group_id,
+					priority: header.send_order.try_into()?, // TODO support u64 priorities
 				})?
 			};
 
@@ -168,11 +169,11 @@ impl Subscriber {
 	async fn run_group(self, header: data::Group, mut stream: RecvStream) -> Result<(), SessionError> {
 		let mut segment = {
 			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
+			let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
 
 			track.create_segment(segment::Info {
-				sequence: header.group,
-				priority: header.priority,
+				sequence: header.group_id,
+				priority: header.send_order.try_into()?, // TODO support u64 priorities
 			})?
 		};
 
@@ -193,11 +194,11 @@ impl Subscriber {
 			log::trace!("receiving chunk: {:?}", chunk);
 
 			// NOTE: We allow gaps, but not going backwards.
-			if chunk.object.into_inner() < expected {
-				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object));
+			if chunk.object_id.into_inner() < expected {
+				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object_id));
 			}
 
-			expected = chunk.object.into_inner() + 1;
+			expected = chunk.object_id.into_inner() + 1;
 
 			let mut remain = chunk.size.into();
 
@@ -230,7 +231,7 @@ impl Subscriber {
 			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
 			self.subscribes.lock().unwrap().insert(id, track);
 
-			let msg = message::Subscribe {
+			let msg = control::Subscribe {
 				id,
 
 				track_alias: id, // This alias is useless but part of the spec.
@@ -238,10 +239,10 @@ impl Subscriber {
 				track_name,
 
 				// TODO correctly support these
-				start_group: message::SubscribeLocation::Latest(VarInt::ZERO),
-				start_object: message::SubscribeLocation::Absolute(VarInt::ZERO),
-				end_group: message::SubscribeLocation::None,
-				end_object: message::SubscribeLocation::None,
+				start_group: control::SubscribeLocation::Latest(VarInt::ZERO),
+				start_object: control::SubscribeLocation::Absolute(VarInt::ZERO),
+				end_group: control::SubscribeLocation::None,
+				end_object: control::SubscribeLocation::None,
 
 				params: Default::default(),
 			};

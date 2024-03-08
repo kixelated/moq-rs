@@ -1,7 +1,7 @@
 use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
 use std::fmt;
 
-use super::{Group, Object, Track};
+use super::{Datagram, Group, Object, Track};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -51,21 +51,21 @@ macro_rules! header_types {
 				}
 			}
 
-			pub fn subscribe(&self) -> VarInt {
+			pub fn subscribe_id(&self) -> VarInt {
 				match self {
-					$(Self::$name(o) => o.subscribe,)*
+					$(Self::$name(o) => o.subscribe_id,)*
 				}
 			}
 
-			pub fn track(&self) -> VarInt {
+			pub fn track_alias(&self) -> VarInt {
 				match self {
-					$(Self::$name(o) => o.track,)*
+					$(Self::$name(o) => o.track_alias,)*
 				}
 			}
 
-			pub fn priority(&self) -> u32 {
+			pub fn send_order(&self) -> VarInt {
 				match self {
-					$(Self::$name(o) => o.priority,)*
+					$(Self::$name(o) => o.send_order,)*
 				}
 			}
 		}
@@ -90,6 +90,7 @@ macro_rules! header_types {
 // Each object type is prefixed with the given VarInt type.
 header_types! {
 	Object = 0x0,
+	Datagram = 0x1,
 	Group = 0x50,
 	Track = 0x51,
 }

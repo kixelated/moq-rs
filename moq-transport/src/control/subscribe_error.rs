@@ -8,7 +8,7 @@ pub struct SubscribeError {
 	pub id: VarInt,
 
 	// An error code.
-	pub code: u32,
+	pub code: VarInt,
 
 	// An optional, human-readable reason.
 	pub reason: String,
@@ -20,7 +20,7 @@ pub struct SubscribeError {
 impl SubscribeError {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = VarInt::decode(r).await?;
-		let code = VarInt::decode(r).await?.try_into()?;
+		let code = VarInt::decode(r).await?;
 		let reason = String::decode(r).await?;
 		let alias = VarInt::decode(r).await?;
 
@@ -34,7 +34,7 @@ impl SubscribeError {
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
-		VarInt::from_u32(self.code).encode(w).await?;
+		self.code.encode(w).await?;
 		self.reason.encode(w).await?;
 		self.alias.encode(w).await?;
 

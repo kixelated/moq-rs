@@ -9,7 +9,7 @@ pub enum CacheError {
 	#[error("closed")]
 	Closed,
 
-	/// An ANNOUNCE_RESET or SUBSCRIBE_RESET was sent by the publisher.
+	/// A SUBSCRIBE_DONE or ANNOUNCE_CANCEL was received.
 	#[error("reset code={0:?}")]
 	Reset(u32),
 

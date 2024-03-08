@@ -33,6 +33,9 @@ pub enum DecodeError {
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,
 
+	#[error("invalid value")]
+	InvalidValue,
+
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] BoundsExceeded),
 

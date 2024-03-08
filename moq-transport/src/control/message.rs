@@ -1,61 +1,10 @@
-//! Low-level message sent over the wire, as defined in the specification.
-//!
-//! All of these messages are sent over a bidirectional QUIC stream.
-//! This introduces some head-of-line blocking but preserves ordering.
-//! The only exception are OBJECT "messages", which are sent over dedicated QUIC streams.
-//!
-//! Messages sent by the publisher:
-//! - [Announce]
-//! - [Unannounce]
-//! - [SubscribeOk]
-//! - [SubscribeError]
-//! - [SubscribeReset]
-//! - [Object]
-//!
-//! Messages sent by the subscriber:
-//! - [Subscribe]
-//! - [Unsubscribe]
-//! - [AnnounceOk]
-//! - [AnnounceError]
-//!
-//! Example flow:
-//! ```test
-//!  -> ANNOUNCE        namespace="foo"
-//!  <- ANNOUNCE_OK     namespace="foo"
-//!  <- SUBSCRIBE       id=0 namespace="foo" name="bar"
-//!  -> SUBSCRIBE_OK    id=0
-//!  -> OBJECT          id=0 sequence=69 priority=4 expires=30
-//!  -> OBJECT          id=0 sequence=70 priority=4 expires=30
-//!  -> OBJECT          id=0 sequence=70 priority=4 expires=30
-//!  <- SUBSCRIBE_STOP  id=0
-//!  -> SUBSCRIBE_RESET id=0 code=206 reason="closed by peer"
-//! ```
-mod announce;
-mod announce_ok;
-mod announce_reset;
-mod go_away;
-mod subscribe;
-mod subscribe_error;
-mod subscribe_fin;
-mod subscribe_ok;
-mod subscribe_reset;
-mod unannounce;
-mod unsubscribe;
-
-pub use announce::*;
-pub use announce_ok::*;
-pub use announce_reset::*;
-pub use go_away::*;
-pub use subscribe::*;
-pub use subscribe_error::*;
-pub use subscribe_fin::*;
-pub use subscribe_ok::*;
-pub use subscribe_reset::*;
-pub use unannounce::*;
-pub use unsubscribe::*;
-
 use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
 use std::fmt;
+
+use super::{
+	Announce, AnnounceError, AnnounceOk, GoAway, Subscribe, SubscribeDone, SubscribeError, SubscribeOk, Unannounce,
+	Unsubscribe,
+};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -138,8 +87,7 @@ message_types! {
 	// SUBSCRIBE family, sent by publisher
 	SubscribeOk = 0x4,
 	SubscribeError = 0x5,
-	SubscribeFin = 0xb,
-	SubscribeReset = 0xc,
+	SubscribeDone = 0xb,
 
 	// ANNOUNCE family, sent by publisher
 	Announce = 0x6,

@@ -8,9 +8,9 @@ use webtransport_quinn::Session;
 
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
-	data, message,
-	message::Message,
-	MoqError, VarInt,
+	control,
+	control::Message,
+	data, MoqError, VarInt,
 };
 
 use super::{Control, SessionError};
@@ -90,17 +90,17 @@ impl Publisher {
 		}
 	}
 
-	async fn recv_announce_ok(&mut self, _msg: &message::AnnounceOk) -> Result<(), SessionError> {
+	async fn recv_announce_ok(&mut self, _msg: &control::AnnounceOk) -> Result<(), SessionError> {
 		// We didn't send an announce.
 		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_announce_error(&mut self, _msg: &message::AnnounceError) -> Result<(), SessionError> {
+	async fn recv_announce_error(&mut self, _msg: &control::AnnounceError) -> Result<(), SessionError> {
 		// We didn't send an announce.
 		Err(CacheError::NotFound.into())
 	}
 
-	async fn recv_subscribe(&mut self, msg: &message::Subscribe) -> Result<(), SessionError> {
+	async fn recv_subscribe(&mut self, msg: &control::Subscribe) -> Result<(), SessionError> {
 		// Assume that the subscribe ID is unique for now.
 		let abort = match self.start_subscribe(msg.clone()) {
 			Ok(abort) => abort,
@@ -114,29 +114,30 @@ impl Publisher {
 		};
 
 		self.control
-			.send(message::SubscribeOk {
+			.send(control::SubscribeOk {
 				id: msg.id,
 				expires: None,
+
+				// TODO implement this
+				latest: None,
 			})
 			.await
 	}
 
 	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
-		let msg = message::SubscribeReset {
+		let msg = control::SubscribeDone {
 			id,
-			code: err.code(),
+			code: err.code().into(),
 			reason: err.to_string(),
 
-			// TODO properly populate these
-			// But first: https://github.com/moq-wg/moq-transport/issues/313
-			group: VarInt::ZERO,
-			object: VarInt::ZERO,
+			// TODO properly populate this
+			last: None,
 		};
 
 		self.control.send(msg).await
 	}
 
-	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
+	fn start_subscribe(&mut self, msg: control::Subscribe) -> Result<AbortHandle, SessionError> {
 		let mut track = self.source.get_track(&msg.track_name)?;
 
 		// TODO only clone the fields we need
@@ -180,12 +181,12 @@ impl Publisher {
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
 		let header = data::Group {
-			subscribe: id,
-			track: id,
+			subscribe_id: id,
+			track_alias: id,
 
 			// Properties of the segment
-			group: segment.sequence,
-			priority: segment.priority,
+			group_id: segment.sequence,
+			send_order: VarInt::from_u32(segment.priority),
 		};
 
 		log::trace!("sending stream: {:?}", header);
@@ -202,7 +203,7 @@ impl Publisher {
 
 		while let Some(mut fragment) = segment.fragment().await? {
 			let object = data::GroupChunk {
-				object: fragment.sequence,
+				object_id: fragment.sequence,
 				size: VarInt::try_from(fragment.size)?,
 			};
 
@@ -222,7 +223,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn recv_unsubscribe(&mut self, msg: &message::Unsubscribe) -> Result<(), SessionError> {
+	async fn recv_unsubscribe(&mut self, msg: &control::Unsubscribe) -> Result<(), SessionError> {
 		let abort = self
 			.subscribes
 			.lock()

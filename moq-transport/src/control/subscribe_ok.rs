@@ -1,3 +1,5 @@
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
@@ -10,6 +12,9 @@ pub struct SubscribeOk {
 
 	/// The subscription will expire in this many milliseconds.
 	pub expires: Option<VarInt>,
+
+	/// The latest group and object for the track.
+	pub latest: Option<(VarInt, VarInt)>,
 }
 
 impl SubscribeOk {
@@ -19,7 +24,14 @@ impl SubscribeOk {
 			VarInt::ZERO => None,
 			expires => Some(expires),
 		};
-		Ok(Self { id, expires })
+
+		let latest = match r.read_u8().await? {
+			0 => None,
+			1 => Some((VarInt::decode(r).await?, VarInt::decode(r).await?)),
+			_ => return Err(DecodeError::InvalidValue),
+		};
+
+		Ok(Self { id, expires, latest })
 	}
 }
 
@@ -27,6 +39,18 @@ impl SubscribeOk {
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.id.encode(w).await?;
 		self.expires.unwrap_or(VarInt::ZERO).encode(w).await?;
+
+		match self.latest {
+			Some((group, object)) => {
+				w.write_u8(1).await?;
+				group.encode(w).await?;
+				object.encode(w).await?;
+			}
+			None => {
+				w.write_u8(0).await?;
+			}
+		}
+
 		Ok(())
 	}
 }
