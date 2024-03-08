@@ -8,9 +8,9 @@ use std::{
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	coding::DecodeError,
+	data::{self, Object},
 	message,
 	message::Message,
-	object::{self, Object},
 	session::{Control, SessionError},
 	VarInt,
 };
@@ -120,13 +120,13 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_track(self, header: object::TrackHeader, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_track(self, header: data::TrackHeader, mut stream: RecvStream) -> Result<(), SessionError> {
 		loop {
-			let chunk = match object::TrackChunk::decode(&mut stream).await {
+			let chunk = match data::TrackChunk::decode(&mut stream).await {
 				Ok(next) => next,
 
-				// No more objects
-				Err(DecodeError::Final) => break,
+				// TODO Figure out a way to check for stream FIN instead
+				Err(DecodeError::UnexpectedEnd) => break,
 
 				// Unknown error
 				Err(err) => return Err(err.into()),
@@ -166,7 +166,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_group(self, header: object::GroupHeader, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_group(self, header: data::GroupHeader, mut stream: RecvStream) -> Result<(), SessionError> {
 		let mut segment = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let track = subscribes.get_mut(&header.subscribe).ok_or(CacheError::NotFound)?;
@@ -177,16 +177,15 @@ impl Subscriber {
 			})?
 		};
 
-		// Sanity check to make sure we receive in order
-		// The draft shouldn't even include sequence numbers but whatever
+		// Sanity check to make sure we receive the group in order
 		let mut expected = 0;
 
 		loop {
-			let chunk = match object::GroupChunk::decode(&mut stream).await {
+			let chunk = match data::GroupChunk::decode(&mut stream).await {
 				Ok(chunk) => chunk,
 
-				// No more objects
-				Err(DecodeError::Final) => break,
+				// TODO Figure out a way to check for stream FIN instead
+				Err(DecodeError::UnexpectedEnd) => break,
 
 				// Unknown error
 				Err(err) => return Err(err.into()),
@@ -194,11 +193,12 @@ impl Subscriber {
 
 			log::trace!("receiving chunk: {:?}", chunk);
 
-			if chunk.object.into_inner() != expected {
+			// NOTE: We allow gaps, but not going backwards.
+			if chunk.object.into_inner() < expected {
 				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object));
 			}
 
-			expected = chunk.object.into_inner();
+			expected = chunk.object.into_inner() + 1;
 
 			let mut remain = chunk.size.into();
 
@@ -218,7 +218,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_object(self, _header: object::Stream, _stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_object(self, _header: data::Stream, _stream: RecvStream) -> Result<(), SessionError> {
 		unimplemented!("TODO");
 	}
 

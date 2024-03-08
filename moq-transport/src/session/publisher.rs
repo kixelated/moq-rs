@@ -8,9 +8,9 @@ use webtransport_quinn::Session;
 
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
-	message,
+	data, message,
 	message::Message,
-	object, MoqError, VarInt,
+	MoqError, VarInt,
 };
 
 use super::{Control, SessionError};
@@ -179,7 +179,7 @@ impl Publisher {
 	}
 
 	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let header: object::Object = object::GroupHeader {
+		let header: data::Object = data::GroupHeader {
 			subscribe: id,
 			track: id,
 
@@ -202,7 +202,7 @@ impl Publisher {
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
 		while let Some(mut fragment) = segment.fragment().await? {
-			let object = object::GroupChunk {
+			let object = data::GroupChunk {
 				object: fragment.sequence,
 				size: VarInt::try_from(fragment.size)?,
 			};
