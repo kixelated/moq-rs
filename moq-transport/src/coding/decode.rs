@@ -33,6 +33,9 @@ pub enum DecodeError {
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,
 
+	#[error("invalid value")]
+	InvalidValue,
+
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] BoundsExceeded),
 
@@ -48,8 +51,4 @@ pub enum DecodeError {
 
 	#[error("io error: {0}")]
 	IoError(#[from] std::io::Error),
-
-	// Used to signal that the stream has ended.
-	#[error("no more messages")]
-	Final,
 }

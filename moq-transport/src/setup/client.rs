@@ -1,4 +1,4 @@
-use super::{Extensions, Role, Versions};
+use super::{Role, Versions};
 use crate::{
 	coding::{Decode, DecodeError, Encode, EncodeError, Params},
 	VarInt,
@@ -16,9 +16,6 @@ pub struct Client {
 
 	/// Indicate if the client is a publisher, a subscriber, or both.
 	pub role: Role,
-
-	/// A list of known/offered extensions.
-	pub extensions: Extensions,
 
 	/// Unknown parameters.
 	pub params: Params,
@@ -46,14 +43,7 @@ impl Client {
 			return Err(DecodeError::InvalidParameter);
 		}
 
-		let extensions = Extensions::load(&mut params).await?;
-
-		Ok(Self {
-			versions,
-			role,
-			extensions,
-			params,
-		})
+		Ok(Self { versions, role, params })
 	}
 
 	/// Encode a server setup message.
@@ -63,7 +53,6 @@ impl Client {
 
 		let mut params = self.params.clone();
 		params.set(VarInt::from_u32(0), self.role).await?;
-		self.extensions.store(&mut params).await?;
 
 		params.encode(w).await?;
 

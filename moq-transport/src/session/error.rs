@@ -52,6 +52,13 @@ pub enum SessionError {
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] coding::BoundsExceeded),
 
+	/// Sequence numbers were received out of order
+	#[error("sequence numbers out of order: expected={0} actual={1}")]
+	OutOfOrder(VarInt, VarInt),
+
+	#[error("message was used in an invalid context")]
+	InvalidMessage,
+
 	/// An unclassified error because I'm lazy. TODO classify these errors
 	#[error("unknown error: {0}")]
 	Unknown(String),
@@ -76,32 +83,8 @@ impl MoqError for SessionError {
 			Self::InvalidSize(_) => 400,
 			Self::RequiredExtension(_) => 426,
 			Self::BoundsExceeded(_) => 500,
-		}
-	}
-
-	/// A reason that is sent over the wire.
-	fn reason(&self) -> String {
-		match self {
-			Self::Cache(err) => err.reason(),
-			Self::RoleViolation(kind) => format!("role violation for message type {:?}", kind),
-			Self::RoleIncompatible(client, server) => {
-				format!(
-					"role incompatible: client wanted {:?} but server wanted {:?}",
-					client, server
-				)
-			}
-			Self::Read(err) => format!("read error: {}", err),
-			Self::Write(err) => format!("write error: {}", err),
-			Self::Session(err) => format!("session error: {}", err),
-			Self::Unknown(err) => format!("unknown error: {}", err),
-			Self::Version(client, server) => format!("unsupported versions: client={:?} server={:?}", client, server),
-			Self::Encode(err) => format!("encode error: {}", err),
-			Self::Decode(err) => format!("decode error: {}", err),
-			Self::StreamMapping => "streaming mapping conflict".to_owned(),
-			Self::InvalidPriority(priority) => format!("invalid priority: {}", priority),
-			Self::InvalidSize(size) => format!("invalid size: {}", size),
-			Self::RequiredExtension(id) => format!("required extension was missing: {:?}", id),
-			Self::BoundsExceeded(_) => "varint bounds exceeded".to_string(),
+			Self::InvalidMessage => 400,
+			Self::OutOfOrder(_, _) => 400,
 		}
 	}
 }

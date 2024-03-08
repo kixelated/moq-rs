@@ -8,8 +8,9 @@ use std::{
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	coding::DecodeError,
-	message,
-	message::Message,
+	control,
+	control::Message,
+	data,
 	session::{Control, SessionError},
 	VarInt,
 };
@@ -74,9 +75,8 @@ impl Subscriber {
 			Message::Announce(_) => Ok(()),       // don't care
 			Message::Unannounce(_) => Ok(()),     // also don't care
 			Message::SubscribeOk(_msg) => Ok(()), // don't care
-			Message::SubscribeReset(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
-			Message::SubscribeFin(msg) => self.recv_subscribe_error(msg.id, CacheError::Closed),
-			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
+			Message::SubscribeDone(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
+			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
@@ -98,7 +98,7 @@ impl Subscriber {
 
 			tokio::spawn(async move {
 				if let Err(err) = this.run_stream(stream).await {
-					log::warn!("failed to receive stream: err={:#?}", err);
+					log::warn!("failed to receive stream: err={}", err);
 				}
 			});
 		}
@@ -106,101 +106,143 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let mut object = message::Object::decode(&mut stream, &self.control.ext)
+		let header = data::Header::decode(&mut stream)
 			.await
 			.map_err(|e| SessionError::Unknown(e.to_string()))?;
 
-		log::trace!("first object: {:?}", object);
+		log::trace!("receiving stream: {:?}", header);
 
-		// A new scope is needed because the async compiler is dumb
-		let mut segment = {
-			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&object.track).ok_or(CacheError::NotFound)?;
+		match header {
+			data::Header::Track(header) => self.run_track(header, stream).await,
+			data::Header::Group(header) => self.run_group(header, stream).await,
+			data::Header::Object(header) => self.run_object(header, stream).await,
+			data::Header::Datagram(_) => Err(SessionError::InvalidMessage),
+		}
+	}
 
-			track.create_segment(segment::Info {
-				sequence: object.group,
-				priority: object.priority,
-				expires: object.expires,
-			})?
-		};
-
-		log::trace!("received segment: {:?}", segment);
-
-		// Create the first fragment
-		let mut fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
-		let mut remain = object.size.map(usize::from);
-
+	async fn run_track(self, header: data::Track, mut stream: RecvStream) -> Result<(), SessionError> {
 		loop {
-			if let Some(0) = remain {
-				// Decode the next object from the stream.
-				let next = match message::Object::decode(&mut stream, &self.control.ext).await {
-					Ok(next) => next,
+			let chunk = match data::TrackChunk::decode(&mut stream).await {
+				Ok(next) => next,
 
-					// No more objects
-					Err(DecodeError::Final) => break,
+				// TODO Figure out a way to check for stream FIN instead
+				Err(DecodeError::UnexpectedEnd) => break,
 
-					// Unknown error
-					Err(err) => return Err(err.into()),
-				};
+				// Unknown error
+				Err(err) => return Err(err.into()),
+			};
 
-				log::trace!("next object: {:?}", object);
+			log::trace!("receiving chunk: {:?}", chunk);
 
-				// NOTE: This is a custom restriction; not part of the moq-transport draft.
-				// We require every OBJECT to contain the same priority since prioritization is done per-stream.
-				// We also require every OBJECT to contain the same group so we know when the group ends, and can detect gaps.
-				if next.priority != object.priority && next.group != object.group {
-					return Err(SessionError::StreamMapping);
-				}
+			// TODO error if we get a duplicate group
+			let mut segment = {
+				let mut subscribes = self.subscribes.lock().unwrap();
+				let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
 
-				object = next;
+				track.create_segment(segment::Info {
+					sequence: chunk.group_id,
+					priority: header.send_order.try_into()?, // TODO support u64 priorities
+				})?
+			};
 
-				// Create a new object.
-				fragment = segment.push_fragment(object.sequence, object.size.map(usize::from))?;
-				remain = object.size.map(usize::from);
+			let mut remain = chunk.size.into();
 
-				log::trace!("next fragment: {:?}", fragment);
-			}
+			// Create a new obvject.
+			let mut fragment = segment.fragment(remain)?;
 
-			match stream.read_chunk(remain.unwrap_or(usize::MAX), true).await? {
-				// Unbounded object has ended
-				None if remain.is_none() => break,
+			while remain > 0 {
+				let data = stream
+					.read_chunk(remain, true)
+					.await?
+					.ok_or(DecodeError::UnexpectedEnd)?
+					.bytes;
 
-				// Bounded object ended early, oops.
-				None => return Err(DecodeError::UnexpectedEnd.into()),
-
-				// NOTE: This does not make a copy!
-				// Bytes are immutable and ref counted.
-				Some(data) => {
-					remain = remain.map(|r| r - data.bytes.len());
-
-					log::trace!("next chunk: {:?}", data);
-					fragment.chunk(data.bytes)?;
-				}
+				log::trace!("read data: len={}", data.len());
+				remain -= data.len();
+				fragment.chunk(data)?;
 			}
 		}
 
 		Ok(())
 	}
 
+	async fn run_group(self, header: data::Group, mut stream: RecvStream) -> Result<(), SessionError> {
+		let mut segment = {
+			let mut subscribes = self.subscribes.lock().unwrap();
+			let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
+
+			track.create_segment(segment::Info {
+				sequence: header.group_id,
+				priority: header.send_order.try_into()?, // TODO support u64 priorities
+			})?
+		};
+
+		// Sanity check to make sure we receive the group in order
+		let mut expected = 0;
+
+		loop {
+			let chunk = match data::GroupChunk::decode(&mut stream).await {
+				Ok(chunk) => chunk,
+
+				// TODO Figure out a way to check for stream FIN instead
+				Err(DecodeError::UnexpectedEnd) => break,
+
+				// Unknown error
+				Err(err) => return Err(err.into()),
+			};
+
+			log::trace!("receiving chunk: {:?}", chunk);
+
+			// NOTE: We allow gaps, but not going backwards.
+			if chunk.object_id.into_inner() < expected {
+				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object_id));
+			}
+
+			expected = chunk.object_id.into_inner() + 1;
+
+			let mut remain = chunk.size.into();
+
+			// Create a new obvject.
+			let mut fragment = segment.fragment(remain)?;
+
+			while remain > 0 {
+				let data = stream
+					.read_chunk(remain, true)
+					.await?
+					.ok_or(DecodeError::UnexpectedEnd)?;
+				remain -= data.bytes.len();
+				fragment.chunk(data.bytes)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	async fn run_object(self, _header: data::Object, _stream: RecvStream) -> Result<(), SessionError> {
+		unimplemented!("TODO");
+	}
+
 	async fn run_source(mut self) -> Result<(), SessionError> {
 		loop {
 			// NOTE: This returns Closed when the source is closed.
 			let track = self.source.next_track().await?;
-			let name = track.name.clone();
+			let track_name = track.name.clone();
 
 			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
 			self.subscribes.lock().unwrap().insert(id, track);
 
-			let msg = message::Subscribe {
+			let msg = control::Subscribe {
 				id,
-				namespace: self.control.ext.subscribe_split.then(|| "".to_string()),
-				name,
+
+				track_alias: id, // This alias is useless but part of the spec.
+				track_namespace: "".to_string(),
+				track_name,
 
 				// TODO correctly support these
-				start_group: message::SubscribeLocation::Latest(VarInt::ZERO),
-				start_object: message::SubscribeLocation::Absolute(VarInt::ZERO),
-				end_group: message::SubscribeLocation::None,
-				end_object: message::SubscribeLocation::None,
+				start_group: control::SubscribeLocation::Latest(VarInt::ZERO),
+				start_object: control::SubscribeLocation::Absolute(VarInt::ZERO),
+				end_group: control::SubscribeLocation::None,
+				end_object: control::SubscribeLocation::None,
 
 				params: Default::default(),
 			};

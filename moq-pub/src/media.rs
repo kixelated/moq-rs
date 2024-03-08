@@ -1,5 +1,5 @@
 use anyhow::{self, Context};
-use moq_transport::cache::{broadcast, fragment, segment, track};
+use moq_transport::cache::{broadcast, segment, track};
 use moq_transport::VarInt;
 use mp4::{self, ReadBox};
 use serde_json::json;
@@ -41,16 +41,13 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?;
-		let init_segment = init_track.create_segment(segment::Info {
+		let mut init_segment = init_track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
-			expires: None,
 		})?;
 
-		// Create a single fragment, optionally setting the size
-		let mut init_fragment = init_segment.final_fragment(VarInt::ZERO)?;
-
-		init_fragment.chunk(init.into())?;
+		// Write the init segment to the track.
+		init_segment.write(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -128,10 +125,9 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		init_track_name: &str,
 		moov: &mp4::MoovBox,
 	) -> Result<(), anyhow::Error> {
-		let segment = track.create_segment(segment::Info {
+		let mut segment = track.create_segment(segment::Info {
 			sequence: VarInt::ZERO,
 			priority: 0,
-			expires: None,
 		})?;
 
 		let mut tracks = Vec::new();
@@ -214,10 +210,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
-
-		// Add the segment and add the fragment.
-		fragment.chunk(catalog_str.into())?;
+		segment.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -265,7 +258,7 @@ struct Track {
 	track: track::Publisher,
 
 	// The current segment
-	current: Option<fragment::Publisher>,
+	current: Option<segment::Publisher>,
 
 	// The number of units per second.
 	timescale: u64,
@@ -288,7 +281,7 @@ impl Track {
 		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				current.chunk(raw.into())?;
+				current.write(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -304,33 +297,27 @@ impl Track {
 			.context("timestamp too large")?;
 
 		// Create a new segment.
-		let segment = self.track.create_segment(segment::Info {
+		let mut segment = self.track.create_segment(segment::Info {
 			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
 
 			// Newer segments are higher priority
 			priority: u32::MAX.checked_sub(timestamp).context("priority too large")?,
-
-			// Delete segments after 10s.
-			expires: Some(time::Duration::from_secs(10)),
 		})?;
-
-		// Create a single fragment for the segment that we will keep appending.
-		let mut fragment = segment.final_fragment(VarInt::ZERO)?;
 
 		self.sequence += 1;
 
-		// Insert the raw atom into the segment.
-		fragment.chunk(raw.into())?;
+		// Create a single fragment for the segment that we will keep appending.
+		segment.write(raw.into())?;
 
 		// Save for the next iteration
-		self.current = Some(fragment);
+		self.current = Some(segment);
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		let fragment = self.current.as_mut().context("missing current fragment")?;
-		fragment.chunk(raw.into())?;
+		let segment = self.current.as_mut().context("missing current fragment")?;
+		segment.write(raw.into())?;
 
 		Ok(())
 	}

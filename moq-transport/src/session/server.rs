@@ -13,32 +13,14 @@ impl Server {
 	pub async fn accept(session: Session) -> Result<Request, SessionError> {
 		let mut control = session.accept_bi().await?;
 
-		let mut client = setup::Client::decode(&mut control.1).await?;
+		let client = setup::Client::decode(&mut control.1).await?;
 
 		log::debug!("received client SETUP: {:?}", client);
 
-		if client.versions.contains(&setup::Version::DRAFT_01) {
-			// We always require subscriber ID.
-			client.extensions.require_subscriber_id()?;
-
-			// We require OBJECT_EXPIRES for publishers only.
-			if client.role.is_publisher() {
-				client.extensions.require_object_expires()?;
-			}
-
-		// We don't require SUBSCRIBE_SPLIT since it's easy enough to support, but it's clearly an oversight.
-		// client.extensions.require(&Extension::SUBSCRIBE_SPLIT)?;
-		} else if client.versions.contains(&setup::Version::KIXEL_01) {
-			// Extensions didn't exist in KIXEL_01, so we set them manually.
-			client.extensions = setup::Extensions {
-				object_expires: true,
-				subscriber_id: true,
-				subscribe_split: true,
-			};
-		} else {
+		if !client.versions.contains(&setup::Version::DRAFT_02) {
 			return Err(SessionError::Version(
 				client.versions,
-				[setup::Version::DRAFT_01, setup::Version::KIXEL_01].into(),
+				[setup::Version::DRAFT_02].into(),
 			));
 		}
 
@@ -63,7 +45,7 @@ impl Request {
 		let setup = self.setup(setup::Role::Publisher)?;
 		setup.encode(&mut self.control.0).await?;
 
-		let control = Control::new(self.control.0, self.control.1, setup.extensions);
+		let control = Control::new(self.control.0, self.control.1);
 		let publisher = Publisher::new(self.session, control, source);
 		Ok(publisher)
 	}
@@ -73,7 +55,7 @@ impl Request {
 		let setup = self.setup(setup::Role::Subscriber)?;
 		setup.encode(&mut self.control.0).await?;
 
-		let control = Control::new(self.control.0, self.control.1, setup.extensions);
+		let control = Control::new(self.control.0, self.control.1);
 		let subscriber = Subscriber::new(self.session, control, source);
 		Ok(subscriber)
 	}
@@ -88,8 +70,7 @@ impl Request {
 	fn setup(&mut self, role: setup::Role) -> Result<setup::Server, SessionError> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_01,
-			extensions: self.client.extensions.clone(),
+			version: setup::Version::DRAFT_02,
 			params: Default::default(),
 		};
 

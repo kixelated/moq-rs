@@ -18,7 +18,7 @@ impl Decode for Params {
 	async fn decode<R: AsyncRead>(mut r: &mut R) -> Result<Self, DecodeError> {
 		let mut params = HashMap::new();
 
-		// I hate this shit so much; let me encode my role and get on with my life.
+		// I hate this encoding so much; let me encode my role and get on with my life.
 		let count = VarInt::decode(r).await?;
 		for _ in 0..count.into_inner() {
 			let kind = VarInt::decode(r).await?;
