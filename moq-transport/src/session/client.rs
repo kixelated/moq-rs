@@ -30,7 +30,7 @@ impl Client {
 	async fn send_setup(session: &Session, role: setup::Role) -> Result<Control, SessionError> {
 		let mut control = session.open_bi().await?;
 
-		let versions: setup::Versions = [setup::Version::DRAFT_02].into();
+		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
 
 		let client = setup::Client {
 			role,

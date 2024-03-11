@@ -17,10 +17,10 @@ impl Server {
 
 		log::debug!("received client SETUP: {:?}", client);
 
-		if !client.versions.contains(&setup::Version::DRAFT_02) {
+		if !client.versions.contains(&setup::Version::DRAFT_03) {
 			return Err(SessionError::Version(
 				client.versions,
-				[setup::Version::DRAFT_02].into(),
+				[setup::Version::DRAFT_03].into(),
 			));
 		}
 
@@ -70,7 +70,7 @@ impl Request {
 	fn setup(&mut self, role: setup::Role) -> Result<setup::Server, SessionError> {
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_02,
+			version: setup::Version::DRAFT_03,
 			params: Default::default(),
 		};
 
