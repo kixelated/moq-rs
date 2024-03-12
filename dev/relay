@@ -18,7 +18,7 @@ PORT="${PORT:-4443}"
 LISTEN="${LISTEN:-$HOST:$PORT}"
 
 # A list of optional args
-ARGS=""
+ARGS="${ARGS:-}"
 
 # Connect to the given URL to get origins.
 # TODO default to a public instance?

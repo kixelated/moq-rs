@@ -57,7 +57,7 @@ impl Quic {
 			log::info!("advertising origin: url={}", node);
 		}
 
-		let origin = Origin::new(api, config.api_node, quic.clone());
+		let origin = Origin::new(api, config.api_node, config.next_relays, quic.clone());
 		let conns = JoinSet::new();
 
 		Ok(Self { quic, origin, conns })
