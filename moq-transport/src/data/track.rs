@@ -1,24 +1,24 @@
 use crate::coding::{AsyncRead, AsyncWrite};
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 #[derive(Clone, Debug)]
-pub struct Track {
+pub struct TrackHeader {
 	// The subscribe ID.
-	pub subscribe_id: VarInt,
+	pub subscribe_id: u64,
 
 	// The track ID.
-	pub track_alias: VarInt,
+	pub track_alias: u64,
 
 	// The priority, where **smaller** values are sent first.
-	pub send_order: VarInt,
+	pub send_order: u64,
 }
 
-impl Track {
+impl TrackHeader {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			subscribe_id: VarInt::decode(r).await?,
-			track_alias: VarInt::decode(r).await?,
-			send_order: VarInt::decode(r).await?,
+			subscribe_id: u64::decode(r).await?,
+			track_alias: u64::decode(r).await?,
+			send_order: u64::decode(r).await?,
 		})
 	}
 
@@ -33,16 +33,16 @@ impl Track {
 
 #[derive(Clone, Debug)]
 pub struct TrackChunk {
-	pub group_id: VarInt,
-	pub object_id: VarInt,
-	pub size: VarInt,
+	pub group_id: u64,
+	pub object_id: u64,
+	pub size: usize,
 }
 
 impl TrackChunk {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let group_id = VarInt::decode(r).await?;
-		let object_id = VarInt::decode(r).await?;
-		let size = VarInt::decode(r).await?;
+		let group_id = u64::decode(r).await?;
+		let object_id = u64::decode(r).await?;
+		let size = usize::decode(r).await?;
 
 		Ok(Self {
 			group_id,

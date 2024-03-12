@@ -1,4 +1,4 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -9,7 +9,7 @@ pub struct AnnounceError {
 	pub namespace: String,
 
 	// An error code.
-	pub code: u32,
+	pub code: u64,
 
 	// An optional, human-readable reason.
 	pub reason: String,
@@ -18,7 +18,7 @@ pub struct AnnounceError {
 impl AnnounceError {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		let namespace = String::decode(r).await?;
-		let code = VarInt::decode(r).await?.try_into()?;
+		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
 
 		Ok(Self {
@@ -30,7 +30,7 @@ impl AnnounceError {
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.namespace.encode(w).await?;
-		VarInt::from_u32(self.code).encode(w).await?;
+		self.code.encode(w).await?;
 		self.reason.encode(w).await?;
 
 		Ok(())

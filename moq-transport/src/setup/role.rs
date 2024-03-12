@@ -1,6 +1,6 @@
 use crate::coding::{AsyncRead, AsyncWrite};
 
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Indicates the endpoint is a publisher, subscriber, or both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,21 +33,21 @@ impl Role {
 	}
 }
 
-impl From<Role> for VarInt {
+impl From<Role> for u64 {
 	fn from(r: Role) -> Self {
-		VarInt::from_u32(match r {
+		match r {
 			Role::Publisher => 0x1,
 			Role::Subscriber => 0x2,
 			Role::Both => 0x3,
-		})
+		}
 	}
 }
 
-impl TryFrom<VarInt> for Role {
+impl TryFrom<u64> for Role {
 	type Error = DecodeError;
 
-	fn try_from(v: VarInt) -> Result<Self, Self::Error> {
-		match v.into_inner() {
+	fn try_from(v: u64) -> Result<Self, Self::Error> {
+		match v {
 			0x1 => Ok(Self::Publisher),
 			0x2 => Ok(Self::Subscriber),
 			0x3 => Ok(Self::Both),
@@ -60,7 +60,7 @@ impl TryFrom<VarInt> for Role {
 impl Decode for Role {
 	/// Decode the role.
 	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = VarInt::decode(r).await?;
+		let v = u64::decode(r).await?;
 		v.try_into()
 	}
 }
@@ -69,6 +69,6 @@ impl Decode for Role {
 impl Encode for Role {
 	/// Encode the role.
 	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from(*self).encode(w).await
+		u64::from(*self).encode(w).await
 	}
 }

@@ -11,7 +11,6 @@
 use core::fmt;
 use std::{ops::Deref, sync::Arc};
 
-use crate::VarInt;
 use bytes::Bytes;
 
 use super::{CacheError, Watch};
@@ -32,7 +31,7 @@ pub fn new(info: Info) -> (Publisher, Subscriber) {
 pub struct Info {
 	// The sequence number of the fragment within the segment.
 	// NOTE: These may be received out of order or with gaps.
-	pub sequence: VarInt,
+	pub sequence: u64,
 
 	// The size of the fragment.
 	pub size: usize,

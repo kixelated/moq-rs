@@ -10,8 +10,6 @@
 use core::fmt;
 use std::{ops::Deref, sync::Arc};
 
-use crate::VarInt;
-
 use super::{fragment, CacheError, Watch};
 
 /// Create a new segment with the given info.
@@ -30,7 +28,7 @@ pub fn new(info: Info) -> (Publisher, Subscriber) {
 pub struct Info {
 	// The sequence number of the segment within the track.
 	// NOTE: These may be received out of order or with gaps.
-	pub sequence: VarInt,
+	pub sequence: u64,
 
 	// The priority of the segment within the BROADCAST.
 	pub priority: u32,

@@ -1,27 +1,27 @@
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
 
 #[derive(Clone, Debug)]
-pub struct Group {
+pub struct GroupHeader {
 	// The subscribe ID.
-	pub subscribe_id: VarInt,
+	pub subscribe_id: u64,
 
 	// The track alias.
-	pub track_alias: VarInt,
+	pub track_alias: u64,
 
 	// The group sequence number
-	pub group_id: VarInt,
+	pub group_id: u64,
 
 	// The priority, where **smaller** values are sent first.
-	pub send_order: VarInt,
+	pub send_order: u64,
 }
 
-impl Group {
+impl GroupHeader {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			subscribe_id: VarInt::decode(r).await?,
-			track_alias: VarInt::decode(r).await?,
-			group_id: VarInt::decode(r).await?,
-			send_order: VarInt::decode(r).await?,
+			subscribe_id: u64::decode(r).await?,
+			track_alias: u64::decode(r).await?,
+			group_id: u64::decode(r).await?,
+			send_order: u64::decode(r).await?,
 		})
 	}
 
@@ -37,15 +37,15 @@ impl Group {
 
 #[derive(Clone, Debug)]
 pub struct GroupChunk {
-	pub object_id: VarInt,
-	pub size: VarInt,
+	pub object_id: u64,
+	pub size: usize,
 }
 
 impl GroupChunk {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			object_id: VarInt::decode(r).await?,
-			size: VarInt::decode(r).await?,
+			object_id: u64::decode(r).await?,
+			size: usize::decode(r).await?,
 		})
 	}
 

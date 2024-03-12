@@ -11,7 +11,7 @@ pub enum CacheError {
 
 	/// A SUBSCRIBE_DONE or ANNOUNCE_CANCEL was received.
 	#[error("reset code={0:?}")]
-	Reset(u32),
+	Reset(u64),
 
 	/// An ANNOUNCE_STOP or SUBSCRIBE_STOP was sent by the subscriber.
 	#[error("stop")]
@@ -32,7 +32,7 @@ pub enum CacheError {
 
 impl MoqError for CacheError {
 	/// An integer code that is sent over the wire.
-	fn code(&self) -> u32 {
+	fn code(&self) -> u64 {
 		match self {
 			Self::Closed => 0,
 			Self::Reset(code) => *code,

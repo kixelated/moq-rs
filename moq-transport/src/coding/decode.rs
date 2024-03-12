@@ -1,4 +1,4 @@
-use super::{BoundsExceeded, VarInt};
+use super::BoundsExceeded;
 use std::{io, str};
 
 use thiserror::Error;
@@ -25,10 +25,10 @@ pub enum DecodeError {
 	InvalidString(#[from] str::Utf8Error),
 
 	#[error("invalid message: {0:?}")]
-	InvalidMessage(VarInt),
+	InvalidMessage(u64),
 
 	#[error("invalid role: {0:?}")]
-	InvalidRole(VarInt),
+	InvalidRole(u64),
 
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,

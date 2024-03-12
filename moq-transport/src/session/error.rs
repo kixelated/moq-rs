@@ -1,4 +1,4 @@
-use crate::{cache, coding, setup, MoqError, VarInt};
+use crate::{cache, coding, setup, MoqError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum SessionError {
@@ -30,7 +30,7 @@ pub enum SessionError {
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation: msg={0}")]
-	RoleViolation(VarInt),
+	RoleViolation(u64),
 
 	/// Our enforced stream mapping was disrespected.
 	#[error("stream mapping conflict")]
@@ -38,23 +38,23 @@ pub enum SessionError {
 
 	/// The priority was invalid.
 	#[error("invalid priority: {0}")]
-	InvalidPriority(VarInt),
+	InvalidPriority(u64),
 
 	/// The size was invalid.
-	#[error("invalid size: {0}")]
-	InvalidSize(VarInt),
+	#[error("invalid size")]
+	InvalidSize,
 
 	/// A required extension was not offered.
 	#[error("required extension not offered: {0:?}")]
-	RequiredExtension(VarInt),
+	RequiredExtension(u64),
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] coding::BoundsExceeded),
 
 	/// Sequence numbers were received out of order
-	#[error("sequence numbers out of order: expected={0} actual={1}")]
-	OutOfOrder(VarInt, VarInt),
+	#[error("sequence numbers out of order")]
+	OutOfOrder,
 
 	#[error("message was used in an invalid context")]
 	InvalidMessage,
@@ -66,7 +66,7 @@ pub enum SessionError {
 
 impl MoqError for SessionError {
 	/// An integer code that is sent over the wire.
-	fn code(&self) -> u32 {
+	fn code(&self) -> u64 {
 		match self {
 			Self::Cache(err) => err.code(),
 			Self::RoleIncompatible(..) => 406,
@@ -80,11 +80,11 @@ impl MoqError for SessionError {
 			Self::Encode(_) => 500,
 			Self::Decode(_) => 500,
 			Self::InvalidPriority(_) => 400,
-			Self::InvalidSize(_) => 400,
+			Self::InvalidSize => 400,
 			Self::RequiredExtension(_) => 426,
 			Self::BoundsExceeded(_) => 500,
 			Self::InvalidMessage => 400,
-			Self::OutOfOrder(_, _) => 400,
+			Self::OutOfOrder => 400,
 		}
 	}
 }

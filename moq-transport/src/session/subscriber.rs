@@ -12,7 +12,6 @@ use crate::{
 	control::Message,
 	data,
 	session::{Control, SessionError},
-	VarInt,
 };
 
 /// Receives broadcasts over the network, automatically handling subscriptions and caching.
@@ -23,10 +22,10 @@ pub struct Subscriber {
 	webtransport: Session,
 
 	// The list of active subscriptions, each guarded by an mutex.
-	subscribes: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
+	subscribes: Arc<Mutex<HashMap<u64, track::Publisher>>>,
 
 	// The sequence number for the next subscription.
-	next: Arc<atomic::AtomicU32>,
+	next: Arc<atomic::AtomicU64>,
 
 	// A channel for sending messages.
 	control: Control,
@@ -75,14 +74,14 @@ impl Subscriber {
 			Message::Announce(_) => Ok(()),       // don't care
 			Message::Unannounce(_) => Ok(()),     // also don't care
 			Message::SubscribeOk(_msg) => Ok(()), // don't care
-			Message::SubscribeDone(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
-			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
+			Message::SubscribeDone(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
+			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code)),
 			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
 			_ => Err(SessionError::RoleViolation(msg.id())),
 		}
 	}
 
-	fn recv_subscribe_error(&mut self, id: VarInt, err: CacheError) -> Result<(), SessionError> {
+	fn recv_subscribe_error(&mut self, id: u64, err: CacheError) -> Result<(), SessionError> {
 		let mut subscribes = self.subscribes.lock().unwrap();
 		let subscribe = subscribes.remove(&id).ok_or(CacheError::NotFound)?;
 		subscribe.close(err)?;
@@ -120,7 +119,7 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_track(self, header: data::Track, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_track(self, header: data::TrackHeader, mut stream: RecvStream) -> Result<(), SessionError> {
 		loop {
 			let chunk = match data::TrackChunk::decode(&mut stream).await {
 				Ok(next) => next,
@@ -141,7 +140,7 @@ impl Subscriber {
 
 				track.create_segment(segment::Info {
 					sequence: chunk.group_id,
-					priority: header.send_order.try_into()?, // TODO support u64 priorities
+					priority: header.send_order as u32,
 				})?
 			};
 
@@ -166,14 +165,14 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_group(self, header: data::Group, mut stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_group(self, header: data::GroupHeader, mut stream: RecvStream) -> Result<(), SessionError> {
 		let mut segment = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
 
 			track.create_segment(segment::Info {
 				sequence: header.group_id,
-				priority: header.send_order.try_into()?, // TODO support u64 priorities
+				priority: header.send_order as u32, // TODO support u64 priorities
 			})?
 		};
 
@@ -194,11 +193,11 @@ impl Subscriber {
 			log::trace!("receiving chunk: {:?}", chunk);
 
 			// NOTE: We allow gaps, but not going backwards.
-			if chunk.object_id.into_inner() < expected {
-				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object_id));
+			if chunk.object_id < expected {
+				return Err(SessionError::OutOfOrder);
 			}
 
-			expected = chunk.object_id.into_inner() + 1;
+			expected = chunk.object_id + 1;
 
 			let mut remain = chunk.size.into();
 
@@ -218,7 +217,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_object(self, _header: data::Object, _stream: RecvStream) -> Result<(), SessionError> {
+	async fn run_object(self, _header: data::ObjectHeader, _stream: RecvStream) -> Result<(), SessionError> {
 		unimplemented!("TODO");
 	}
 
@@ -228,7 +227,7 @@ impl Subscriber {
 			let track = self.source.next_track().await?;
 			let track_name = track.name.clone();
 
-			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
+			let id = self.next.fetch_add(1, atomic::Ordering::SeqCst);
 			self.subscribes.lock().unwrap().insert(id, track);
 
 			let msg = control::Subscribe {
@@ -239,8 +238,8 @@ impl Subscriber {
 				track_name,
 
 				// TODO correctly support these
-				start_group: control::SubscribeLocation::Latest(VarInt::ZERO),
-				start_object: control::SubscribeLocation::Absolute(VarInt::ZERO),
+				start_group: control::SubscribeLocation::Latest(0),
+				start_object: control::SubscribeLocation::Absolute(0),
 				end_group: control::SubscribeLocation::None,
 				end_object: control::SubscribeLocation::None,
 

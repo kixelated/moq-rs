@@ -1,5 +1,5 @@
 use crate::coding::{AsyncRead, AsyncWrite};
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
 /// Sent by the subscriber to request all future objects for the given track.
 ///
@@ -7,10 +7,10 @@ use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params, VarInt};
 #[derive(Clone, Debug)]
 pub struct Subscribe {
 	/// The subscription ID
-	pub id: VarInt,
+	pub id: u64,
 
 	/// Track properties
-	pub track_alias: VarInt, // This alias is useless but part of the spec
+	pub track_alias: u64, // This alias is useless but part of the spec
 	pub track_namespace: String,
 	pub track_name: String,
 
@@ -26,8 +26,8 @@ pub struct Subscribe {
 
 impl Subscribe {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = VarInt::decode(r).await?;
-		let track_alias = VarInt::decode(r).await?;
+		let id = u64::decode(r).await?;
+		let track_alias = u64::decode(r).await?;
 		let track_namespace = String::decode(r).await?;
 		let track_name = String::decode(r).await?;
 
@@ -84,43 +84,40 @@ impl Subscribe {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SubscribeLocation {
 	None,
-	Absolute(VarInt),
-	Latest(VarInt),
-	Future(VarInt),
+	Absolute(u64),
+	Latest(u64),
+	Future(u64),
 }
 
 impl SubscribeLocation {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let kind = VarInt::decode(r).await?;
+		let kind = u64::decode(r).await?;
 
-		match kind.into_inner() {
+		match kind {
 			0 => Ok(Self::None),
-			1 => Ok(Self::Absolute(VarInt::decode(r).await?)),
-			2 => Ok(Self::Latest(VarInt::decode(r).await?)),
-			3 => Ok(Self::Future(VarInt::decode(r).await?)),
+			1 => Ok(Self::Absolute(u64::decode(r).await?)),
+			2 => Ok(Self::Latest(u64::decode(r).await?)),
+			3 => Ok(Self::Future(u64::decode(r).await?)),
 			_ => Err(DecodeError::InvalidSubscribeLocation),
 		}
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id().encode(w).await?;
 		match self {
-			Self::None => {
-				VarInt::from_u32(0).encode(w).await?;
-			}
-			Self::Absolute(val) => {
-				VarInt::from_u32(1).encode(w).await?;
-				val.encode(w).await?;
-			}
-			Self::Latest(val) => {
-				VarInt::from_u32(2).encode(w).await?;
-				val.encode(w).await?;
-			}
-			Self::Future(val) => {
-				VarInt::from_u32(3).encode(w).await?;
-				val.encode(w).await?;
-			}
+			Self::None => Ok(()),
+			Self::Absolute(val) => val.encode(w).await,
+			Self::Latest(val) => val.encode(w).await,
+			Self::Future(val) => val.encode(w).await,
 		}
+	}
 
-		Ok(())
+	fn id(&self) -> u64 {
+		match self {
+			Self::None => 0,
+			Self::Absolute(_) => 1,
+			Self::Latest(_) => 2,
+			Self::Future(_) => 3,
+		}
 	}
 }

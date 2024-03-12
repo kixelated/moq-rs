@@ -231,3 +231,35 @@ impl From<quinn::VarInt> for VarInt {
 		Self(v.into_inner())
 	}
 }
+
+#[async_trait::async_trait]
+impl Encode for u64 {
+	/// Encode a varint to the given writer.
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w).await
+	}
+}
+
+#[async_trait::async_trait]
+impl Decode for u64 {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).await.map(|v| v.into_inner())
+	}
+}
+
+#[async_trait::async_trait]
+impl Encode for usize {
+	/// Encode a varint to the given writer.
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w).await
+	}
+}
+
+#[async_trait::async_trait]
+impl Decode for usize {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).await.map(|v| v.into_inner() as usize)
+	}
+}

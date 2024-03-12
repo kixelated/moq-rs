@@ -10,7 +10,7 @@ use crate::{
 	cache::{broadcast, segment, track, CacheError},
 	control,
 	control::Message,
-	data, MoqError, VarInt,
+	data, MoqError,
 };
 
 use super::{Control, SessionError};
@@ -20,7 +20,7 @@ use super::{Control, SessionError};
 #[derive(Clone, Debug)]
 pub struct Publisher {
 	// A map of active subscriptions, containing an abort handle to cancel them.
-	subscribes: Arc<Mutex<HashMap<VarInt, AbortHandle>>>,
+	subscribes: Arc<Mutex<HashMap<u64, AbortHandle>>>,
 	webtransport: Session,
 	control: Control,
 	source: broadcast::Subscriber,
@@ -60,7 +60,7 @@ impl Publisher {
 			tokio::select! {
 				stream = self.webtransport.accept_uni() => {
 					stream?;
-					return Err(SessionError::RoleViolation(VarInt::ZERO));
+					return Err(SessionError::RoleViolation(0));
 				}
 				// NOTE: this is not cancel safe, but it's fine since the other branchs are fatal.
 				msg = self.control.recv() => {
@@ -73,7 +73,7 @@ impl Publisher {
 				},
 				// No more broadcasts are available.
 				err = self.source.closed() => {
-					self.webtransport.close(err.code(), err.to_string().as_bytes());
+					self.webtransport.close(err.code() as u32, err.to_string().as_bytes());
 					return Ok(());
 				},
 			}
@@ -124,7 +124,7 @@ impl Publisher {
 			.await
 	}
 
-	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
+	async fn reset_subscribe<E: MoqError>(&mut self, id: u64, err: E) -> Result<(), SessionError> {
 		let msg = control::SubscribeDone {
 			id,
 			code: err.code().into(),
@@ -162,7 +162,7 @@ impl Publisher {
 		Ok(handle.abort_handle())
 	}
 
-	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), SessionError> {
+	async fn run_subscribe(&self, id: u64, track: &mut track::Subscriber) -> Result<(), SessionError> {
 		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
 
 		while let Some(mut segment) = track.segment().await? {
@@ -179,14 +179,14 @@ impl Publisher {
 		Ok(())
 	}
 
-	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let header = data::Group {
+	async fn run_segment(&self, id: u64, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
+		let header = data::GroupHeader {
 			subscribe_id: id,
 			track_alias: id,
 
 			// Properties of the segment
 			group_id: segment.sequence,
-			send_order: VarInt::from_u32(segment.priority),
+			send_order: segment.priority as u64,
 		};
 
 		log::trace!("sending stream: {:?}", header);
@@ -204,7 +204,7 @@ impl Publisher {
 		while let Some(mut fragment) = segment.fragment().await? {
 			let object = data::GroupChunk {
 				object_id: fragment.sequence,
-				size: VarInt::try_from(fragment.size)?,
+				size: fragment.size,
 			};
 
 			log::trace!("sending chunk: {:?}", object);

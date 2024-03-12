@@ -1,4 +1,4 @@
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
 use std::fmt;
 
 use super::{
@@ -18,9 +18,9 @@ macro_rules! message_types {
 
 		impl Message {
 			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = VarInt::decode(r).await?;
+				let t = u64::decode(r).await?;
 
-				match t.into_inner() {
+				match t {
 					$($val => {
 						let msg = $name::decode(r).await?;
 						Ok(Self::$name(msg))
@@ -32,16 +32,16 @@ macro_rules! message_types {
 			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w).await?;
+						self.id().encode(w).await?;
 						m.encode(w).await
 					},)*
 				}
 			}
 
-			pub fn id(&self) -> VarInt {
+			pub fn id(&self) -> u64 {
 				match self {
 					$(Self::$name(_) => {
-						VarInt::from_u32($val)
+						$val
 					},)*
 				}
 			}
