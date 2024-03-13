@@ -1,24 +1,24 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
-use crate::{control, data, session::SessionError, MoqError};
+use crate::{
+	control, data,
+	error::{SubscribeError, WriteError},
+	MoqError,
+};
 
-use super::{DatagramHeader, GroupHeader, GroupWriter, ObjectHeader, ObjectWriter, Session, TrackHeader, TrackWriter};
+use super::{DatagramHeader, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Session, TrackHeader, TrackStream};
 
 #[derive(Clone)]
 pub struct Subscribe {
 	session: Session,
 	msg: control::Subscribe,
-
 	state: Arc<Mutex<SubscribeState>>,
 }
 
 impl Subscribe {
-	pub(super) fn new(session: Session, msg: control::Subscribe, state: Arc<Mutex<SubscribeState>>) -> Self {
-		Self {
-			state: SubscribeState::new(session.clone(), msg.id),
-			session,
-			msg,
-		}
+	pub(super) fn new(session: Session, msg: control::Subscribe) -> Self {
+		let state = SubscribeState::new(session.clone(), msg.id);
+		Self { session, msg, state }
 	}
 
 	pub fn namespace(&self) -> &str {
@@ -29,14 +29,16 @@ impl Subscribe {
 		self.msg.track_name.as_str()
 	}
 
-	pub(super) fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SessionError> {
+	pub(super) fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
 		self.state.lock().unwrap().serve(group_id, object_id)
 	}
 
-	pub async fn serve_track(&mut self, header: TrackHeader) -> Result<TrackWriter, SessionError> {
+	pub async fn serve_track(
+		&mut self,
+		mut stream: webtransport_quinn::SendStream,
+		header: TrackHeader,
+	) -> Result<TrackStream, WriteError> {
 		self.closed()?;
-
-		let mut stream = self.session.open_uni().await?;
 
 		let header = data::TrackHeader {
 			subscribe_id: self.msg.id,
@@ -45,14 +47,16 @@ impl Subscribe {
 		};
 		header.encode(&mut stream).await?;
 
-		let track = TrackWriter::new(self.clone(), stream);
+		let track = TrackStream::new(self.clone(), stream);
 		Ok(track)
 	}
 
-	pub async fn serve_group(&mut self, header: GroupHeader) -> Result<GroupWriter, SessionError> {
+	pub async fn serve_group(
+		&mut self,
+		mut stream: webtransport_quinn::SendStream,
+		header: GroupHeader,
+	) -> Result<GroupStream, WriteError> {
 		self.closed()?;
-
-		let mut stream = self.session.open_uni().await?;
 
 		let header = data::GroupHeader {
 			subscribe_id: self.msg.id,
@@ -62,15 +66,18 @@ impl Subscribe {
 		};
 		header.encode(&mut stream).await?;
 
-		let group = GroupWriter::new(self.clone(), stream, header.group_id);
+		let group = GroupStream::new(self.clone(), stream, header.group_id);
 
 		Ok(group)
 	}
 
-	pub async fn serve_object(&mut self, header: ObjectHeader) -> Result<ObjectWriter, SessionError> {
+	pub async fn serve_object(
+		&mut self,
+		mut stream: webtransport_quinn::SendStream,
+		header: ObjectHeader,
+	) -> Result<ObjectStream, WriteError> {
+		// TODO call this on payload write instead
 		self.state.lock().unwrap().serve(header.group_id, header.object_id)?;
-
-		let mut stream = self.session.open_uni().await?;
 
 		let header = data::GroupHeader {
 			subscribe_id: self.msg.id,
@@ -80,15 +87,15 @@ impl Subscribe {
 		};
 		header.encode(&mut stream).await?;
 
-		let object = ObjectWriter::new(stream);
+		let object = ObjectStream::new(stream);
 
 		Ok(object)
 	}
 
-	pub fn serve_datagram(&mut self, header: DatagramHeader, payload: &[u8]) -> Result<(), SessionError> {
+	pub fn serve_datagram(&mut self, header: DatagramHeader, _payload: &[u8]) -> Result<(), SubscribeError> {
 		self.state.lock().unwrap().serve(header.group_id, header.object_id)?;
 
-		let header = data::DatagramHeader {
+		let _header = data::DatagramHeader {
 			subscribe_id: self.msg.id,
 			track_alias: self.msg.track_alias,
 			group_id: header.group_id,
@@ -101,15 +108,15 @@ impl Subscribe {
 		// self.session.webtransport().send_datagram(&header, &payload)?;
 	}
 
-	pub fn close(&mut self, code: u64) -> Result<(), SessionError> {
-		self.state.lock().unwrap().close(SessionError::Done(code))
+	pub fn close(self, err: SubscribeError) -> Result<(), SubscribeError> {
+		self.state.lock().unwrap().close(err)
 	}
 
-	pub fn closed(&self) -> Result<(), SessionError> {
-		self.state.lock().unwrap().closed
+	pub fn closed(&self) -> Result<(), SubscribeError> {
+		self.state.lock().unwrap().closed()
 	}
 
-	fn ok(&mut self, response: SubscribeResponse) -> Result<(), SessionError> {
+	fn ok(&mut self, response: SubscribeResponse) -> Result<(), SubscribeError> {
 		self.state.lock().unwrap().ok()?;
 
 		self.session.send_message(control::SubscribeOk {
@@ -121,22 +128,42 @@ impl Subscribe {
 		Ok(())
 	}
 
-	fn reject(&mut self, code: u64) -> Result<(), SessionError> {
-		self.state.lock().unwrap().close(SessionError::Reject(code))
+	fn reject(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
+		self.state.lock().unwrap().close(err)
+	}
+
+	pub(super) fn downgrade(&self) -> SubscribeWeak {
+		SubscribeWeak {
+			state: Arc::downgrade(&self.state),
+		}
 	}
 }
 
-pub(super) struct SubscribeState {
+pub(super) struct SubscribeWeak {
+	state: Weak<Mutex<SubscribeState>>,
+}
+
+impl SubscribeWeak {
+	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
+		if let Some(state) = self.state.upgrade() {
+			state.lock().unwrap().close(err)
+		} else {
+			Err(SubscribeError::Dropped)
+		}
+	}
+}
+
+struct SubscribeState {
 	session: Session,
 	id: u64,
 
 	ok: bool,
 	max: Option<(u64, u64)>,
-	closed: Result<(), SessionError>,
+	closed: Result<(), SubscribeError>,
 }
 
 impl SubscribeState {
-	pub(super) fn new(session: Session, id: u64) -> Arc<Mutex<Self>> {
+	fn new(session: Session, id: u64) -> Arc<Mutex<Self>> {
 		Arc::new(Mutex::new(Self {
 			session,
 			id,
@@ -146,9 +173,9 @@ impl SubscribeState {
 		}))
 	}
 
-	pub(super) fn close(&mut self, err: SessionError) -> Result<(), SessionError> {
-		self.closed?;
-		self.closed = Err(err);
+	fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
+		self.closed()?;
+		self.closed = Err(err.clone());
 
 		if self.ok {
 			self.session.send_message(control::SubscribeDone {
@@ -171,14 +198,18 @@ impl SubscribeState {
 		Ok(())
 	}
 
-	fn ok(&mut self) -> Result<(), SessionError> {
-		self.closed?;
+	fn closed(&self) -> Result<(), SubscribeError> {
+		self.closed.clone()
+	}
+
+	fn ok(&mut self) -> Result<(), SubscribeError> {
+		self.closed()?;
 		self.ok = true;
 		Ok(())
 	}
 
-	fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SessionError> {
-		self.closed?;
+	fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
+		self.closed()?;
 
 		if let Some((max_group, max_object)) = self.max {
 			if group_id >= max_group && object_id >= max_object {
@@ -192,11 +223,11 @@ impl SubscribeState {
 
 impl Drop for SubscribeState {
 	fn drop(&mut self) {
-		self.close(SessionError::Dropped).ok();
+		self.close(SubscribeError::Done).ok();
 	}
 }
 
-pub struct SubscribeRequest {
+pub struct SubscribePending {
 	subscribe: Subscribe,
 }
 
@@ -208,7 +239,7 @@ pub struct SubscribeResponse {
 	expires: Option<u64>,
 }
 
-impl SubscribeRequest {
+impl SubscribePending {
 	pub(crate) fn new(subscribe: Subscribe) -> Self {
 		Self { subscribe }
 	}
@@ -222,13 +253,13 @@ impl SubscribeRequest {
 	}
 
 	// Send a SUBSCRIBE_OK
-	pub fn accept(mut self, response: SubscribeResponse) -> Result<Subscribe, SessionError> {
+	pub fn accept(mut self, response: SubscribeResponse) -> Result<Subscribe, SubscribeError> {
 		self.subscribe.ok(response)?;
 		Ok(self.subscribe)
 	}
 
 	// Send a SUBSCRIBE_ERROR
-	pub fn reject(mut self, code: u64) -> Result<(), SessionError> {
-		self.subscribe.reject(code)
+	pub fn reject(mut self, code: u64) -> Result<(), SubscribeError> {
+		self.subscribe.reject(SubscribeError::Reset(code))
 	}
 }

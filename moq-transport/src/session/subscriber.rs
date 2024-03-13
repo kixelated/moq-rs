@@ -105,9 +105,7 @@ impl Subscriber {
 
 	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
 		// Decode the object on the data stream.
-		let header = data::Header::decode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		let header = data::Header::decode(&mut stream).await?;
 
 		log::trace!("receiving stream: {:?}", header);
 

@@ -32,6 +32,7 @@
 //!  -> SUBSCRIBE_RESET id=0 code=206 reason="closed by peer"
 //! ```
 mod announce;
+mod announce_cancel;
 mod announce_error;
 mod announce_ok;
 mod go_away;
@@ -44,6 +45,7 @@ mod unannounce;
 mod unsubscribe;
 
 pub use announce::*;
+pub use announce_cancel::*;
 pub use announce_error::*;
 pub use announce_ok::*;
 pub use go_away::*;

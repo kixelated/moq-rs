@@ -196,10 +196,7 @@ impl Publisher {
 		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
 		stream.set_priority(priority).ok();
 
-		Into::<data::Header>::into(header)
-			.encode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		Into::<data::Header>::into(header).encode(&mut stream).await?;
 
 		while let Some(mut fragment) = segment.fragment().await? {
 			let object = data::GroupChunk {
@@ -209,10 +206,7 @@ impl Publisher {
 
 			log::trace!("sending chunk: {:?}", object);
 
-			object
-				.encode(&mut stream)
-				.await
-				.map_err(|e| SessionError::Unknown(e.to_string()))?;
+			object.encode(&mut stream).await?;
 
 			while let Some(data) = fragment.chunk().await? {
 				stream.write_all(&data).await?;

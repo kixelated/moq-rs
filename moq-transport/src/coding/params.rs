@@ -29,7 +29,7 @@ impl Decode for Params {
 			// Instead, we allocate up to 1024 and keep appending as we read further.
 			let mut pr = r.take(size);
 			let mut buf = Vec::with_capacity(max(1024, pr.limit() as usize));
-			pr.read_to_end(&mut buf).await?;
+			pr.read_to_end(&mut buf).await.map_err(|_| DecodeError::IoError)?;
 			params.insert(kind, buf);
 
 			r = pr.into_inner();
@@ -47,7 +47,7 @@ impl Encode for Params {
 		for (kind, value) in self.0.iter() {
 			kind.encode(w).await?;
 			value.len().encode(w).await?;
-			w.write_all(value).await?;
+			w.write_all(value).await.map_err(|_| EncodeError::IoError)?;
 		}
 
 		Ok(())

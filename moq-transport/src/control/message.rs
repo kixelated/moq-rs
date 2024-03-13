@@ -2,8 +2,8 @@ use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeEr
 use std::fmt;
 
 use super::{
-	Announce, AnnounceError, AnnounceOk, GoAway, Subscribe, SubscribeDone, SubscribeError, SubscribeOk, Unannounce,
-	Unsubscribe,
+	Announce, AnnounceCancel, AnnounceError, AnnounceOk, GoAway, Subscribe, SubscribeDone, SubscribeError, SubscribeOk,
+	Unannounce, Unsubscribe,
 };
 
 // Use a macro to generate the message types rather than copy-paste.
@@ -96,6 +96,7 @@ message_types! {
 	// ANNOUNCE family, sent by subscriber
 	AnnounceOk = 0x7,
 	AnnounceError = 0x8,
+	AnnounceCancel = 0xc,
 
 	// Misc
 	GoAway = 0x10,

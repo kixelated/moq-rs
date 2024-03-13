@@ -25,19 +25,14 @@ impl Control {
 	pub async fn send<T: Into<control::Message> + fmt::Debug>(&self, msg: T) -> Result<(), SessionError> {
 		let mut stream = self.send.lock().await;
 		log::info!("sending message: {:?}", msg);
-		msg.into()
-			.encode(&mut *stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		msg.into().encode(&mut *stream).await?;
 		Ok(())
 	}
 
 	// It's likely a mistake to call this from two different tasks, but it's easier to just support it.
 	pub async fn recv(&self) -> Result<control::Message, SessionError> {
 		let mut stream = self.recv.lock().await;
-		let msg = control::Message::decode(&mut *stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
+		let msg = control::Message::decode(&mut *stream).await?;
 		Ok(msg)
 	}
 }

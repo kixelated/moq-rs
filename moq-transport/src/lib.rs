@@ -9,11 +9,12 @@
 mod coding;
 mod error;
 
-pub mod cache;
 pub mod control;
 pub mod data;
 pub mod publisher;
 pub mod session;
 pub mod setup;
+pub mod subscriber;
+pub(crate) mod util;
 
 pub use error::MoqError;

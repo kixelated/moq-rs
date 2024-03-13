@@ -48,6 +48,8 @@ impl AnnounceWeak {
 pub(super) struct AnnounceState {
 	session: Session,
 	namespace: String,
+
+	ok: bool,
 	closed: Result<(), AnnounceError>,
 }
 
@@ -56,19 +58,33 @@ impl AnnounceState {
 		Self {
 			session,
 			namespace,
+			ok: false,
 			closed: Ok(()),
 		}
+	}
+
+	pub fn ok(&mut self) -> Result<(), AnnounceError> {
+		self.closed.clone()?;
+		self.ok = true;
+		Ok(())
 	}
 
 	pub fn close(&mut self, err: AnnounceError) -> Result<(), AnnounceError> {
 		self.closed.clone()?;
 		self.closed = Err(err.clone());
-
-		self.session.send_message(control::Unannounce {
-			namespace: self.namespace.clone(),
-		})?;
-
 		self.session.remove_announce(self.namespace.clone());
+
+		if self.ok {
+			self.session.send_message(control::AnnounceCancel {
+				namespace: self.namespace.clone(),
+			})?;
+		} else {
+			self.session.send_message(control::AnnounceError {
+				namespace: self.namespace.clone(),
+				code: err.code().into(),
+				reason: err.to_string(),
+			})?;
+		}
 
 		Ok(())
 	}
@@ -77,5 +93,29 @@ impl AnnounceState {
 impl Drop for AnnounceState {
 	fn drop(&mut self) {
 		self.close(AnnounceError::Done).unwrap();
+	}
+}
+
+pub struct AnnouncePending {
+	announce: Announce,
+}
+
+impl AnnouncePending {
+	pub(crate) fn new(announce: Announce) -> Self {
+		Self { announce }
+	}
+
+	pub fn namespace(&self) -> &str {
+		self.announce.namespace()
+	}
+
+	pub fn accept(self) -> Result<Announce, AnnounceError> {
+		self.announce.state.lock().unwrap().ok()?;
+		Ok(self.announce)
+	}
+
+	pub fn reject(self, err: AnnounceError) -> Result<(), AnnounceError> {
+		self.announce.state.lock().unwrap().close(err)?;
+		Ok(())
 	}
 }

@@ -3,7 +3,7 @@ use std::{
 	future::Future,
 	ops::{Deref, DerefMut},
 	pin::Pin,
-	sync::{Arc, Mutex, MutexGuard},
+	sync::{Arc, Mutex, MutexGuard, Weak},
 	task,
 };
 
@@ -67,6 +67,12 @@ impl<T> Watch<T> {
 	pub fn lock_mut(&self) -> WatchMut<T> {
 		WatchMut {
 			lock: self.state.lock().unwrap(),
+		}
+	}
+
+	pub fn downgrade(&self) -> WatchWeak<T> {
+		WatchWeak {
+			state: Arc::downgrade(&self.state),
 		}
 	}
 }
@@ -176,5 +182,15 @@ impl<T> Future for WatchChanged<T> {
 			state.register(cx.waker());
 			task::Poll::Pending
 		}
+	}
+}
+
+pub struct WatchWeak<T> {
+	state: Weak<Mutex<State<T>>>,
+}
+
+impl<T> WatchWeak<T> {
+	pub fn upgrade(&self) -> Option<Watch<T>> {
+		self.state.upgrade().map(|state| Watch { state })
 	}
 }

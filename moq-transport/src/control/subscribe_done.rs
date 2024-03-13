@@ -24,7 +24,7 @@ impl SubscribeDone {
 		let id = u64::decode(r).await?;
 		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
-		let last = match r.read_u8().await? {
+		let last = match r.read_u8().await.map_err(|_| DecodeError::IoError)? {
 			0 => None,
 			1 => Some((u64::decode(r).await?, u64::decode(r).await?)),
 			_ => return Err(DecodeError::InvalidValue),
@@ -39,11 +39,11 @@ impl SubscribeDone {
 		self.reason.encode(w).await?;
 
 		if let Some((group, object)) = self.last {
-			w.write_u8(1).await?;
+			w.write_u8(1).await.map_err(|_| EncodeError::IoError)?;
 			group.encode(w).await?;
 			object.encode(w).await?;
 		} else {
-			w.write_u8(0).await?;
+			w.write_u8(0).await.map_err(|_| EncodeError::IoError)?;
 		}
 
 		Ok(())

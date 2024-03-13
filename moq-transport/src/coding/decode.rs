@@ -16,7 +16,7 @@ pub trait Decode: Sized {
 }
 
 /// A decode error.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum DecodeError {
 	#[error("unexpected end of buffer")]
 	UnexpectedEnd,
@@ -49,6 +49,6 @@ pub enum DecodeError {
 	#[error("invalid parameter")]
 	InvalidParameter,
 
-	#[error("io error: {0}")]
-	IoError(#[from] std::io::Error),
+	#[error("io error")]
+	IoError,
 }
