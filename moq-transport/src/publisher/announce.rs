@@ -20,28 +20,33 @@ impl Announce {
 		&self.namespace
 	}
 
+	pub(super) fn close(&mut self, err: AnnounceError) -> Result<(), AnnounceError> {
+		self.state.lock().unwrap().close(err)
+	}
+
 	pub async fn closed(&self) -> Result<(), AnnounceError> {
 		self.state.lock().unwrap().closed.clone()
 	}
 
 	pub(super) fn downgrade(&self) -> AnnounceWeak {
 		AnnounceWeak {
+			namespace: self.namespace.clone(),
 			state: Arc::downgrade(&self.state),
 		}
 	}
 }
 
 pub(super) struct AnnounceWeak {
+	namespace: String,
 	state: Weak<Mutex<AnnounceState>>,
 }
 
 impl AnnounceWeak {
-	pub fn close(&mut self, err: AnnounceError) -> Result<(), AnnounceError> {
-		if let Some(state) = self.state.upgrade() {
-			state.lock().unwrap().close(err)
-		} else {
-			Err(AnnounceError::Dropped)
-		}
+	pub fn upgrade(&self) -> Option<Announce> {
+		Some(Announce {
+			state: self.state.upgrade()?,
+			namespace: self.namespace.clone(),
+		})
 	}
 }
 
@@ -68,8 +73,6 @@ impl AnnounceState {
 			namespace: self.namespace.clone(),
 		})?;
 
-		self.session.remove_announce(self.namespace.clone());
-
 		Ok(())
 	}
 }
@@ -77,5 +80,6 @@ impl AnnounceState {
 impl Drop for AnnounceState {
 	fn drop(&mut self) {
 		self.close(AnnounceError::Done).unwrap();
+		self.session.drop_announce(&self.namespace);
 	}
 }

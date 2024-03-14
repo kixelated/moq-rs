@@ -6,8 +6,6 @@ use super::Subscribe;
 use bytes::{Bytes, BytesMut};
 use paste::paste;
 
-use tokio::io::AsyncReadExt;
-
 pub struct Object {
 	pub header: ObjectHeader,
 	pub payload: Bytes,
@@ -37,6 +35,12 @@ macro_rules! stream_types {
 		}
 
 		impl Stream {
+			pub fn new(subscribe: Subscribe, header: data::Header, stream: webtransport_quinn::RecvStream) -> Self {
+				match header {
+					$(data::Header::$name(header) => <paste! { [< $name Stream >] }>::new(subscribe, header, stream).into(),)*
+				}
+			}
+
 			/// The associated subscription.
 			pub fn subscription(&self) -> &Subscribe {
 				match self {

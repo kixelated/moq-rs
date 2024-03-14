@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex, Weak};
 use crate::{
 	control, data,
 	error::{SubscribeError, WriteError},
-	MoqError,
 };
 
 use super::{DatagramHeader, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Session, TrackHeader, TrackStream};
@@ -108,7 +107,7 @@ impl Subscribe {
 		// self.session.webtransport().send_datagram(&header, &payload)?;
 	}
 
-	pub fn close(self, err: SubscribeError) -> Result<(), SubscribeError> {
+	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
 		self.state.lock().unwrap().close(err)
 	}
 
@@ -135,21 +134,26 @@ impl Subscribe {
 	pub(super) fn downgrade(&self) -> SubscribeWeak {
 		SubscribeWeak {
 			state: Arc::downgrade(&self.state),
+			session: self.session.clone(),
+			msg: self.msg.clone(),
 		}
 	}
 }
 
+#[derive(Clone)]
 pub(super) struct SubscribeWeak {
 	state: Weak<Mutex<SubscribeState>>,
+	session: Session,
+	msg: control::Subscribe,
 }
 
 impl SubscribeWeak {
-	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
-		if let Some(state) = self.state.upgrade() {
-			state.lock().unwrap().close(err)
-		} else {
-			Err(SubscribeError::Dropped)
-		}
+	pub fn upgrade(&self) -> Option<Subscribe> {
+		Some(Subscribe {
+			state: self.state.upgrade()?,
+			session: self.session.clone(),
+			msg: self.msg.clone(),
+		})
 	}
 }
 
@@ -193,8 +197,6 @@ impl SubscribeState {
 			})?;
 		}
 
-		self.session.remove_subscribe(self.id);
-
 		Ok(())
 	}
 
@@ -223,7 +225,8 @@ impl SubscribeState {
 
 impl Drop for SubscribeState {
 	fn drop(&mut self) {
-		self.close(SubscribeError::Done).ok();
+		self.close(SubscribeError::Done(0)).ok();
+		self.session.drop_subscribe(self.id);
 	}
 }
 
@@ -260,6 +263,6 @@ impl SubscribePending {
 
 	// Send a SUBSCRIBE_ERROR
 	pub fn reject(mut self, code: u64) -> Result<(), SubscribeError> {
-		self.subscribe.reject(SubscribeError::Reset(code))
+		self.subscribe.reject(SubscribeError::Error(code))
 	}
 }

@@ -35,12 +35,16 @@ pub enum SessionError {
 	Write(#[from] webtransport_quinn::WriteError),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
-	#[error("role violation: msg={0}")]
-	RoleViolation(u64),
+	#[error("role violation")]
+	RoleViolation,
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] coding::BoundsExceeded),
+
+	/// A duplicate ID was used
+	#[error("duplicate")]
+	Duplicate,
 }
 
 impl SessionError {
@@ -48,7 +52,7 @@ impl SessionError {
 	pub fn code(&self) -> u64 {
 		match self {
 			Self::RoleIncompatible(..) => 406,
-			Self::RoleViolation(..) => 405,
+			Self::RoleViolation => 405,
 			Self::Write(_) => 501,
 			Self::Read(_) => 502,
 			Self::Session(_) => 503,
@@ -56,6 +60,7 @@ impl SessionError {
 			Self::Encode(_) => 500,
 			Self::Decode(_) => 500,
 			Self::BoundsExceeded(_) => 500,
+			Self::Duplicate => 409,
 		}
 	}
 }

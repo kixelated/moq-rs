@@ -1,8 +1,5 @@
 use anyhow::Context;
-use moq_transport::{
-	cache::{fragment, segment, track},
-	VarInt,
-};
+use moq_transport::cache::{fragment, segment, track};
 
 use chrono::prelude::*;
 
@@ -25,10 +22,7 @@ impl Publisher {
 		loop {
 			let segment = self
 				.track
-				.create_segment(segment::Info {
-					sequence: VarInt::from_u32(sequence),
-					priority: 0,
-				})
+				.create_segment(segment::Info { sequence, priority: 0 })
 				.context("failed to create minute segment")?;
 
 			sequence += 1;
@@ -108,7 +102,7 @@ impl Subscriber {
 
 		log::debug!("got first: {:?}", first);
 
-		if first.sequence != VarInt::ZERO {
+		if first.sequence != 0 {
 			anyhow::bail!("first object must be zero; I'm not going to implement a reassembly buffer");
 		}
 

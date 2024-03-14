@@ -1,7 +1,4 @@
-use std::{
-	collections::VecDeque,
-	sync::{Arc, Mutex},
-};
+use std::collections::VecDeque;
 
 use crate::{
 	control::{self, SubscribePair},
@@ -10,7 +7,7 @@ use crate::{
 	util::{Watch, WatchWeak},
 };
 
-use super::{GroupStream, ObjectStream, Session, Stream, TrackStream};
+use super::{Session, Stream};
 
 #[derive(Clone)]
 pub struct Subscribe {
@@ -21,17 +18,17 @@ pub struct Subscribe {
 
 impl Subscribe {
 	pub(super) fn new(session: Session, msg: control::Subscribe) -> Self {
-		let state = SubscribeState::new(session.clone(), msg.id);
+		let state = SubscribeState::new(session.clone(), msg.clone());
 		let state = Watch::new(state);
 
 		Self { session, msg, state }
 	}
 
-	pub fn namespace(&self) -> &str {
+	pub fn track_namespace(&self) -> &str {
 		self.msg.track_namespace.as_str()
 	}
 
-	pub fn name(&self) -> &str {
+	pub fn track_name(&self) -> &str {
 		self.msg.track_name.as_str()
 	}
 
@@ -51,10 +48,6 @@ impl Subscribe {
 		}
 	}
 
-	pub fn close(self, err: SubscribeError) -> Result<(), SubscribeError> {
-		self.state.lock_mut().close(err)
-	}
-
 	pub fn closed(&self) -> Result<(), SubscribeError> {
 		self.state.lock().closed()
 	}
@@ -68,40 +61,45 @@ impl Subscribe {
 		self.state.lock().max
 	}
 
+	pub(super) fn recv_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SubscribeError> {
+		self.state.lock_mut().recv_ok(msg)
+	}
+
+	pub(super) fn recv_error(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
+		self.state.lock_mut().close(err)
+	}
+
+	pub(super) fn recv_stream(
+		&mut self,
+		header: data::Header,
+		stream: webtransport_quinn::RecvStream,
+	) -> Result<(), SubscribeError> {
+		let stream = Stream::new(self.clone(), header, stream);
+		self.state.lock_mut().recv_stream(stream)
+	}
+
 	pub(super) fn downgrade(&self) -> SubscribeWeak {
 		SubscribeWeak {
-			state: Arc::downgrade(&self.state),
+			state: self.state.downgrade(),
+			session: self.session.clone(),
+			msg: self.msg.clone(),
 		}
 	}
 }
 
 pub(super) struct SubscribeWeak {
 	state: WatchWeak<SubscribeState>,
+	session: Session,
+	msg: control::Subscribe,
 }
 
 impl SubscribeWeak {
-	pub fn accept(&mut self, stream: webtransport_quinn::RecvStream) -> Result<(), SubscribeError> {
-		if let Some(state) = self.state.upgrade() {
-			state.lock_mut().accept(stream)
-		} else {
-			Err(SubscribeError::Dropped)
-		}
-	}
-
-	pub fn ok(&mut self, msg: control::SubscribeOk) -> Result<(), SubscribeError> {
-		if let Some(state) = self.state.upgrade() {
-			state.lock_mut().ok(msg)
-		} else {
-			Err(SubscribeError::Dropped)
-		}
-	}
-
-	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
-		if let Some(state) = self.state.upgrade() {
-			state.lock_mut().close(err)
-		} else {
-			Err(SubscribeError::Dropped)
-		}
+	pub fn upgrade(&self) -> Option<Subscribe> {
+		Some(Subscribe {
+			state: self.state.upgrade()?,
+			session: self.session.clone(),
+			msg: self.msg.clone(),
+		})
 	}
 }
 
@@ -116,21 +114,20 @@ struct SubscribeState {
 }
 
 impl SubscribeState {
-	fn new(session: Session, msg: control::Subscribe) -> Arc<Mutex<Self>> {
-		Arc::new(Mutex::new(Self {
+	fn new(session: Session, msg: control::Subscribe) -> Self {
+		Self {
 			session,
 			msg,
 			ok: None,
 			max: None,
 			closed: Ok(()),
 			streams: VecDeque::new(),
-		}))
+		}
 	}
 
 	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
 		self.closed()?;
 		self.closed = Err(err.clone());
-		self.session.remove_subscribe(self.id);
 
 		Ok(())
 	}
@@ -139,27 +136,15 @@ impl SubscribeState {
 		self.closed.clone()
 	}
 
-	pub fn ok(&mut self, msg: control::SubscribeOk) -> Result<(), SubscribeError> {
+	pub fn recv_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SubscribeError> {
 		self.closed()?;
-		self.ok = Some(msg);
 		self.max = msg.latest;
+		self.ok = Some(msg);
 		Ok(())
 	}
 
-	pub fn recv_stream(
-		&mut self,
-		header: data::Header,
-		stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SubscribeError> {
+	pub fn recv_stream(&mut self, stream: Stream) -> Result<(), SubscribeError> {
 		self.closed()?;
-
-		let stream = match header {
-			data::Header::Track(header) => TrackStream::new(self.clone(), header, stream).into(),
-			data::Header::Group(header) => GroupStream::new(self.clone(), header, stream).into(),
-			data::Header::Object(header) => ObjectStream::new(self.clone(), header, stream).into(),
-			data::Header::Datagram(_) => panic!("datagram only"),
-		};
-
 		self.streams.push_back(stream);
 
 		Ok(())
@@ -182,10 +167,12 @@ impl SubscribeState {
 
 impl Drop for SubscribeState {
 	fn drop(&mut self) {
-		if self.close(SubscribeError::Stop).is_ok() {
+		if self.close(SubscribeError::Cancel).is_ok() {
 			let msg = control::Unsubscribe { id: self.msg.id };
-			self.session.send_message(msg).ok()
+			self.session.send_message(msg).ok();
 		}
+
+		self.session.drop_subscribe(self.msg.id);
 	}
 }
 
@@ -198,12 +185,12 @@ impl SubscribePending {
 		Self { subscribe }
 	}
 
-	pub fn namespace(&self) -> &str {
-		self.subscribe.namespace()
+	pub fn track_namespace(&self) -> &str {
+		self.subscribe.track_namespace()
 	}
 
-	pub fn name(&self) -> &str {
-		self.subscribe.name()
+	pub fn track_name(&self) -> &str {
+		self.subscribe.track_name()
 	}
 
 	// Wait for a SUBSCRIBE_OK or SUBSCRIBE_ERROR

@@ -1,6 +1,5 @@
 use anyhow::{self, Context};
 use moq_transport::cache::{broadcast, segment, track};
-use moq_transport::VarInt;
 use mp4::{self, ReadBox};
 use serde_json::json;
 use std::cmp::max;
@@ -42,7 +41,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?;
 		let mut init_segment = init_track.create_segment(segment::Info {
-			sequence: VarInt::ZERO,
+			sequence: 0,
 			priority: 0,
 		})?;
 
@@ -126,7 +125,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		moov: &mp4::MoovBox,
 	) -> Result<(), anyhow::Error> {
 		let mut segment = track.create_segment(segment::Info {
-			sequence: VarInt::ZERO,
+			sequence: 0,
 			priority: 0,
 		})?;
 
@@ -298,7 +297,7 @@ impl Track {
 
 		// Create a new segment.
 		let mut segment = self.track.create_segment(segment::Info {
-			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
+			sequence: self.sequence,
 
 			// Newer segments are higher priority
 			priority: u32::MAX.checked_sub(timestamp).context("priority too large")?,

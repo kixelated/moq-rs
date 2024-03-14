@@ -101,3 +101,26 @@ message_types! {
 	// Misc
 	GoAway = 0x10,
 }
+
+pub enum MessageSource {
+	Subscriber,
+	Publisher,
+	Client,
+	Server,
+}
+
+impl Message {
+	pub fn source(&self) -> MessageSource {
+		match self {
+			Message::Announce(_) | Message::Unannounce(_) => MessageSource::Publisher,
+			Message::AnnounceOk(_) | Message::AnnounceError(_) | Message::AnnounceCancel(_) => {
+				MessageSource::Subscriber
+			}
+			Message::Subscribe(_) | Message::Unsubscribe(_) => MessageSource::Subscriber,
+			Message::SubscribeOk(_) | Message::SubscribeError(_) | Message::SubscribeDone(_) => {
+				MessageSource::Publisher
+			}
+			Message::GoAway(_) => MessageSource::Client,
+		}
+	}
+}

@@ -75,80 +75,91 @@ impl Session {
 		self.messages.pop().await
 	}
 
-	pub fn recv_announce(&mut self, msg: control::Announce) -> Result<(), AnnounceError> {
+	pub fn recv_control(&mut self, msg: control::Message) -> Result<(), SessionError> {
+		match msg {
+			control::Message::Announce(msg) => self.recv_announce(msg),
+			control::Message::Unannounce(msg) => self.recv_unannounce(msg),
+			control::Message::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
+			control::Message::SubscribeError(msg) => self.recv_subscribe_error(msg),
+			control::Message::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+			_ => Err(SessionError::RoleViolation),
+		}
+	}
+
+	fn recv_announce(&mut self, msg: control::Announce) -> Result<(), SessionError> {
 		let mut announces = self.announces.lock().unwrap();
 
-		let entry = match announces.entry(msg.namespace) {
-			hash_map::Entry::Occupied(_) => return Err(AnnounceError::Duplicate),
+		let entry = match announces.entry(msg.namespace.clone()) {
+			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry,
 		};
 
 		let announce = Announce::new(self.clone(), msg.namespace);
-		entry.insert(announce.clone().downgrade());
-		self.announces_pending.push(AnnouncePending::new(announce));
+		entry.insert(announce.downgrade());
+
+		self.announces_pending.push(AnnouncePending::new(announce))?;
 
 		Ok(())
 	}
 
-	pub fn recv_unannounce(&mut self, msg: control::Unannounce) -> Result<(), AnnounceError> {
-		let mut announces = self.announces.lock().unwrap();
-
-		if let Some(mut announce) = announces.remove(&msg.namespace) {
-			announce.close(AnnounceError::Done)?;
+	fn recv_unannounce(&mut self, msg: control::Unannounce) -> Result<(), SessionError> {
+		if let Some(mut announce) = self.get_announce(&msg.namespace) {
+			announce.close(AnnounceError::Done).ok();
 		}
 
 		Ok(())
 	}
 
-	pub fn recv_subscribe_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SubscribeError> {
-		let mut subscribes = self.subscribes.lock().unwrap();
-
-		if let Some(subscribe) = subscribes.get_mut(&msg.id) {
-			subscribe.ok(msg)?;
+	fn recv_subscribe_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SessionError> {
+		if let Some(mut sub) = self.get_subscribe(msg.id) {
+			sub.recv_ok(msg).ok();
 		}
 
 		Ok(())
 	}
 
-	pub fn recv_subscribe_error(&mut self, msg: control::SubscribeError) -> Result<(), SubscribeError> {
-		let mut subscribes = self.subscribes.lock().unwrap();
-
-		if let Some(subscribe) = subscribes.get_mut(&msg.id) {
-			subscribe.close(SubscribeError::Error(msg.code)).ok();
+	fn recv_subscribe_error(&mut self, msg: control::SubscribeError) -> Result<(), SessionError> {
+		if let Some(mut subscriber) = self.get_subscribe(msg.id) {
+			subscriber.recv_error(SubscribeError::Error(msg.code)).ok();
 		}
 
 		Ok(())
 	}
 
-	pub fn recv_subscribe_done(&mut self, msg: control::SubscribeDone) -> Result<(), SubscribeError> {
-		let mut subscribes = self.subscribes.lock().unwrap();
-
-		if let Some(subscribe) = subscribes.get_mut(&msg.id) {
-			subscribe.close(SubscribeError::Done(msg.code)).ok();
+	fn recv_subscribe_done(&mut self, msg: control::SubscribeDone) -> Result<(), SessionError> {
+		if let Some(mut subscriber) = self.get_subscribe(msg.id) {
+			subscriber.recv_error(SubscribeError::Done(msg.code)).ok();
 		}
 
 		Ok(())
 	}
 
-	pub(super) fn remove_subscribe(&mut self, id: u64) {
+	fn get_announce(&self, namespace: &str) -> Option<Announce> {
+		self.announces.lock().unwrap().get(namespace)?.upgrade()
+	}
+
+	fn get_subscribe(&self, id: u64) -> Option<Subscribe> {
+		self.subscribes.lock().unwrap().get(&id)?.upgrade()
+	}
+
+	pub(super) fn drop_subscribe(&mut self, id: u64) {
 		self.subscribes.lock().unwrap().remove(&id);
 	}
 
-	pub(super) fn remove_announce(&mut self, namespace: String) {
-		self.announces.lock().unwrap().remove(&namespace);
+	pub(super) fn drop_announce(&mut self, namespace: &str) {
+		self.announces.lock().unwrap().remove(namespace);
 	}
 
-	pub fn recv_data(
+	pub fn recv_stream(
 		&mut self,
 		header: data::Header,
 		stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SubscribeError> {
+	) -> Result<(), SessionError> {
 		let id = header.subscribe_id();
-
-		let mut subscribes = self.subscribes.lock().unwrap();
-		let subscribe = subscribes.get_mut(&id).ok_or(SubscribeError::NotFound)?;
-
-		subscribe.data(header, stream)?;
+		if let Some(mut subscribe) = self.get_subscribe(id) {
+			// TODO handle some of these errors?
+			subscribe.recv_stream(header, stream).ok();
+		}
 
 		Ok(())
 	}

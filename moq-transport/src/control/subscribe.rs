@@ -72,7 +72,7 @@ impl Subscribe {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubscribePair {
 	pub group: SubscribeLocation,
 	pub object: SubscribeLocation,
@@ -133,5 +133,11 @@ impl SubscribeLocation {
 			Self::Latest(_) => 2,
 			Self::Future(_) => 3,
 		}
+	}
+}
+
+impl Default for SubscribeLocation {
+	fn default() -> Self {
+		Self::None
 	}
 }

@@ -2,7 +2,7 @@ use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeEr
 use paste::paste;
 use std::fmt;
 
-use super::{DatagramHeader, GroupHeader, ObjectHeader, TrackHeader};
+use super::{GroupHeader, ObjectHeader, TrackHeader};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -83,7 +83,7 @@ macro_rules! header_types {
 // Each object type is prefixed with the given VarInt type.
 header_types! {
 	Object = 0x0,
-	Datagram = 0x1,
+	//Datagram = 0x1,
 	Group = 0x50,
 	Track = 0x51,
 }
