@@ -50,11 +50,7 @@ impl Session {
 		self.subscribes_pending.pop().await
 	}
 
-	pub(super) fn send_message<M: Into<control::Message>>(&mut self, msg: M) -> Result<(), SessionError> {
-		self.messages.push(msg.into())
-	}
-
-	pub fn recv_control(&mut self, msg: control::Message) -> Result<(), SessionError> {
+	pub fn recv_message(&mut self, msg: control::Message) -> Result<(), SessionError> {
 		match msg {
 			control::Message::AnnounceOk(msg) => self.recv_announce_ok(msg),
 			control::Message::AnnounceError(msg) => self.recv_announce_error(msg),
@@ -105,6 +101,10 @@ impl Session {
 		}
 
 		Ok(())
+	}
+
+	pub(super) fn send_message<M: Into<control::Message>>(&mut self, msg: M) -> Result<(), SessionError> {
+		self.messages.push(msg.into())
 	}
 
 	pub async fn next_message(&mut self) -> Result<control::Message, SessionError> {

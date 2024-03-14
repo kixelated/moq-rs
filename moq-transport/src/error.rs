@@ -45,6 +45,9 @@ pub enum SessionError {
 	/// A duplicate ID was used
 	#[error("duplicate")]
 	Duplicate,
+
+	#[error("internal error")]
+	Internal,
 }
 
 impl SessionError {
@@ -54,13 +57,14 @@ impl SessionError {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
 			Self::Write(_) => 501,
-			Self::Read(_) => 502,
+			Self::Read(_) => 400,
 			Self::Session(_) => 503,
 			Self::Version(..) => 406,
+			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
-			Self::Decode(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
+			Self::Internal => 500,
 		}
 	}
 }

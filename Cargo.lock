@@ -1170,6 +1170,7 @@ dependencies = [
  "bytes",
  "clap",
  "env_logger",
+ "futures",
  "log",
  "mp4",
  "paste",

@@ -1,3 +1,8 @@
+use futures::FutureExt;
+use futures::{stream::FuturesUnordered, StreamExt};
+use tokio::select;
+use webtransport_quinn::{RecvStream, SendStream};
+
 use crate::{
 	control::{self, MessageSource},
 	data,
@@ -7,9 +12,10 @@ use crate::{
 
 pub struct Session {
 	webtransport: webtransport_quinn::Session,
+	control: (SendStream, RecvStream),
+
 	publisher: Option<publisher::Session>,
 	subscriber: Option<subscriber::Session>,
-	control: (webtransport_quinn::SendStream, webtransport_quinn::RecvStream),
 }
 
 impl Session {
@@ -56,9 +62,9 @@ impl Session {
 		let subscriber = server.role.is_subscriber().then(|| subscriber::Session::new());
 
 		let session = Self {
+			webtransport: session,
 			publisher,
 			subscriber,
-			webtransport: session,
 			control,
 		};
 
@@ -102,54 +108,87 @@ impl Session {
 		let subscriber = role.is_subscriber().then(|| subscriber::Session::new());
 
 		let session = Self {
+			webtransport: session,
 			publisher,
 			subscriber,
-			webtransport: session,
 			control,
 		};
 
 		Ok(session)
 	}
 
-	pub async fn run(&mut self) -> Result<(), SessionError> {
+	async fn run(mut self) -> Result<(), SessionError> {
+		let mut tasks = FuturesUnordered::new();
+
+		tasks.push(Self::send_messages(self.control.0, self.publisher.clone(), self.subscriber.clone()).boxed());
+		tasks.push(Self::recv_messages(self.control.1, self.publisher, self.subscriber.clone()).boxed());
+		tasks.push(Self::recv_streams(self.webtransport.clone(), self.subscriber).boxed());
+
+		let res: Option<Result<(), SessionError>> = tasks.next().await;
+		let err = res.unwrap().err().unwrap_or(SessionError::Internal);
+		self.webtransport.close(err.code() as u32, err.to_string().as_bytes());
+
+		Err(err)
+	}
+
+	async fn send_messages(
+		mut control: SendStream,
+		mut publisher: Option<publisher::Session>,
+		mut subscriber: Option<subscriber::Session>,
+	) -> Result<(), SessionError> {
 		loop {
-			let (stream, _) = self.webtransport.accept().await?;
+			let msg = select! {
+				res = publisher.as_mut().unwrap().next_message(), if publisher.is_some() => res?,
+				res = subscriber.as_mut().unwrap().next_message(), if subscriber.is_some() => res?,
+			};
 
-			let source = data::Header::decode(&mut stream).await?;
-
-			match source {
-				data::Header::Control => {
-					let msg = control::Message::decode(&mut stream).await?;
-					self.recv_control(msg)?;
-				}
-				data::Header::Stream => {
-					self.recv_stream(stream).await?;
-				}
-			}
+			msg.encode(&mut control).await?;
 		}
 	}
 
-	fn recv_control(&mut self, msg: control::Message) -> Result<(), SessionError> {
-		match msg.source() {
-			MessageSource::Publisher => self
-				.subscriber
-				.as_mut()
-				.ok_or(SessionError::RoleViolation)?
-				.recv_control(msg),
-			MessageSource::Subscriber => self
-				.publisher
-				.as_mut()
-				.ok_or(SessionError::RoleViolation)?
-				.recv_control(msg),
-			MessageSource::Client => todo!("client messages"),
-			MessageSource::Server => todo!("server messages"),
+	async fn recv_messages(
+		mut control: RecvStream,
+		mut publisher: Option<publisher::Session>,
+		mut subscriber: Option<subscriber::Session>,
+	) -> Result<(), SessionError> {
+		loop {
+			let msg = control::Message::decode(&mut control).await?;
+			match msg.source() {
+				MessageSource::Publisher => subscriber
+					.as_mut()
+					.ok_or(SessionError::RoleViolation)?
+					.recv_message(msg),
+				MessageSource::Subscriber => publisher.as_mut().ok_or(SessionError::RoleViolation)?.recv_message(msg),
+				MessageSource::Client => todo!("client messages"),
+				MessageSource::Server => todo!("server messages"),
+			}?;
 		}
 	}
 
-	async fn recv_stream(&mut self, mut stream: webtransport_quinn::RecvStream) -> Result<(), SessionError> {
+	async fn recv_streams(
+		webtransport: webtransport_quinn::Session,
+		subscriber: Option<subscriber::Session>,
+	) -> Result<(), SessionError> {
+		let mut tasks = FuturesUnordered::new();
+
+		loop {
+			// TODO use futures instead
+			tokio::select! {
+				res = webtransport.accept_uni() => {
+					let stream = res?;
+					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
+					tasks.push(Self::recv_stream(stream, subscriber));
+				},
+				res = tasks.next(), if tasks.len() > 0 => res.unwrap()?,
+			};
+		}
+	}
+
+	async fn recv_stream(
+		mut stream: webtransport_quinn::RecvStream,
+		mut subscriber: subscriber::Session,
+	) -> Result<(), SessionError> {
 		let header = data::Header::decode(&mut stream).await?;
-
-		let subscriber = self.subscriber.as_mut().ok_or(SessionError::RoleViolation)?;
 		subscriber.recv_stream(header, stream)
 	}
 }

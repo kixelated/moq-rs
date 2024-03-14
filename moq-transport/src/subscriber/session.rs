@@ -75,7 +75,7 @@ impl Session {
 		self.messages.pop().await
 	}
 
-	pub fn recv_control(&mut self, msg: control::Message) -> Result<(), SessionError> {
+	pub fn recv_message(&mut self, msg: control::Message) -> Result<(), SessionError> {
 		match msg {
 			control::Message::Announce(msg) => self.recv_announce(msg),
 			control::Message::Unannounce(msg) => self.recv_unannounce(msg),
