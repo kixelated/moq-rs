@@ -2,8 +2,8 @@
 
 use std::{fmt, sync::Arc};
 
+use quinn::{RecvStream, SendStream};
 use tokio::sync::Mutex;
-use webtransport_quinn::{RecvStream, SendStream};
 
 use super::SessionError;
 use crate::control;

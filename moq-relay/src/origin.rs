@@ -123,7 +123,7 @@ impl Origin {
 		subscriber
 	}
 
-	async fn serve(&mut self, id: &str, publisher: broadcast::Publisher) -> Result<(), RelayError> {
+	async fn serve(&mut self, id: &str, _publisher: broadcast::Publisher) -> Result<(), RelayError> {
 		log::debug!("finding origin: id={}", id);
 
 		// Fetch the origin from the API.
@@ -137,13 +137,7 @@ impl Origin {
 
 		log::debug!("fetching from origin: id={} url={}", id, origin.url);
 
-		// Establish the webtransport session.
-		let session = webtransport_quinn::connect(&self.quic, &origin.url).await?;
-		let session = moq_transport::session::Client::subscriber(session, publisher).await?;
-
-		session.run().await?;
-
-		Ok(())
+		unimplemented!("fetching from origin")
 	}
 }
 

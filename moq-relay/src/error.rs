@@ -15,10 +15,10 @@ pub enum RelayError {
 	Url(#[from] url::ParseError),
 
 	#[error("webtransport client error: {0}")]
-	WebTransportClient(#[from] webtransport_quinn::ClientError),
+	WebTransportClient(#[from] quinn::ConnectError),
 
 	#[error("webtransport server error: {0}")]
-	WebTransportServer(#[from] webtransport_quinn::ServerError),
+	WebTransportServer(#[from] quinn::ConnectionError),
 
 	#[error("missing node")]
 	MissingNode,

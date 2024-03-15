@@ -25,26 +25,12 @@ impl Session {
 			conn.remote_address(),
 			conn.stable_id()
 		);
+
 		let id = conn.stable_id();
-
-		// Wait for the CONNECT request.
-		let request = webtransport_quinn::accept(conn)
-			.await
-			.context("failed to receive WebTransport request")?;
-
-		// Strip any leading and trailing slashes to get the broadcast name.
-		let path = request.url().path().trim_matches('/').to_string();
-
-		log::debug!("received WebTransport CONNECT: id={} path={}", id, path);
-
-		// Accept the CONNECT request.
-		let session = request
-			.ok()
-			.await
-			.context("failed to respond to WebTransport request")?;
+		let path = "";
 
 		// Perform the MoQ handshake.
-		let request = moq_transport::session::Server::accept(session)
+		let request = moq_transport::session::Server::accept(conn)
 			.await
 			.context("failed to accept handshake")?;
 

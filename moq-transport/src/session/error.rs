@@ -3,7 +3,7 @@ use crate::{cache, coding, setup, MoqError, VarInt};
 #[derive(thiserror::Error, Debug)]
 pub enum SessionError {
 	#[error("webtransport error: {0}")]
-	Session(#[from] webtransport_quinn::SessionError),
+	Session(#[from] quinn::ConnectionError),
 
 	#[error("cache error: {0}")]
 	Cache(#[from] cache::CacheError),
@@ -22,11 +22,11 @@ pub enum SessionError {
 
 	/// An error occured while reading from the QUIC stream.
 	#[error("failed to read from stream: {0}")]
-	Read(#[from] webtransport_quinn::ReadError),
+	Read(#[from] quinn::ReadError),
 
 	/// An error occured while writing to the QUIC stream.
 	#[error("failed to write to stream: {0}")]
-	Write(#[from] webtransport_quinn::WriteError),
+	Write(#[from] quinn::WriteError),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation: msg={0}")]

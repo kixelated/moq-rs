@@ -1,4 +1,4 @@
-use webtransport_quinn::{RecvStream, Session};
+use quinn::RecvStream;
 
 use std::{
 	collections::HashMap,
@@ -20,7 +20,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Subscriber {
 	// The webtransport session.
-	webtransport: Session,
+	webtransport: quinn::Connection,
 
 	// The list of active subscriptions, each guarded by an mutex.
 	subscribes: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
@@ -36,7 +36,7 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Publisher) -> Self {
+	pub(crate) fn new(webtransport: quinn::Connection, control: Control, source: broadcast::Publisher) -> Self {
 		Self {
 			webtransport,
 			subscribes: Default::default(),

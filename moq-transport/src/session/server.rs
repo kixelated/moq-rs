@@ -1,7 +1,7 @@
 use super::{Control, Publisher, SessionError, Subscriber};
 use crate::{cache::broadcast, setup};
 
-use webtransport_quinn::{RecvStream, SendStream, Session};
+use quinn::{RecvStream, SendStream};
 
 /// An endpoint that accepts connections, publishing and/or consuming live streams.
 pub struct Server {}
@@ -10,7 +10,7 @@ impl Server {
 	/// Accept an established Webtransport session, performing the MoQ handshake.
 	///
 	/// This returns a [Request] half-way through the handshake that allows the application to accept or deny the session.
-	pub async fn accept(session: Session) -> Result<Request, SessionError> {
+	pub async fn accept(session: quinn::Connection) -> Result<Request, SessionError> {
 		let mut control = session.accept_bi().await?;
 
 		let client = setup::Client::decode(&mut control.1).await?;
@@ -34,7 +34,7 @@ impl Server {
 
 /// A partially complete MoQ Transport handshake.
 pub struct Request {
-	session: Session,
+	session: quinn::Connection,
 	client: setup::Client,
 	control: (SendStream, RecvStream),
 }
@@ -87,7 +87,7 @@ impl Request {
 
 	/// Reject the request, closing the Webtransport session.
 	pub fn reject(self, code: u32) {
-		self.session.close(code, b"")
+		self.session.close(code.into(), b"")
 	}
 
 	/// The role advertised by the client.

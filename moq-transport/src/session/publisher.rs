@@ -4,7 +4,6 @@ use std::{
 };
 
 use tokio::task::AbortHandle;
-use webtransport_quinn::Session;
 
 use crate::{
 	cache::{broadcast, segment, track, CacheError},
@@ -21,13 +20,13 @@ use super::{Control, SessionError};
 pub struct Publisher {
 	// A map of active subscriptions, containing an abort handle to cancel them.
 	subscribes: Arc<Mutex<HashMap<VarInt, AbortHandle>>>,
-	webtransport: Session,
+	webtransport: quinn::Connection,
 	control: Control,
 	source: broadcast::Subscriber,
 }
 
 impl Publisher {
-	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Subscriber) -> Self {
+	pub(crate) fn new(webtransport: quinn::Connection, control: Control, source: broadcast::Subscriber) -> Self {
 		Self {
 			webtransport,
 			control,
@@ -73,7 +72,7 @@ impl Publisher {
 				},
 				// No more broadcasts are available.
 				err = self.source.closed() => {
-					self.webtransport.close(err.code(), err.to_string().as_bytes());
+					self.webtransport.close(err.code().into(), err.to_string().as_bytes());
 					return Ok(());
 				},
 			}

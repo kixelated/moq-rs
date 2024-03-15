@@ -7,6 +7,7 @@ mod cli;
 mod clock;
 
 use moq_transport::cache::broadcast;
+use tokio::net::lookup_host;
 
 // TODO: clap complete
 
@@ -57,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
 		tls_config.dangerous().set_certificate_verifier(Arc::new(noop));
 	}
 
-	tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
+	tls_config.alpn_protocols = vec!["moq-00".into()]; // this one is important
 
 	let arc_tls_config = std::sync::Arc::new(tls_config);
 	let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
@@ -67,14 +68,21 @@ async fn main() -> anyhow::Result<()> {
 
 	log::info!("connecting to relay: url={}", config.url);
 
-	let session = webtransport_quinn::connect(&endpoint, &config.url)
-		.await
-		.context("failed to create WebTransport session")?;
+	// TODO error on username:password in host
+	let host = config.url.host().unwrap().to_string();
+	let port = config.url.port().unwrap_or(443);
+
+	// Look up the DNS entry.
+	let remote = lookup_host((host.clone(), port)).await.unwrap().next().unwrap();
+
+	// Connect to the server using the addr we just resolved.
+	let conn = endpoint.connect(remote, &host)?;
+	let conn = conn.await?;
 
 	let (mut publisher, subscriber) = broadcast::new(""); // TODO config.namespace
 
 	if config.publish {
-		let session = moq_transport::session::Client::publisher(session, subscriber)
+		let session = moq_transport::session::Client::publisher(conn, subscriber)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
@@ -88,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
 			res = clock.run() => res.context("clock error")?,
 		}
 	} else {
-		let session = moq_transport::session::Client::subscriber(session, publisher)
+		let session = moq_transport::session::Client::subscriber(conn, publisher)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
