@@ -66,6 +66,7 @@ impl<T> Watch<T> {
 
 	pub fn lock_mut(&self) -> WatchMut<T> {
 		WatchMut {
+			state: self.state.clone(),
 			lock: self.state.lock().unwrap(),
 		}
 	}
@@ -116,7 +117,10 @@ impl<'a, T> WatchRef<'a, T> {
 
 	// Upgrade to a mutable references that automatically calls notify on drop.
 	pub fn into_mut(self) -> WatchMut<'a, T> {
-		WatchMut { lock: self.lock }
+		WatchMut {
+			state: self.state,
+			lock: self.lock,
+		}
 	}
 }
 
@@ -135,7 +139,22 @@ impl<'a, T: fmt::Debug> fmt::Debug for WatchRef<'a, T> {
 }
 
 pub struct WatchMut<'a, T> {
+	state: Arc<Mutex<State<T>>>,
 	lock: MutexGuard<'a, State<T>>,
+}
+
+impl<'a, T> WatchMut<'a, T> {
+	pub fn into_ref(self) -> WatchRef<'a, T> {
+		WatchRef {
+			state: self.state,
+			lock: self.lock,
+		}
+	}
+
+	// Release the lock and wait for a notification when next updated.
+	pub fn changed(self) -> WatchChanged<T> {
+		self.into_ref().changed()
+	}
 }
 
 impl<'a, T> Deref for WatchMut<'a, T> {

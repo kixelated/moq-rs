@@ -5,7 +5,8 @@ use std::{
 };
 
 use moq_api::ApiError;
-use moq_transport::cache::{broadcast, CacheError};
+use moq_transport::cache::broadcast;
+use moq_transport::error::CacheError;
 use url::Url;
 
 use tokio::time;

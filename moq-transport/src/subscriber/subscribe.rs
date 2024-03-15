@@ -32,7 +32,7 @@ impl Subscribe {
 		self.msg.track_name.as_str()
 	}
 
-	pub async fn stream(&mut self) -> Result<Stream, SubscribeError> {
+	pub async fn next_stream(&mut self) -> Result<Stream, SubscribeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();

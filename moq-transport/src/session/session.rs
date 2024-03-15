@@ -117,7 +117,15 @@ impl Session {
 		Ok(session)
 	}
 
-	async fn run(mut self) -> Result<(), SessionError> {
+	pub fn publisher(&mut self) -> Option<&mut publisher::Session> {
+		self.publisher.as_mut()
+	}
+
+	pub fn subscriber(&mut self) -> Option<&mut subscriber::Session> {
+		self.subscriber.as_mut()
+	}
+
+	async fn run(self) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		tasks.push(Self::send_messages(self.control.0, self.publisher.clone(), self.subscriber.clone()).boxed());

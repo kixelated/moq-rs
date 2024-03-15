@@ -1,12 +1,5 @@
 use crate::{coding, setup};
 
-pub trait MoqError: std::error::Error {
-	/// An integer code that is sent over the wire.
-	fn code(&self) -> u64;
-
-	// fn parse(code: u64) -> Self;
-}
-
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
 	#[error("webtransport error: {0}")]
@@ -185,6 +178,24 @@ pub enum WriteError {
 	/// The caller wrote objects in the wrong order
 	#[error("wrong object order")]
 	WrongOrder,
+}
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+pub enum CacheError {
+	#[error("done")]
+	Done,
+
+	#[error("wrong size")]
+	WrongSize,
+
+	#[error("closed: code={0}")]
+	Closed(u64),
+
+	#[error("duplicate")]
+	Duplicate,
+
+	#[error("multiple stream modes")]
+	Mode,
 }
 
 /*

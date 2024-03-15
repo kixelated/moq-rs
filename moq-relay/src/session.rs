@@ -44,37 +44,18 @@ impl Session {
 			.context("failed to respond to WebTransport request")?;
 
 		// Perform the MoQ handshake.
-		let request = moq_transport::session::Server::accept(session)
+		let session = moq_transport::Session::accept(session, moq_transport::setup::Role::Both)
 			.await
 			.context("failed to accept handshake")?;
 
-		log::debug!("received MoQ SETUP: id={} role={:?}", id, request.role());
-
-		let role = request.role();
-
-		match role {
-			Role::Publisher => {
-				if let Err(err) = self.serve_publisher(id, request, &path).await {
-					log::warn!("error serving publisher: id={} path={} err={}", id, path, err);
-				}
-			}
-			Role::Subscriber => {
-				if let Err(err) = self.serve_subscriber(id, request, &path).await {
-					log::warn!("error serving subscriber: id={} path={} err={}", id, path, err);
-				}
-			}
-			Role::Both => {
-				log::warn!("role both not supported: id={}", id);
-				request.reject(300);
-			}
-		};
+		self.serve(id, session, path).await
 
 		log::debug!("closing connection: id={}", id);
 
 		Ok(())
 	}
 
-	async fn serve_publisher(&mut self, id: usize, request: Request, path: &str) -> anyhow::Result<()> {
+	async fn serve(&mut self, id: usize, session: moq_transport::Session, path: &str) -> anyhow::Result<()> {
 		log::info!("serving publisher: id={}, path={}", id, path);
 
 		let mut origin = match self.origin.publish(path).await {

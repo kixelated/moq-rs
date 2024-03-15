@@ -1,5 +1,5 @@
 use anyhow::Context;
-use moq_transport::cache::{fragment, segment, track};
+use moq_transport::cache::{object, segment, track};
 
 use chrono::prelude::*;
 
@@ -121,7 +121,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn recv_fragment(mut fragment: fragment::Subscriber, mut buf: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+	async fn recv_fragment(mut fragment: object::Subscriber, mut buf: Vec<u8>) -> anyhow::Result<Vec<u8>> {
 		while let Some(data) = fragment.chunk().await? {
 			buf.extend_from_slice(&data);
 		}
