@@ -1,4 +1,7 @@
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
+use crate::{
+	coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError},
+	setup::Role,
+};
 use std::fmt;
 
 use super::{
@@ -102,25 +105,14 @@ message_types! {
 	GoAway = 0x10,
 }
 
-pub enum MessageSource {
-	Subscriber,
-	Publisher,
-	Client,
-	Server,
-}
-
 impl Message {
-	pub fn source(&self) -> MessageSource {
+	pub fn source(&self) -> Role {
 		match self {
-			Message::Announce(_) | Message::Unannounce(_) => MessageSource::Publisher,
-			Message::AnnounceOk(_) | Message::AnnounceError(_) | Message::AnnounceCancel(_) => {
-				MessageSource::Subscriber
-			}
-			Message::Subscribe(_) | Message::Unsubscribe(_) => MessageSource::Subscriber,
-			Message::SubscribeOk(_) | Message::SubscribeError(_) | Message::SubscribeDone(_) => {
-				MessageSource::Publisher
-			}
-			Message::GoAway(_) => MessageSource::Client,
+			Message::Announce(_) | Message::Unannounce(_) => Role::Publisher,
+			Message::AnnounceOk(_) | Message::AnnounceError(_) | Message::AnnounceCancel(_) => Role::Subscriber,
+			Message::Subscribe(_) | Message::Unsubscribe(_) => Role::Subscriber,
+			Message::SubscribeOk(_) | Message::SubscribeError(_) | Message::SubscribeDone(_) => Role::Publisher,
+			Message::GoAway(_) => Role::Both, // TODO Client not role
 		}
 	}
 }

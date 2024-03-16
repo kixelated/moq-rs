@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use crate::{control, error::AnnounceError};
 
-use super::Session;
+use super::Subscriber;
 
 #[derive(Clone)]
 pub struct Announce {
@@ -11,7 +11,7 @@ pub struct Announce {
 }
 
 impl Announce {
-	pub(super) fn new(session: Session, namespace: String) -> Self {
+	pub(super) fn new(session: Subscriber, namespace: String) -> Self {
 		let state = Arc::new(Mutex::new(AnnounceState::new(session, namespace.clone())));
 		Self { namespace, state }
 	}
@@ -51,7 +51,7 @@ impl AnnounceWeak {
 }
 
 pub(super) struct AnnounceState {
-	session: Session,
+	session: Subscriber,
 	namespace: String,
 
 	ok: bool,
@@ -59,7 +59,7 @@ pub(super) struct AnnounceState {
 }
 
 impl AnnounceState {
-	pub fn new(session: Session, namespace: String) -> Self {
+	pub fn new(session: Subscriber, namespace: String) -> Self {
 		Self {
 			session,
 			namespace,

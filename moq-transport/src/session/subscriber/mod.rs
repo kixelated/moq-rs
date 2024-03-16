@@ -1,9 +1,9 @@
 mod announce;
-mod session;
 mod stream;
 mod subscribe;
+mod subscriber;
 
 pub use announce::*;
-pub use session::*;
 pub use stream::*;
 pub use subscribe::*;
+pub use subscriber::*;

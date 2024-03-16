@@ -10,10 +10,9 @@ pub mod cache;
 pub mod control;
 pub mod data;
 pub mod error;
-pub mod publisher;
+pub mod session;
 pub mod setup;
-pub mod subscriber;
 pub mod util;
 
-mod session;
-pub use session::Session;
+pub use error::*;
+pub use session::{Publisher, Session, Subscriber};

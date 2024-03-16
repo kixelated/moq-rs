@@ -1,11 +1,11 @@
 mod announce;
 mod datagram;
-mod session;
+mod publisher;
 mod stream;
 mod subscribe;
 
 pub use announce::*;
 pub use datagram::*;
-pub use session::*;
+pub use publisher::*;
 pub use stream::*;
 pub use subscribe::*;

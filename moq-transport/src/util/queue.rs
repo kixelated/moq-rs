@@ -37,14 +37,14 @@ impl<T, E: Clone> Default for State<T, E> {
 }
 
 impl<T, E: Clone> Queue<T, E> {
-	pub fn push(&mut self, item: T) -> Result<(), E> {
+	pub fn push(&self, item: T) -> Result<(), E> {
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.queue.push_back(item);
 		Ok(())
 	}
 
-	pub async fn pop(&mut self) -> Result<T, E> {
+	pub async fn pop(&self) -> Result<T, E> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -60,7 +60,7 @@ impl<T, E: Clone> Queue<T, E> {
 		}
 	}
 
-	pub fn close(&mut self, err: E) -> Result<(), E> {
+	pub fn close(&self, err: E) -> Result<(), E> {
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.closed = Err(err);

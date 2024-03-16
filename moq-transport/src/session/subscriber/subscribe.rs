@@ -7,17 +7,17 @@ use crate::{
 	util::{Watch, WatchWeak},
 };
 
-use super::{Session, Stream};
+use super::{Stream, Subscriber};
 
 #[derive(Clone)]
 pub struct Subscribe {
-	session: Session,
+	session: Subscriber,
 	msg: control::Subscribe,
 	state: Watch<SubscribeState>,
 }
 
 impl Subscribe {
-	pub(super) fn new(session: Session, msg: control::Subscribe) -> Self {
+	pub(super) fn new(session: Subscriber, msg: control::Subscribe) -> Self {
 		let state = SubscribeState::new(session.clone(), msg.clone());
 		let state = Watch::new(state);
 
@@ -89,7 +89,7 @@ impl Subscribe {
 
 pub(super) struct SubscribeWeak {
 	state: WatchWeak<SubscribeState>,
-	session: Session,
+	session: Subscriber,
 	msg: control::Subscribe,
 }
 
@@ -104,7 +104,7 @@ impl SubscribeWeak {
 }
 
 struct SubscribeState {
-	session: Session,
+	session: Subscriber,
 	msg: control::Subscribe,
 
 	ok: Option<control::SubscribeOk>,
@@ -114,7 +114,7 @@ struct SubscribeState {
 }
 
 impl SubscribeState {
-	fn new(session: Session, msg: control::Subscribe) -> Self {
+	fn new(session: Subscriber, msg: control::Subscribe) -> Self {
 		Self {
 			session,
 			msg,

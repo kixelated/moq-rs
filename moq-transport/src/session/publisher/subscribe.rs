@@ -5,17 +5,19 @@ use crate::{
 	error::{SubscribeError, WriteError},
 };
 
-use super::{DatagramHeader, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Session, TrackHeader, TrackStream};
+use super::{
+	DatagramHeader, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Publisher, TrackHeader, TrackStream,
+};
 
 #[derive(Clone)]
 pub struct Subscribe {
-	session: Session,
+	session: Publisher,
 	msg: control::Subscribe,
 	state: Arc<Mutex<SubscribeState>>,
 }
 
 impl Subscribe {
-	pub(super) fn new(session: Session, msg: control::Subscribe) -> Self {
+	pub(super) fn new(session: Publisher, msg: control::Subscribe) -> Self {
 		let state = SubscribeState::new(session.clone(), msg.id);
 		Self { session, msg, state }
 	}
@@ -143,7 +145,7 @@ impl Subscribe {
 #[derive(Clone)]
 pub(super) struct SubscribeWeak {
 	state: Weak<Mutex<SubscribeState>>,
-	session: Session,
+	session: Publisher,
 	msg: control::Subscribe,
 }
 
@@ -158,7 +160,7 @@ impl SubscribeWeak {
 }
 
 struct SubscribeState {
-	session: Session,
+	session: Publisher,
 	id: u64,
 
 	ok: bool,
@@ -167,7 +169,7 @@ struct SubscribeState {
 }
 
 impl SubscribeState {
-	fn new(session: Session, id: u64) -> Arc<Mutex<Self>> {
+	fn new(session: Publisher, id: u64) -> Arc<Mutex<Self>> {
 		Arc::new(Mutex::new(Self {
 			session,
 			id,

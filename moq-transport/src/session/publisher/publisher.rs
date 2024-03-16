@@ -6,29 +6,41 @@ use std::{
 use crate::{
 	control,
 	error::{AnnounceError, SessionError, SubscribeError},
+	setup,
 	util::Queue,
+	Session,
 };
 
 use super::{Announce, AnnounceWeak, Subscribe, SubscribePending, SubscribeWeak};
 
 #[derive(Clone)]
-pub struct Session {
+pub struct Publisher {
 	announces: Arc<Mutex<HashMap<String, AnnounceWeak>>>,
 
 	subscribes: Arc<Mutex<HashMap<u64, SubscribeWeak>>>,
 	subscribes_pending: Queue<SubscribePending, SessionError>,
 
-	messages: Queue<control::Message, SessionError>,
+	outgoing: Queue<control::Message, SessionError>,
 }
 
-impl Session {
-	pub fn new() -> Self {
+impl Publisher {
+	pub(crate) fn new(outgoing: Queue<control::Message, SessionError>) -> Self {
 		Self {
 			announces: Default::default(),
 			subscribes: Default::default(),
-			messages: Default::default(),
 			subscribes_pending: Default::default(),
+			outgoing,
 		}
+	}
+
+	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
+	}
+
+	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
 	}
 
 	pub async fn announce(&mut self, namespace: String) -> Result<Announce, AnnounceError> {
@@ -50,14 +62,13 @@ impl Session {
 		self.subscribes_pending.pop().await
 	}
 
-	pub fn recv_message(&mut self, msg: control::Message) -> Result<(), SessionError> {
+	pub(crate) fn recv_message(&mut self, msg: control::Subscriber) -> Result<(), SessionError> {
 		match msg {
-			control::Message::AnnounceOk(msg) => self.recv_announce_ok(msg),
-			control::Message::AnnounceError(msg) => self.recv_announce_error(msg),
-			control::Message::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
-			control::Message::Subscribe(msg) => self.recv_subscribe(msg),
-			control::Message::Unsubscribe(msg) => self.recv_unsubscribe(msg),
-			_ => Err(SessionError::RoleViolation),
+			control::Subscriber::AnnounceOk(msg) => self.recv_announce_ok(msg),
+			control::Subscriber::AnnounceError(msg) => self.recv_announce_error(msg),
+			control::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
+			control::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
+			control::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
 		}
 	}
 
@@ -103,12 +114,11 @@ impl Session {
 		Ok(())
 	}
 
-	pub(super) fn send_message<M: Into<control::Message>>(&mut self, msg: M) -> Result<(), SessionError> {
-		self.messages.push(msg.into())
-	}
-
-	pub async fn next_message(&mut self) -> Result<control::Message, SessionError> {
-		self.messages.pop().await
+	pub fn send_message<T: Into<control::Publisher> + Into<control::Message>>(
+		&self,
+		msg: T,
+	) -> Result<(), SessionError> {
+		self.outgoing.push(msg.into())
 	}
 
 	fn get_announce(&self, namespace: &str) -> Option<Announce> {
@@ -127,8 +137,8 @@ impl Session {
 		self.announces.lock().unwrap().remove(namespace);
 	}
 
-	pub fn close(mut self, err: SessionError) {
-		self.messages.close(err.clone()).ok();
+	pub fn close(self, err: SessionError) {
+		self.outgoing.close(err.clone()).ok();
 		self.subscribes_pending.close(err).ok();
 	}
 }

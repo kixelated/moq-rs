@@ -1,25 +1,103 @@
 use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
-use tokio::select;
 use webtransport_quinn::{RecvStream, SendStream};
 
-use crate::{
-	control::{self, MessageSource},
-	data,
-	error::SessionError,
-	publisher, setup, subscriber,
-};
+use crate::setup;
+use crate::util::Queue;
+use crate::{control, data, error::SessionError};
+
+use super::{Publisher, Subscriber};
+
+type Messages<T> = Queue<T, SessionError>;
 
 pub struct Session {
 	webtransport: webtransport_quinn::Session,
 	control: (SendStream, RecvStream),
 
-	publisher: Option<publisher::Session>,
-	subscriber: Option<subscriber::Session>,
+	publisher: Option<Publisher>,
+	subscriber: Option<Subscriber>,
+	outgoing: Messages<control::Message>,
 }
 
 impl Session {
-	pub async fn accept(session: webtransport_quinn::Session, role: setup::Role) -> Result<Self, SessionError> {
+	fn new(
+		webtransport: webtransport_quinn::Session,
+		control: (SendStream, RecvStream),
+		role: setup::Role,
+	) -> (Self, Option<Publisher>, Option<Subscriber>) {
+		let outgoing = Messages::<control::Message>::default();
+
+		let publisher = role.is_publisher().then(|| Publisher::new(outgoing.clone()));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.clone()));
+
+		let session = Self {
+			webtransport,
+			control,
+			outgoing,
+			publisher: publisher.clone(),
+			subscriber: subscriber.clone(),
+		};
+
+		(session, publisher, subscriber)
+	}
+
+	pub async fn connect(
+		session: webtransport_quinn::Session,
+	) -> Result<(Session, Publisher, Subscriber), SessionError> {
+		let (session, publisher, subscribe) = Self::connect_role(session, setup::Role::Both).await?;
+		Ok((session, publisher.unwrap(), subscribe.unwrap()))
+	}
+
+	pub async fn connect_role(
+		session: webtransport_quinn::Session,
+		role: setup::Role,
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		let mut control = session.open_bi().await?;
+
+		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
+
+		let client = setup::Client {
+			role,
+			versions: versions.clone(),
+			params: Default::default(),
+		};
+
+		log::debug!("sending client SETUP: {:?}", client);
+		client.encode(&mut control.0).await?;
+
+		let server = setup::Server::decode(&mut control.1).await?;
+
+		log::debug!("received server SETUP: {:?}", server);
+
+		// Downgrade our role based on the server's role.
+		let role = match server.role {
+			setup::Role::Both => role,
+			setup::Role::Publisher => match role {
+				// Both sides are publishers only
+				setup::Role::Publisher => return Err(SessionError::RoleIncompatible(server.role, role)),
+				_ => setup::Role::Subscriber,
+			},
+			setup::Role::Subscriber => match role {
+				// Both sides are subscribers only
+				setup::Role::Subscriber => return Err(SessionError::RoleIncompatible(server.role, role)),
+				_ => setup::Role::Publisher,
+			},
+		};
+
+		Ok(Session::new(session, control, role))
+	}
+
+	pub async fn accept(
+		session: webtransport_quinn::Session,
+	) -> Result<(Session, Publisher, Subscriber), SessionError> {
+		let (session, publisher, subscribe) = Self::accept_role(session, setup::Role::Both).await?;
+		Ok((session, publisher.unwrap(), subscribe.unwrap()))
+	}
+
+	pub async fn accept_role(
+		session: webtransport_quinn::Session,
+		role: setup::Role,
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
 		let mut control = session.accept_bi().await?;
 
 		let client = setup::Client::decode(&mut control.1).await?;
@@ -58,124 +136,65 @@ impl Session {
 
 		server.encode(&mut control.0).await?;
 
-		let publisher = server.role.is_publisher().then(|| publisher::Session::new());
-		let subscriber = server.role.is_subscriber().then(|| subscriber::Session::new());
-
-		let session = Self {
-			webtransport: session,
-			publisher,
-			subscriber,
-			control,
-		};
-
-		Ok(session)
+		Ok(Session::new(session, control, role))
 	}
 
-	pub async fn connect(session: webtransport_quinn::Session, role: setup::Role) -> Result<Self, SessionError> {
-		let mut control = session.open_bi().await?;
-
-		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
-
-		let client = setup::Client {
-			role,
-			versions: versions.clone(),
-			params: Default::default(),
-		};
-
-		log::debug!("sending client SETUP: {:?}", client);
-		client.encode(&mut control.0).await?;
-
-		let server = setup::Server::decode(&mut control.1).await?;
-
-		log::debug!("received server SETUP: {:?}", server);
-
-		// Downgrade our role based on the server's role.
-		let role = match server.role {
-			setup::Role::Both => role,
-			setup::Role::Publisher => match role {
-				// Both sides are publishers only
-				setup::Role::Publisher => return Err(SessionError::RoleIncompatible(server.role, role)),
-				_ => setup::Role::Subscriber,
-			},
-			setup::Role::Subscriber => match role {
-				// Both sides are subscribers only
-				setup::Role::Subscriber => return Err(SessionError::RoleIncompatible(server.role, role)),
-				_ => setup::Role::Publisher,
-			},
-		};
-
-		let publisher = role.is_publisher().then(|| publisher::Session::new());
-		let subscriber = role.is_subscriber().then(|| subscriber::Session::new());
-
-		let session = Self {
-			webtransport: session,
-			publisher,
-			subscriber,
-			control,
-		};
-
-		Ok(session)
-	}
-
-	pub fn publisher(&mut self) -> Option<&mut publisher::Session> {
-		self.publisher.as_mut()
-	}
-
-	pub fn subscriber(&mut self) -> Option<&mut subscriber::Session> {
-		self.subscriber.as_mut()
-	}
-
-	async fn run(self) -> Result<(), SessionError> {
+	pub async fn run(self) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
-
-		tasks.push(Self::send_messages(self.control.0, self.publisher.clone(), self.subscriber.clone()).boxed());
-		tasks.push(Self::recv_messages(self.control.1, self.publisher, self.subscriber.clone()).boxed());
-		tasks.push(Self::recv_streams(self.webtransport.clone(), self.subscriber).boxed());
-
-		let res: Option<Result<(), SessionError>> = tasks.next().await;
-		let err = res.unwrap().err().unwrap_or(SessionError::Internal);
-		self.webtransport.close(err.code() as u32, err.to_string().as_bytes());
-
-		Err(err)
+		tasks.push(Self::run_send(self.outgoing, self.control.0).boxed());
+		tasks.push(Self::run_recv(self.control.1, self.publisher, self.subscriber.clone()).boxed());
+		tasks.push(Self::run_streams(self.webtransport, self.subscriber).boxed());
+		tasks.next().await.unwrap()
 	}
 
-	async fn send_messages(
-		mut control: SendStream,
-		mut publisher: Option<publisher::Session>,
-		mut subscriber: Option<subscriber::Session>,
+	async fn run_send(
+		outgoing: Queue<control::Message, SessionError>,
+		mut stream: SendStream,
 	) -> Result<(), SessionError> {
 		loop {
-			let msg = select! {
-				res = publisher.as_mut().unwrap().next_message(), if publisher.is_some() => res?,
-				res = subscriber.as_mut().unwrap().next_message(), if subscriber.is_some() => res?,
+			let msg = outgoing.pop().await?;
+			msg.encode(&mut stream).await?;
+		}
+	}
+
+	async fn run_recv(
+		mut stream: RecvStream,
+		mut publisher: Option<Publisher>,
+		mut subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
+		loop {
+			let msg = control::Message::decode(&mut stream).await?;
+
+			let msg = match TryInto::<control::Publisher>::try_into(msg) {
+				Ok(msg) => {
+					subscriber
+						.as_mut()
+						.ok_or(SessionError::RoleViolation)?
+						.recv_message(msg)?;
+					continue;
+				}
+				Err(msg) => msg,
 			};
 
-			msg.encode(&mut control).await?;
+			let msg = match TryInto::<control::Subscriber>::try_into(msg) {
+				Ok(msg) => {
+					publisher
+						.as_mut()
+						.ok_or(SessionError::RoleViolation)?
+						.recv_message(msg)?;
+					continue;
+				}
+				Err(msg) => msg,
+			};
+
+			// TODO GOAWAY
+			unimplemented!("unknown message context: {:?}", msg)
 		}
 	}
 
-	async fn recv_messages(
-		mut control: RecvStream,
-		mut publisher: Option<publisher::Session>,
-		mut subscriber: Option<subscriber::Session>,
-	) -> Result<(), SessionError> {
-		loop {
-			let msg = control::Message::decode(&mut control).await?;
-			match msg.source() {
-				MessageSource::Publisher => subscriber
-					.as_mut()
-					.ok_or(SessionError::RoleViolation)?
-					.recv_message(msg),
-				MessageSource::Subscriber => publisher.as_mut().ok_or(SessionError::RoleViolation)?.recv_message(msg),
-				MessageSource::Client => todo!("client messages"),
-				MessageSource::Server => todo!("server messages"),
-			}?;
-		}
-	}
-
-	async fn recv_streams(
+	async fn run_streams(
 		webtransport: webtransport_quinn::Session,
-		subscriber: Option<subscriber::Session>,
+		subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
@@ -194,7 +213,7 @@ impl Session {
 
 	async fn recv_stream(
 		mut stream: webtransport_quinn::RecvStream,
-		mut subscriber: subscriber::Session,
+		mut subscriber: Subscriber,
 	) -> Result<(), SessionError> {
 		let header = data::Header::decode(&mut stream).await?;
 		subscriber.recv_stream(header, stream)
