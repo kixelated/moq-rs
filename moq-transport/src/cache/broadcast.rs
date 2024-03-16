@@ -12,48 +12,34 @@
 //! The broadcast is automatically closed with [CacheError::Done] when [Publisher] is dropped, or all [Subscriber]s are dropped.
 use std::{
 	collections::{hash_map, HashMap},
-	fmt,
 	ops::Deref,
 	sync::Arc,
 };
 
+use super::{Track, TrackPublisher, TrackSubscriber};
 use crate::{error::CacheError, util::Watch};
-
-use super::track;
-
-/// Create a new broadcast.
-pub fn new(id: &str) -> (Publisher, Subscriber) {
-	let state = Watch::new(State::default());
-	let info = Arc::new(Info { id: id.to_string() });
-
-	let publisher = Publisher::new(state.clone(), info.clone());
-	let subscriber = Subscriber::new(state, info);
-
-	(publisher, subscriber)
-}
 
 /// Static information about a broadcast.
 #[derive(Debug)]
-pub struct Info {
+pub struct Broadcast {
 	pub id: String,
 }
 
 /// Dynamic information about the broadcast.
-#[derive(Debug)]
-struct State {
-	tracks: HashMap<String, track::Subscriber>,
+struct BroadcastState {
+	tracks: HashMap<String, TrackSubscriber>,
 	closed: Result<(), CacheError>,
 }
 
-impl State {
-	pub fn get(&self, name: &str) -> Result<Option<track::Subscriber>, CacheError> {
+impl BroadcastState {
+	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, CacheError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
 			None => self.closed.clone().map(|_| None),
 		}
 	}
 
-	pub fn insert(&mut self, track: track::Subscriber) -> Result<(), CacheError> {
+	pub fn insert(&mut self, track: TrackSubscriber) -> Result<(), CacheError> {
 		match self.tracks.entry(track.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate),
 			hash_map::Entry::Vacant(v) => v.insert(track),
@@ -62,7 +48,7 @@ impl State {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, name: &str) -> Option<track::Subscriber> {
+	pub fn remove(&mut self, name: &str) -> Option<TrackSubscriber> {
 		self.tracks.remove(name)
 	}
 
@@ -73,7 +59,7 @@ impl State {
 	}
 }
 
-impl Default for State {
+impl Default for BroadcastState {
 	fn default() -> Self {
 		Self {
 			tracks: HashMap::new(),
@@ -85,31 +71,38 @@ impl Default for State {
 /// Publish new tracks for a broadcast by name.
 // TODO remove Clone
 #[derive(Clone)]
-pub struct Publisher {
-	state: Watch<State>,
-	info: Arc<Info>,
-	_dropped: Arc<Dropped>,
+pub struct BroadcastPublisher {
+	state: Watch<BroadcastState>,
+	info: Arc<Broadcast>,
+	subscriber: BroadcastSubscriber,
 }
 
-impl Publisher {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+impl BroadcastPublisher {
+	fn new(info: Broadcast) -> Self {
+		let state = Watch::new(BroadcastState::default());
+		let info = Arc::new(info);
+		let subscriber = BroadcastSubscriber::new(state.clone(), info.clone());
+
+		Self {
+			state,
+			info,
+			subscriber,
+		}
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
-	pub fn create_track(&mut self, name: &str) -> Result<track::Publisher, CacheError> {
-		let (publisher, subscriber) = track::new(name);
-		self.state.lock_mut().insert(subscriber)?;
+	pub fn create_track(&mut self, track: Track) -> Result<TrackPublisher, CacheError> {
+		let publisher = TrackPublisher::new(track);
+		self.state.lock_mut().insert(publisher.subscribe())?;
 		Ok(publisher)
 	}
 
 	/// Insert a track into the broadcast.
-	pub fn insert_track(&mut self, track: track::Subscriber) -> Result<(), CacheError> {
+	pub fn insert_track(&mut self, track: TrackSubscriber) -> Result<(), CacheError> {
 		self.state.lock_mut().insert(track)
 	}
 
-	pub fn remove_track(&mut self, track: &str) -> Option<track::Subscriber> {
+	pub fn remove_track(&mut self, track: &str) -> Option<TrackSubscriber> {
 		self.state.lock_mut().remove(track)
 	}
 
@@ -119,20 +112,11 @@ impl Publisher {
 	}
 }
 
-impl Deref for Publisher {
-	type Target = Info;
+impl Deref for BroadcastPublisher {
+	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-impl fmt::Debug for Publisher {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Publisher")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.finish()
 	}
 }
 
@@ -140,20 +124,18 @@ impl fmt::Debug for Publisher {
 ///
 /// This can be cloned to create handles.
 #[derive(Clone)]
-pub struct Subscriber {
-	state: Watch<State>,
-	info: Arc<Info>,
-	_dropped: Arc<Dropped>,
+pub struct BroadcastSubscriber {
+	state: Watch<BroadcastState>,
+	info: Arc<Broadcast>,
 }
 
-impl Subscriber {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+impl BroadcastSubscriber {
+	fn new(state: Watch<BroadcastState>, info: Arc<Broadcast>) -> Self {
+		Self { state, info }
 	}
 
 	/// Get a track from the broadcast by name.
-	pub fn get_track(&self, name: &str) -> Result<Option<track::Subscriber>, CacheError> {
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, CacheError> {
 		self.state.lock().get(name)
 	}
 
@@ -179,38 +161,10 @@ impl Subscriber {
 	}
 }
 
-impl Deref for Subscriber {
-	type Target = Info;
+impl Deref for BroadcastSubscriber {
+	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-impl fmt::Debug for Subscriber {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Subscriber")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.finish()
-	}
-}
-
-// A handle that closes the broadcast when dropped:
-// - when all Subscribers are dropped or
-// - when Publisher and Unknown are dropped.
-struct Dropped {
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

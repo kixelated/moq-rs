@@ -33,13 +33,13 @@ impl Publisher {
 		}
 	}
 
-	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
-		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
+	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
-		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
+	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 

@@ -1,7 +1,4 @@
-use crate::{
-	coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError},
-	setup::Role,
-};
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
 use std::fmt;
 
 use super::{
@@ -103,16 +100,4 @@ message_types! {
 
 	// Misc
 	GoAway = 0x10,
-}
-
-impl Message {
-	pub fn source(&self) -> Role {
-		match self {
-			Message::Announce(_) | Message::Unannounce(_) => Role::Publisher,
-			Message::AnnounceOk(_) | Message::AnnounceError(_) | Message::AnnounceCancel(_) => Role::Subscriber,
-			Message::Subscribe(_) | Message::Unsubscribe(_) => Role::Subscriber,
-			Message::SubscribeOk(_) | Message::SubscribeError(_) | Message::SubscribeDone(_) => Role::Publisher,
-			Message::GoAway(_) => Role::Both, // TODO Client not role
-		}
-	}
 }

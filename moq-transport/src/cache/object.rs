@@ -8,26 +8,13 @@
 //! You can clone the [Subscriber] and each will read a copy of of all future chunks. (fanout)
 //!
 //! The fragment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
-use core::fmt;
 use std::{ops::Deref, sync::Arc};
 
 use crate::{error::CacheError, util::Watch};
 use bytes::Bytes;
 
-/// Create a new segment with the given info.
-pub fn new(info: Info) -> (Publisher, Subscriber) {
-	let state = Watch::new(State::default());
-	let info = Arc::new(info);
-
-	let publisher = Publisher::new(state.clone(), info.clone());
-	let subscriber = Subscriber::new(state, info);
-
-	(publisher, subscriber)
-}
-
 /// Static information about the segment.
-#[derive(Debug)]
-pub struct Info {
+pub struct ObjectHeader {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
 
@@ -42,7 +29,7 @@ pub struct Info {
 }
 
 /// Same as below but with a fully known payload.
-pub struct Full {
+pub struct Object {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
 
@@ -56,8 +43,8 @@ pub struct Full {
 	pub payload: Bytes,
 }
 
-impl From<Full> for Info {
-	fn from(info: Full) -> Self {
+impl From<Object> for ObjectHeader {
+	fn from(info: Object) -> Self {
 		Self {
 			group_id: info.group_id,
 			object_id: info.object_id,
@@ -67,7 +54,7 @@ impl From<Full> for Info {
 	}
 }
 
-struct State {
+struct ObjectState {
 	// The data that has been received thus far.
 	chunks: Vec<Bytes>,
 
@@ -75,7 +62,7 @@ struct State {
 	closed: Result<(), CacheError>,
 }
 
-impl State {
+impl ObjectState {
 	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -83,7 +70,7 @@ impl State {
 	}
 }
 
-impl Default for State {
+impl Default for ObjectState {
 	fn default() -> Self {
 		Self {
 			chunks: Vec::new(),
@@ -92,38 +79,32 @@ impl Default for State {
 	}
 }
 
-impl fmt::Debug for State {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		// We don't want to print out the contents, so summarize.
-		f.debug_struct("State").field("closed", &self.closed).finish()
-	}
-}
-
 /// Used to write data to a segment and notify subscribers.
-pub struct Publisher {
+pub struct ObjectPublisher {
 	// Mutable segment state.
-	state: Watch<State>,
+	state: Watch<ObjectState>,
 
 	// Immutable segment state.
-	info: Arc<Info>,
+	info: Arc<ObjectHeader>,
 
 	// The amount of promised data that has yet to be written.
 	remain: usize,
 
-	// Closes the segment when all Publishers are dropped.
-	_dropped: Arc<Dropped>,
+	subscriber: ObjectSubscriber,
 }
 
-impl Publisher {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		let remain = info.size;
+impl ObjectPublisher {
+	/// Create a new segment with the given info.
+	pub fn new(info: ObjectHeader) -> Self {
+		let state = Watch::new(ObjectState::default());
+		let info = Arc::new(info);
+		let subscriber = ObjectSubscriber::new(state.clone(), info.clone());
 
 		Self {
 			state,
 			info,
-			remain,
-			_dropped,
+			remain: 0,
+			subscriber,
 		}
 	}
 
@@ -141,6 +122,10 @@ impl Publisher {
 		Ok(())
 	}
 
+	pub fn subscribe(&self) -> ObjectSubscriber {
+		self.subscriber.clone()
+	}
+
 	/// Close the segment with an error.
 	pub fn close(self, mut err: CacheError) -> Result<(), CacheError> {
 		if err == CacheError::Done && self.remain != 0 {
@@ -152,50 +137,31 @@ impl Publisher {
 	}
 }
 
-impl Deref for Publisher {
-	type Target = Info;
+impl Deref for ObjectPublisher {
+	type Target = ObjectHeader;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
 }
 
-impl fmt::Debug for Publisher {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Publisher")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.finish()
-	}
-}
-
 /// Notified when a segment has new data available.
 #[derive(Clone)]
-pub struct Subscriber {
+pub struct ObjectSubscriber {
 	// Modify the segment state.
-	state: Watch<State>,
+	state: Watch<ObjectState>,
 
 	// Immutable segment state.
-	info: Arc<Info>,
+	info: Arc<ObjectHeader>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
-
-	// Dropped when all Subscribers are dropped.
-	_dropped: Arc<Dropped>,
 }
 
-impl Subscriber {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-
-		Self {
-			state,
-			info,
-			index: 0,
-			_dropped,
-		}
+impl ObjectSubscriber {
+	fn new(state: Watch<ObjectState>, info: Arc<ObjectHeader>) -> Self {
+		Self { state, info, index: 0 }
 	}
 
 	/// Block until the next chunk of bytes is available.
@@ -221,37 +187,10 @@ impl Subscriber {
 	}
 }
 
-impl Deref for Subscriber {
-	type Target = Info;
+impl Deref for ObjectSubscriber {
+	type Target = ObjectHeader;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-impl fmt::Debug for Subscriber {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Subscriber")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.field("index", &self.index)
-			.finish()
-	}
-}
-
-struct Dropped {
-	// Modify the segment state.
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

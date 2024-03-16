@@ -7,27 +7,15 @@
 //! The subscriber can be cloned, in which case each subscriber receives a copy of each object. (fanout)
 //!
 //! The stream is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
-use core::fmt;
 use std::{ops::Deref, sync::Arc};
 
 use crate::{error::CacheError, util::Watch};
 
-use super::object;
-
-/// Create a new stream with the given info.
-pub fn new(info: Info) -> (Publisher, Subscriber) {
-	let state = Watch::new(State::default());
-	let info = Arc::new(info);
-
-	let publisher = Publisher::new(state.clone(), info.clone());
-	let subscriber = Subscriber::new(state, info);
-
-	(publisher, subscriber)
-}
+use super::{ObjectHeader, ObjectPublisher, ObjectSubscriber};
 
 /// Static information about the stream.
 #[derive(Debug)]
-pub struct Info {
+pub struct Group {
 	// The sequence number of the stream within the track.
 	// NOTE: These may be received out of order or with gaps.
 	pub id: u64,
@@ -36,15 +24,15 @@ pub struct Info {
 	pub send_order: u64,
 }
 
-struct State {
+struct GroupState {
 	// The data that has been received thus far.
-	objects: Vec<object::Subscriber>,
+	objects: Vec<ObjectSubscriber>,
 
 	// Set when the publisher is dropped.
 	closed: Result<(), CacheError>,
 }
 
-impl State {
+impl GroupState {
 	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -52,7 +40,7 @@ impl State {
 	}
 }
 
-impl Default for State {
+impl Default for GroupState {
 	fn default() -> Self {
 		Self {
 			objects: Vec::new(),
@@ -61,38 +49,32 @@ impl Default for State {
 	}
 }
 
-impl fmt::Debug for State {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("State")
-			.field("objects", &self.objects)
-			.field("closed", &self.closed)
-			.finish()
-	}
-}
-
 /// Used to write data to a stream and notify subscribers.
-pub struct Publisher {
+pub struct GroupPublisher {
 	// Mutable stream state.
-	state: Watch<State>,
+	state: Watch<GroupState>,
 
 	// Immutable stream state.
-	info: Arc<Info>,
+	info: Arc<Group>,
 
 	// The next object sequence number to use.
 	next: u64,
 
-	// Closes the stream when all Publishers are dropped.
-	_dropped: Arc<Dropped>,
+	// A subscriber
+	subscriber: GroupSubscriber,
 }
 
-impl Publisher {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
+impl GroupPublisher {
+	pub fn new(info: Group) -> Self {
+		let state = Watch::new(GroupState::default());
+		let info = Arc::new(info);
+		let subscriber = GroupSubscriber::new(state.clone(), info.clone());
+
 		Self {
 			state,
 			info,
 			next: 0,
-			_dropped,
+			subscriber,
 		}
 	}
 
@@ -106,8 +88,8 @@ impl Publisher {
 	/// Write an object over multiple writes.
 	///
 	/// BAD STUFF will happen if the size is wrong.
-	pub fn create_object_chunked(&mut self, size: usize) -> Result<object::Publisher, CacheError> {
-		let (publisher, subscriber) = object::new(object::Info {
+	pub fn create_object_chunked(&mut self, size: usize) -> Result<ObjectPublisher, CacheError> {
+		let publisher = ObjectPublisher::new(ObjectHeader {
 			group_id: self.info.id,
 			object_id: self.next.try_into().unwrap(),
 			send_order: self.info.send_order,
@@ -117,8 +99,13 @@ impl Publisher {
 
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
-		state.objects.push(subscriber);
+		state.objects.push(publisher.subscribe());
 		Ok(publisher)
+	}
+
+	/// Creates a subscriber for the group with the initial state.
+	pub fn subscribe(&self) -> GroupSubscriber {
+		self.subscriber.clone()
 	}
 
 	/// Close the stream with an error.
@@ -127,54 +114,35 @@ impl Publisher {
 	}
 }
 
-impl Deref for Publisher {
-	type Target = Info;
+impl Deref for GroupPublisher {
+	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
 }
 
-impl fmt::Debug for Publisher {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Publisher")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.finish()
-	}
-}
-
 /// Notified when a stream has new data available.
 #[derive(Clone)]
-pub struct Subscriber {
+pub struct GroupSubscriber {
 	// Modify the stream state.
-	state: Watch<State>,
+	state: Watch<GroupState>,
 
 	// Immutable stream state.
-	info: Arc<Info>,
+	info: Arc<Group>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
-
-	// Dropped when all Subscribers are dropped.
-	_dropped: Arc<Dropped>,
 }
 
-impl Subscriber {
-	fn new(state: Watch<State>, info: Arc<Info>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-
-		Self {
-			state,
-			info,
-			index: 0,
-			_dropped,
-		}
+impl GroupSubscriber {
+	fn new(state: Watch<GroupState>, info: Arc<Group>) -> Self {
+		Self { state, info, index: 0 }
 	}
 
 	/// Block until the next object is available.
-	pub async fn object(&mut self) -> Result<object::Subscriber, CacheError> {
+	pub async fn object(&mut self) -> Result<ObjectSubscriber, CacheError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -193,44 +161,17 @@ impl Subscriber {
 	}
 }
 
-impl Deref for Subscriber {
-	type Target = Info;
+impl Deref for GroupSubscriber {
+	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
 }
 
-impl fmt::Debug for Subscriber {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Subscriber")
-			.field("state", &self.state)
-			.field("info", &self.info)
-			.field("index", &self.index)
-			.finish()
-	}
-}
-
-struct Dropped {
-	// Modify the stream state.
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
-	}
-}
-
-/// A subset of Object::Info, since we use the group's info.
+/// A subset of Object, since we use the group's info.
 #[derive(Debug)]
-pub struct ObjectInfo {
+pub struct GroupObject {
 	// The sequence number of the object within the group.
 	pub object_id: u64,
 
