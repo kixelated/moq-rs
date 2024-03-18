@@ -161,6 +161,9 @@ pub enum ReadError {
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum WriteError {
+	#[error("webtransport error: {0}")]
+	Session(#[from] webtransport_quinn::SessionError),
+
 	#[error("subscribe error: {0}")]
 	Subscribe(#[from] SubscribeError),
 
@@ -196,6 +199,24 @@ pub enum CacheError {
 
 	#[error("multiple stream modes")]
 	Mode,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ServeError {
+	#[error("session error: {0}")]
+	Session(#[from] SessionError),
+
+	#[error("announce error: {0}")]
+	Announce(#[from] AnnounceError),
+
+	#[error("subscribe error: {0}")]
+	Subscribe(#[from] SubscribeError),
+
+	#[error("cache error: {0}")]
+	Cache(#[from] CacheError),
+
+	#[error("write error: {0}")]
+	Write(#[from] WriteError),
 }
 
 /*

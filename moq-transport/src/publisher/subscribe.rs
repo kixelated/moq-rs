@@ -5,9 +5,7 @@ use crate::{
 	error::{SubscribeError, WriteError},
 };
 
-use super::{
-	DatagramHeader, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Publisher, TrackHeader, TrackStream,
-};
+use super::{Datagram, GroupHeader, GroupStream, ObjectHeader, ObjectStream, Publisher, TrackHeader, TrackStream};
 
 #[derive(Clone)]
 pub struct Subscribe {
@@ -30,16 +28,10 @@ impl Subscribe {
 		self.msg.track_name.as_str()
 	}
 
-	pub(super) fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
-		self.state.lock().unwrap().serve(group_id, object_id)
-	}
-
-	pub async fn serve_track(
-		&mut self,
-		mut stream: webtransport_quinn::SendStream,
-		header: TrackHeader,
-	) -> Result<TrackStream, WriteError> {
+	pub async fn serve_track(&mut self, header: TrackHeader) -> Result<TrackStream, WriteError> {
 		self.closed()?;
+
+		let mut stream = self.session.webtransport().open_uni().await?;
 
 		let header = data::TrackHeader {
 			subscribe_id: self.msg.id,
@@ -52,12 +44,10 @@ impl Subscribe {
 		Ok(track)
 	}
 
-	pub async fn serve_group(
-		&mut self,
-		mut stream: webtransport_quinn::SendStream,
-		header: GroupHeader,
-	) -> Result<GroupStream, WriteError> {
+	pub async fn serve_group(&mut self, header: GroupHeader) -> Result<GroupStream, WriteError> {
 		self.closed()?;
+
+		let mut stream = self.session.webtransport().open_uni().await?;
 
 		let header = data::GroupHeader {
 			subscribe_id: self.msg.id,
@@ -72,41 +62,53 @@ impl Subscribe {
 		Ok(group)
 	}
 
-	pub async fn serve_object(
-		&mut self,
-		mut stream: webtransport_quinn::SendStream,
-		header: ObjectHeader,
-	) -> Result<ObjectStream, WriteError> {
-		// TODO call this on payload write instead
-		self.state.lock().unwrap().serve(header.group_id, header.object_id)?;
+	pub async fn serve_object(&mut self, header: ObjectHeader) -> Result<ObjectStream, WriteError> {
+		let mut stream = self.session.webtransport().open_uni().await?;
 
-		let header = data::GroupHeader {
-			subscribe_id: self.msg.id,
-			track_alias: self.msg.track_alias,
-			group_id: header.group_id,
-			send_order: header.send_order,
-		};
-		header.encode(&mut stream).await?;
-
-		let object = ObjectStream::new(stream);
-
-		Ok(object)
-	}
-
-	pub fn serve_datagram(&mut self, header: DatagramHeader, _payload: &[u8]) -> Result<(), SubscribeError> {
-		self.state.lock().unwrap().serve(header.group_id, header.object_id)?;
-
-		let _header = data::DatagramHeader {
+		let header = data::ObjectHeader {
 			subscribe_id: self.msg.id,
 			track_alias: self.msg.track_alias,
 			group_id: header.group_id,
 			object_id: header.object_id,
 			send_order: header.send_order,
 		};
+		header.encode(&mut stream).await?;
+
+		let object = ObjectStream::new(stream);
+
+		// TODO call this on payload write instead
+		self.state
+			.lock()
+			.unwrap()
+			.update_max(header.group_id, header.object_id)?;
+
+		Ok(object)
+	}
+
+	pub fn serve_datagram(&mut self, datagram: Datagram) -> Result<(), SubscribeError> {
+		let _header = data::Datagram {
+			subscribe_id: self.msg.id,
+			track_alias: self.msg.track_alias,
+			group_id: datagram.group_id,
+			object_id: datagram.object_id,
+			send_order: datagram.send_order,
+			payload: datagram.payload,
+		};
 
 		unimplemented!("TODO encode datagram");
 
-		// self.session.webtransport().send_datagram(&header, &payload)?;
+		/*
+		self.session.webtransport().send_datagram(&header, &payload)?;
+
+		self.state
+			.lock()
+			.unwrap()
+			.update_max(header.group_id, header.object_id)?;
+		*/
+	}
+
+	pub(super) fn update_max(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
+		self.state.lock().unwrap().update_max(group_id, object_id)
 	}
 
 	pub fn close(&mut self, err: SubscribeError) -> Result<(), SubscribeError> {
@@ -212,7 +214,7 @@ impl SubscribeState {
 		Ok(())
 	}
 
-	fn serve(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
+	fn update_max(&mut self, group_id: u64, object_id: u64) -> Result<(), SubscribeError> {
 		self.closed()?;
 
 		if let Some((max_group, max_object)) = self.max {
@@ -238,10 +240,10 @@ pub struct SubscribePending {
 
 pub struct SubscribeResponse {
 	// The maximum group/object seen thus far
-	latest: Option<(u64, u64)>,
+	pub latest: Option<(u64, u64)>,
 
 	// The amount of seconds before we'll terminate the subscription
-	expires: Option<u64>,
+	pub expires: Option<u64>,
 }
 
 impl SubscribePending {

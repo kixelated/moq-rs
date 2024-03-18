@@ -27,7 +27,9 @@ impl Session {
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
 		let outgoing = Messages::<control::Message>::default();
 
-		let publisher = role.is_publisher().then(|| Publisher::new(outgoing.clone()));
+		let publisher = role
+			.is_publisher()
+			.then(|| Publisher::new(webtransport.clone(), outgoing.clone()));
 		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.clone()));
 
 		let session = Self {

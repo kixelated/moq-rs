@@ -9,7 +9,7 @@
 //! The stream is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 use std::{ops::Deref, sync::Arc};
 
-use crate::{error::CacheError, util::Watch};
+use crate::{error::CacheError, publisher, util::Watch, ServeError};
 
 use super::{ObjectHeader, ObjectPublisher, ObjectSubscriber};
 
@@ -78,17 +78,17 @@ impl GroupPublisher {
 		}
 	}
 
-	/// Write an object with the given payload.
-	pub fn create_object(&mut self, payload: bytes::Bytes) -> Result<(), CacheError> {
-		let mut object = self.create_object_chunked(payload.len())?;
-		object.chunk(payload)?;
+	/// Create the next object ID with the given payload.
+	pub fn write_object(&mut self, payload: bytes::Bytes) -> Result<(), CacheError> {
+		let mut object = self.create_object(payload.len())?;
+		object.write(payload)?;
 		Ok(())
 	}
 
 	/// Write an object over multiple writes.
 	///
 	/// BAD STUFF will happen if the size is wrong.
-	pub fn create_object_chunked(&mut self, size: usize) -> Result<ObjectPublisher, CacheError> {
+	pub fn create_object(&mut self, size: usize) -> Result<ObjectPublisher, CacheError> {
 		let publisher = ObjectPublisher::new(ObjectHeader {
 			group_id: self.info.id,
 			object_id: self.next.try_into().unwrap(),
@@ -141,6 +141,10 @@ impl GroupSubscriber {
 		Self { state, info, index: 0 }
 	}
 
+	pub fn latest(&self) -> u64 {
+		self.state.lock().objects.len() as u64
+	}
+
 	/// Block until the next object is available.
 	pub async fn object(&mut self) -> Result<ObjectSubscriber, CacheError> {
 		loop {
@@ -157,6 +161,29 @@ impl GroupSubscriber {
 			};
 
 			notify.await; // Try again when the state changes
+		}
+	}
+
+	pub async fn serve(mut self, mut dst: publisher::Subscribe) -> Result<(), ServeError> {
+		let mut dst = dst
+			.serve_group(publisher::GroupHeader {
+				group_id: self.id,
+				send_order: self.send_order,
+			})
+			.await?;
+
+		loop {
+			let mut src = self.object().await?;
+
+			dst.write_object(publisher::GroupObject {
+				object_id: src.object_id,
+				size: src.size,
+			})
+			.await?;
+
+			while let Some(chunk) = src.chunk().await? {
+				dst.write_payload(&chunk).await?;
+			}
 		}
 	}
 }

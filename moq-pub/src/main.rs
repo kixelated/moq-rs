@@ -7,7 +7,7 @@ mod cli;
 use cli::*;
 
 use moq_pub::media::Media;
-use moq_transport::cache::broadcast;
+use moq_transport::cache;
 
 // TODO: clap complete
 
@@ -24,7 +24,8 @@ async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 
 	let input = tokio::io::stdin();
-	let (publisher, subscriber) = broadcast::new("");
+	let publisher = cache::BroadcastPublisher::new(&config.name);
+	let broadcast = publisher.subscribe();
 	let mut media = Media::new(input, publisher).await?;
 
 	// Create a list of acceptable root certificates.
@@ -76,14 +77,15 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create WebTransport session")?;
 
-	let session = moq_transport::Session::Connect(session, moq_transport::setup::Role::Publisher)
+	let (session, publisher) = moq_transport::Publisher::connect(session)
 		.await
-		.context("failed to create MoQ Transport session")?;
+		.context("failed to create MoQ Transport publisher")?;
 
 	// TODO run a task that returns a 404 for all unknown subscriptions.
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
 		res = media.run() => res.context("media error")?,
+		res = broadcast.serve(publisher) => res.context("publisher error")?,
 	}
 
 	Ok(())

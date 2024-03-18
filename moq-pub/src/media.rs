@@ -1,5 +1,5 @@
 use anyhow::{self, Context};
-use moq_transport::cache::{broadcast, group, track};
+use moq_transport::cache::{BroadcastPublisher, Group, GroupPublisher, TrackPublisher};
 use mp4::{self, ReadBox};
 use serde_json::json;
 use std::cmp::max;
@@ -9,18 +9,13 @@ use std::time;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub struct Media<I> {
-	// We hold on to publisher so we don't close then while media is still being published.
-	_broadcast: broadcast::Publisher,
-	_catalog: track::Publisher,
-	_init: track::Publisher,
-
 	// Tracks based on their track ID.
 	tracks: HashMap<u32, Track>,
 	input: I,
 }
 
 impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
-	pub async fn new(mut input: I, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
+	pub async fn new(mut input: I, mut broadcast: BroadcastPublisher) -> anyhow::Result<Self> {
 		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
@@ -40,13 +35,10 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?;
-		let mut init_segment = init_track.create_segment(segment::Info {
-			sequence: 0,
-			priority: 0,
-		})?;
 
-		// Write the init segment to the track.
-		init_segment.write(init.into())?;
+		init_track
+			.create_group(Group { id: 0, send_order: 0 })?
+			.write_object(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -67,13 +59,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		// Create the catalog track
 		Self::serve_catalog(&mut catalog, &init_track.name, &moov)?;
 
-		Ok(Media {
-			_broadcast: broadcast,
-			_catalog: catalog,
-			_init: init_track,
-			tracks,
-			input,
-		})
+		Ok(Media { tracks, input })
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -120,14 +106,11 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 	}
 
 	fn serve_catalog(
-		track: &mut track::Publisher,
+		track: &mut TrackPublisher,
 		init_track_name: &str,
 		moov: &mp4::MoovBox,
 	) -> Result<(), anyhow::Error> {
-		let mut segment = track.create_segment(segment::Info {
-			sequence: 0,
-			priority: 0,
-		})?;
+		let mut segment = track.create_group(Group { id: 0, send_order: 0 })?;
 
 		let mut tracks = Vec::new();
 
@@ -209,7 +192,7 @@ impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		segment.write(catalog_str.into())?;
+		segment.write_object(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -254,10 +237,10 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 struct Track {
 	// The track we're producing
-	track: track::Publisher,
+	track: TrackPublisher,
 
 	// The current segment
-	current: Option<segment::Publisher>,
+	current: Option<GroupPublisher>,
 
 	// The number of units per second.
 	timescale: u64,
@@ -267,7 +250,7 @@ struct Track {
 }
 
 impl Track {
-	fn new(track: track::Publisher, timescale: u64) -> Self {
+	fn new(track: TrackPublisher, timescale: u64) -> Self {
 		Self {
 			track,
 			sequence: 0,
@@ -280,7 +263,7 @@ impl Track {
 		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				current.write(raw.into())?;
+				current.write_object(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -296,17 +279,17 @@ impl Track {
 			.context("timestamp too large")?;
 
 		// Create a new segment.
-		let mut segment = self.track.create_segment(segment::Info {
-			sequence: self.sequence,
+		let mut segment = self.track.create_group(Group {
+			id: self.sequence,
 
 			// Newer segments are higher priority
-			priority: u32::MAX.checked_sub(timestamp).context("priority too large")?,
+			send_order: u32::MAX.checked_sub(timestamp).context("priority too large")?.into(),
 		})?;
 
 		self.sequence += 1;
 
 		// Create a single fragment for the segment that we will keep appending.
-		segment.write(raw.into())?;
+		segment.write_object(raw.into())?;
 
 		// Save for the next iteration
 		self.current = Some(segment);
@@ -316,7 +299,7 @@ impl Track {
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let segment = self.current.as_mut().context("missing current fragment")?;
-		segment.write(raw.into())?;
+		segment.write_object(raw.into())?;
 
 		Ok(())
 	}

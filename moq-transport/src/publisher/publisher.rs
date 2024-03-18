@@ -13,10 +13,12 @@ use crate::{
 
 use super::{Announce, AnnounceWeak, Subscribe, SubscribePending, SubscribeWeak};
 
+// TODO remove Clone.
 #[derive(Clone)]
 pub struct Publisher {
-	announces: Arc<Mutex<HashMap<String, AnnounceWeak>>>,
+	webtransport: webtransport_quinn::Session,
 
+	announces: Arc<Mutex<HashMap<String, AnnounceWeak>>>,
 	subscribes: Arc<Mutex<HashMap<u64, SubscribeWeak>>>,
 	subscribes_pending: Queue<SubscribePending, SessionError>,
 
@@ -24,8 +26,12 @@ pub struct Publisher {
 }
 
 impl Publisher {
-	pub(crate) fn new(outgoing: Queue<control::Message, SessionError>) -> Self {
+	pub(crate) fn new(
+		webtransport: webtransport_quinn::Session,
+		outgoing: Queue<control::Message, SessionError>,
+	) -> Self {
 		Self {
+			webtransport,
 			announces: Default::default(),
 			subscribes: Default::default(),
 			subscribes_pending: Default::default(),
@@ -56,6 +62,14 @@ impl Publisher {
 		entry.insert(announce.clone().downgrade());
 
 		Ok(announce)
+	}
+
+	pub async fn unannounce(&mut self, namespace: &str) -> Result<(), AnnounceError> {
+		if let Some(mut announce) = self.get_announce(namespace) {
+			announce.close(AnnounceError::Cancel).ok();
+		}
+
+		Ok(())
 	}
 
 	pub async fn subscribed(&mut self) -> Result<SubscribePending, SessionError> {
@@ -135,6 +149,10 @@ impl Publisher {
 
 	pub(super) fn drop_announce(&mut self, namespace: &str) {
 		self.announces.lock().unwrap().remove(namespace);
+	}
+
+	pub(super) fn webtransport(&mut self) -> &mut webtransport_quinn::Session {
+		&mut self.webtransport
 	}
 
 	pub fn close(self, err: SessionError) {

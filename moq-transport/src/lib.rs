@@ -20,5 +20,5 @@ pub use error::*;
 pub use publisher::Publisher;
 pub use subscriber::Subscriber;
 
-mod session;
+pub mod session;
 pub use session::Session;

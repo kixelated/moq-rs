@@ -13,6 +13,7 @@ use crate::{
 
 use super::{Announce, AnnouncePending, AnnounceWeak, Subscribe, SubscribeOptions, SubscribePending, SubscribeWeak};
 
+// TODO remove Clone.
 #[derive(Clone)]
 pub struct Subscriber {
 	announces: Arc<Mutex<HashMap<String, AnnounceWeak>>>,

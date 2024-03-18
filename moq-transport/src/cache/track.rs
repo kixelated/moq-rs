@@ -12,26 +12,31 @@
 //!
 //! The track is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 
-use crate::{error::CacheError, util::Watch};
+use crate::{error::CacheError, publisher, util::Watch, ServeError};
 
 use super::{
-	datagram, Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber,
+	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber, Stream,
+	StreamPublisher, StreamSubscriber,
 };
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
+use futures::FutureExt;
 use std::{ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug)]
 pub struct Track {
+	pub namespace: String,
 	pub name: String,
 }
 
 // The state of the cache, depending on the mode>
 enum Cache {
 	Init,
-	// TODO Track,
+	Stream(StreamSubscriber),
 	Group(GroupSubscriber),
 	Object(Vec<ObjectSubscriber>),
-	Datagram(datagram::Datagram),
+	Datagram(Datagram),
 }
 
 struct TrackState {
@@ -97,7 +102,7 @@ impl TrackState {
 		Ok(())
 	}
 
-	pub fn insert_datagram(&mut self, datagram: datagram::Datagram) -> Result<(), CacheError> {
+	pub fn insert_datagram(&mut self, datagram: Datagram) -> Result<(), CacheError> {
 		self.closed.clone()?;
 
 		match &self.cache {
@@ -106,6 +111,20 @@ impl TrackState {
 		};
 
 		self.cache = Cache::Datagram(datagram);
+		self.epoch += 1;
+
+		Ok(())
+	}
+
+	pub fn set_stream(&mut self, stream: StreamSubscriber) -> Result<(), CacheError> {
+		self.closed.clone()?;
+
+		match &self.cache {
+			Cache::Init => {}
+			_ => return Err(CacheError::Mode),
+		};
+
+		self.cache = Cache::Stream(stream);
 		self.epoch += 1;
 
 		Ok(())
@@ -144,8 +163,6 @@ impl TrackPublisher {
 		}
 	}
 
-	// TODO support entire track as an stream
-
 	/// Create a group with the given info.
 	pub fn create_group(&mut self, info: Group) -> Result<GroupPublisher, CacheError> {
 		let publisher = GroupPublisher::new(info);
@@ -154,25 +171,36 @@ impl TrackPublisher {
 	}
 
 	/// Create an object with the given info and payload.
-	pub fn create_object(&mut self, full: Object) -> Result<(), CacheError> {
+	pub fn write_object(&mut self, full: Object) -> Result<(), CacheError> {
 		let payload = full.payload.clone();
 		let mut publisher = ObjectPublisher::new(full.into());
-		publisher.chunk(payload)?;
+		publisher.write(payload)?;
 		self.state.lock_mut().insert_object(publisher.subscribe())?;
 		Ok(())
 	}
 
 	/// Create an object with the given info and size, but no payload yet.
-	pub fn create_object_chunked(&mut self, info: ObjectHeader) -> Result<ObjectPublisher, CacheError> {
+	pub fn create_object(&mut self, info: ObjectHeader) -> Result<ObjectPublisher, CacheError> {
 		let publisher = ObjectPublisher::new(info);
 		self.state.lock_mut().insert_object(publisher.subscribe())?;
 		Ok(publisher)
 	}
 
 	/// Create a datagram that is not cached.
-	pub fn create_datagram(&mut self, info: datagram::Datagram) -> Result<(), CacheError> {
+	pub fn create_datagram(&mut self, info: Datagram) -> Result<(), CacheError> {
 		self.state.lock_mut().insert_datagram(info)?;
 		Ok(())
+	}
+
+	/// Create a single stream for the entire track, served in strict order.
+	pub fn create_stream(&mut self, send_order: u64) -> Result<StreamPublisher, CacheError> {
+		let publisher = StreamPublisher::new(Stream {
+			namespace: self.namespace.clone(),
+			name: self.name.clone(),
+			send_order,
+		});
+		self.state.lock_mut().set_stream(publisher.subscribe())?;
+		Ok(publisher)
 	}
 
 	pub fn subscribe(&self) -> TrackSubscriber {
@@ -215,6 +243,10 @@ impl TrackSubscriber {
 				if self.epoch != state.epoch {
 					match &state.cache {
 						Cache::Init => {}
+						Cache::Stream(stream) => {
+							self.epoch = state.epoch;
+							return Ok(stream.clone().into());
+						}
 						Cache::Group(group) => {
 							self.epoch = state.epoch;
 							return Ok(group.clone().into());
@@ -239,6 +271,38 @@ impl TrackSubscriber {
 			notify.await
 		}
 	}
+
+	// Returns the largest group/sequence
+	pub fn latest(&self) -> Option<(u64, u64)> {
+		let state = self.state.lock();
+		match &state.cache {
+			Cache::Init => None,
+			Cache::Datagram(datagram) => Some((datagram.group_id, datagram.object_id)),
+			Cache::Group(group) => Some((group.id, group.latest())),
+			Cache::Object(objects) => objects
+				.iter()
+				.max_by_key(|a| (a.group_id, a.object_id))
+				.map(|a| (a.group_id, a.object_id)),
+			Cache::Stream(stream) => stream.latest(),
+		}
+	}
+
+	pub async fn serve(mut self, dst: publisher::Subscribe) -> Result<(), ServeError> {
+		let mut tasks = FuturesUnordered::new();
+
+		loop {
+			tokio::select! {
+				next = self.next() =>
+					match next? {
+						TrackMode::Stream(stream) => return stream.serve(dst).await,
+						TrackMode::Group(group) => tasks.push(group.serve(dst.clone()).boxed()),
+						TrackMode::Object(object) => tasks.push(object.serve(dst.clone()).boxed()),
+						TrackMode::Datagram(datagram) => datagram.serve(dst.clone())?,
+					},
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
+			}
+		}
+	}
 }
 
 impl Deref for TrackSubscriber {
@@ -250,10 +314,16 @@ impl Deref for TrackSubscriber {
 }
 
 pub enum TrackMode {
-	// TODO Track
+	Stream(StreamSubscriber),
 	Group(GroupSubscriber),
 	Object(ObjectSubscriber),
 	Datagram(Datagram),
+}
+
+impl From<StreamSubscriber> for TrackMode {
+	fn from(subscriber: StreamSubscriber) -> Self {
+		Self::Stream(subscriber)
+	}
 }
 
 impl From<GroupSubscriber> for TrackMode {
@@ -268,7 +338,7 @@ impl From<ObjectSubscriber> for TrackMode {
 	}
 }
 
-impl From<datagram::Datagram> for TrackMode {
+impl From<Datagram> for TrackMode {
 	fn from(info: Datagram) -> Self {
 		Self::Datagram(info)
 	}

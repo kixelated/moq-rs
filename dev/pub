@@ -19,8 +19,8 @@ ADDR="${ADDR:-$HOST:$PORT}"
 # TODO use that random name if the host is not localhost
 NAME="${NAME:-bbb}"
 
-# Combine the host and name into a URL.
-URL="${URL:-"https://$ADDR/$NAME"}"
+# Combine the host into a URL.
+URL="${URL:-"https://$ADDR"}"
 
 # Default to a source video
 INPUT="${INPUT:-dev/source.mp4}"
@@ -37,4 +37,4 @@ ffmpeg -hide_banner -v quiet \
 	-an \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
 	-frag_duration 1 \
-	- | cargo run --bin moq-pub -- "$URL" "$@"
+	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"

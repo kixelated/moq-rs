@@ -63,7 +63,7 @@ impl GroupStream {
 			}
 		}
 
-		self.subscribe.serve(self.group_id, header.object_id)?;
+		self.subscribe.update_max(self.group_id, header.object_id)?;
 
 		self.max = Some(header.object_id);
 		self.remain = header.size;
@@ -128,13 +128,6 @@ impl TrackStream {
 		}
 	}
 
-	pub async fn write(&mut self, object: TrackObject, payload: &[u8]) -> Result<(), WriteError> {
-		self.write_object(object).await?;
-		self.write_payload(payload).await?;
-
-		Ok(())
-	}
-
 	// Advanced method to avoid buffering the entire payload.
 	pub async fn write_object(&mut self, object: TrackObject) -> Result<(), WriteError> {
 		// Make sure you don't screw up the size.
@@ -152,7 +145,7 @@ impl TrackStream {
 			}
 		}
 
-		self.subscribe.serve(object.group_id, object.object_id)?;
+		self.subscribe.update_max(object.group_id, object.object_id)?;
 
 		self.max = Some((object.group_id, object.object_id));
 		self.remain = object.size;

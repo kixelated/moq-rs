@@ -10,10 +10,11 @@
 //! The fragment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
 use std::{ops::Deref, sync::Arc};
 
-use crate::{error::CacheError, util::Watch};
+use crate::{error::CacheError, publisher, util::Watch, ServeError};
 use bytes::Bytes;
 
 /// Static information about the segment.
+#[derive(Clone)]
 pub struct ObjectHeader {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
@@ -29,6 +30,7 @@ pub struct ObjectHeader {
 }
 
 /// Same as below but with a fully known payload.
+#[derive(Clone)]
 pub struct Object {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
@@ -109,7 +111,7 @@ impl ObjectPublisher {
 	}
 
 	/// Write a new chunk of bytes.
-	pub fn chunk(&mut self, chunk: Bytes) -> Result<(), CacheError> {
+	pub fn write(&mut self, chunk: Bytes) -> Result<(), CacheError> {
 		if chunk.len() > self.remain {
 			return Err(CacheError::WrongSize);
 		}
@@ -184,6 +186,22 @@ impl ObjectSubscriber {
 
 			notify.await; // Try again when the state changes
 		}
+	}
+
+	pub async fn serve(mut self, mut dst: publisher::Subscribe) -> Result<(), ServeError> {
+		let mut dst = dst
+			.serve_object(publisher::ObjectHeader {
+				group_id: self.group_id,
+				object_id: self.object_id,
+				send_order: self.send_order,
+			})
+			.await?;
+
+		while let Some(chunk) = self.chunk().await? {
+			dst.write(&chunk).await?;
+		}
+
+		Ok(())
 	}
 }
 
