@@ -9,7 +9,20 @@ pub struct Stream {
 	pub name: String,
 	pub send_order: u64,
 }
-struct StreamState {
+
+impl Stream {
+	pub fn produce(self) -> (StreamPublisher, StreamSubscriber) {
+		let state = Watch::new(State::default());
+		let info = Arc::new(self);
+
+		let publisher = StreamPublisher::new(state.clone(), info.clone());
+		let subscriber = StreamSubscriber::new(state, info);
+
+		(publisher, subscriber)
+	}
+}
+
+struct State {
 	// The data that has been received thus far.
 	objects: Vec<Object>,
 
@@ -17,7 +30,7 @@ struct StreamState {
 	closed: Result<(), CacheError>,
 }
 
-impl StreamState {
+impl State {
 	pub fn insert_object(&mut self, object: Object) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.objects.push(object);
@@ -31,7 +44,7 @@ impl StreamState {
 	}
 }
 
-impl Default for StreamState {
+impl Default for State {
 	fn default() -> Self {
 		Self {
 			objects: Vec::new(),
@@ -43,37 +56,21 @@ impl Default for StreamState {
 /// Used to write data to a stream and notify subscribers.
 pub struct StreamPublisher {
 	// Mutable stream state.
-	state: Watch<StreamState>,
+	state: Watch<State>,
 
 	// Immutable stream state.
 	info: Arc<Stream>,
-
-	// A subscriber
-	subscriber: StreamSubscriber,
 }
 
 impl StreamPublisher {
-	pub fn new(info: Stream) -> Self {
-		let state = Watch::new(StreamState::default());
-		let info = Arc::new(info);
-		let subscriber = StreamSubscriber::new(state.clone(), info.clone());
-
-		Self {
-			state,
-			info,
-			subscriber,
-		}
+	fn new(state: Watch<State>, info: Arc<Stream>) -> Self {
+		Self { state, info }
 	}
 
 	/// Create an object with the given info and payload.
 	pub fn write_object(&mut self, info: Object) -> Result<(), CacheError> {
 		self.state.lock_mut().insert_object(info)?;
 		Ok(())
-	}
-
-	/// Creates a subscriber for the group with the initial state.
-	pub fn subscribe(&self) -> StreamSubscriber {
-		self.subscriber.clone()
 	}
 
 	/// Close the stream with an error.
@@ -94,7 +91,7 @@ impl Deref for StreamPublisher {
 #[derive(Clone)]
 pub struct StreamSubscriber {
 	// Modify the stream state.
-	state: Watch<StreamState>,
+	state: Watch<State>,
 
 	// Immutable stream state.
 	info: Arc<Stream>,
@@ -102,11 +99,19 @@ pub struct StreamSubscriber {
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
+
+	_dropped: Arc<Dropped>,
 }
 
 impl StreamSubscriber {
-	fn new(state: Watch<StreamState>, info: Arc<Stream>) -> Self {
-		Self { state, info, index: 0 }
+	fn new(state: Watch<State>, info: Arc<Stream>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self {
+			state,
+			info,
+			index: 0,
+			_dropped,
+		}
 	}
 
 	/// Block until the next object is available.
@@ -165,5 +170,21 @@ impl Deref for StreamSubscriber {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

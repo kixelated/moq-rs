@@ -30,6 +30,18 @@ pub struct Track {
 	pub name: String,
 }
 
+impl Track {
+	pub fn produce(self) -> (TrackPublisher, TrackSubscriber) {
+		let state = Watch::new(State::default());
+		let info = Arc::new(self);
+
+		let publisher = TrackPublisher::new(state.clone(), info.clone());
+		let subscriber = TrackSubscriber::new(state, info);
+
+		(publisher, subscriber)
+	}
+}
+
 // The state of the cache, depending on the mode>
 enum Cache {
 	Init,
@@ -39,7 +51,7 @@ enum Cache {
 	Datagram(Datagram),
 }
 
-struct TrackState {
+struct State {
 	cache: Cache,
 	epoch: usize,
 
@@ -47,7 +59,7 @@ struct TrackState {
 	closed: Result<(), CacheError>,
 }
 
-impl TrackState {
+impl State {
 	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -131,7 +143,7 @@ impl TrackState {
 	}
 }
 
-impl Default for TrackState {
+impl Default for State {
 	fn default() -> Self {
 		Self {
 			cache: Cache::Init,
@@ -143,46 +155,37 @@ impl Default for TrackState {
 
 /// Creates new streams for a track.
 pub struct TrackPublisher {
-	state: Watch<TrackState>,
+	state: Watch<State>,
 	info: Arc<Track>,
-	subscriber: TrackSubscriber,
 }
 
 impl TrackPublisher {
 	/// Create a track with the given name.
-	pub fn new(info: Track) -> Self {
-		let state = Watch::new(TrackState::default());
-		let info = Arc::new(info);
-
-		let subscriber = TrackSubscriber::new(state.clone(), info.clone());
-
-		Self {
-			state,
-			info,
-			subscriber,
-		}
+	fn new(state: Watch<State>, info: Arc<Track>) -> Self {
+		Self { state, info }
 	}
 
 	/// Create a group with the given info.
-	pub fn create_group(&mut self, info: Group) -> Result<GroupPublisher, CacheError> {
-		let publisher = GroupPublisher::new(info);
-		self.state.lock_mut().insert_group(publisher.subscribe())?;
+	pub fn create_group(&mut self, group: Group) -> Result<GroupPublisher, CacheError> {
+		let (publisher, subscriber) = group.produce();
+		self.state.lock_mut().insert_group(subscriber)?;
 		Ok(publisher)
 	}
 
 	/// Create an object with the given info and payload.
-	pub fn write_object(&mut self, full: Object) -> Result<(), CacheError> {
-		let payload = full.payload.clone();
-		let mut publisher = ObjectPublisher::new(full.into());
+	pub fn write_object(&mut self, object: Object) -> Result<(), CacheError> {
+		let payload = object.payload.clone();
+		let header = ObjectHeader::from(object);
+		let (mut publisher, subscriber) = header.produce();
 		publisher.write(payload)?;
-		self.state.lock_mut().insert_object(publisher.subscribe())?;
+		self.state.lock_mut().insert_object(subscriber)?;
 		Ok(())
 	}
 
 	/// Create an object with the given info and size, but no payload yet.
-	pub fn create_object(&mut self, info: ObjectHeader) -> Result<ObjectPublisher, CacheError> {
-		let publisher = ObjectPublisher::new(info);
-		self.state.lock_mut().insert_object(publisher.subscribe())?;
+	pub fn create_object(&mut self, object: ObjectHeader) -> Result<ObjectPublisher, CacheError> {
+		let (publisher, subscriber) = object.produce();
+		self.state.lock_mut().insert_object(subscriber)?;
 		Ok(publisher)
 	}
 
@@ -194,17 +197,14 @@ impl TrackPublisher {
 
 	/// Create a single stream for the entire track, served in strict order.
 	pub fn create_stream(&mut self, send_order: u64) -> Result<StreamPublisher, CacheError> {
-		let publisher = StreamPublisher::new(Stream {
+		let (publisher, subscriber) = Stream {
 			namespace: self.namespace.clone(),
 			name: self.name.clone(),
 			send_order,
-		});
-		self.state.lock_mut().set_stream(publisher.subscribe())?;
+		}
+		.produce();
+		self.state.lock_mut().set_stream(subscriber)?;
 		Ok(publisher)
-	}
-
-	pub fn subscribe(&self) -> TrackSubscriber {
-		self.subscriber.clone()
 	}
 
 	/// Close the stream with an error.
@@ -224,14 +224,21 @@ impl Deref for TrackPublisher {
 /// Receives new streams for a track.
 #[derive(Clone)]
 pub struct TrackSubscriber {
-	state: Watch<TrackState>,
+	state: Watch<State>,
 	info: Arc<Track>,
 	epoch: usize,
+	_dropped: Arc<Dropped>,
 }
 
 impl TrackSubscriber {
-	fn new(state: Watch<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, info, epoch: 0 }
+	fn new(state: Watch<State>, info: Arc<Track>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self {
+			state,
+			info,
+			epoch: 0,
+			_dropped,
+		}
 	}
 
 	/// Block until the next stream arrives
@@ -341,5 +348,21 @@ impl From<ObjectSubscriber> for TrackMode {
 impl From<Datagram> for TrackMode {
 	fn from(info: Datagram) -> Self {
 		Self::Datagram(info)
+	}
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

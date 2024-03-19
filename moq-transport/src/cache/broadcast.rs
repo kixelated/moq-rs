@@ -29,13 +29,31 @@ pub struct Broadcast {
 	pub namespace: String,
 }
 
+impl Broadcast {
+	pub fn new(namespace: &str) -> Self {
+		Self {
+			namespace: namespace.to_owned(),
+		}
+	}
+
+	pub fn produce(self) -> (BroadcastPublisher, BroadcastSubscriber) {
+		let state = Watch::new(State::default());
+		let info = Arc::new(self);
+
+		let publisher = BroadcastPublisher::new(state.clone(), info.clone());
+		let subscriber = BroadcastSubscriber::new(state, info);
+
+		(publisher, subscriber)
+	}
+}
+
 /// Dynamic information about the broadcast.
-struct BroadcastState {
+struct State {
 	tracks: HashMap<String, TrackSubscriber>,
 	closed: Result<(), CacheError>,
 }
 
-impl BroadcastState {
+impl State {
 	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, CacheError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
@@ -63,7 +81,7 @@ impl BroadcastState {
 	}
 }
 
-impl Default for BroadcastState {
+impl Default for State {
 	fn default() -> Self {
 		Self {
 			tracks: HashMap::new(),
@@ -74,43 +92,29 @@ impl Default for BroadcastState {
 
 /// Publish new tracks for a broadcast by name.
 pub struct BroadcastPublisher {
-	state: Watch<BroadcastState>,
+	state: Watch<State>,
 	info: Arc<Broadcast>,
-	subscriber: BroadcastSubscriber,
 }
 
 impl BroadcastPublisher {
-	pub fn new(name: &str) -> Self {
-		let state = Watch::new(BroadcastState::default());
-		let info = Arc::new(Broadcast {
-			namespace: name.to_owned(),
-		});
-		let subscriber = BroadcastSubscriber::new(state.clone(), info.clone());
-
-		Self {
-			state,
-			info,
-			subscriber,
-		}
+	fn new(state: Watch<State>, info: Arc<Broadcast>) -> Self {
+		Self { state, info }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
 	pub fn create_track(&mut self, track: &str) -> Result<TrackPublisher, CacheError> {
-		let publisher = TrackPublisher::new(Track {
+		let (publisher, subscriber) = Track {
 			namespace: self.namespace.clone(),
 			name: track.to_owned(),
-		});
+		}
+		.produce();
 
-		self.state.lock_mut().insert(publisher.subscribe())?;
+		self.state.lock_mut().insert(subscriber)?;
 		Ok(publisher)
 	}
 
 	pub fn remove_track(&mut self, track: &str) -> Option<TrackSubscriber> {
 		self.state.lock_mut().remove(track)
-	}
-
-	pub fn subscribe(&self) -> BroadcastSubscriber {
-		self.subscriber.clone()
 	}
 
 	/// Close the broadcast with an error.
@@ -132,13 +136,15 @@ impl Deref for BroadcastPublisher {
 /// This can be cloned to create handles.
 #[derive(Clone)]
 pub struct BroadcastSubscriber {
-	state: Watch<BroadcastState>,
+	state: Watch<State>,
 	info: Arc<Broadcast>,
+	_dropped: Arc<Dropped>,
 }
 
 impl BroadcastSubscriber {
-	fn new(state: Watch<BroadcastState>, info: Arc<Broadcast>) -> Self {
-		Self { state, info }
+	fn new(state: Watch<State>, info: Arc<Broadcast>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self { state, info, _dropped }
 	}
 
 	/// Get a track from the broadcast by name.
@@ -212,5 +218,21 @@ impl Deref for BroadcastSubscriber {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

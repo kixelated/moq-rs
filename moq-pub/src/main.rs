@@ -24,8 +24,7 @@ async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 
 	let input = tokio::io::stdin();
-	let publisher = cache::BroadcastPublisher::new(&config.name);
-	let broadcast = publisher.subscribe();
+	let (publisher, subscriber) = cache::Broadcast::new(&config.name).produce();
 	let mut media = Media::new(input, publisher).await?;
 
 	// Create a list of acceptable root certificates.
@@ -85,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
 		res = media.run() => res.context("media error")?,
-		res = broadcast.serve(publisher) => res.context("publisher error")?,
+		res = subscriber.serve(publisher) => res.context("publisher error")?,
 	}
 
 	Ok(())

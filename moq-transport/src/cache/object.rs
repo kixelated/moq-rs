@@ -29,6 +29,18 @@ pub struct ObjectHeader {
 	pub size: usize,
 }
 
+impl ObjectHeader {
+	pub fn produce(self) -> (ObjectPublisher, ObjectSubscriber) {
+		let state = Watch::new(State::default());
+		let info = Arc::new(self);
+
+		let publisher = ObjectPublisher::new(state.clone(), info.clone());
+		let subscriber = ObjectSubscriber::new(state, info);
+
+		(publisher, subscriber)
+	}
+}
+
 /// Same as below but with a fully known payload.
 #[derive(Clone)]
 pub struct Object {
@@ -56,7 +68,7 @@ impl From<Object> for ObjectHeader {
 	}
 }
 
-struct ObjectState {
+struct State {
 	// The data that has been received thus far.
 	chunks: Vec<Bytes>,
 
@@ -64,7 +76,7 @@ struct ObjectState {
 	closed: Result<(), CacheError>,
 }
 
-impl ObjectState {
+impl State {
 	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -72,7 +84,7 @@ impl ObjectState {
 	}
 }
 
-impl Default for ObjectState {
+impl Default for State {
 	fn default() -> Self {
 		Self {
 			chunks: Vec::new(),
@@ -84,30 +96,19 @@ impl Default for ObjectState {
 /// Used to write data to a segment and notify subscribers.
 pub struct ObjectPublisher {
 	// Mutable segment state.
-	state: Watch<ObjectState>,
+	state: Watch<State>,
 
 	// Immutable segment state.
 	info: Arc<ObjectHeader>,
 
 	// The amount of promised data that has yet to be written.
 	remain: usize,
-
-	subscriber: ObjectSubscriber,
 }
 
 impl ObjectPublisher {
 	/// Create a new segment with the given info.
-	pub fn new(info: ObjectHeader) -> Self {
-		let state = Watch::new(ObjectState::default());
-		let info = Arc::new(info);
-		let subscriber = ObjectSubscriber::new(state.clone(), info.clone());
-
-		Self {
-			state,
-			info,
-			remain: 0,
-			subscriber,
-		}
+	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
+		Self { state, info, remain: 0 }
 	}
 
 	/// Write a new chunk of bytes.
@@ -122,10 +123,6 @@ impl ObjectPublisher {
 		state.chunks.push(chunk);
 
 		Ok(())
-	}
-
-	pub fn subscribe(&self) -> ObjectSubscriber {
-		self.subscriber.clone()
 	}
 
 	/// Close the segment with an error.
@@ -151,7 +148,7 @@ impl Deref for ObjectPublisher {
 #[derive(Clone)]
 pub struct ObjectSubscriber {
 	// Modify the segment state.
-	state: Watch<ObjectState>,
+	state: Watch<State>,
 
 	// Immutable segment state.
 	info: Arc<ObjectHeader>,
@@ -159,11 +156,19 @@ pub struct ObjectSubscriber {
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
+
+	_dropped: Arc<Dropped>,
 }
 
 impl ObjectSubscriber {
-	fn new(state: Watch<ObjectState>, info: Arc<ObjectHeader>) -> Self {
-		Self { state, info, index: 0 }
+	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self {
+			state,
+			info,
+			index: 0,
+			_dropped,
+		}
 	}
 
 	/// Block until the next chunk of bytes is available.
@@ -210,5 +215,21 @@ impl Deref for ObjectSubscriber {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(CacheError::Done).ok();
 	}
 }

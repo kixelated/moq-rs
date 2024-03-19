@@ -24,7 +24,19 @@ pub struct Group {
 	pub send_order: u64,
 }
 
-struct GroupState {
+impl Group {
+	pub fn produce(self) -> (GroupPublisher, GroupSubscriber) {
+		let state = Watch::new(State::default());
+		let info = Arc::new(self);
+
+		let publisher = GroupPublisher::new(state.clone(), info.clone());
+		let subscriber = GroupSubscriber::new(state, info);
+
+		(publisher, subscriber)
+	}
+}
+
+struct State {
 	// The data that has been received thus far.
 	objects: Vec<ObjectSubscriber>,
 
@@ -32,7 +44,7 @@ struct GroupState {
 	closed: Result<(), CacheError>,
 }
 
-impl GroupState {
+impl State {
 	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -40,7 +52,7 @@ impl GroupState {
 	}
 }
 
-impl Default for GroupState {
+impl Default for State {
 	fn default() -> Self {
 		Self {
 			objects: Vec::new(),
@@ -52,30 +64,18 @@ impl Default for GroupState {
 /// Used to write data to a stream and notify subscribers.
 pub struct GroupPublisher {
 	// Mutable stream state.
-	state: Watch<GroupState>,
+	state: Watch<State>,
 
 	// Immutable stream state.
 	info: Arc<Group>,
 
 	// The next object sequence number to use.
 	next: u64,
-
-	// A subscriber
-	subscriber: GroupSubscriber,
 }
 
 impl GroupPublisher {
-	pub fn new(info: Group) -> Self {
-		let state = Watch::new(GroupState::default());
-		let info = Arc::new(info);
-		let subscriber = GroupSubscriber::new(state.clone(), info.clone());
-
-		Self {
-			state,
-			info,
-			next: 0,
-			subscriber,
-		}
+	fn new(state: Watch<State>, info: Arc<Group>) -> Self {
+		Self { state, info, next: 0 }
 	}
 
 	/// Create the next object ID with the given payload.
@@ -89,23 +89,20 @@ impl GroupPublisher {
 	///
 	/// BAD STUFF will happen if the size is wrong.
 	pub fn create_object(&mut self, size: usize) -> Result<ObjectPublisher, CacheError> {
-		let publisher = ObjectPublisher::new(ObjectHeader {
+		let (publisher, subscriber) = ObjectHeader {
 			group_id: self.info.id,
 			object_id: self.next.try_into().unwrap(),
 			send_order: self.info.send_order,
 			size,
-		});
+		}
+		.produce();
+
 		self.next += 1;
 
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
-		state.objects.push(publisher.subscribe());
+		state.objects.push(subscriber);
 		Ok(publisher)
-	}
-
-	/// Creates a subscriber for the group with the initial state.
-	pub fn subscribe(&self) -> GroupSubscriber {
-		self.subscriber.clone()
 	}
 
 	/// Close the stream with an error.
@@ -126,7 +123,7 @@ impl Deref for GroupPublisher {
 #[derive(Clone)]
 pub struct GroupSubscriber {
 	// Modify the stream state.
-	state: Watch<GroupState>,
+	state: Watch<State>,
 
 	// Immutable stream state.
 	info: Arc<Group>,
@@ -134,11 +131,19 @@ pub struct GroupSubscriber {
 	// The number of chunks that we've read.
 	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
 	index: usize,
+
+	_dropped: Arc<Dropped>,
 }
 
 impl GroupSubscriber {
-	fn new(state: Watch<GroupState>, info: Arc<Group>) -> Self {
-		Self { state, info, index: 0 }
+	fn new(state: Watch<State>, info: Arc<Group>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self {
+			state,
+			info,
+			index: 0,
+			_dropped,
+		}
 	}
 
 	pub fn latest(&self) -> u64 {
@@ -204,4 +209,20 @@ pub struct GroupObject {
 
 	// The size of the object.
 	pub size: usize,
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(CacheError::Done).ok();
+	}
 }
