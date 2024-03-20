@@ -1,253 +1,178 @@
-use webtransport_quinn::{RecvStream, Session};
-
 use std::{
-	collections::HashMap,
+	collections::{hash_map, HashMap},
+	io,
 	sync::{atomic, Arc, Mutex},
 };
 
-use crate::{
-	cache::{broadcast, segment, track, CacheError},
-	coding::DecodeError,
-	control,
-	control::Message,
-	data,
-	session::{Control, SessionError},
-	VarInt,
-};
+use crate::{data, message, setup, util::Queue};
 
-/// Receives broadcasts over the network, automatically handling subscriptions and caching.
-// TODO Clone specific fields when a task actually needs it.
-#[derive(Clone, Debug)]
+use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeOptions, SubscribeRecv};
+
+// TODO remove Clone.
+#[derive(Clone)]
 pub struct Subscriber {
-	// The webtransport session.
-	webtransport: Session,
+	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
+	announced_queue: Queue<Announced, SessionError>,
 
-	// The list of active subscriptions, each guarded by an mutex.
-	subscribes: Arc<Mutex<HashMap<VarInt, track::Publisher>>>,
+	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
+	subscribe_next: Arc<atomic::AtomicU64>,
 
-	// The sequence number for the next subscription.
-	next: Arc<atomic::AtomicU32>,
-
-	// A channel for sending messages.
-	control: Control,
-
-	// All unknown subscribes comes here.
-	source: broadcast::Publisher,
+	outgoing: Queue<message::Message, SessionError>,
 }
 
 impl Subscriber {
-	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Publisher) -> Self {
+	pub(super) fn new(outgoing: Queue<message::Message, SessionError>) -> Self {
 		Self {
-			webtransport,
+			announced: Default::default(),
+			announced_queue: Default::default(),
 			subscribes: Default::default(),
-			next: Default::default(),
-			control,
-			source,
+			subscribe_next: Default::default(),
+			outgoing,
 		}
 	}
 
-	pub async fn run(self) -> Result<(), SessionError> {
-		let inbound = self.clone().run_inbound();
-		let streams = self.clone().run_streams();
-		let source = self.clone().run_source();
-
-		// Return the first error.
-		tokio::select! {
-			res = inbound => res,
-			res = streams => res,
-			res = source => res,
-		}
+	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, _, subscriber) = Session::accept_role(session, setup::Role::Subscriber).await?;
+		Ok((session, subscriber.unwrap()))
 	}
 
-	async fn run_inbound(mut self) -> Result<(), SessionError> {
-		loop {
-			let msg = self.control.recv().await?;
-
-			log::info!("message received: {:?}", msg);
-			if let Err(err) = self.recv_message(&msg) {
-				log::warn!("message error: {:?} {:?}", err, msg);
-			}
-		}
+	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, _, subscriber) = Session::connect_role(session, setup::Role::Subscriber).await?;
+		Ok((session, subscriber.unwrap()))
 	}
 
-	fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
-		match msg {
-			Message::Announce(_) => Ok(()),       // don't care
-			Message::Unannounce(_) => Ok(()),     // also don't care
-			Message::SubscribeOk(_msg) => Ok(()), // don't care
-			Message::SubscribeDone(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
-			Message::SubscribeError(msg) => self.recv_subscribe_error(msg.id, CacheError::Reset(msg.code.try_into()?)),
-			Message::GoAway(_msg) => unimplemented!("GOAWAY"),
-			_ => Err(SessionError::RoleViolation(msg.id())),
-		}
+	pub async fn announced(&mut self) -> Result<Announced, SessionError> {
+		self.announced_queue.pop().await
 	}
 
-	fn recv_subscribe_error(&mut self, id: VarInt, err: CacheError) -> Result<(), SessionError> {
-		let mut subscribes = self.subscribes.lock().unwrap();
-		let subscribe = subscribes.remove(&id).ok_or(CacheError::NotFound)?;
-		subscribe.close(err)?;
+	pub fn subscribe(
+		&mut self,
+		namespace: &str,
+		name: &str,
+		options: SubscribeOptions,
+	) -> Result<Subscribe, SessionError> {
+		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
-		Ok(())
-	}
-
-	async fn run_streams(self) -> Result<(), SessionError> {
-		loop {
-			// Accept all incoming unidirectional streams.
-			let stream = self.webtransport.accept_uni().await?;
-			let this = self.clone();
-
-			tokio::spawn(async move {
-				if let Err(err) = this.run_stream(stream).await {
-					log::warn!("failed to receive stream: err={}", err);
-				}
-			});
-		}
-	}
-
-	async fn run_stream(self, mut stream: RecvStream) -> Result<(), SessionError> {
-		// Decode the object on the data stream.
-		let header = data::Header::decode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
-
-		log::trace!("receiving stream: {:?}", header);
-
-		match header {
-			data::Header::Track(header) => self.run_track(header, stream).await,
-			data::Header::Group(header) => self.run_group(header, stream).await,
-			data::Header::Object(header) => self.run_object(header, stream).await,
-			data::Header::Datagram(_) => Err(SessionError::InvalidMessage),
-		}
-	}
-
-	async fn run_track(self, header: data::Track, mut stream: RecvStream) -> Result<(), SessionError> {
-		loop {
-			let chunk = match data::TrackChunk::decode(&mut stream).await {
-				Ok(next) => next,
-
-				// TODO Figure out a way to check for stream FIN instead
-				Err(DecodeError::UnexpectedEnd) => break,
-
-				// Unknown error
-				Err(err) => return Err(err.into()),
-			};
-
-			log::trace!("receiving chunk: {:?}", chunk);
-
-			// TODO error if we get a duplicate group
-			let mut segment = {
-				let mut subscribes = self.subscribes.lock().unwrap();
-				let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
-
-				track.create_segment(segment::Info {
-					sequence: chunk.group_id,
-					priority: header.send_order.try_into()?, // TODO support u64 priorities
-				})?
-			};
-
-			let mut remain = chunk.size.into();
-
-			// Create a new obvject.
-			let mut fragment = segment.fragment(remain)?;
-
-			while remain > 0 {
-				let data = stream
-					.read_chunk(remain, true)
-					.await?
-					.ok_or(DecodeError::UnexpectedEnd)?
-					.bytes;
-
-				log::trace!("read data: len={}", data.len());
-				remain -= data.len();
-				fragment.chunk(data)?;
-			}
-		}
-
-		Ok(())
-	}
-
-	async fn run_group(self, header: data::Group, mut stream: RecvStream) -> Result<(), SessionError> {
-		let mut segment = {
-			let mut subscribes = self.subscribes.lock().unwrap();
-			let track = subscribes.get_mut(&header.subscribe_id).ok_or(CacheError::NotFound)?;
-
-			track.create_segment(segment::Info {
-				sequence: header.group_id,
-				priority: header.send_order.try_into()?, // TODO support u64 priorities
-			})?
+		let msg = message::Subscribe {
+			id,
+			track_alias: id,
+			track_namespace: namespace.to_string(),
+			track_name: name.to_string(),
+			start: options.start,
+			end: options.end,
+			params: Default::default(),
 		};
 
-		// Sanity check to make sure we receive the group in order
-		let mut expected = 0;
+		self.send_message(msg.clone())?;
 
-		loop {
-			let chunk = match data::GroupChunk::decode(&mut stream).await {
-				Ok(chunk) => chunk,
+		let (publisher, subscribe) = Subscribe::new(self.clone(), msg);
+		self.subscribes.lock().unwrap().insert(id, publisher);
 
-				// TODO Figure out a way to check for stream FIN instead
-				Err(DecodeError::UnexpectedEnd) => break,
+		Ok(subscribe)
+	}
 
-				// Unknown error
-				Err(err) => return Err(err.into()),
-			};
+	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {
+		let msg = msg.into();
+		log::debug!("sending message: {:?}", msg);
+		self.outgoing.push(msg.into())
+	}
 
-			log::trace!("receiving chunk: {:?}", chunk);
+	pub(super) fn recv_message(&mut self, msg: message::Publisher) -> Result<(), SessionError> {
+		log::debug!("received message: {:?}", msg);
 
-			// NOTE: We allow gaps, but not going backwards.
-			if chunk.object_id.into_inner() < expected {
-				return Err(SessionError::OutOfOrder(expected.try_into()?, chunk.object_id));
-			}
+		match msg {
+			message::Publisher::Announce(msg) => self.recv_announce(msg),
+			message::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
+			message::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
+			message::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
+			message::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+		}
+	}
 
-			expected = chunk.object_id.into_inner() + 1;
+	fn recv_announce(&mut self, msg: message::Announce) -> Result<(), SessionError> {
+		let mut announces = self.announced.lock().unwrap();
 
-			let mut remain = chunk.size.into();
+		let entry = match announces.entry(msg.namespace.clone()) {
+			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
+			hash_map::Entry::Vacant(entry) => entry,
+		};
 
-			// Create a new obvject.
-			let mut fragment = segment.fragment(remain)?;
+		let (announced, recv) = Announced::new(self.clone(), msg.namespace);
+		self.announced_queue.push(announced)?;
+		entry.insert(recv);
 
-			while remain > 0 {
-				let data = stream
-					.read_chunk(remain, true)
-					.await?
-					.ok_or(DecodeError::UnexpectedEnd)?;
-				remain -= data.bytes.len();
-				fragment.chunk(data.bytes)?;
-			}
+		Ok(())
+	}
+
+	fn recv_unannounce(&mut self, msg: message::Unannounce) -> Result<(), SessionError> {
+		if let Some(announce) = self.announced.lock().unwrap().get_mut(&msg.namespace) {
+			announce.recv_unannounce().ok();
 		}
 
 		Ok(())
 	}
 
-	async fn run_object(self, _header: data::Object, _stream: RecvStream) -> Result<(), SessionError> {
-		unimplemented!("TODO");
+	fn recv_subscribe_ok(&mut self, msg: message::SubscribeOk) -> Result<(), SessionError> {
+		if let Some(sub) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+			sub.recv_ok(msg).ok();
+		}
+
+		Ok(())
 	}
 
-	async fn run_source(mut self) -> Result<(), SessionError> {
-		loop {
-			// NOTE: This returns Closed when the source is closed.
-			let track = self.source.next_track().await?;
-			let track_name = track.name.clone();
-
-			let id = VarInt::from_u32(self.next.fetch_add(1, atomic::Ordering::SeqCst));
-			self.subscribes.lock().unwrap().insert(id, track);
-
-			let msg = control::Subscribe {
-				id,
-
-				track_alias: id, // This alias is useless but part of the spec.
-				track_namespace: "".to_string(),
-				track_name,
-
-				// TODO correctly support these
-				start_group: control::SubscribeLocation::Latest(VarInt::ZERO),
-				start_object: control::SubscribeLocation::Absolute(VarInt::ZERO),
-				end_group: control::SubscribeLocation::None,
-				end_object: control::SubscribeLocation::None,
-
-				params: Default::default(),
-			};
-
-			self.control.send(msg).await?;
+	fn recv_subscribe_error(&mut self, msg: message::SubscribeError) -> Result<(), SessionError> {
+		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+			subscriber.recv_error(msg.code).ok();
 		}
+
+		Ok(())
+	}
+
+	fn recv_subscribe_done(&mut self, msg: message::SubscribeDone) -> Result<(), SessionError> {
+		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+			subscriber.recv_done(msg.code).ok();
+		}
+
+		Ok(())
+	}
+
+	pub(super) fn drop_subscribe(&mut self, id: u64) {
+		self.subscribes.lock().unwrap().remove(&id);
+	}
+
+	pub(super) fn drop_announce(&mut self, namespace: &str) {
+		self.announced.lock().unwrap().remove(namespace);
+	}
+
+	pub(super) async fn recv_stream(self, mut stream: webtransport_quinn::RecvStream) -> Result<(), SessionError> {
+		let header = data::Header::decode(&mut stream).await?;
+
+		let id = header.subscribe_id();
+		let subscribe = self.subscribes.lock().unwrap().get(&id).cloned();
+
+		if let Some(mut subscribe) = subscribe {
+			subscribe.recv_stream(header, stream).await?
+		}
+
+		Ok(())
+	}
+
+	// TODO should not be async
+	pub async fn recv_datagram(&mut self, datagram: bytes::Bytes) -> Result<(), SessionError> {
+		let mut cursor = io::Cursor::new(datagram);
+		let datagram = data::Datagram::decode(&mut cursor).await?;
+
+		let subscribe = self.subscribes.lock().unwrap().get(&datagram.subscribe_id).cloned();
+
+		if let Some(subscribe) = subscribe {
+			subscribe.recv_datagram(datagram)?;
+		}
+
+		Ok(())
+	}
+
+	pub fn close(self, err: SessionError) {
+		self.outgoing.close(err.clone()).ok();
+		self.announced_queue.close(err).ok();
 	}
 }

@@ -1,72 +1,61 @@
-use std::ops::{Deref, DerefMut};
+use std::collections::hash_map;
 use std::{
 	collections::HashMap,
-	sync::{Arc, Mutex, Weak},
+	sync::{Arc, Mutex},
 };
 
-use moq_api::ApiError;
-use moq_transport::cache::{broadcast, CacheError};
+use moq_transport::serve::ServeError;
+use moq_transport::session;
 use url::Url;
-
-use tokio::time;
-
-use crate::RelayError;
 
 #[derive(Clone)]
 pub struct Origin {
 	// An API client used to get/set broadcasts.
 	// If None then we never use a remote origin.
 	// TODO: Stub this out instead.
-	api: Option<moq_api::Client>,
+	_api: Option<moq_api::Client>,
 
 	// The internal address of our node.
 	// If None then we can never advertise ourselves as an origin.
 	// TODO: Stub this out instead.
-	node: Option<Url>,
+	_node: Option<Url>,
 
-	// A map of active broadcasts by ID.
-	cache: Arc<Mutex<HashMap<String, Weak<Subscriber>>>>,
+	// A map of active broadcasts by namespace.
+	local: Arc<Mutex<HashMap<String, session::Subscriber>>>,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
-	quic: quinn::Endpoint,
+	_quic: quinn::Endpoint,
 }
 
 impl Origin {
-	pub fn new(api: Option<moq_api::Client>, node: Option<Url>, quic: quinn::Endpoint) -> Self {
+	pub fn new(_api: Option<moq_api::Client>, _node: Option<Url>, _quic: quinn::Endpoint) -> Self {
 		Self {
-			api,
-			node,
-			cache: Default::default(),
-			quic,
+			_api,
+			_node,
+			local: Default::default(),
+			_quic,
 		}
 	}
 
-	/// Create a new broadcast with the given ID.
-	///
-	/// Publisher::run needs to be called to periodically refresh the origin cache.
-	pub async fn publish(&mut self, id: &str) -> Result<Publisher, RelayError> {
-		let (publisher, subscriber) = broadcast::new(id);
-
-		let subscriber = {
-			let mut cache = self.cache.lock().unwrap();
-
-			// Check if the broadcast already exists.
-			// TODO This is racey, because a new publisher could be created while existing subscribers are still active.
-			if cache.contains_key(id) {
-				return Err(CacheError::Duplicate.into());
-			}
-
-			// Create subscriber that will remove from the cache when dropped.
-			let subscriber = Arc::new(Subscriber {
-				broadcast: subscriber,
-				origin: self.clone(),
-			});
-
-			cache.insert(id.to_string(), Arc::downgrade(&subscriber));
-
-			subscriber
+	pub async fn announce(
+		&self,
+		mut announce: session::Announced,
+		subscriber: session::Subscriber,
+	) -> anyhow::Result<()> {
+		match self.local.lock().unwrap().entry(announce.namespace().to_string()) {
+			hash_map::Entry::Vacant(entry) => entry.insert(subscriber),
+			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
+		announce.accept().ok();
+
+		let err = announce.closed().await;
+		self.local.lock().unwrap().remove(announce.namespace());
+		err?;
+
+		Ok(())
+
+		/*
 		// Create a publisher that constantly updates itself as the origin in moq-api.
 		// It holds a reference to the subscriber to prevent dropping early.
 		let mut publisher = Publisher {
@@ -86,13 +75,28 @@ impl Origin {
 			publisher.api = Some((api.clone(), origin));
 		}
 
-		Ok(publisher)
+
+		Ok(())
+		*/
 	}
 
-	pub fn subscribe(&self, id: &str) -> Arc<Subscriber> {
-		let mut cache = self.cache.lock().unwrap();
+	pub async fn subscribe(&self, subscribe: session::Subscribed) -> anyhow::Result<()> {
+		let mut subscriber = self
+			.local
+			.lock()
+			.unwrap()
+			.get(subscribe.namespace())
+			.cloned()
+			.ok_or(ServeError::NotFound)?;
 
-		if let Some(broadcast) = cache.get(id) {
+		let upstream = subscriber.subscribe(subscribe.namespace(), subscribe.name(), Default::default())?;
+		subscribe.serve(upstream.track()).await?;
+
+		Ok(())
+		/*
+		let mut routes = self.local.lock().unwrap();
+
+		if let Some(broadcast) = routes.get(id) {
 			if let Some(broadcast) = broadcast.upgrade() {
 				return broadcast;
 			}
@@ -121,8 +125,10 @@ impl Origin {
 		});
 
 		subscriber
+		*/
 	}
 
+	/*
 	async fn serve(&mut self, id: &str, publisher: broadcast::Publisher) -> Result<(), RelayError> {
 		log::debug!("finding origin: id={}", id);
 
@@ -130,10 +136,10 @@ impl Origin {
 		let origin = self
 			.api
 			.as_mut()
-			.ok_or(CacheError::NotFound)?
+			.ok_or(ServeError::NotFound)?
 			.get_origin(id)
 			.await?
-			.ok_or(CacheError::NotFound)?;
+			.ok_or(ServeError::NotFound)?;
 
 		log::debug!("fetching from origin: id={} url={}", id, origin.url);
 
@@ -145,8 +151,10 @@ impl Origin {
 
 		Ok(())
 	}
+	*/
 }
 
+/*
 pub struct Subscriber {
 	pub broadcast: broadcast::Subscriber,
 
@@ -214,3 +222,5 @@ impl DerefMut for Publisher {
 		&mut self.broadcast
 	}
 }
+
+*/

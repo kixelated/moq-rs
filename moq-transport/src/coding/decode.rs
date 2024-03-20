@@ -1,4 +1,4 @@
-use super::{BoundsExceeded, VarInt};
+use super::BoundsExceeded;
 use std::{io, str};
 
 use thiserror::Error;
@@ -16,7 +16,7 @@ pub trait Decode: Sized {
 }
 
 /// A decode error.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum DecodeError {
 	#[error("unexpected end of buffer")]
 	UnexpectedEnd,
@@ -25,10 +25,10 @@ pub enum DecodeError {
 	InvalidString(#[from] str::Utf8Error),
 
 	#[error("invalid message: {0:?}")]
-	InvalidMessage(VarInt),
+	InvalidMessage(u64),
 
 	#[error("invalid role: {0:?}")]
-	InvalidRole(VarInt),
+	InvalidRole(u64),
 
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,
@@ -49,6 +49,6 @@ pub enum DecodeError {
 	#[error("invalid parameter")]
 	InvalidParameter,
 
-	#[error("io error: {0}")]
-	IoError(#[from] std::io::Error),
+	#[error("io error")]
+	IoError,
 }

@@ -1,12 +1,9 @@
-use crate::{cache, coding, setup, MoqError, VarInt};
+use crate::{coding, serve, setup};
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
 	#[error("webtransport error: {0}")]
-	Session(#[from] webtransport_quinn::SessionError),
-
-	#[error("cache error: {0}")]
-	Cache(#[from] cache::CacheError),
+	WebTransport(#[from] webtransport_quinn::SessionError),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -14,9 +11,11 @@ pub enum SessionError {
 	#[error("decode error: {0}")]
 	Decode(#[from] coding::DecodeError),
 
+	// TODO move to a ConnectError
 	#[error("unsupported versions: client={0:?} server={1:?}")]
 	Version(setup::Versions, setup::Versions),
 
+	// TODO move to a ConnectError
 	#[error("incompatible roles: client={0:?} server={1:?}")]
 	RoleIncompatible(setup::Role, setup::Role),
 
@@ -29,62 +28,45 @@ pub enum SessionError {
 	Write(#[from] webtransport_quinn::WriteError),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
-	#[error("role violation: msg={0}")]
-	RoleViolation(VarInt),
-
-	/// Our enforced stream mapping was disrespected.
-	#[error("stream mapping conflict")]
-	StreamMapping,
-
-	/// The priority was invalid.
-	#[error("invalid priority: {0}")]
-	InvalidPriority(VarInt),
-
-	/// The size was invalid.
-	#[error("invalid size: {0}")]
-	InvalidSize(VarInt),
-
-	/// A required extension was not offered.
-	#[error("required extension not offered: {0:?}")]
-	RequiredExtension(VarInt),
+	#[error("role violation")]
+	RoleViolation,
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] coding::BoundsExceeded),
 
-	/// Sequence numbers were received out of order
-	#[error("sequence numbers out of order: expected={0} actual={1}")]
-	OutOfOrder(VarInt, VarInt),
+	/// A duplicate ID was used
+	#[error("duplicate")]
+	Duplicate,
 
-	#[error("message was used in an invalid context")]
-	InvalidMessage,
+	#[error("internal error")]
+	Internal,
 
-	/// An unclassified error because I'm lazy. TODO classify these errors
-	#[error("unknown error: {0}")]
-	Unknown(String),
+	#[error("cache error: {0}")]
+	Cache(#[from] serve::ServeError),
+
+	#[error("wrong size")]
+	WrongSize,
 }
 
-impl MoqError for SessionError {
+impl SessionError {
 	/// An integer code that is sent over the wire.
-	fn code(&self) -> u32 {
+	pub fn code(&self) -> u64 {
 		match self {
-			Self::Cache(err) => err.code(),
 			Self::RoleIncompatible(..) => 406,
-			Self::RoleViolation(..) => 405,
-			Self::StreamMapping => 409,
-			Self::Unknown(_) => 500,
+			Self::RoleViolation => 405,
 			Self::Write(_) => 501,
-			Self::Read(_) => 502,
-			Self::Session(_) => 503,
+			Self::Read(_) => 400,
+			Self::WebTransport(_) => 503,
 			Self::Version(..) => 406,
+			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
-			Self::Decode(_) => 500,
-			Self::InvalidPriority(_) => 400,
-			Self::InvalidSize(_) => 400,
-			Self::RequiredExtension(_) => 426,
 			Self::BoundsExceeded(_) => 500,
-			Self::InvalidMessage => 400,
-			Self::OutOfOrder(_, _) => 400,
+			Self::Duplicate => 409,
+			Self::Internal => 500,
+			Self::WrongSize => 400,
+
+			Self::Cache(err) => err.code(),
 		}
 	}
 }

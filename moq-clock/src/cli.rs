@@ -30,6 +30,10 @@ pub struct Config {
 	pub publish: bool,
 
 	/// The name of the clock track.
+	#[arg(long, default_value = "clock")]
+	pub namespace: String,
+
+	/// The name of the clock track.
 	#[arg(long, default_value = "now")]
 	pub track: String,
 }

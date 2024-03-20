@@ -17,7 +17,7 @@ moq-api = { path = "../moq-api" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.6.1"
+webtransport-quinn = "0.7"
 #webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
 url = "2"
 
@@ -30,6 +30,7 @@ webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 
 # Web server to serve the fingerprint
 axum = { version = "0.6", features = ["tokio"] }

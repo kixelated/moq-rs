@@ -5,8 +5,8 @@ pub enum RelayError {
 	#[error("transport error: {0}")]
 	Transport(#[from] moq_transport::session::SessionError),
 
-	#[error("cache error: {0}")]
-	Cache(#[from] moq_transport::cache::CacheError),
+	#[error("serve error: {0}")]
+	Cache(#[from] moq_transport::serve::ServeError),
 
 	#[error("api error: {0}")]
 	MoqApi(#[from] moq_api::ApiError),
@@ -22,18 +22,4 @@ pub enum RelayError {
 
 	#[error("missing node")]
 	MissingNode,
-}
-
-impl moq_transport::MoqError for RelayError {
-	fn code(&self) -> u32 {
-		match self {
-			Self::Transport(err) => err.code(),
-			Self::Cache(err) => err.code(),
-			Self::MoqApi(_err) => 504,
-			Self::Url(_) => 500,
-			Self::MissingNode => 500,
-			Self::WebTransportClient(_) => 504,
-			Self::WebTransportServer(_) => 500,
-		}
-	}
 }

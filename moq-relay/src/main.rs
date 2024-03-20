@@ -2,18 +2,18 @@ use anyhow::Context;
 use clap::Parser;
 
 mod config;
+mod connection;
 mod error;
 mod origin;
 mod quic;
-mod session;
 mod tls;
 mod web;
 
 pub use config::*;
+pub use connection::*;
 pub use error::*;
 pub use origin::*;
 pub use quic::*;
-pub use session::*;
 pub use tls::*;
 pub use web::*;
 

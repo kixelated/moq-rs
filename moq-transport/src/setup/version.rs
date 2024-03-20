@@ -1,4 +1,4 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -6,29 +6,29 @@ use std::ops::Deref;
 
 /// A version number negotiated during the setup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(pub VarInt);
+pub struct Version(pub u64);
 
 impl Version {
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html
-	pub const DRAFT_00: Version = Version(VarInt::from_u32(0xff000000));
+	pub const DRAFT_00: Version = Version(0xff000000);
 
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html
-	pub const DRAFT_01: Version = Version(VarInt::from_u32(0xff000001));
+	pub const DRAFT_01: Version = Version(0xff000001);
 
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-02.html
-	pub const DRAFT_02: Version = Version(VarInt::from_u32(0xff000002));
+	pub const DRAFT_02: Version = Version(0xff000002);
 
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-03.html
-	pub const DRAFT_03: Version = Version(VarInt::from_u32(0xff000003));
+	pub const DRAFT_03: Version = Version(0xff000003);
 }
 
-impl From<VarInt> for Version {
-	fn from(v: VarInt) -> Self {
+impl From<u64> for Version {
+	fn from(v: u64) -> Self {
 		Self(v)
 	}
 }
 
-impl From<Version> for VarInt {
+impl From<Version> for u64 {
 	fn from(v: Version) -> Self {
 		v.0
 	}
@@ -37,7 +37,7 @@ impl From<Version> for VarInt {
 impl Version {
 	/// Decode the version number.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = VarInt::decode(r).await?;
+		let v = u64::decode(r).await?;
 		Ok(Self(v))
 	}
 
@@ -56,7 +56,7 @@ pub struct Versions(Vec<Version>);
 impl Decode for Versions {
 	/// Decode the version list.
 	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let count = VarInt::decode(r).await?.into_inner();
+		let count = u64::decode(r).await?;
 		let mut vs = Vec::new();
 
 		for _ in 0..count {
@@ -72,8 +72,7 @@ impl Decode for Versions {
 impl Encode for Versions {
 	/// Encode the version list.
 	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let size: VarInt = self.0.len().try_into()?;
-		size.encode(w).await?;
+		self.0.len().encode(w).await?;
 
 		for v in &self.0 {
 			v.encode(w).await?;

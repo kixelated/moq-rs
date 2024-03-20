@@ -1,8 +1,5 @@
 use super::{Role, Version};
-use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError, Params},
-	VarInt,
-};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -25,21 +22,18 @@ pub struct Server {
 impl Server {
 	/// Decode the server setup.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = VarInt::decode(r).await?;
-		if typ.into_inner() != 0x41 {
+		let typ = u64::decode(r).await?;
+		if typ != 0x41 {
 			return Err(DecodeError::InvalidMessage(typ));
 		}
 
 		let version = Version::decode(r).await?;
 		let mut params = Params::decode(r).await?;
 
-		let role = params
-			.get::<Role>(VarInt::from_u32(0))
-			.await?
-			.ok_or(DecodeError::MissingParameter)?;
+		let role = params.get::<Role>(0).await?.ok_or(DecodeError::MissingParameter)?;
 
 		// Make sure the PATH parameter isn't used
-		if params.has(VarInt::from_u32(1)) {
+		if params.has(1) {
 			return Err(DecodeError::InvalidParameter);
 		}
 
@@ -48,11 +42,11 @@ impl Server {
 
 	/// Encode the server setup.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from_u32(0x41).encode(w).await?;
+		0x41_u64.encode(w).await?;
 		self.version.encode(w).await?;
 
 		let mut params = self.params.clone();
-		params.set(VarInt::from_u32(0), self.role).await?;
+		params.set(0, self.role).await?;
 		params.encode(w).await?;
 
 		Ok(())

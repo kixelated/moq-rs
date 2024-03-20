@@ -6,7 +6,7 @@ use clap::Parser;
 mod cli;
 mod clock;
 
-use moq_transport::cache::broadcast;
+use moq_transport::serve;
 
 // TODO: clap complete
 
@@ -65,37 +65,40 @@ async fn main() -> anyhow::Result<()> {
 	let mut endpoint = quinn::Endpoint::client(config.bind)?;
 	endpoint.set_default_client_config(quinn_client_config);
 
-	log::info!("connecting to relay: url={}", config.url);
+	log::info!("connecting to server: url={}", config.url);
 
 	let session = webtransport_quinn::connect(&endpoint, &config.url)
 		.await
 		.context("failed to create WebTransport session")?;
 
-	let (mut publisher, subscriber) = broadcast::new(""); // TODO config.namespace
-
 	if config.publish {
-		let session = moq_transport::session::Client::publisher(session, subscriber)
+		let (session, publisher) = moq_transport::Publisher::connect(session)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let publisher = publisher
-			.create_track(&config.track)
-			.context("failed to create clock track")?;
-		let clock = clock::Publisher::new(publisher);
+		let (mut broadcast, broadcast_sub) = serve::Broadcast {
+			namespace: config.namespace.clone(),
+		}
+		.produce();
+
+		let track = broadcast.create_track(&config.track)?;
+		let clock = clock::Publisher::new(track);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
+			res = publisher.serve(broadcast_sub) => res.context("failed to serve broadcast")?,
 		}
 	} else {
-		let session = moq_transport::session::Client::subscriber(session, publisher)
+		let (session, mut subscriber) = moq_transport::Subscriber::connect(session)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
 		let subscriber = subscriber
-			.get_track(&config.track)
-			.context("failed to get clock track")?;
-		let clock = clock::Subscriber::new(subscriber);
+			.subscribe(&config.namespace, &config.track, Default::default())
+			.context("failed to subscribe to track")?;
+
+		let clock = clock::Subscriber::new(subscriber.track());
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,

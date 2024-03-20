@@ -22,6 +22,10 @@ pub struct Config {
 	#[arg(value_parser = moq_url)]
 	pub url: Url,
 
+	/// The name of the broadcast
+	#[arg(long)]
+	pub name: String,
+
 	/// Use the TLS root CA at this path, encoded as PEM.
 	///
 	/// This value can be provided multiple times for multiple roots.

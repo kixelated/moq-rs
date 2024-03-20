@@ -1,32 +1,32 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::coding::{AsyncRead, AsyncWrite};
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the publisher to cleanly terminate a Subscribe.
 #[derive(Clone, Debug)]
 pub struct SubscribeDone {
 	/// The ID for this subscription.
-	pub id: VarInt,
+	pub id: u64,
 
 	/// The error code
-	pub code: VarInt,
+	pub code: u64,
 
 	/// An optional error reason
 	pub reason: String,
 
 	/// The final group/object sent on this subscription.
-	pub last: Option<(VarInt, VarInt)>,
+	pub last: Option<(u64, u64)>,
 }
 
 impl SubscribeDone {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = VarInt::decode(r).await?;
-		let code = VarInt::decode(r).await?;
+		let id = u64::decode(r).await?;
+		let code = u64::decode(r).await?;
 		let reason = String::decode(r).await?;
-		let last = match r.read_u8().await? {
+		let last = match r.read_u8().await.map_err(|_| DecodeError::IoError)? {
 			0 => None,
-			1 => Some((VarInt::decode(r).await?, VarInt::decode(r).await?)),
+			1 => Some((u64::decode(r).await?, u64::decode(r).await?)),
 			_ => return Err(DecodeError::InvalidValue),
 		};
 
@@ -39,11 +39,11 @@ impl SubscribeDone {
 		self.reason.encode(w).await?;
 
 		if let Some((group, object)) = self.last {
-			w.write_u8(1).await?;
+			w.write_u8(1).await.map_err(|_| EncodeError::IoError)?;
 			group.encode(w).await?;
 			object.encode(w).await?;
 		} else {
-			w.write_u8(0).await?;
+			w.write_u8(0).await.map_err(|_| EncodeError::IoError)?;
 		}
 
 		Ok(())

@@ -1,8 +1,5 @@
 use super::{Role, Versions};
-use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError, Params},
-	VarInt,
-};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
 use crate::coding::{AsyncRead, AsyncWrite};
 
@@ -24,22 +21,19 @@ pub struct Client {
 impl Client {
 	/// Decode a client setup message.
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = VarInt::decode(r).await?;
-		if typ.into_inner() != 0x40 {
+		let typ = u64::decode(r).await?;
+		if typ != 0x40 {
 			return Err(DecodeError::InvalidMessage(typ));
 		}
 
 		let versions = Versions::decode(r).await?;
 		let mut params = Params::decode(r).await?;
 
-		let role = params
-			.get::<Role>(VarInt::from_u32(0))
-			.await?
-			.ok_or(DecodeError::MissingParameter)?;
+		let role = params.get::<Role>(0).await?.ok_or(DecodeError::MissingParameter)?;
 
 		// Make sure the PATH parameter isn't used
 		// TODO: This assumes WebTransport support only
-		if params.has(VarInt::from_u32(1)) {
+		if params.has(1) {
 			return Err(DecodeError::InvalidParameter);
 		}
 
@@ -48,11 +42,11 @@ impl Client {
 
 	/// Encode a server setup message.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		VarInt::from_u32(0x40).encode(w).await?;
+		0x40_u64.encode(w).await?;
 		self.versions.encode(w).await?;
 
 		let mut params = self.params.clone();
-		params.set(VarInt::from_u32(0), self.role).await?;
+		params.set(0, self.role).await?;
 
 		params.encode(w).await?;
 

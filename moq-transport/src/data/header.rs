@@ -1,7 +1,8 @@
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError, VarInt};
+use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
+use paste::paste;
 use std::fmt;
 
-use super::{Datagram, Group, Object, Track};
+use super::{GroupHeader, ObjectHeader, TrackHeader};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -10,16 +11,16 @@ macro_rules! header_types {
 		/// All supported message types.
 		#[derive(Clone)]
 		pub enum Header {
-			$($name($name)),*
+			$($name(paste! { [<$name Header>] })),*
 		}
 
 		impl Header {
 			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = VarInt::decode(r).await?;
+				let t = u64::decode(r).await?;
 
-				match t.into_inner() {
+				match t {
 					$($val => {
-						let msg = $name::decode(r).await?;
+						let msg = <paste! { [<$name Header>] }>::decode(r).await?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidMessage(t)),
@@ -29,49 +30,41 @@ macro_rules! header_types {
 			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w).await?;
+						self.id().encode(w).await?;
 						m.encode(w).await
 					},)*
 				}
 			}
 
-			pub fn id(&self) -> VarInt {
+			pub fn id(&self) -> u64 {
 				match self {
 					$(Self::$name(_) => {
-						VarInt::from_u32($val)
+						$val
 					},)*
 				}
 			}
 
-			pub fn name(&self) -> &'static str {
-				match self {
-					$(Self::$name(_) => {
-						stringify!($name)
-					},)*
-				}
-			}
-
-			pub fn subscribe_id(&self) -> VarInt {
+			pub fn subscribe_id(&self) -> u64 {
 				match self {
 					$(Self::$name(o) => o.subscribe_id,)*
 				}
 			}
 
-			pub fn track_alias(&self) -> VarInt {
+			pub fn track_alias(&self) -> u64 {
 				match self {
 					$(Self::$name(o) => o.track_alias,)*
 				}
 			}
 
-			pub fn send_order(&self) -> VarInt {
+			pub fn send_order(&self) -> u64 {
 				match self {
 					$(Self::$name(o) => o.send_order,)*
 				}
 			}
 		}
 
-		$(impl From<$name> for Header {
-			fn from(m: $name) -> Self {
+		$(impl From<paste! { [<$name Header>] }> for Header {
+			fn from(m: paste! { [<$name Header>] }) -> Self {
 				Self::$name(m)
 			}
 		})*
@@ -90,7 +83,7 @@ macro_rules! header_types {
 // Each object type is prefixed with the given VarInt type.
 header_types! {
 	Object = 0x0,
-	Datagram = 0x1,
+	//Datagram = 0x1,
 	Group = 0x50,
 	Track = 0x51,
 }

@@ -14,7 +14,7 @@ pub trait Encode: Sized {
 }
 
 /// An encode error.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum EncodeError {
 	#[error("varint too large")]
 	BoundsExceeded(#[from] BoundsExceeded),
@@ -22,6 +22,6 @@ pub enum EncodeError {
 	#[error("invalid value")]
 	InvalidValue,
 
-	#[error("i/o error: {0}")]
-	IoError(#[from] std::io::Error),
+	#[error("i/o error")]
+	IoError,
 }

@@ -169,7 +169,7 @@ impl fmt::Display for VarInt {
 impl Decode for VarInt {
 	/// Decode a varint from the given reader.
 	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let b = r.read_u8().await?;
+		let b = r.read_u8().await.map_err(|_| DecodeError::IoError)?;
 		Self::decode_byte(b, r).await
 	}
 }
@@ -186,15 +186,21 @@ impl VarInt {
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				r.read_exact(buf[1..2].as_mut()).await?;
+				r.read_exact(buf[1..2].as_mut())
+					.await
+					.map_err(|_| DecodeError::IoError)?;
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				r.read_exact(buf[1..4].as_mut()).await?;
+				r.read_exact(buf[1..4].as_mut())
+					.await
+					.map_err(|_| DecodeError::IoError)?;
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				r.read_exact(buf[1..8].as_mut()).await?;
+				r.read_exact(buf[1..8].as_mut())
+					.await
+					.map_err(|_| DecodeError::IoError)?;
 				u64::from_be_bytes(buf)
 			}
 			_ => unreachable!(),
@@ -210,16 +216,17 @@ impl Encode for VarInt {
 	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
-			w.write_u8(x as u8).await?;
+			w.write_u8(x as u8).await
 		} else if x < 2u64.pow(14) {
-			w.write_u16(0b01 << 14 | x as u16).await?;
+			w.write_u16(0b01 << 14 | x as u16).await
 		} else if x < 2u64.pow(30) {
-			w.write_u32(0b10 << 30 | x as u32).await?;
+			w.write_u32(0b10 << 30 | x as u32).await
 		} else if x < 2u64.pow(62) {
-			w.write_u64(0b11 << 62 | x).await?;
+			w.write_u64(0b11 << 62 | x).await
 		} else {
 			return Err(BoundsExceeded.into());
 		}
+		.map_err(|_| EncodeError::IoError)?;
 
 		Ok(())
 	}
@@ -229,5 +236,37 @@ impl Encode for VarInt {
 impl From<quinn::VarInt> for VarInt {
 	fn from(v: quinn::VarInt) -> Self {
 		Self(v.into_inner())
+	}
+}
+
+#[async_trait::async_trait]
+impl Encode for u64 {
+	/// Encode a varint to the given writer.
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w).await
+	}
+}
+
+#[async_trait::async_trait]
+impl Decode for u64 {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).await.map(|v| v.into_inner())
+	}
+}
+
+#[async_trait::async_trait]
+impl Encode for usize {
+	/// Encode a varint to the given writer.
+	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w).await
+	}
+}
+
+#[async_trait::async_trait]
+impl Decode for usize {
+	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).await.map(|v| v.into_inner() as usize)
 	}
 }

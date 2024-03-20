@@ -3,235 +3,191 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use tokio::task::AbortHandle;
-use webtransport_quinn::Session;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{
-	cache::{broadcast, segment, track, CacheError},
-	control,
-	control::Message,
-	data, MoqError, VarInt,
+	message::{self, Message},
+	serve::{self, ServeError},
+	setup,
+	util::Queue,
 };
 
-use super::{Control, SessionError};
+use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, SubscribedRecv};
 
-/// Serves broadcasts over the network, automatically handling subscriptions and caching.
-// TODO Clone specific fields when a task actually needs it.
-#[derive(Clone, Debug)]
+// TODO remove Clone.
+#[derive(Clone)]
 pub struct Publisher {
-	// A map of active subscriptions, containing an abort handle to cancel them.
-	subscribes: Arc<Mutex<HashMap<VarInt, AbortHandle>>>,
-	webtransport: Session,
-	control: Control,
-	source: broadcast::Subscriber,
+	webtransport: webtransport_quinn::Session,
+
+	announces: Arc<Mutex<HashMap<String, AnnounceRecv>>>,
+	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv>>>,
+	subscribed_queue: Queue<Subscribed, SessionError>,
+
+	outgoing: Queue<Message, SessionError>,
 }
 
 impl Publisher {
-	pub(crate) fn new(webtransport: Session, control: Control, source: broadcast::Subscriber) -> Self {
+	pub(crate) fn new(webtransport: webtransport_quinn::Session, outgoing: Queue<Message, SessionError>) -> Self {
 		Self {
 			webtransport,
-			control,
-			subscribes: Default::default(),
-			source,
+			announces: Default::default(),
+			subscribed: Default::default(),
+			subscribed_queue: Default::default(),
+			outgoing,
 		}
 	}
 
-	// TODO Serve a broadcast without sending an ANNOUNCE.
-	// fn serve(&mut self, broadcast: broadcast::Subscriber) -> Result<(), SessionError> {
-
-	// TODO Wait until the next subscribe that doesn't route to an ANNOUNCE.
-	// pub async fn subscribed(&mut self) -> Result<track::Producer, SessionError> {
-
-	pub async fn run(mut self) -> Result<(), SessionError> {
-		let res = self.run_inner().await;
-
-		// Terminate all active subscribes on error.
-		self.subscribes
-			.lock()
-			.unwrap()
-			.drain()
-			.for_each(|(_, abort)| abort.abort());
-
-		res
+	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
 	}
 
-	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
-		loop {
-			tokio::select! {
-				stream = self.webtransport.accept_uni() => {
-					stream?;
-					return Err(SessionError::RoleViolation(VarInt::ZERO));
-				}
-				// NOTE: this is not cancel safe, but it's fine since the other branchs are fatal.
-				msg = self.control.recv() => {
-					let msg = msg?;
-
-					log::info!("message received: {:?}", msg);
-					if let Err(err) = self.recv_message(&msg).await {
-						log::warn!("message error: {:?} {:?}", err, msg);
-					}
-				},
-				// No more broadcasts are available.
-				err = self.source.closed() => {
-					self.webtransport.close(err.code(), err.to_string().as_bytes());
-					return Ok(());
-				},
-			}
-		}
+	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
-		match msg {
-			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
-			Message::AnnounceError(msg) => self.recv_announce_error(msg).await,
-			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
-			Message::Unsubscribe(msg) => self.recv_unsubscribe(msg).await,
-			_ => Err(SessionError::RoleViolation(msg.id())),
-		}
-	}
-
-	async fn recv_announce_ok(&mut self, _msg: &control::AnnounceOk) -> Result<(), SessionError> {
-		// We didn't send an announce.
-		Err(CacheError::NotFound.into())
-	}
-
-	async fn recv_announce_error(&mut self, _msg: &control::AnnounceError) -> Result<(), SessionError> {
-		// We didn't send an announce.
-		Err(CacheError::NotFound.into())
-	}
-
-	async fn recv_subscribe(&mut self, msg: &control::Subscribe) -> Result<(), SessionError> {
-		// Assume that the subscribe ID is unique for now.
-		let abort = match self.start_subscribe(msg.clone()) {
-			Ok(abort) => abort,
-			Err(err) => return self.reset_subscribe(msg.id, err).await,
-		};
+	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
+		let mut announces = self.announces.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
-		match self.subscribes.lock().unwrap().entry(msg.id) {
-			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate.into()), // TODO fatal, because we already started the task
-			hash_map::Entry::Vacant(entry) => entry.insert(abort),
+		let entry = match announces.entry(namespace.to_string()) {
+			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
+			hash_map::Entry::Vacant(entry) => entry,
 		};
 
-		self.control
-			.send(control::SubscribeOk {
-				id: msg.id,
-				expires: None,
-
-				// TODO implement this
-				latest: None,
-			})
-			.await
-	}
-
-	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
-		let msg = control::SubscribeDone {
-			id,
-			code: err.code().into(),
-			reason: err.to_string(),
-
-			// TODO properly populate this
-			last: None,
+		let msg = message::Announce {
+			namespace: namespace.to_string(),
+			params: Default::default(),
 		};
+		self.send_message(msg.clone())?;
 
-		self.control.send(msg).await
+		let (announce, recv) = Announce::new(self.clone(), msg);
+		entry.insert(recv);
+
+		Ok(announce)
 	}
 
-	fn start_subscribe(&mut self, msg: control::Subscribe) -> Result<AbortHandle, SessionError> {
-		let mut track = self.source.get_track(&msg.track_name)?;
-
-		// TODO only clone the fields we need
-		let mut this = self.clone();
-
-		let handle = tokio::spawn(async move {
-			log::info!("serving track: name={}", track.name);
-
-			let res = this.run_subscribe(msg.id, &mut track).await;
-			if let Err(err) = &res {
-				log::warn!("failed to serve track: name={} err={}", track.name, err);
-			}
-
-			// Make sure we send a reset at the end.
-			let err = res.err().unwrap_or(CacheError::Closed.into());
-			this.reset_subscribe(msg.id, err).await.ok();
-
-			// We're all done, so clean up the abort handle.
-			this.subscribes.lock().unwrap().remove(&msg.id);
-		});
-
-		Ok(handle.abort_handle())
+	pub async fn subscribed(&mut self) -> Result<Subscribed, SessionError> {
+		self.subscribed_queue.pop().await
 	}
 
-	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), SessionError> {
-		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
+	// Helper to announce and serve any matching subscribers.
+	// TODO this currently takes over the connection; definitely remove Clone
+	pub async fn serve(mut self, broadcast: serve::BroadcastSubscriber) -> Result<(), SessionError> {
+		log::info!("serving broadcast: {}", broadcast.namespace);
 
-		while let Some(mut segment) = track.segment().await? {
-			// TODO only clone the fields we need
-			let this = self.clone();
+		let announce = self.announce(&broadcast.namespace)?;
+		let mut tasks = FuturesUnordered::new();
 
-			tokio::spawn(async move {
-				if let Err(err) = this.run_segment(id, &mut segment).await {
-					log::warn!("failed to serve segment: {:?}", err)
+		loop {
+			tokio::select! {
+				err = announce.closed() => err?,
+				res = tasks.next(), if !tasks.is_empty() => {
+					// TODO preseve the track name too
+					log::debug!("served track: namespace={} res={:?}", broadcast.namespace, res);
+				},
+				sub = self.subscribed() => {
+					let mut subscribe = sub?;
+					match self.serve_track(&broadcast, &subscribe) {
+						Ok(track) => {
+							log::info!("serving track: namespace={} name={}", track.namespace, track.name);
+							tasks.push(subscribe.serve(track).boxed());
+						},
+						Err(err) => {
+							log::debug!("failed serving track: namespace={} name={} err={}", subscribe.namespace(), subscribe.name(), err);
+							subscribe.close(err).ok();
+						}
+					};
 				}
-			});
-		}
-
-		Ok(())
-	}
-
-	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let header = data::Group {
-			subscribe_id: id,
-			track_alias: id,
-
-			// Properties of the segment
-			group_id: segment.sequence,
-			send_order: VarInt::from_u32(segment.priority),
-		};
-
-		log::trace!("sending stream: {:?}", header);
-		let mut stream = self.webtransport.open_uni().await?;
-
-		// Convert the u32 to a i32, since the Quinn set_priority is signed.
-		let priority = (segment.priority as i64 - i32::MAX as i64) as i32;
-		stream.set_priority(priority).ok();
-
-		Into::<data::Header>::into(header)
-			.encode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
-
-		while let Some(mut fragment) = segment.fragment().await? {
-			let object = data::GroupChunk {
-				object_id: fragment.sequence,
-				size: VarInt::try_from(fragment.size)?,
-			};
-
-			log::trace!("sending chunk: {:?}", object);
-
-			object
-				.encode(&mut stream)
-				.await
-				.map_err(|e| SessionError::Unknown(e.to_string()))?;
-
-			while let Some(data) = fragment.chunk().await? {
-				stream.write_all(&data).await?;
-				log::trace!("wrote data: len={}", data.len());
 			}
 		}
+	}
+
+	fn serve_track(
+		&self,
+		broadcast: &serve::BroadcastSubscriber,
+		subscribe: &Subscribed,
+	) -> Result<serve::TrackSubscriber, ServeError> {
+		if subscribe.namespace() != broadcast.namespace {
+			return Err(ServeError::NotFound);
+		}
+
+		broadcast.get_track(subscribe.name())?.ok_or(ServeError::NotFound)
+	}
+
+	pub(crate) fn recv_message(&mut self, msg: message::Subscriber) -> Result<(), SessionError> {
+		log::debug!("received message: {:?}", msg);
+
+		match msg {
+			message::Subscriber::AnnounceOk(msg) => self.recv_announce_ok(msg),
+			message::Subscriber::AnnounceError(msg) => self.recv_announce_error(msg),
+			message::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
+			message::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
+			message::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
+		}
+	}
+
+	fn recv_announce_ok(&mut self, _msg: message::AnnounceOk) -> Result<(), SessionError> {
+		// Who cares
+		// TODO make AnnouncePending so we're forced to care
+		Ok(())
+	}
+
+	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
+		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
+			announce.recv_error(ServeError::Closed(msg.code)).ok();
+		}
 
 		Ok(())
 	}
 
-	async fn recv_unsubscribe(&mut self, msg: &control::Unsubscribe) -> Result<(), SessionError> {
-		let abort = self
-			.subscribes
-			.lock()
-			.unwrap()
-			.remove(&msg.id)
-			.ok_or(CacheError::NotFound)?;
-		abort.abort();
+	fn recv_announce_cancel(&mut self, _msg: message::AnnounceCancel) -> Result<(), SessionError> {
+		unimplemented!("recv_announce_cancel")
+	}
 
-		self.reset_subscribe(msg.id, CacheError::Stop).await
+	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError> {
+		let mut subscribes = self.subscribed.lock().unwrap();
+
+		// Insert the abort handle into the lookup table.
+		let entry = match subscribes.entry(msg.id) {
+			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
+			hash_map::Entry::Vacant(entry) => entry,
+		};
+
+		let (subscribe, recv) = Subscribed::new(self.clone(), msg);
+		entry.insert(recv);
+		self.subscribed_queue.push(subscribe)
+	}
+
+	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
+		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
+			subscribed.recv_unsubscribe().ok();
+		}
+
+		Ok(())
+	}
+
+	pub fn send_message<T: Into<message::Publisher>>(&self, msg: T) -> Result<(), SessionError> {
+		let msg = msg.into();
+		log::debug!("sending message: {:?}", msg);
+		self.outgoing.push(msg.into())
+	}
+
+	pub(super) fn drop_subscribe(&mut self, id: u64) {
+		self.subscribed.lock().unwrap().remove(&id);
+	}
+
+	pub(super) fn drop_announce(&mut self, namespace: &str) {
+		self.announces.lock().unwrap().remove(namespace);
+	}
+
+	pub(super) fn webtransport(&mut self) -> &mut webtransport_quinn::Session {
+		&mut self.webtransport
+	}
+
+	pub fn close(self, err: SessionError) {
+		self.outgoing.close(err.clone()).ok();
+		self.subscribed_queue.close(err).ok();
 	}
 }
