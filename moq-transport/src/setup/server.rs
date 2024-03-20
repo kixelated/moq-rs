@@ -42,7 +42,7 @@ impl Server {
 
 	/// Encode the server setup.
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		(0x41 as u64).encode(w).await?;
+		0x41_u64.encode(w).await?;
 		self.version.encode(w).await?;
 
 		let mut params = self.params.clone();

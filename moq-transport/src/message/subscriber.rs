@@ -7,9 +7,9 @@ macro_rules! subscriber_msgs {
 			$($name(message::$name)),*
 		}
 
-		$(impl Into<Subscriber> for message::$name {
-			fn into(self) -> Subscriber {
-				Subscriber::$name(self)
+		$(impl From<message::$name> for Subscriber {
+			fn from(msg: message::$name) -> Self {
+				Subscriber::$name(msg)
 			}
 		})*
 

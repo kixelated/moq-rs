@@ -151,7 +151,7 @@ impl Publisher {
 
 		// Insert the abort handle into the lookup table.
 		let entry = match subscribes.entry(msg.id) {
-			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate.into()),
+			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry,
 		};
 

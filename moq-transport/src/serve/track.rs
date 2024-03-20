@@ -18,7 +18,7 @@ use super::{
 	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber,
 	ServeError, Stream, StreamPublisher, StreamSubscriber,
 };
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{cmp, fmt, ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug)]
@@ -70,14 +70,11 @@ impl State {
 
 		match &self.mode {
 			Mode::Init => {}
-			Mode::Group(old) => {
-				if old.id == group.id {
-					return Err(ServeError::Duplicate);
-				} else if old.id > group.id {
-					log::warn!("dropping old group");
-					return Ok(());
-				}
-			}
+			Mode::Group(old) => match group.id.cmp(&old.id) {
+				cmp::Ordering::Less => return Ok(()),
+				cmp::Ordering::Equal => return Err(ServeError::Duplicate),
+				cmp::Ordering::Greater => {}
+			},
 			_ => return Err(ServeError::Mode),
 		};
 
@@ -97,11 +94,11 @@ impl State {
 			Mode::Object(objects) => {
 				let first = objects.first().unwrap();
 
-				if first.group_id > object.group_id {
+				match object.group_id.cmp(&first.group_id) {
 					// Drop this old group
-					return Ok(());
-				} else if first.group_id < object.group_id {
-					objects.clear()
+					cmp::Ordering::Less => return Ok(()),
+					cmp::Ordering::Greater => objects.clear(),
+					cmp::Ordering::Equal => {}
 				}
 
 				objects.push(object);

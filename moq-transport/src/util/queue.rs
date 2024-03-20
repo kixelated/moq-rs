@@ -50,7 +50,7 @@ impl<T, E: Clone> Queue<T, E> {
 				let state = self.state.lock();
 				state.closed.clone()?;
 
-				if state.queue.len() > 0 {
+				if !state.queue.is_empty() {
 					return Ok(state.into_mut().queue.pop_front().unwrap());
 				}
 				state.changed()

@@ -7,9 +7,9 @@ macro_rules! publisher_msgs {
 			$($name(message::$name)),*
 		}
 
-		$(impl Into<Publisher> for message::$name {
-			fn into(self) -> Publisher {
-				Publisher::$name(self)
+		$(impl From<message::$name> for Publisher {
+			fn from(msg: message::$name) -> Self {
+				Publisher::$name(msg)
 			}
 		})*
 

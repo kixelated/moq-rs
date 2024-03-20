@@ -93,7 +93,7 @@ impl GroupPublisher {
 	pub fn create_object(&mut self, size: usize) -> Result<ObjectPublisher, ServeError> {
 		let (publisher, subscriber) = ObjectHeader {
 			group_id: self.id,
-			object_id: self.next.try_into().unwrap(),
+			object_id: self.next,
 			send_order: self.send_order,
 			size,
 		}

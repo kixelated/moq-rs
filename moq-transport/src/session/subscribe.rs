@@ -1,7 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use bytes::BytesMut;
-
 use crate::{
 	data,
 	message::{self, SubscribePair},
@@ -62,7 +60,7 @@ impl Subscribe {
 
 	// Returns the maximum known group/object sequences.
 	pub fn max(&self) -> Option<(u64, u64)> {
-		let ok = self.state.lock().ok.as_ref().map(|ok| ok.latest).flatten();
+		let ok = self.state.lock().ok.as_ref().and_then(|ok| ok.latest);
 		let cache = self.track.latest();
 
 		// Return the max of both the OK message and the cache.
@@ -71,10 +69,7 @@ impl Subscribe {
 				Some(cache) => Some(cache.max(ok)),
 				None => Some(ok),
 			},
-			None => match cache {
-				Some(cache) => Some(cache),
-				None => None,
-			},
+			None => cache,
 		}
 	}
 
@@ -128,7 +123,7 @@ impl SubscribeRecv {
 		stream: webtransport_quinn::RecvStream,
 	) -> Result<(), SessionError> {
 		match header {
-			data::Header::Track(track) => return self.recv_track(track, stream).await,
+			data::Header::Track(track) => self.recv_track(track, stream).await,
 			data::Header::Group(group) => self.recv_group(group, stream).await,
 			data::Header::Object(object) => self.recv_object(object, stream).await,
 		}
@@ -144,19 +139,20 @@ impl SubscribeRecv {
 		let mut track = self.publisher.lock().unwrap().create_stream(header.send_order)?;
 
 		while let Some(chunk) = data::TrackObject::decode(&mut stream).await? {
-			let remain = chunk.size;
-			let mut payload = BytesMut::new();
+			let mut remain = chunk.size;
 
+			let mut chunks = vec![];
 			while remain > 0 {
-				let data = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
-				log::trace!("received track payload: {:?}", data.bytes.len());
-				payload.extend_from_slice(&data.bytes);
+				let chunk = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
+				log::trace!("received track payload: {:?}", chunk.bytes.len());
+				remain -= chunk.bytes.len();
+				chunks.push(chunk.bytes);
 			}
 
 			let object = serve::StreamObject {
 				object_id: chunk.object_id,
 				group_id: chunk.group_id,
-				payload: payload.freeze(),
+				payload: bytes::Bytes::from(chunks.concat()),
 			};
 			log::trace!("received track object: {:?}", track);
 
@@ -238,14 +234,9 @@ impl SubscribeRecv {
 	}
 }
 
+#[derive(Default)]
 struct State {
 	ok: Option<message::SubscribeOk>,
-}
-
-impl Default for State {
-	fn default() -> Self {
-		Self { ok: None }
-	}
 }
 
 #[derive(Default)]

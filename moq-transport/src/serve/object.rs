@@ -133,7 +133,7 @@ impl ObjectPublisher {
 	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
 		Self {
 			state,
-			remain: info.size as usize,
+			remain: info.size,
 			info,
 		}
 	}
