@@ -1,0 +1,238 @@
+use std::sync::{Arc, Mutex};
+
+use bytes::BytesMut;
+
+use crate::{
+	control::{self, SubscribePair},
+	data,
+	serve::{self, ServeError},
+	util::Watch,
+};
+
+use super::{SessionError, Subscriber};
+
+pub struct Subscribe {
+	session: Subscriber,
+	id: u64,
+	track: serve::TrackSubscriber,
+	state: Watch<State>,
+}
+
+impl Subscribe {
+	pub(super) fn new(session: Subscriber, msg: control::Subscribe) -> (SubscribeRecv, Subscribe) {
+		let state = Watch::new(State::default());
+
+		let (publisher, subscriber) = serve::Track {
+			namespace: msg.track_namespace,
+			name: msg.track_name.clone(),
+		}
+		.produce();
+
+		// TODO apply start/end range
+
+		let subscriber = Subscribe {
+			session,
+			id: msg.id,
+			track: subscriber,
+			state: state.clone(),
+		};
+
+		let publisher = SubscribeRecv::new(state, publisher);
+
+		(publisher, subscriber)
+	}
+
+	// Waits until an OK message is received.
+	pub async fn ok(&self) -> Result<(), ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if state.ok.is_some() {
+					return Ok(());
+				}
+				state.changed()
+			};
+
+			tokio::select! {
+				_ = notify => {},
+				err = self.track.closed() => return err,
+			};
+		}
+	}
+
+	// Returns the maximum known group/object sequences.
+	pub fn max(&self) -> Option<(u64, u64)> {
+		let ok = self.state.lock().ok.as_ref().map(|ok| ok.latest).flatten();
+		let cache = self.track.latest();
+
+		// Return the max of both the OK message and the cache.
+		match ok {
+			Some(ok) => match cache {
+				Some(cache) => Some(cache.max(ok)),
+				None => Some(ok),
+			},
+			None => match cache {
+				Some(cache) => Some(cache),
+				None => None,
+			},
+		}
+	}
+
+	pub fn track(&self) -> &serve::TrackSubscriber {
+		&self.track
+	}
+}
+
+impl Drop for Subscribe {
+	fn drop(&mut self) {
+		let msg = control::Unsubscribe { id: self.id };
+		self.session.send_message(msg).ok();
+
+		self.session.drop_subscribe(self.id);
+	}
+}
+
+#[derive(Clone)]
+pub(super) struct SubscribeRecv {
+	publisher: Arc<Mutex<serve::TrackPublisher>>,
+	state: Watch<State>,
+}
+
+impl SubscribeRecv {
+	fn new(state: Watch<State>, publisher: serve::TrackPublisher) -> Self {
+		Self {
+			publisher: Arc::new(Mutex::new(publisher)),
+			state,
+		}
+	}
+
+	pub fn recv_ok(&mut self, msg: control::SubscribeOk) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut();
+		state.ok = Some(msg);
+		Ok(())
+	}
+
+	pub fn recv_error(&mut self, code: u64) -> Result<(), ServeError> {
+		self.publisher.lock().unwrap().close(ServeError::Closed(code))?;
+		Ok(())
+	}
+
+	pub fn recv_done(&mut self, code: u64) -> Result<(), ServeError> {
+		self.publisher.lock().unwrap().close(ServeError::Closed(code))?;
+		Ok(())
+	}
+
+	pub async fn recv_stream(
+		&mut self,
+		header: data::Header,
+		stream: webtransport_quinn::RecvStream,
+	) -> Result<(), SessionError> {
+		match header {
+			data::Header::Track(track) => return self.recv_track(track, stream).await,
+			data::Header::Group(group) => self.recv_group(group, stream).await,
+			data::Header::Object(object) => self.recv_object(object, stream).await,
+		}
+	}
+
+	async fn recv_track(
+		&mut self,
+		header: data::TrackHeader,
+		mut stream: webtransport_quinn::RecvStream,
+	) -> Result<(), SessionError> {
+		let mut track = self.publisher.lock().unwrap().create_stream(header.send_order)?;
+
+		while let Some(chunk) = data::TrackChunk::decode(&mut stream).await? {
+			let remain = chunk.size;
+			let mut payload = BytesMut::new();
+
+			while remain > 0 {
+				let data = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
+				payload.extend_from_slice(&data.bytes);
+			}
+
+			track.write_object(serve::StreamObject {
+				object_id: chunk.object_id,
+				group_id: chunk.group_id,
+				payload: payload.freeze(),
+			})?;
+		}
+
+		Ok(())
+	}
+
+	async fn recv_group(
+		&mut self,
+		header: data::GroupHeader,
+		mut stream: webtransport_quinn::RecvStream,
+	) -> Result<(), SessionError> {
+		let mut group = self.publisher.lock().unwrap().create_group(serve::Group {
+			id: header.group_id,
+			send_order: header.send_order,
+		})?;
+
+		while let Some(chunk) = data::GroupChunk::decode(&mut stream).await? {
+			let mut object = group.create_object(chunk.size)?;
+			let mut remain = chunk.size;
+
+			while remain > 0 {
+				let data = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
+				remain -= data.bytes.len();
+				object.write(data.bytes)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	async fn recv_object(
+		&mut self,
+		header: data::ObjectHeader,
+		mut stream: webtransport_quinn::RecvStream,
+	) -> Result<(), SessionError> {
+		// TODO avoid buffering the entire object to learn the size.
+		let mut chunks = vec![];
+		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
+			chunks.push(data.bytes);
+		}
+
+		let mut object = self.publisher.lock().unwrap().create_object(serve::ObjectHeader {
+			group_id: header.group_id,
+			object_id: header.object_id,
+			send_order: header.send_order,
+			size: chunks.iter().map(|c| c.len()).sum(),
+		})?;
+
+		for chunk in chunks {
+			object.write(chunk)?;
+		}
+
+		Ok(())
+	}
+
+	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError> {
+		self.publisher.lock().unwrap().write_datagram(serve::Datagram {
+			group_id: datagram.group_id,
+			object_id: datagram.object_id,
+			payload: datagram.payload,
+			send_order: datagram.send_order,
+		})?;
+
+		Ok(())
+	}
+}
+
+struct State {
+	ok: Option<control::SubscribeOk>,
+}
+
+impl Default for State {
+	fn default() -> Self {
+		Self { ok: None }
+	}
+}
+
+#[derive(Default)]
+pub struct SubscribeOptions {
+	pub start: SubscribePair,
+	pub end: SubscribePair,
+}

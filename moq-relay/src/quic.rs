@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use tokio::task::JoinSet;
 
-use crate::{Config, Origin, Session, Tls};
+use crate::{Config, Connection, Origin, Tls};
 
 pub struct Quic {
 	quic: quinn::Endpoint,
@@ -70,8 +70,8 @@ impl Quic {
 			tokio::select! {
 				res = self.quic.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let mut session = Session::new(self.origin.clone());
-					self.conns.spawn(async move { session.run(conn).await });
+					let session = Connection::new(self.origin.clone());
+					self.conns.spawn(session.run(conn));
 				},
 				res = self.conns.join_next(), if !self.conns.is_empty() => {
 					let res = res.expect("no tasks").expect("task aborted");

@@ -21,7 +21,7 @@ tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 log = "0.4"
 
 quinn = "0.10"
-webtransport-quinn = "0.6.1"
+webtransport-quinn = "0.7"
 #webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
 
 async-trait = "0.1"

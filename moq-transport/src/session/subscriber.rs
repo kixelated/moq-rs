@@ -1,35 +1,30 @@
 use std::{
 	collections::{hash_map, HashMap},
+	io,
 	sync::{atomic, Arc, Mutex},
 };
 
-use crate::{
-	control, data,
-	error::{AnnounceError, SessionError, SubscribeError},
-	setup,
-	util::Queue,
-	Session,
-};
+use crate::{control, data, setup, util::Queue};
 
-use super::{Announce, AnnouncePending, AnnounceWeak, Subscribe, SubscribeOptions, SubscribePending, SubscribeWeak};
+use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeOptions, SubscribeRecv};
 
 // TODO remove Clone.
 #[derive(Clone)]
 pub struct Subscriber {
-	announces: Arc<Mutex<HashMap<String, AnnounceWeak>>>,
-	announces_pending: Queue<AnnouncePending, SessionError>,
+	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
+	announced_queue: Queue<Announced, SessionError>,
 
-	subscribes: Arc<Mutex<HashMap<u64, SubscribeWeak>>>,
+	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
 
 	outgoing: Queue<control::Message, SessionError>,
 }
 
 impl Subscriber {
-	pub(crate) fn new(outgoing: Queue<control::Message, SessionError>) -> Self {
+	pub(super) fn new(outgoing: Queue<control::Message, SessionError>) -> Self {
 		Self {
-			announces: Default::default(),
-			announces_pending: Default::default(),
+			announced: Default::default(),
+			announced_queue: Default::default(),
 			subscribes: Default::default(),
 			subscribe_next: Default::default(),
 			outgoing,
@@ -46,23 +41,23 @@ impl Subscriber {
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn announced(&mut self) -> Result<AnnouncePending, SessionError> {
-		self.announces_pending.pop().await
+	pub async fn announced(&mut self) -> Result<Announced, SessionError> {
+		self.announced_queue.pop().await
 	}
 
-	pub async fn subscribe(
+	pub fn subscribe(
 		&mut self,
-		namespace: String,
-		name: String,
+		namespace: &str,
+		name: &str,
 		options: SubscribeOptions,
-	) -> Result<SubscribePending, SessionError> {
+	) -> Result<Subscribe, SessionError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = control::Subscribe {
 			id,
 			track_alias: id,
-			track_namespace: namespace,
-			track_name: name,
+			track_namespace: namespace.to_string(),
+			track_name: name.to_string(),
 			start: options.start,
 			end: options.end,
 			params: Default::default(),
@@ -70,14 +65,10 @@ impl Subscriber {
 
 		self.send_message(msg.clone())?;
 
-		let subscribe = Subscribe::new(self.clone(), msg);
-		self.subscribes
-			.lock()
-			.unwrap()
-			.insert(id, subscribe.clone().downgrade());
-		let pending = SubscribePending::new(subscribe.clone());
+		let (publisher, subscribe) = Subscribe::new(self.clone(), msg);
+		self.subscribes.lock().unwrap().insert(id, publisher);
 
-		Ok(pending)
+		Ok(subscribe)
 	}
 
 	pub(super) fn send_message<M: Into<control::Subscriber> + Into<control::Message>>(
@@ -87,7 +78,7 @@ impl Subscriber {
 		self.outgoing.push(msg.into())
 	}
 
-	pub(crate) fn recv_message(&mut self, msg: control::Publisher) -> Result<(), SessionError> {
+	pub(super) fn recv_message(&mut self, msg: control::Publisher) -> Result<(), SessionError> {
 		match msg {
 			control::Publisher::Announce(msg) => self.recv_announce(msg),
 			control::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
@@ -98,31 +89,30 @@ impl Subscriber {
 	}
 
 	fn recv_announce(&mut self, msg: control::Announce) -> Result<(), SessionError> {
-		let mut announces = self.announces.lock().unwrap();
+		let mut announces = self.announced.lock().unwrap();
 
 		let entry = match announces.entry(msg.namespace.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry,
 		};
 
-		let announce = Announce::new(self.clone(), msg.namespace);
-		entry.insert(announce.downgrade());
-
-		self.announces_pending.push(AnnouncePending::new(announce))?;
+		let (announced, recv) = Announced::new(self.clone(), msg.namespace);
+		self.announced_queue.push(announced)?;
+		entry.insert(recv);
 
 		Ok(())
 	}
 
 	fn recv_unannounce(&mut self, msg: control::Unannounce) -> Result<(), SessionError> {
-		if let Some(mut announce) = self.get_announce(&msg.namespace) {
-			announce.close(AnnounceError::Done).ok();
+		if let Some(announce) = self.announced.lock().unwrap().get_mut(&msg.namespace) {
+			announce.recv_unannounce().ok();
 		}
 
 		Ok(())
 	}
 
 	fn recv_subscribe_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SessionError> {
-		if let Some(mut sub) = self.get_subscribe(msg.id) {
+		if let Some(sub) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
 			sub.recv_ok(msg).ok();
 		}
 
@@ -130,27 +120,19 @@ impl Subscriber {
 	}
 
 	fn recv_subscribe_error(&mut self, msg: control::SubscribeError) -> Result<(), SessionError> {
-		if let Some(mut subscriber) = self.get_subscribe(msg.id) {
-			subscriber.recv_error(SubscribeError::Error(msg.code)).ok();
+		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+			subscriber.recv_error(msg.code).ok();
 		}
 
 		Ok(())
 	}
 
 	fn recv_subscribe_done(&mut self, msg: control::SubscribeDone) -> Result<(), SessionError> {
-		if let Some(mut subscriber) = self.get_subscribe(msg.id) {
-			subscriber.recv_error(SubscribeError::Done(msg.code)).ok();
+		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+			subscriber.recv_done(msg.code).ok();
 		}
 
 		Ok(())
-	}
-
-	fn get_announce(&self, namespace: &str) -> Option<Announce> {
-		self.announces.lock().unwrap().get(namespace)?.upgrade()
-	}
-
-	fn get_subscribe(&self, id: u64) -> Option<Subscribe> {
-		self.subscribes.lock().unwrap().get(&id)?.upgrade()
 	}
 
 	pub(super) fn drop_subscribe(&mut self, id: u64) {
@@ -158,18 +140,31 @@ impl Subscriber {
 	}
 
 	pub(super) fn drop_announce(&mut self, namespace: &str) {
-		self.announces.lock().unwrap().remove(namespace);
+		self.announced.lock().unwrap().remove(namespace);
 	}
 
-	pub fn recv_stream(
-		&mut self,
-		header: data::Header,
-		stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SessionError> {
+	pub(super) async fn recv_stream(self, mut stream: webtransport_quinn::RecvStream) -> Result<(), SessionError> {
+		let header = data::Header::decode(&mut stream).await?;
+
 		let id = header.subscribe_id();
-		if let Some(mut subscribe) = self.get_subscribe(id) {
-			// TODO handle some of these errors?
-			subscribe.recv_stream(header, stream).ok();
+		let subscribe = self.subscribes.lock().unwrap().get(&id).cloned();
+
+		if let Some(mut subscribe) = subscribe {
+			subscribe.recv_stream(header, stream).await?
+		}
+
+		Ok(())
+	}
+
+	// TODO should not be async
+	pub async fn recv_datagram(&mut self, datagram: bytes::Bytes) -> Result<(), SessionError> {
+		let mut cursor = io::Cursor::new(datagram);
+		let datagram = data::Datagram::decode(&mut cursor).await?;
+
+		let subscribe = self.subscribes.lock().unwrap().get(&datagram.subscribe_id).cloned();
+
+		if let Some(subscribe) = subscribe {
+			subscribe.recv_datagram(datagram)?;
 		}
 
 		Ok(())
@@ -177,6 +172,6 @@ impl Subscriber {
 
 	pub fn close(self, err: SessionError) {
 		self.outgoing.close(err.clone()).ok();
-		self.announces_pending.close(err).ok();
+		self.announced_queue.close(err).ok();
 	}
 }

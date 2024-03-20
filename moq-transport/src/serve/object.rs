@@ -7,10 +7,11 @@
 //! These chunks are returned directly from the QUIC connection, so they may be of any size or position.
 //! You can clone the [Subscriber] and each will read a copy of of all future chunks. (fanout)
 //!
-//! The fragment is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
+//! The fragment is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
 use std::{ops::Deref, sync::Arc};
 
-use crate::{error::CacheError, publisher, util::Watch, ServeError};
+use super::ServeError;
+use crate::util::Watch;
 use bytes::Bytes;
 
 /// Static information about the segment.
@@ -25,7 +26,7 @@ pub struct ObjectHeader {
 	// The priority of the stream.
 	pub send_order: u64,
 
-	// The size of the object.
+	// The size of the object
 	pub size: usize,
 }
 
@@ -73,11 +74,11 @@ struct State {
 	chunks: Vec<Bytes>,
 
 	// Set when the publisher is dropped.
-	closed: Result<(), CacheError>,
+	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -112,9 +113,9 @@ impl ObjectPublisher {
 	}
 
 	/// Write a new chunk of bytes.
-	pub fn write(&mut self, chunk: Bytes) -> Result<(), CacheError> {
+	pub fn write(&mut self, chunk: Bytes) -> Result<(), ServeError> {
 		if chunk.len() > self.remain {
-			return Err(CacheError::WrongSize);
+			return Err(ServeError::WrongSize);
 		}
 		self.remain -= chunk.len();
 
@@ -126,9 +127,9 @@ impl ObjectPublisher {
 	}
 
 	/// Close the segment with an error.
-	pub fn close(self, mut err: CacheError) -> Result<(), CacheError> {
-		if err == CacheError::Done && self.remain != 0 {
-			err = CacheError::WrongSize;
+	pub fn close(&mut self, mut err: ServeError) -> Result<(), ServeError> {
+		if err == ServeError::Done && self.remain != 0 {
+			err = ServeError::WrongSize;
 		}
 
 		self.state.lock_mut().close(err)?;
@@ -172,7 +173,7 @@ impl ObjectSubscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn chunk(&mut self) -> Result<Option<Bytes>, CacheError> {
+	pub async fn chunk(&mut self) -> Result<Option<Bytes>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -183,7 +184,7 @@ impl ObjectSubscriber {
 				}
 
 				match &state.closed {
-					Err(CacheError::Done) => return Ok(None),
+					Err(ServeError::Done) => return Ok(None),
 					Err(err) => return Err(err.clone()),
 					Ok(()) => state.changed(),
 				}
@@ -191,22 +192,6 @@ impl ObjectSubscriber {
 
 			notify.await; // Try again when the state changes
 		}
-	}
-
-	pub async fn serve(mut self, mut dst: publisher::Subscribe) -> Result<(), ServeError> {
-		let mut dst = dst
-			.serve_object(publisher::ObjectHeader {
-				group_id: self.group_id,
-				object_id: self.object_id,
-				send_order: self.send_order,
-			})
-			.await?;
-
-		while let Some(chunk) = self.chunk().await? {
-			dst.write(&chunk).await?;
-		}
-
-		Ok(())
 	}
 }
 
@@ -230,6 +215,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }

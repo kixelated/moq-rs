@@ -6,19 +6,12 @@
 //! See the [specification](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and [github](https://github.com/moq-wg/moq-transport) for any updates.
 mod coding;
 
-pub mod cache;
 pub mod control;
 pub mod data;
 pub mod error;
-pub mod publisher;
+pub mod serve;
+pub mod session;
 pub mod setup;
-pub mod subscriber;
 pub mod util;
 
-pub use error::*;
-
-pub use publisher::Publisher;
-pub use subscriber::Subscriber;
-
-pub mod session;
-pub use session::Session;
+pub use session::{Publisher, Session, Subscriber};

@@ -39,16 +39,21 @@ pub struct TrackChunk {
 }
 
 impl TrackChunk {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let group_id = u64::decode(r).await?;
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Option<Self>, DecodeError> {
+		let group_id = match u64::decode(r).await {
+			Ok(group_id) => group_id,
+			Err(DecodeError::UnexpectedEnd) => return Ok(None),
+			Err(err) => return Err(err),
+		};
+
 		let object_id = u64::decode(r).await?;
 		let size = usize::decode(r).await?;
 
-		Ok(Self {
+		Ok(Some(Self {
 			group_id,
 			object_id,
 			size,
-		})
+		}))
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {

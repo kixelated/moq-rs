@@ -2,26 +2,22 @@
 //!
 //! The [Publisher] can create tracks, either manually or on request.
 //! It receives all requests by a [Subscriber] for a tracks that don't exist.
-//! The simplest implementation is to close every unknown track with [CacheError::NotFound].
+//! The simplest implementation is to close every unknown track with [ServeError::NotFound].
 //!
 //! A [Subscriber] can request tracks by name.
 //! If the track already exists, it will be returned.
 //! If the track doesn't exist, it will be sent to [Unknown] to be handled.
 //! A [Subscriber] can be cloned to create multiple subscriptions.
 //!
-//! The broadcast is automatically closed with [CacheError::Done] when [Publisher] is dropped, or all [Subscriber]s are dropped.
+//! The broadcast is automatically closed with [ServeError::Done] when [Publisher] is dropped, or all [Subscriber]s are dropped.
 use std::{
 	collections::{hash_map, HashMap},
 	ops::Deref,
 	sync::Arc,
 };
 
-use super::{Track, TrackPublisher, TrackSubscriber};
-use crate::{error::CacheError, publisher, util::Watch, Publisher, ServeError, SubscribeError};
-use futures::{
-	stream::{FuturesUnordered, StreamExt},
-	FutureExt,
-};
+use super::{ServeError, Track, TrackPublisher, TrackSubscriber};
+use crate::util::Watch;
 
 /// Static information about a broadcast.
 #[derive(Debug)]
@@ -50,20 +46,20 @@ impl Broadcast {
 /// Dynamic information about the broadcast.
 struct State {
 	tracks: HashMap<String, TrackSubscriber>,
-	closed: Result<(), CacheError>,
+	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, CacheError> {
+	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
 			None => self.closed.clone().map(|_| None),
 		}
 	}
 
-	pub fn insert(&mut self, track: TrackSubscriber) -> Result<(), CacheError> {
+	pub fn insert(&mut self, track: TrackSubscriber) -> Result<(), ServeError> {
 		match self.tracks.entry(track.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate),
+			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate),
 			hash_map::Entry::Vacant(v) => v.insert(track),
 		};
 
@@ -74,7 +70,7 @@ impl State {
 		self.tracks.remove(name)
 	}
 
-	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -102,7 +98,7 @@ impl BroadcastPublisher {
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
-	pub fn create_track(&mut self, track: &str) -> Result<TrackPublisher, CacheError> {
+	pub fn create_track(&mut self, track: &str) -> Result<TrackPublisher, ServeError> {
 		let (publisher, subscriber) = Track {
 			namespace: self.namespace.clone(),
 			name: track.to_owned(),
@@ -118,7 +114,7 @@ impl BroadcastPublisher {
 	}
 
 	/// Close the broadcast with an error.
-	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -148,56 +144,17 @@ impl BroadcastSubscriber {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, CacheError> {
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
 		self.state.lock().get(name)
 	}
 
 	/// Check if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub fn is_closed(&self) -> Option<CacheError> {
+	pub fn is_closed(&self) -> Option<ServeError> {
 		self.state.lock().closed.as_ref().err().cloned()
 	}
 
-	// TODO This is wrong because it assumes we're the only publisher, but Publisher is Clone.
-	pub async fn serve(self, mut session: Publisher) -> Result<(), ServeError> {
-		// Dropped automatically at the end of the function.
-		let _announce = session.announce(self.namespace.clone()).await?;
-
-		let mut tasks = FuturesUnordered::new();
-
-		loop {
-			tokio::select! {
-				subscribe = session.subscribed() => tasks.push(self.serve_subscribe(subscribe?).boxed()),
-				res = tasks.next(), if !tasks.is_empty() => { res.unwrap().ok(); } // TODO log failures?
-			}
-		}
-	}
-
-	async fn serve_subscribe(&self, subscribe: publisher::SubscribePending) -> Result<(), ServeError> {
-		if subscribe.namespace() != self.namespace {
-			subscribe.reject(SubscribeError::NotFound.code())?;
-			return Ok(());
-		}
-
-		let track = match self.get_track(subscribe.name())? {
-			Some(track) => track,
-			None => {
-				subscribe.reject(SubscribeError::NotFound.code())?;
-				return Ok(());
-			}
-		};
-
-		// TODO log these errors?
-		let subscribe = subscribe.accept(publisher::SubscribeResponse {
-			latest: track.latest(),
-			expires: None,
-		})?;
-		track.serve(subscribe).await?;
-
-		Ok(())
-	}
-
 	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub async fn closed(&self) -> CacheError {
+	pub async fn closed(&self) -> ServeError {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -233,6 +190,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }

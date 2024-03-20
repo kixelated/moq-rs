@@ -1,8 +1,8 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::{publisher, util::Watch, CacheError, ServeError};
+use crate::util::Watch;
 
-use super::Object;
+use super::ServeError;
 
 pub struct Stream {
 	pub namespace: String,
@@ -24,20 +24,20 @@ impl Stream {
 
 struct State {
 	// The data that has been received thus far.
-	objects: Vec<Object>,
+	objects: Vec<StreamObject>,
 
 	// Set when the publisher is dropped.
-	closed: Result<(), CacheError>,
+	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn insert_object(&mut self, object: Object) -> Result<(), CacheError> {
+	pub fn insert_object(&mut self, object: StreamObject) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.objects.push(object);
 		Ok(())
 	}
 
-	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -68,13 +68,13 @@ impl StreamPublisher {
 	}
 
 	/// Create an object with the given info and payload.
-	pub fn write_object(&mut self, info: Object) -> Result<(), CacheError> {
+	pub fn write_object(&mut self, info: StreamObject) -> Result<(), ServeError> {
 		self.state.lock_mut().insert_object(info)?;
 		Ok(())
 	}
 
 	/// Close the stream with an error.
-	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -115,7 +115,7 @@ impl StreamSubscriber {
 	}
 
 	/// Block until the next object is available.
-	pub async fn object(&mut self) -> Result<Object, CacheError> {
+	pub async fn object(&mut self) -> Result<StreamObject, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -141,28 +141,6 @@ impl StreamSubscriber {
 			.max_by_key(|a| (a.group_id, a.object_id))
 			.map(|a| (a.group_id, a.object_id))
 	}
-
-	pub async fn serve(mut self, mut dst: publisher::Subscribe) -> Result<(), ServeError> {
-		let mut dst = dst
-			.serve_track(publisher::TrackHeader {
-				send_order: self.send_order,
-			})
-			.await?;
-
-		loop {
-			// TODO add ability to read one chunk at a time
-			let object = self.object().await?;
-
-			dst.write_object(publisher::TrackObject {
-				group_id: object.group_id,
-				object_id: object.object_id,
-				size: object.payload.len(),
-			})
-			.await?;
-
-			dst.write_payload(&object.payload).await?;
-		}
-	}
 }
 
 impl Deref for StreamSubscriber {
@@ -185,6 +163,18 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
+}
+
+#[derive(Clone)]
+pub struct StreamObject {
+	// The sequence number of the group within the track.
+	pub group_id: u64,
+
+	// The sequence number of the object within the group.
+	pub object_id: u64,
+
+	// The payload.
+	pub payload: bytes::Bytes,
 }

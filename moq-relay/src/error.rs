@@ -3,10 +3,10 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum RelayError {
 	#[error("transport error: {0}")]
-	Transport(#[from] moq_transport::error::SessionError),
+	Transport(#[from] moq_transport::session::SessionError),
 
-	#[error("cache error: {0}")]
-	Cache(#[from] moq_transport::error::CacheError),
+	#[error("serve error: {0}")]
+	Cache(#[from] moq_transport::serve::ServeError),
 
 	#[error("api error: {0}")]
 	MoqApi(#[from] moq_api::ApiError),

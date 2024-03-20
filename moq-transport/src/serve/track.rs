@@ -10,17 +10,14 @@
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Subscriber] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
+//! The track is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
 
-use crate::{error::CacheError, publisher, util::Watch, ServeError};
+use crate::util::Watch;
 
 use super::{
-	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber, Stream,
-	StreamPublisher, StreamSubscriber,
+	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber,
+	ServeError, Stream, StreamPublisher, StreamSubscriber,
 };
-use futures::stream::FuturesUnordered;
-use futures::stream::StreamExt;
-use futures::FutureExt;
 use std::{ops::Deref, sync::Arc};
 
 /// Static information about a track.
@@ -56,29 +53,29 @@ struct State {
 	epoch: usize,
 
 	// Set when the publisher is closed/dropped, or all subscribers are dropped.
-	closed: Result<(), CacheError>,
+	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
 	}
 
-	pub fn insert_group(&mut self, group: GroupSubscriber) -> Result<(), CacheError> {
+	pub fn insert_group(&mut self, group: GroupSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
 		match &self.cache {
 			Cache::Init => {}
 			Cache::Group(old) => {
 				if old.id == group.id {
-					return Err(CacheError::Duplicate);
+					return Err(ServeError::Duplicate);
 				} else if old.id > group.id {
 					return Ok(());
 				}
 			}
-			_ => return Err(CacheError::Mode),
+			_ => return Err(ServeError::Mode),
 		};
 
 		self.cache = Cache::Group(group);
@@ -87,7 +84,7 @@ impl State {
 		Ok(())
 	}
 
-	pub fn insert_object(&mut self, object: ObjectSubscriber) -> Result<(), CacheError> {
+	pub fn insert_object(&mut self, object: ObjectSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
 		match &mut self.cache {
@@ -106,7 +103,7 @@ impl State {
 
 				objects.push(object);
 			}
-			_ => return Err(CacheError::Mode),
+			_ => return Err(ServeError::Mode),
 		};
 
 		self.epoch += 1;
@@ -114,12 +111,12 @@ impl State {
 		Ok(())
 	}
 
-	pub fn insert_datagram(&mut self, datagram: Datagram) -> Result<(), CacheError> {
+	pub fn insert_datagram(&mut self, datagram: Datagram) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
 		match &self.cache {
 			Cache::Init | Cache::Datagram(_) => {}
-			_ => return Err(CacheError::Mode),
+			_ => return Err(ServeError::Mode),
 		};
 
 		self.cache = Cache::Datagram(datagram);
@@ -128,12 +125,12 @@ impl State {
 		Ok(())
 	}
 
-	pub fn set_stream(&mut self, stream: StreamSubscriber) -> Result<(), CacheError> {
+	pub fn set_stream(&mut self, stream: StreamSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
 		match &self.cache {
 			Cache::Init => {}
-			_ => return Err(CacheError::Mode),
+			_ => return Err(ServeError::Mode),
 		};
 
 		self.cache = Cache::Stream(stream);
@@ -166,14 +163,14 @@ impl TrackPublisher {
 	}
 
 	/// Create a group with the given info.
-	pub fn create_group(&mut self, group: Group) -> Result<GroupPublisher, CacheError> {
+	pub fn create_group(&mut self, group: Group) -> Result<GroupPublisher, ServeError> {
 		let (publisher, subscriber) = group.produce();
 		self.state.lock_mut().insert_group(subscriber)?;
 		Ok(publisher)
 	}
 
 	/// Create an object with the given info and payload.
-	pub fn write_object(&mut self, object: Object) -> Result<(), CacheError> {
+	pub fn write_object(&mut self, object: Object) -> Result<(), ServeError> {
 		let payload = object.payload.clone();
 		let header = ObjectHeader::from(object);
 		let (mut publisher, subscriber) = header.produce();
@@ -183,20 +180,14 @@ impl TrackPublisher {
 	}
 
 	/// Create an object with the given info and size, but no payload yet.
-	pub fn create_object(&mut self, object: ObjectHeader) -> Result<ObjectPublisher, CacheError> {
+	pub fn create_object(&mut self, object: ObjectHeader) -> Result<ObjectPublisher, ServeError> {
 		let (publisher, subscriber) = object.produce();
 		self.state.lock_mut().insert_object(subscriber)?;
 		Ok(publisher)
 	}
 
-	/// Create a datagram that is not cached.
-	pub fn create_datagram(&mut self, info: Datagram) -> Result<(), CacheError> {
-		self.state.lock_mut().insert_datagram(info)?;
-		Ok(())
-	}
-
 	/// Create a single stream for the entire track, served in strict order.
-	pub fn create_stream(&mut self, send_order: u64) -> Result<StreamPublisher, CacheError> {
+	pub fn create_stream(&mut self, send_order: u64) -> Result<StreamPublisher, ServeError> {
 		let (publisher, subscriber) = Stream {
 			namespace: self.namespace.clone(),
 			name: self.name.clone(),
@@ -207,9 +198,27 @@ impl TrackPublisher {
 		Ok(publisher)
 	}
 
+	/// Create a datagram that is not cached.
+	pub fn write_datagram(&mut self, info: Datagram) -> Result<(), ServeError> {
+		self.state.lock_mut().insert_datagram(info)?;
+		Ok(())
+	}
+
 	/// Close the stream with an error.
-	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.state.lock_mut().close(err)
+	}
+
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+				state.changed()
+			};
+
+			notify.await
+		}
 	}
 }
 
@@ -242,7 +251,7 @@ impl TrackSubscriber {
 	}
 
 	/// Block until the next stream arrives
-	pub async fn next(&mut self) -> Result<TrackMode, CacheError> {
+	pub async fn next(&mut self) -> Result<Option<TrackMode>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -252,27 +261,30 @@ impl TrackSubscriber {
 						Cache::Init => {}
 						Cache::Stream(stream) => {
 							self.epoch = state.epoch;
-							return Ok(stream.clone().into());
+							return Ok(Some(stream.clone().into()));
 						}
 						Cache::Group(group) => {
 							self.epoch = state.epoch;
-							return Ok(group.clone().into());
+							return Ok(Some(group.clone().into()));
 						}
 						Cache::Object(objects) => {
 							let index = objects.len().saturating_sub(state.epoch - self.epoch);
 							self.epoch = state.epoch - objects.len() + index + 1;
-							return Ok(objects[index].clone().into());
+							return Ok(Some(objects[index].clone().into()));
 						}
 						Cache::Datagram(datagram) => {
 							self.epoch = state.epoch;
-							return Ok(datagram.clone().into());
+							return Ok(Some(datagram.clone().into()));
 						}
 					}
 				}
 
 				// Otherwise check if we need to return an error.
-				state.closed.clone()?;
-				state.changed()
+				match &state.closed {
+					Ok(()) => state.changed(),
+					Err(ServeError::Done) => return Ok(None),
+					Err(err) => return Err(err.clone()),
+				}
 			};
 
 			notify.await
@@ -294,20 +306,15 @@ impl TrackSubscriber {
 		}
 	}
 
-	pub async fn serve(mut self, dst: publisher::Subscribe) -> Result<(), ServeError> {
-		let mut tasks = FuturesUnordered::new();
-
+	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			tokio::select! {
-				next = self.next() =>
-					match next? {
-						TrackMode::Stream(stream) => return stream.serve(dst).await,
-						TrackMode::Group(group) => tasks.push(group.serve(dst.clone()).boxed()),
-						TrackMode::Object(object) => tasks.push(object.serve(dst.clone()).boxed()),
-						TrackMode::Datagram(datagram) => datagram.serve(dst.clone())?,
-					},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
-			}
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+				state.changed()
+			};
+
+			notify.await
 		}
 	}
 }
@@ -363,6 +370,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }

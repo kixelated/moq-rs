@@ -6,12 +6,12 @@
 //! A [Subscriber] reads an ordered stream of objects.
 //! The subscriber can be cloned, in which case each subscriber receives a copy of each object. (fanout)
 //!
-//! The stream is closed with [CacheError::Closed] when all publishers or subscribers are dropped.
+//! The stream is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
 use std::{ops::Deref, sync::Arc};
 
-use crate::{error::CacheError, publisher, util::Watch, ServeError};
+use crate::util::Watch;
 
-use super::{ObjectHeader, ObjectPublisher, ObjectSubscriber};
+use super::{ObjectHeader, ObjectPublisher, ObjectSubscriber, ServeError};
 
 /// Static information about the stream.
 #[derive(Debug)]
@@ -41,11 +41,11 @@ struct State {
 	objects: Vec<ObjectSubscriber>,
 
 	// Set when the publisher is dropped.
-	closed: Result<(), CacheError>,
+	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn close(&mut self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
 		Ok(())
@@ -79,7 +79,7 @@ impl GroupPublisher {
 	}
 
 	/// Create the next object ID with the given payload.
-	pub fn write_object(&mut self, payload: bytes::Bytes) -> Result<(), CacheError> {
+	pub fn write_object(&mut self, payload: bytes::Bytes) -> Result<(), ServeError> {
 		let mut object = self.create_object(payload.len())?;
 		object.write(payload)?;
 		Ok(())
@@ -88,11 +88,11 @@ impl GroupPublisher {
 	/// Write an object over multiple writes.
 	///
 	/// BAD STUFF will happen if the size is wrong.
-	pub fn create_object(&mut self, size: usize) -> Result<ObjectPublisher, CacheError> {
+	pub fn create_object(&mut self, size: usize) -> Result<ObjectPublisher, ServeError> {
 		let (publisher, subscriber) = ObjectHeader {
-			group_id: self.info.id,
+			group_id: self.id,
 			object_id: self.next.try_into().unwrap(),
-			send_order: self.info.send_order,
+			send_order: self.send_order,
 			size,
 		}
 		.produce();
@@ -106,7 +106,7 @@ impl GroupPublisher {
 	}
 
 	/// Close the stream with an error.
-	pub fn close(self, err: CacheError) -> Result<(), CacheError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.state.lock_mut().close(err)
 	}
 }
@@ -151,44 +151,24 @@ impl GroupSubscriber {
 	}
 
 	/// Block until the next object is available.
-	pub async fn object(&mut self) -> Result<ObjectSubscriber, CacheError> {
+	pub async fn next(&mut self) -> Result<Option<ObjectSubscriber>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if self.index < state.objects.len() {
 					let object = state.objects[self.index].clone();
 					self.index += 1;
-					return Ok(object);
+					return Ok(Some(object));
 				}
 
-				state.closed.clone()?;
-				state.changed()
+				match &state.closed {
+					Ok(()) => state.changed(),
+					Err(ServeError::Done) => return Ok(None),
+					Err(err) => return Err(err.clone()),
+				}
 			};
 
 			notify.await; // Try again when the state changes
-		}
-	}
-
-	pub async fn serve(mut self, mut dst: publisher::Subscribe) -> Result<(), ServeError> {
-		let mut dst = dst
-			.serve_group(publisher::GroupHeader {
-				group_id: self.id,
-				send_order: self.send_order,
-			})
-			.await?;
-
-		loop {
-			let mut src = self.object().await?;
-
-			dst.write_object(publisher::GroupObject {
-				object_id: src.object_id,
-				size: src.size,
-			})
-			.await?;
-
-			while let Some(chunk) = src.chunk().await? {
-				dst.write_payload(&chunk).await?;
-			}
 		}
 	}
 }
@@ -223,6 +203,6 @@ impl Dropped {
 
 impl Drop for Dropped {
 	fn drop(&mut self) {
-		self.state.lock_mut().close(CacheError::Done).ok();
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }

@@ -7,7 +7,7 @@ mod cli;
 use cli::*;
 
 use moq_pub::media::Media;
-use moq_transport::cache;
+use moq_transport::serve;
 
 // TODO: clap complete
 
@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 
 	let input = tokio::io::stdin();
-	let (publisher, subscriber) = cache::Broadcast::new(&config.name).produce();
+	let (publisher, broadcast) = serve::Broadcast::new(&config.name).produce();
 	let mut media = Media::new(input, publisher).await?;
 
 	// Create a list of acceptable root certificates.
@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
 		res = media.run() => res.context("media error")?,
-		res = subscriber.serve(publisher) => res.context("publisher error")?,
+		res = publisher.serve(broadcast) => res.context("publisher error")?,
 	}
 
 	Ok(())

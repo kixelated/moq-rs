@@ -42,11 +42,16 @@ pub struct GroupChunk {
 }
 
 impl GroupChunk {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		Ok(Self {
-			object_id: u64::decode(r).await?,
-			size: usize::decode(r).await?,
-		})
+	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Option<Self>, DecodeError> {
+		let object_id = match u64::decode(r).await {
+			Ok(object_id) => object_id,
+			Err(DecodeError::UnexpectedEnd) => return Ok(None),
+			Err(err) => return Err(err),
+		};
+
+		let size = usize::decode(r).await?;
+
+		Ok(Some(Self { object_id, size }))
 	}
 
 	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {

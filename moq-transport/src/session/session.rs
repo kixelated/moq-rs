@@ -2,11 +2,11 @@ use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 use webtransport_quinn::{RecvStream, SendStream};
 
+use crate::control;
 use crate::setup;
 use crate::util::Queue;
-use crate::{control, data, error::SessionError};
 
-use super::{Publisher, Subscriber};
+use super::{Publisher, SessionError, Subscriber};
 
 type Messages<T> = Queue<T, SessionError>;
 
@@ -45,9 +45,8 @@ impl Session {
 
 	pub async fn connect(
 		session: webtransport_quinn::Session,
-	) -> Result<(Session, Publisher, Subscriber), SessionError> {
-		let (session, publisher, subscribe) = Self::connect_role(session, setup::Role::Both).await?;
-		Ok((session, publisher.unwrap(), subscribe.unwrap()))
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		Self::connect_role(session, setup::Role::Both).await
 	}
 
 	pub async fn connect_role(
@@ -91,9 +90,8 @@ impl Session {
 
 	pub async fn accept(
 		session: webtransport_quinn::Session,
-	) -> Result<(Session, Publisher, Subscriber), SessionError> {
-		let (session, publisher, subscribe) = Self::accept_role(session, setup::Role::Both).await?;
-		Ok((session, publisher.unwrap(), subscribe.unwrap()))
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		Self::accept_role(session, setup::Role::Both).await
 	}
 
 	pub async fn accept_role(
@@ -145,7 +143,12 @@ impl Session {
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(Self::run_send(self.outgoing, self.control.0).boxed());
 		tasks.push(Self::run_recv(self.control.1, self.publisher, self.subscriber.clone()).boxed());
-		tasks.push(Self::run_streams(self.webtransport, self.subscriber).boxed());
+
+		if let Some(subscriber) = self.subscriber {
+			tasks.push(Self::run_streams(self.webtransport.clone(), subscriber.clone()).boxed());
+			tasks.push(Self::run_datagrams(self.webtransport, subscriber).boxed());
+		}
+
 		tasks.next().await.unwrap()
 	}
 
@@ -196,28 +199,28 @@ impl Session {
 
 	async fn run_streams(
 		webtransport: webtransport_quinn::Session,
-		subscriber: Option<Subscriber>,
+		subscriber: Subscriber,
 	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
-			// TODO use futures instead
 			tokio::select! {
 				res = webtransport.accept_uni() => {
 					let stream = res?;
-					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
-					tasks.push(Self::recv_stream(stream, subscriber));
+					tasks.push(Subscriber::recv_stream(subscriber.clone(), stream));
 				},
 				res = tasks.next(), if tasks.len() > 0 => res.unwrap()?,
 			};
 		}
 	}
 
-	async fn recv_stream(
-		mut stream: webtransport_quinn::RecvStream,
+	async fn run_datagrams(
+		webtransport: webtransport_quinn::Session,
 		mut subscriber: Subscriber,
 	) -> Result<(), SessionError> {
-		let header = data::Header::decode(&mut stream).await?;
-		subscriber.recv_stream(header, stream)
+		loop {
+			let datagram = webtransport.read_datagram().await?;
+			subscriber.recv_datagram(datagram).await?;
+		}
 	}
 }
