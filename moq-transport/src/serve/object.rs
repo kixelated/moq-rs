@@ -205,7 +205,7 @@ impl ObjectSubscriber {
 	}
 
 	/// Block until the next chunk of bytes is available.
-	pub async fn chunk(&mut self) -> Result<Option<Bytes>, ServeError> {
+	pub async fn read(&mut self) -> Result<Option<Bytes>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -225,6 +225,15 @@ impl ObjectSubscriber {
 
 			notify.await; // Try again when the state changes
 		}
+	}
+
+	pub async fn read_all(&mut self) -> Result<Bytes, ServeError> {
+		let mut chunks = Vec::new();
+		while let Some(chunk) = self.read().await? {
+			chunks.push(chunk);
+		}
+
+		Ok(Bytes::from(chunks.concat()))
 	}
 }
 

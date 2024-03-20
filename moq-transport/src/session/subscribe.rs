@@ -78,8 +78,8 @@ impl Subscribe {
 		}
 	}
 
-	pub fn track(&self) -> &serve::TrackSubscriber {
-		&self.track
+	pub fn track(&self) -> serve::TrackSubscriber {
+		self.track.clone()
 	}
 }
 

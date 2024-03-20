@@ -74,10 +74,9 @@ impl Subscribed {
 
 		log::trace!("sent track header: {:?}", header);
 
-		loop {
+		while let Some(object) = track.next().await? {
 			// TODO support streaming chunks
 			// TODO check if closed
-			let object = track.object().await?;
 
 			let header = data::TrackObject {
 				group_id: object.group_id,
@@ -95,6 +94,8 @@ impl Subscribed {
 			log::trace!("sent track payload: {:?}", object.payload.len());
 			log::trace!("sent track done");
 		}
+
+		Ok(())
 	}
 
 	pub async fn serve_group(mut self, mut group: serve::GroupSubscriber) -> Result<(), SessionError> {
@@ -124,7 +125,7 @@ impl Subscribed {
 
 			log::trace!("sent group object: {:?}", header);
 
-			while let Some(chunk) = object.chunk().await? {
+			while let Some(chunk) = object.read().await? {
 				stream.write_all(&chunk).await?;
 				log::trace!("sent group payload: {:?}", chunk.len());
 			}
@@ -152,7 +153,7 @@ impl Subscribed {
 
 		self.state.lock_mut().update_max(object.group_id, object.object_id)?;
 
-		while let Some(chunk) = object.chunk().await? {
+		while let Some(chunk) = object.read().await? {
 			stream.write_all(&chunk).await?;
 			log::trace!("sent object payload: {:?}", chunk.len());
 		}

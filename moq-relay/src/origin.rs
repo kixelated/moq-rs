@@ -90,7 +90,7 @@ impl Origin {
 			.ok_or(ServeError::NotFound)?;
 
 		let upstream = subscriber.subscribe(subscribe.namespace(), subscribe.name(), Default::default())?;
-		subscribe.serve(upstream.track().clone()).await?;
+		subscribe.serve(upstream.track()).await?;
 
 		Ok(())
 		/*

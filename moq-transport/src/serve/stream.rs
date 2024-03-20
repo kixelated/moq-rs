@@ -118,18 +118,21 @@ impl StreamSubscriber {
 	}
 
 	/// Block until the next object is available.
-	pub async fn object(&mut self) -> Result<StreamObject, ServeError> {
+	pub async fn next(&mut self) -> Result<Option<StreamObject>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if self.index < state.objects.len() {
 					let object = state.objects[self.index].clone();
 					self.index += 1;
-					return Ok(object);
+					return Ok(Some(object));
 				}
 
-				state.closed.clone()?;
-				state.changed()
+				match &state.closed {
+					Ok(()) => state.changed(),
+					Err(ServeError::Done) => return Ok(None),
+					Err(err) => return Err(err.clone()),
+				}
 			};
 
 			notify.await; // Try again when the state changes
