@@ -13,27 +13,27 @@ pub struct Origin {
 	// An API client used to get/set broadcasts.
 	// If None then we never use a remote origin.
 	// TODO: Stub this out instead.
-	api: Option<moq_api::Client>,
+	_api: Option<moq_api::Client>,
 
 	// The internal address of our node.
 	// If None then we can never advertise ourselves as an origin.
 	// TODO: Stub this out instead.
-	node: Option<Url>,
+	_node: Option<Url>,
 
 	// A map of active broadcasts by namespace.
 	local: Arc<Mutex<HashMap<String, session::Subscriber>>>,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
-	quic: quinn::Endpoint,
+	_quic: quinn::Endpoint,
 }
 
 impl Origin {
-	pub fn new(api: Option<moq_api::Client>, node: Option<Url>, quic: quinn::Endpoint) -> Self {
+	pub fn new(_api: Option<moq_api::Client>, _node: Option<Url>, _quic: quinn::Endpoint) -> Self {
 		Self {
-			api,
-			node,
+			_api,
+			_node,
 			local: Default::default(),
-			quic,
+			_quic,
 		}
 	}
 
