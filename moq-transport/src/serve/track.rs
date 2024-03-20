@@ -18,7 +18,7 @@ use super::{
 	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber,
 	ServeError, Stream, StreamPublisher, StreamSubscriber,
 };
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug)]
@@ -40,7 +40,8 @@ impl Track {
 }
 
 // The state of the cache, depending on the mode>
-enum Cache {
+#[derive(Debug)]
+enum Mode {
 	Init,
 	Stream(StreamSubscriber),
 	Group(GroupSubscriber),
@@ -48,8 +49,9 @@ enum Cache {
 	Datagram(Datagram),
 }
 
+#[derive(Debug)]
 struct State {
-	cache: Cache,
+	mode: Mode,
 	epoch: usize,
 
 	// Set when the publisher is closed/dropped, or all subscribers are dropped.
@@ -66,19 +68,20 @@ impl State {
 	pub fn insert_group(&mut self, group: GroupSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
-		match &self.cache {
-			Cache::Init => {}
-			Cache::Group(old) => {
+		match &self.mode {
+			Mode::Init => {}
+			Mode::Group(old) => {
 				if old.id == group.id {
 					return Err(ServeError::Duplicate);
 				} else if old.id > group.id {
+					log::warn!("dropping old group");
 					return Ok(());
 				}
 			}
 			_ => return Err(ServeError::Mode),
 		};
 
-		self.cache = Cache::Group(group);
+		self.mode = Mode::Group(group);
 		self.epoch += 1;
 
 		Ok(())
@@ -87,11 +90,11 @@ impl State {
 	pub fn insert_object(&mut self, object: ObjectSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
-		match &mut self.cache {
-			Cache::Init => {
-				self.cache = Cache::Object(vec![object]);
+		match &mut self.mode {
+			Mode::Init => {
+				self.mode = Mode::Object(vec![object]);
 			}
-			Cache::Object(objects) => {
+			Mode::Object(objects) => {
 				let first = objects.first().unwrap();
 
 				if first.group_id > object.group_id {
@@ -114,12 +117,12 @@ impl State {
 	pub fn insert_datagram(&mut self, datagram: Datagram) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
-		match &self.cache {
-			Cache::Init | Cache::Datagram(_) => {}
+		match &self.mode {
+			Mode::Init | Mode::Datagram(_) => {}
 			_ => return Err(ServeError::Mode),
 		};
 
-		self.cache = Cache::Datagram(datagram);
+		self.mode = Mode::Datagram(datagram);
 		self.epoch += 1;
 
 		Ok(())
@@ -128,12 +131,12 @@ impl State {
 	pub fn set_stream(&mut self, stream: StreamSubscriber) -> Result<(), ServeError> {
 		self.closed.clone()?;
 
-		match &self.cache {
-			Cache::Init => {}
+		match &self.mode {
+			Mode::Init => {}
 			_ => return Err(ServeError::Mode),
 		};
 
-		self.cache = Cache::Stream(stream);
+		self.mode = Mode::Stream(stream);
 		self.epoch += 1;
 
 		Ok(())
@@ -143,7 +146,7 @@ impl State {
 impl Default for State {
 	fn default() -> Self {
 		Self {
-			cache: Cache::Init,
+			mode: Mode::Init,
 			epoch: 0,
 			closed: Ok(()),
 		}
@@ -151,6 +154,7 @@ impl Default for State {
 }
 
 /// Creates new streams for a track.
+#[derive(Debug)]
 pub struct TrackPublisher {
 	state: Watch<State>,
 	info: Arc<Track>,
@@ -231,7 +235,7 @@ impl Deref for TrackPublisher {
 }
 
 /// Receives new streams for a track.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackSubscriber {
 	state: Watch<State>,
 	info: Arc<Track>,
@@ -257,22 +261,22 @@ impl TrackSubscriber {
 				let state = self.state.lock();
 
 				if self.epoch != state.epoch {
-					match &state.cache {
-						Cache::Init => {}
-						Cache::Stream(stream) => {
+					match &state.mode {
+						Mode::Init => {}
+						Mode::Stream(stream) => {
 							self.epoch = state.epoch;
 							return Ok(Some(stream.clone().into()));
 						}
-						Cache::Group(group) => {
+						Mode::Group(group) => {
 							self.epoch = state.epoch;
 							return Ok(Some(group.clone().into()));
 						}
-						Cache::Object(objects) => {
+						Mode::Object(objects) => {
 							let index = objects.len().saturating_sub(state.epoch - self.epoch);
 							self.epoch = state.epoch - objects.len() + index + 1;
 							return Ok(Some(objects[index].clone().into()));
 						}
-						Cache::Datagram(datagram) => {
+						Mode::Datagram(datagram) => {
 							self.epoch = state.epoch;
 							return Ok(Some(datagram.clone().into()));
 						}
@@ -294,15 +298,15 @@ impl TrackSubscriber {
 	// Returns the largest group/sequence
 	pub fn latest(&self) -> Option<(u64, u64)> {
 		let state = self.state.lock();
-		match &state.cache {
-			Cache::Init => None,
-			Cache::Datagram(datagram) => Some((datagram.group_id, datagram.object_id)),
-			Cache::Group(group) => Some((group.id, group.latest())),
-			Cache::Object(objects) => objects
+		match &state.mode {
+			Mode::Init => None,
+			Mode::Datagram(datagram) => Some((datagram.group_id, datagram.object_id)),
+			Mode::Group(group) => Some((group.id, group.latest())),
+			Mode::Object(objects) => objects
 				.iter()
 				.max_by_key(|a| (a.group_id, a.object_id))
 				.map(|a| (a.group_id, a.object_id)),
-			Cache::Stream(stream) => stream.latest(),
+			Mode::Stream(stream) => stream.latest(),
 		}
 	}
 
@@ -327,6 +331,7 @@ impl Deref for TrackSubscriber {
 	}
 }
 
+#[derive(Debug)]
 pub enum TrackMode {
 	Stream(StreamSubscriber),
 	Group(GroupSubscriber),
@@ -371,5 +376,11 @@ impl Dropped {
 impl Drop for Dropped {
 	fn drop(&mut self) {
 		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+impl fmt::Debug for Dropped {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Dropped").finish()
 	}
 }

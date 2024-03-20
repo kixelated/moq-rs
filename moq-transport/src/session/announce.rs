@@ -1,29 +1,25 @@
-use crate::{control, serve::ServeError, util::Watch};
+use crate::{message, serve::ServeError, util::Watch};
 
 use super::Publisher;
 
 pub struct Announce {
 	session: Publisher,
-	namespace: String,
+	msg: message::Announce,
 	state: Watch<State>,
 }
 
 impl Announce {
-	pub(super) fn new(session: Publisher, namespace: String) -> (Announce, AnnounceRecv) {
+	pub(super) fn new(session: Publisher, msg: message::Announce) -> (Announce, AnnounceRecv) {
 		let state = Watch::default();
 		let recv = AnnounceRecv { state: state.clone() };
 
-		let announce = Self {
-			session,
-			namespace,
-			state,
-		};
+		let announce = Self { session, msg, state };
 
 		(announce, recv)
 	}
 
 	pub fn namespace(&self) -> &str {
-		&self.namespace
+		&self.msg.namespace
 	}
 
 	fn close(&mut self) -> Result<(), ServeError> {
@@ -32,8 +28,8 @@ impl Announce {
 		state.closed = Err(ServeError::Done);
 
 		self.session
-			.send_message(control::Unannounce {
-				namespace: self.namespace.clone(),
+			.send_message(message::Unannounce {
+				namespace: self.msg.namespace.clone(),
 			})
 			.ok();
 
@@ -56,7 +52,7 @@ impl Announce {
 impl Drop for Announce {
 	fn drop(&mut self) {
 		self.close().ok();
-		self.session.drop_announce(&self.namespace);
+		self.session.drop_announce(&self.msg.namespace);
 	}
 }
 

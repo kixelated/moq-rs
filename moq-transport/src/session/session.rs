@@ -2,7 +2,7 @@ use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 use webtransport_quinn::{RecvStream, SendStream};
 
-use crate::control;
+use crate::message;
 use crate::setup;
 use crate::util::Queue;
 
@@ -16,7 +16,7 @@ pub struct Session {
 
 	publisher: Option<Publisher>,
 	subscriber: Option<Subscriber>,
-	outgoing: Messages<control::Message>,
+	outgoing: Messages<message::Message>,
 }
 
 impl Session {
@@ -25,7 +25,7 @@ impl Session {
 		control: (SendStream, RecvStream),
 		role: setup::Role,
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let outgoing = Messages::<control::Message>::default();
+		let outgoing = Messages::<message::Message>::default();
 
 		let publisher = role
 			.is_publisher()
@@ -149,11 +149,12 @@ impl Session {
 			tasks.push(Self::run_datagrams(self.webtransport, subscriber).boxed());
 		}
 
-		tasks.next().await.unwrap()
+		let res = tasks.next().await.unwrap();
+		Err(res.expect_err("run terminated with OK"))
 	}
 
 	async fn run_send(
-		outgoing: Queue<control::Message, SessionError>,
+		outgoing: Queue<message::Message, SessionError>,
 		mut stream: SendStream,
 	) -> Result<(), SessionError> {
 		loop {
@@ -168,9 +169,9 @@ impl Session {
 		mut subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
 		loop {
-			let msg = control::Message::decode(&mut stream).await?;
+			let msg = message::Message::decode(&mut stream).await?;
 
-			let msg = match TryInto::<control::Publisher>::try_into(msg) {
+			let msg = match TryInto::<message::Publisher>::try_into(msg) {
 				Ok(msg) => {
 					subscriber
 						.as_mut()
@@ -181,7 +182,7 @@ impl Session {
 				Err(msg) => msg,
 			};
 
-			let msg = match TryInto::<control::Subscriber>::try_into(msg) {
+			let msg = match TryInto::<message::Subscriber>::try_into(msg) {
 				Ok(msg) => {
 					publisher
 						.as_mut()

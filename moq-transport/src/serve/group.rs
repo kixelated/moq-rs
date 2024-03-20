@@ -7,7 +7,7 @@
 //! The subscriber can be cloned, in which case each subscriber receives a copy of each object. (fanout)
 //!
 //! The stream is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc};
 
 use crate::util::Watch;
 
@@ -36,6 +36,7 @@ impl Group {
 	}
 }
 
+#[derive(Debug)]
 struct State {
 	// The data that has been received thus far.
 	objects: Vec<ObjectSubscriber>,
@@ -62,6 +63,7 @@ impl Default for State {
 }
 
 /// Used to write data to a stream and notify subscribers.
+#[derive(Debug)]
 pub struct GroupPublisher {
 	// Mutable stream state.
 	state: Watch<State>,
@@ -120,7 +122,7 @@ impl Deref for GroupPublisher {
 }
 
 /// Notified when a stream has new data available.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GroupSubscriber {
 	// Modify the stream state.
 	state: Watch<State>,
@@ -155,6 +157,7 @@ impl GroupSubscriber {
 		loop {
 			let notify = {
 				let state = self.state.lock();
+
 				if self.index < state.objects.len() {
 					let object = state.objects[self.index].clone();
 					self.index += 1;
@@ -204,5 +207,11 @@ impl Dropped {
 impl Drop for Dropped {
 	fn drop(&mut self) {
 		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+impl fmt::Debug for Dropped {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Dropped").finish()
 	}
 }

@@ -32,13 +32,13 @@ impl TrackHeader {
 }
 
 #[derive(Clone, Debug)]
-pub struct TrackChunk {
+pub struct TrackObject {
 	pub group_id: u64,
 	pub object_id: u64,
 	pub size: usize,
 }
 
-impl TrackChunk {
+impl TrackObject {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Option<Self>, DecodeError> {
 		let group_id = match u64::decode(r).await {
 			Ok(group_id) => group_id,

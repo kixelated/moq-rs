@@ -6,7 +6,7 @@ use std::{
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{
-	control,
+	message::{self, Message},
 	serve::{self, ServeError},
 	setup,
 	util::Queue,
@@ -23,14 +23,11 @@ pub struct Publisher {
 	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv>>>,
 	subscribed_queue: Queue<Subscribed, SessionError>,
 
-	outgoing: Queue<control::Message, SessionError>,
+	outgoing: Queue<Message, SessionError>,
 }
 
 impl Publisher {
-	pub(crate) fn new(
-		webtransport: webtransport_quinn::Session,
-		outgoing: Queue<control::Message, SessionError>,
-	) -> Self {
+	pub(crate) fn new(webtransport: webtransport_quinn::Session, outgoing: Queue<Message, SessionError>) -> Self {
 		Self {
 			webtransport,
 			announces: Default::default(),
@@ -50,7 +47,7 @@ impl Publisher {
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub fn announce(&mut self, namespace: &str) -> Result<Announce, ServeError> {
+	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
 		let mut announces = self.announces.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
@@ -59,7 +56,13 @@ impl Publisher {
 			hash_map::Entry::Vacant(entry) => entry,
 		};
 
-		let (announce, recv) = Announce::new(self.clone(), namespace.to_string());
+		let msg = message::Announce {
+			namespace: namespace.to_string(),
+			params: Default::default(),
+		};
+		self.send_message(msg.clone())?;
+
+		let (announce, recv) = Announce::new(self.clone(), msg);
 		entry.insert(recv);
 
 		Ok(announce)
@@ -72,7 +75,7 @@ impl Publisher {
 	// Helper to announce and serve any matching subscribers.
 	// TODO this currently takes over the connection; definitely remove Clone
 	pub async fn serve(mut self, broadcast: serve::BroadcastSubscriber) -> Result<(), SessionError> {
-		log::debug!("serving broadcast: {}", broadcast.namespace);
+		log::info!("serving broadcast: {}", broadcast.namespace);
 
 		let announce = self.announce(&broadcast.namespace)?;
 		let mut tasks = FuturesUnordered::new();
@@ -80,40 +83,58 @@ impl Publisher {
 		loop {
 			tokio::select! {
 				err = announce.closed() => err?,
-				res = tasks.next(), if !tasks.is_empty() => log::debug!("served subscription: broadcast={} res={:?}", broadcast.namespace, res),
-				res = self.subscribed() => {
-					let mut subscribe = res?;
-
-					// TODO support serving multiple namespaces
-					if subscribe.namespace() != broadcast.namespace {
-						subscribe.close(ServeError::NotFound).ok();
-					} else if let Some(track) = broadcast.get_track(subscribe.name())? {
-						tasks.push(subscribe.serve(track).boxed());
-					} else {
-						subscribe.close(ServeError::NotFound).ok();
-					}
+				res = tasks.next(), if !tasks.is_empty() => {
+					// TODO preseve the track name too
+					log::debug!("served track: namespace={} res={:?}", broadcast.namespace, res);
+				},
+				sub = self.subscribed() => {
+					let mut subscribe = sub?;
+					match self.serve_track(&broadcast, &subscribe) {
+						Ok(track) => {
+							log::info!("serving track: namespace={} name={}", track.namespace, track.name);
+							tasks.push(subscribe.serve(track).boxed());
+						},
+						Err(err) => {
+							log::debug!("failed serving track: namespace={} name={} err={}", subscribe.namespace(), subscribe.name(), err);
+							subscribe.close(err).ok();
+						}
+					};
 				}
 			}
 		}
 	}
 
-	pub(crate) fn recv_message(&mut self, msg: control::Subscriber) -> Result<(), SessionError> {
+	fn serve_track(
+		&self,
+		broadcast: &serve::BroadcastSubscriber,
+		subscribe: &Subscribed,
+	) -> Result<serve::TrackSubscriber, ServeError> {
+		if subscribe.namespace() != broadcast.namespace {
+			return Err(ServeError::NotFound);
+		}
+
+		broadcast.get_track(subscribe.name())?.ok_or(ServeError::NotFound)
+	}
+
+	pub(crate) fn recv_message(&mut self, msg: message::Subscriber) -> Result<(), SessionError> {
+		log::debug!("received message: {:?}", msg);
+
 		match msg {
-			control::Subscriber::AnnounceOk(msg) => self.recv_announce_ok(msg),
-			control::Subscriber::AnnounceError(msg) => self.recv_announce_error(msg),
-			control::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
-			control::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
-			control::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
+			message::Subscriber::AnnounceOk(msg) => self.recv_announce_ok(msg),
+			message::Subscriber::AnnounceError(msg) => self.recv_announce_error(msg),
+			message::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
+			message::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
+			message::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
 		}
 	}
 
-	fn recv_announce_ok(&mut self, _msg: control::AnnounceOk) -> Result<(), SessionError> {
+	fn recv_announce_ok(&mut self, _msg: message::AnnounceOk) -> Result<(), SessionError> {
 		// Who cares
 		// TODO make AnnouncePending so we're forced to care
 		Ok(())
 	}
 
-	fn recv_announce_error(&mut self, msg: control::AnnounceError) -> Result<(), SessionError> {
+	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
 		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
 			announce.recv_error(ServeError::Closed(msg.code)).ok();
 		}
@@ -121,11 +142,11 @@ impl Publisher {
 		Ok(())
 	}
 
-	fn recv_announce_cancel(&mut self, _msg: control::AnnounceCancel) -> Result<(), SessionError> {
+	fn recv_announce_cancel(&mut self, _msg: message::AnnounceCancel) -> Result<(), SessionError> {
 		unimplemented!("recv_announce_cancel")
 	}
 
-	fn recv_subscribe(&mut self, msg: control::Subscribe) -> Result<(), SessionError> {
+	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError> {
 		let mut subscribes = self.subscribed.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
@@ -139,7 +160,7 @@ impl Publisher {
 		self.subscribed_queue.push(subscribe)
 	}
 
-	fn recv_unsubscribe(&mut self, msg: control::Unsubscribe) -> Result<(), SessionError> {
+	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
 		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
 			subscribed.recv_unsubscribe().ok();
 		}
@@ -147,10 +168,9 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub fn send_message<T: Into<control::Publisher> + Into<control::Message>>(
-		&self,
-		msg: T,
-	) -> Result<(), SessionError> {
+	pub fn send_message<T: Into<message::Publisher>>(&self, msg: T) -> Result<(), SessionError> {
+		let msg = msg.into();
+		log::debug!("sending message: {:?}", msg);
 		self.outgoing.push(msg.into())
 	}
 

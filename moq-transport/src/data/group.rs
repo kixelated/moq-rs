@@ -36,12 +36,12 @@ impl GroupHeader {
 }
 
 #[derive(Clone, Debug)]
-pub struct GroupChunk {
+pub struct GroupObject {
 	pub object_id: u64,
 	pub size: usize,
 }
 
-impl GroupChunk {
+impl GroupObject {
 	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Option<Self>, DecodeError> {
 		let object_id = match u64::decode(r).await {
 			Ok(object_id) => object_id,

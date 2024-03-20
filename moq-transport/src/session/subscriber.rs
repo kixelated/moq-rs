@@ -4,7 +4,7 @@ use std::{
 	sync::{atomic, Arc, Mutex},
 };
 
-use crate::{control, data, setup, util::Queue};
+use crate::{data, message, setup, util::Queue};
 
 use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeOptions, SubscribeRecv};
 
@@ -17,11 +17,11 @@ pub struct Subscriber {
 	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
 
-	outgoing: Queue<control::Message, SessionError>,
+	outgoing: Queue<message::Message, SessionError>,
 }
 
 impl Subscriber {
-	pub(super) fn new(outgoing: Queue<control::Message, SessionError>) -> Self {
+	pub(super) fn new(outgoing: Queue<message::Message, SessionError>) -> Self {
 		Self {
 			announced: Default::default(),
 			announced_queue: Default::default(),
@@ -53,7 +53,7 @@ impl Subscriber {
 	) -> Result<Subscribe, SessionError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
-		let msg = control::Subscribe {
+		let msg = message::Subscribe {
 			id,
 			track_alias: id,
 			track_namespace: namespace.to_string(),
@@ -71,24 +71,25 @@ impl Subscriber {
 		Ok(subscribe)
 	}
 
-	pub(super) fn send_message<M: Into<control::Subscriber> + Into<control::Message>>(
-		&mut self,
-		msg: M,
-	) -> Result<(), SessionError> {
+	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {
+		let msg = msg.into();
+		log::debug!("sending message: {:?}", msg);
 		self.outgoing.push(msg.into())
 	}
 
-	pub(super) fn recv_message(&mut self, msg: control::Publisher) -> Result<(), SessionError> {
+	pub(super) fn recv_message(&mut self, msg: message::Publisher) -> Result<(), SessionError> {
+		log::debug!("received message: {:?}", msg);
+
 		match msg {
-			control::Publisher::Announce(msg) => self.recv_announce(msg),
-			control::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
-			control::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
-			control::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
-			control::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+			message::Publisher::Announce(msg) => self.recv_announce(msg),
+			message::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
+			message::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
+			message::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
+			message::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
 		}
 	}
 
-	fn recv_announce(&mut self, msg: control::Announce) -> Result<(), SessionError> {
+	fn recv_announce(&mut self, msg: message::Announce) -> Result<(), SessionError> {
 		let mut announces = self.announced.lock().unwrap();
 
 		let entry = match announces.entry(msg.namespace.clone()) {
@@ -103,7 +104,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	fn recv_unannounce(&mut self, msg: control::Unannounce) -> Result<(), SessionError> {
+	fn recv_unannounce(&mut self, msg: message::Unannounce) -> Result<(), SessionError> {
 		if let Some(announce) = self.announced.lock().unwrap().get_mut(&msg.namespace) {
 			announce.recv_unannounce().ok();
 		}
@@ -111,7 +112,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	fn recv_subscribe_ok(&mut self, msg: control::SubscribeOk) -> Result<(), SessionError> {
+	fn recv_subscribe_ok(&mut self, msg: message::SubscribeOk) -> Result<(), SessionError> {
 		if let Some(sub) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
 			sub.recv_ok(msg).ok();
 		}
@@ -119,7 +120,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	fn recv_subscribe_error(&mut self, msg: control::SubscribeError) -> Result<(), SessionError> {
+	fn recv_subscribe_error(&mut self, msg: message::SubscribeError) -> Result<(), SessionError> {
 		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
 			subscriber.recv_error(msg.code).ok();
 		}
@@ -127,7 +128,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	fn recv_subscribe_done(&mut self, msg: control::SubscribeDone) -> Result<(), SessionError> {
+	fn recv_subscribe_done(&mut self, msg: message::SubscribeDone) -> Result<(), SessionError> {
 		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
 			subscriber.recv_done(msg.code).ok();
 		}

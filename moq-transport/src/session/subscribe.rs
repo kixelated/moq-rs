@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use bytes::BytesMut;
 
 use crate::{
-	control::{self, SubscribePair},
 	data,
+	message::{self, SubscribePair},
 	serve::{self, ServeError},
 	util::Watch,
 };
@@ -19,7 +19,7 @@ pub struct Subscribe {
 }
 
 impl Subscribe {
-	pub(super) fn new(session: Subscriber, msg: control::Subscribe) -> (SubscribeRecv, Subscribe) {
+	pub(super) fn new(session: Subscriber, msg: message::Subscribe) -> (SubscribeRecv, Subscribe) {
 		let state = Watch::new(State::default());
 
 		let (publisher, subscriber) = serve::Track {
@@ -85,7 +85,7 @@ impl Subscribe {
 
 impl Drop for Subscribe {
 	fn drop(&mut self) {
-		let msg = control::Unsubscribe { id: self.id };
+		let msg = message::Unsubscribe { id: self.id };
 		self.session.send_message(msg).ok();
 
 		self.session.drop_subscribe(self.id);
@@ -106,7 +106,7 @@ impl SubscribeRecv {
 		}
 	}
 
-	pub fn recv_ok(&mut self, msg: control::SubscribeOk) -> Result<(), ServeError> {
+	pub fn recv_ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
 		let mut state = self.state.lock_mut();
 		state.ok = Some(msg);
 		Ok(())
@@ -139,22 +139,28 @@ impl SubscribeRecv {
 		header: data::TrackHeader,
 		mut stream: webtransport_quinn::RecvStream,
 	) -> Result<(), SessionError> {
+		log::trace!("received track: {:?}", header);
+
 		let mut track = self.publisher.lock().unwrap().create_stream(header.send_order)?;
 
-		while let Some(chunk) = data::TrackChunk::decode(&mut stream).await? {
+		while let Some(chunk) = data::TrackObject::decode(&mut stream).await? {
 			let remain = chunk.size;
 			let mut payload = BytesMut::new();
 
 			while remain > 0 {
 				let data = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
+				log::trace!("received track payload: {:?}", data.bytes.len());
 				payload.extend_from_slice(&data.bytes);
 			}
 
-			track.write_object(serve::StreamObject {
+			let object = serve::StreamObject {
 				object_id: chunk.object_id,
 				group_id: chunk.group_id,
 				payload: payload.freeze(),
-			})?;
+			};
+			log::trace!("received track object: {:?}", track);
+
+			track.write_object(object)?;
 		}
 
 		Ok(())
@@ -165,17 +171,21 @@ impl SubscribeRecv {
 		header: data::GroupHeader,
 		mut stream: webtransport_quinn::RecvStream,
 	) -> Result<(), SessionError> {
+		log::trace!("received group: {:?}", header);
+
 		let mut group = self.publisher.lock().unwrap().create_group(serve::Group {
 			id: header.group_id,
 			send_order: header.send_order,
 		})?;
 
-		while let Some(chunk) = data::GroupChunk::decode(&mut stream).await? {
-			let mut object = group.create_object(chunk.size)?;
-			let mut remain = chunk.size;
+		while let Some(object) = data::GroupObject::decode(&mut stream).await? {
+			log::trace!("received group object: {:?}", object);
+			let mut remain = object.size;
+			let mut object = group.create_object(object.size)?;
 
 			while remain > 0 {
 				let data = stream.read_chunk(remain, true).await?.ok_or(SessionError::WrongSize)?;
+				log::trace!("received group payload: {:?}", data.bytes.len());
 				remain -= data.bytes.len();
 				object.write(data.bytes)?;
 			}
@@ -189,9 +199,12 @@ impl SubscribeRecv {
 		header: data::ObjectHeader,
 		mut stream: webtransport_quinn::RecvStream,
 	) -> Result<(), SessionError> {
+		log::trace!("received object: {:?}", header);
+
 		// TODO avoid buffering the entire object to learn the size.
 		let mut chunks = vec![];
 		while let Some(data) = stream.read_chunk(usize::MAX, true).await? {
+			log::trace!("received object payload: {:?}", data.bytes.len());
 			chunks.push(data.bytes);
 		}
 
@@ -202,6 +215,8 @@ impl SubscribeRecv {
 			size: chunks.iter().map(|c| c.len()).sum(),
 		})?;
 
+		log::trace!("received object: {:?}", object);
+
 		for chunk in chunks {
 			object.write(chunk)?;
 		}
@@ -210,6 +225,8 @@ impl SubscribeRecv {
 	}
 
 	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError> {
+		log::trace!("received datagram: {:?}", datagram);
+
 		self.publisher.lock().unwrap().write_datagram(serve::Datagram {
 			group_id: datagram.group_id,
 			object_id: datagram.object_id,
@@ -222,7 +239,7 @@ impl SubscribeRecv {
 }
 
 struct State {
-	ok: Option<control::SubscribeOk>,
+	ok: Option<message::SubscribeOk>,
 }
 
 impl Default for State {

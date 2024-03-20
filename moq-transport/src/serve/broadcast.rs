@@ -12,6 +12,7 @@
 //! The broadcast is automatically closed with [ServeError::Done] when [Publisher] is dropped, or all [Subscriber]s are dropped.
 use std::{
 	collections::{hash_map, HashMap},
+	fmt,
 	ops::Deref,
 	sync::Arc,
 };
@@ -44,6 +45,7 @@ impl Broadcast {
 }
 
 /// Dynamic information about the broadcast.
+#[derive(Debug)]
 struct State {
 	tracks: HashMap<String, TrackSubscriber>,
 	closed: Result<(), ServeError>,
@@ -53,6 +55,7 @@ impl State {
 	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
+			// Return any error if we couldn't find a track.
 			None => self.closed.clone().map(|_| None),
 		}
 	}
@@ -87,6 +90,7 @@ impl Default for State {
 }
 
 /// Publish new tracks for a broadcast by name.
+#[derive(Debug)]
 pub struct BroadcastPublisher {
 	state: Watch<State>,
 	info: Arc<Broadcast>,
@@ -130,7 +134,7 @@ impl Deref for BroadcastPublisher {
 /// Subscribe to a broadcast by requesting tracks.
 ///
 /// This can be cloned to create handles.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BroadcastSubscriber {
 	state: Watch<State>,
 	info: Arc<Broadcast>,
@@ -146,11 +150,6 @@ impl BroadcastSubscriber {
 	/// Get a track from the broadcast by name.
 	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
 		self.state.lock().get(name)
-	}
-
-	/// Check if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub fn is_closed(&self) -> Option<ServeError> {
-		self.state.lock().closed.as_ref().err().cloned()
 	}
 
 	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
@@ -191,5 +190,11 @@ impl Dropped {
 impl Drop for Dropped {
 	fn drop(&mut self) {
 		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+impl fmt::Debug for Dropped {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Dropped").finish()
 	}
 }

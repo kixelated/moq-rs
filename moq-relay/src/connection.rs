@@ -1,7 +1,7 @@
 use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transport::session::{Publisher, Subscriber};
+use moq_transport::session::{Publisher, SessionError, Subscriber};
 
 use crate::Origin;
 
@@ -41,16 +41,24 @@ impl Connection {
 
 		let (session, publisher, subscriber) = moq_transport::Session::accept(session).await?;
 
-		tokio::select! {
-			res = session.run() => res?,
-			res = Self::serve_publisher(publisher.unwrap(), self.origin.clone()), if publisher.is_some() => res?,
-			res = Self::serve_subscriber(subscriber.unwrap(), self.origin), if subscriber.is_some() => res?,
-		};
+		let mut tasks = FuturesUnordered::new();
+
+		tasks.push(session.run().boxed());
+
+		if let Some(publisher) = publisher {
+			tasks.push(Self::serve_publisher(publisher, self.origin.clone()).boxed());
+		}
+		if let Some(subscriber) = subscriber {
+			tasks.push(Self::serve_subscriber(subscriber, self.origin).boxed());
+		}
+
+		// Return the first error
+		tasks.next().await.unwrap()?;
 
 		Ok(())
 	}
 
-	async fn serve_publisher(mut publisher: Publisher, origin: Origin) -> anyhow::Result<()> {
+	async fn serve_publisher(mut publisher: Publisher, origin: Origin) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -69,7 +77,7 @@ impl Connection {
 		}
 	}
 
-	async fn serve_subscriber(mut subscriber: Subscriber, origin: Origin) -> anyhow::Result<()> {
+	async fn serve_subscriber(mut subscriber: Subscriber, origin: Origin) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

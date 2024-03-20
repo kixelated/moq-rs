@@ -1,9 +1,10 @@
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc};
 
 use crate::util::Watch;
 
 use super::ServeError;
 
+#[derive(Debug)]
 pub struct Stream {
 	pub namespace: String,
 	pub name: String,
@@ -22,6 +23,7 @@ impl Stream {
 	}
 }
 
+#[derive(Debug)]
 struct State {
 	// The data that has been received thus far.
 	objects: Vec<StreamObject>,
@@ -54,6 +56,7 @@ impl Default for State {
 }
 
 /// Used to write data to a stream and notify subscribers.
+#[derive(Debug)]
 pub struct StreamPublisher {
 	// Mutable stream state.
 	state: Watch<State>,
@@ -88,7 +91,7 @@ impl Deref for StreamPublisher {
 }
 
 /// Notified when a stream has new data available.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamSubscriber {
 	// Modify the stream state.
 	state: Watch<State>,
@@ -167,6 +170,12 @@ impl Drop for Dropped {
 	}
 }
 
+impl fmt::Debug for Dropped {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Dropped").finish()
+	}
+}
+
 #[derive(Clone)]
 pub struct StreamObject {
 	// The sequence number of the group within the track.
@@ -177,4 +186,14 @@ pub struct StreamObject {
 
 	// The payload.
 	pub payload: bytes::Bytes,
+}
+
+impl fmt::Debug for StreamObject {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("StreamObject")
+			.field("group_id", &self.group_id)
+			.field("object_id", &self.object_id)
+			.field("payload", &self.payload.len())
+			.finish()
+	}
 }

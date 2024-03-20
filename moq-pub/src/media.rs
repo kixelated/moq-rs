@@ -288,7 +288,7 @@ impl Track {
 
 		self.sequence += 1;
 
-		// Create a single fragment for the segment that we will keep appending.
+		// Write the fragment in it's own object.
 		segment.write_object(raw.into())?;
 
 		// Save for the next iteration

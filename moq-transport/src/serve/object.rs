@@ -8,14 +8,14 @@
 //! You can clone the [Subscriber] and each will read a copy of of all future chunks. (fanout)
 //!
 //! The fragment is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc};
 
 use super::ServeError;
 use crate::util::Watch;
 use bytes::Bytes;
 
 /// Static information about the segment.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectHeader {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
@@ -69,6 +69,17 @@ impl From<Object> for ObjectHeader {
 	}
 }
 
+impl fmt::Debug for Object {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Object")
+			.field("group_id", &self.group_id)
+			.field("object_id", &self.object_id)
+			.field("send_order", &self.send_order)
+			.field("payload", &self.payload.len())
+			.finish()
+	}
+}
+
 struct State {
 	// The data that has been received thus far.
 	chunks: Vec<Bytes>,
@@ -85,6 +96,16 @@ impl State {
 	}
 }
 
+impl fmt::Debug for State {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("State")
+			.field("chunks", &self.chunks.len())
+			.field("size", &self.chunks.iter().map(|c| c.len()).sum::<usize>())
+			.field("closed", &self.closed)
+			.finish()
+	}
+}
+
 impl Default for State {
 	fn default() -> Self {
 		Self {
@@ -95,6 +116,7 @@ impl Default for State {
 }
 
 /// Used to write data to a segment and notify subscribers.
+#[derive(Debug)]
 pub struct ObjectPublisher {
 	// Mutable segment state.
 	state: Watch<State>,
@@ -109,7 +131,11 @@ pub struct ObjectPublisher {
 impl ObjectPublisher {
 	/// Create a new segment with the given info.
 	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
-		Self { state, info, remain: 0 }
+		Self {
+			state,
+			remain: info.size as usize,
+			info,
+		}
 	}
 
 	/// Write a new chunk of bytes.
@@ -137,6 +163,12 @@ impl ObjectPublisher {
 	}
 }
 
+impl Drop for ObjectPublisher {
+	fn drop(&mut self) {
+		self.close(ServeError::Done).ok();
+	}
+}
+
 impl Deref for ObjectPublisher {
 	type Target = ObjectHeader;
 
@@ -146,7 +178,7 @@ impl Deref for ObjectPublisher {
 }
 
 /// Notified when a segment has new data available.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectSubscriber {
 	// Modify the segment state.
 	state: Watch<State>,
@@ -177,6 +209,7 @@ impl ObjectSubscriber {
 		loop {
 			let notify = {
 				let state = self.state.lock();
+
 				if self.index < state.chunks.len() {
 					let chunk = state.chunks[self.index].clone();
 					self.index += 1;
@@ -216,5 +249,11 @@ impl Dropped {
 impl Drop for Dropped {
 	fn drop(&mut self) {
 		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+impl fmt::Debug for Dropped {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Dropped").finish()
 	}
 }

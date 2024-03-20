@@ -1,4 +1,4 @@
-use crate::{control, serve::ServeError, util::Watch};
+use crate::{message, serve::ServeError, util::Watch};
 
 use super::Subscriber;
 
@@ -87,7 +87,7 @@ impl State {
 		self.ok = true;
 
 		self.session
-			.send_message(control::AnnounceOk {
+			.send_message(message::AnnounceOk {
 				namespace: self.namespace.clone(),
 			})
 			.ok();
@@ -101,13 +101,13 @@ impl State {
 
 		if self.ok {
 			self.session
-				.send_message(control::AnnounceCancel {
+				.send_message(message::AnnounceCancel {
 					namespace: self.namespace.clone(),
 				})
 				.ok();
 		} else {
 			self.session
-				.send_message(control::AnnounceError {
+				.send_message(message::AnnounceError {
 					namespace: self.namespace.clone(),
 					code: err.code(),
 					reason: err.to_string(),
