@@ -1,9 +1,10 @@
 use crate::{coding, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
-pub enum SessionError {
+pub enum SessionError<S: webtransport_generic::Session> {
+	// We can't use #[from] here because it would conflict with
 	#[error("webtransport error: {0}")]
-	WebTransport(#[from] webtransport_quinn::SessionError),
+	WebTransport(S::Error),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -18,14 +19,6 @@ pub enum SessionError {
 	// TODO move to a ConnectError
 	#[error("incompatible roles: client={0:?} server={1:?}")]
 	RoleIncompatible(setup::Role, setup::Role),
-
-	/// An error occured while reading from the QUIC stream.
-	#[error("failed to read from stream: {0}")]
-	Read(#[from] webtransport_quinn::ReadError),
-
-	/// An error occured while writing to the QUIC stream.
-	#[error("failed to write to stream: {0}")]
-	Write(#[from] webtransport_quinn::WriteError),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation")]
@@ -49,14 +42,12 @@ pub enum SessionError {
 	WrongSize,
 }
 
-impl SessionError {
+impl<S: webtransport_generic::Session> SessionError<S> {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u64 {
 		match self {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
-			Self::Write(_) => 501,
-			Self::Read(_) => 400,
 			Self::WebTransport(_) => 503,
 			Self::Version(..) => 406,
 			Self::Decode(_) => 400,

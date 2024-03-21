@@ -6,9 +6,9 @@ use thiserror::Error;
 // I'm too lazy to add these trait bounds to every message type.
 // TODO Use trait aliases when they're stable, or add these bounds to every method.
 pub trait AsyncRead: tokio::io::AsyncRead + Unpin + Send {}
-impl AsyncRead for webtransport_quinn::RecvStream {}
-impl<T> AsyncRead for tokio::io::Take<&mut T> where T: AsyncRead {}
-impl<T: AsRef<[u8]> + Unpin + Send> AsyncRead for io::Cursor<T> {}
+impl<T: webtransport_generic::RecvStream> AsyncRead for T {}
+//impl<T> AsyncRead for tokio::io::Take<&mut T> where T: AsyncRead {}
+//impl<T: AsRef<[u8]> + Unpin + Send> AsyncRead for io::Cursor<T> {}
 
 #[async_trait::async_trait]
 pub trait Decode: Sized {

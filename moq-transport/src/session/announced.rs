@@ -2,14 +2,14 @@ use crate::{message, serve::ServeError, util::Watch};
 
 use super::Subscriber;
 
-pub struct Announced {
-	session: Subscriber,
+pub struct Announced<S: webtransport_generic::Session> {
+	session: Subscriber<S>,
 	namespace: String,
-	state: Watch<State>,
+	state: Watch<State<S>>,
 }
 
-impl Announced {
-	pub(super) fn new(session: Subscriber, namespace: String) -> (Announced, AnnouncedRecv) {
+impl<S: webtransport_generic::Session> Announced<S> {
+	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv<S>) {
 		let state = Watch::new(State::new(session.clone(), namespace.clone()));
 		let recv = AnnouncedRecv { state: state.clone() };
 
@@ -48,32 +48,32 @@ impl Announced {
 	}
 }
 
-impl Drop for Announced {
+impl<S: webtransport_generic::Session> Drop for Announced<S> {
 	fn drop(&mut self) {
 		self.close(ServeError::Done).ok();
 		self.session.drop_announce(&self.namespace);
 	}
 }
 
-pub(super) struct AnnouncedRecv {
-	state: Watch<State>,
+pub(super) struct AnnouncedRecv<S: webtransport_generic::Session> {
+	state: Watch<State<S>>,
 }
 
-impl AnnouncedRecv {
+impl<S: webtransport_generic::Session> AnnouncedRecv<S> {
 	pub fn recv_unannounce(&mut self) -> Result<(), ServeError> {
 		self.state.lock_mut().close(ServeError::Done)
 	}
 }
 
-struct State {
+struct State<S: webtransport_generic::Session> {
 	namespace: String,
-	session: Subscriber,
+	session: Subscriber<S>,
 	ok: bool,
 	closed: Result<(), ServeError>,
 }
 
-impl State {
-	fn new(session: Subscriber, namespace: String) -> Self {
+impl<S: webtransport_generic::Session> State<S> {
+	fn new(session: Subscriber<S>, namespace: String) -> Self {
 		Self {
 			session,
 			namespace,

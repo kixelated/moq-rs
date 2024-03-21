@@ -20,9 +20,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 log = "0.4"
 
-quinn = "0.10"
-webtransport-quinn = "0.7"
-#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
+webtransport-generic = { path = "../../webtransport-rs/webtransport-generic" }
 
 async-trait = "0.1"
 paste = "1"

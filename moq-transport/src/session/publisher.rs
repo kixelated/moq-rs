@@ -16,18 +16,18 @@ use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, Subscribe
 
 // TODO remove Clone.
 #[derive(Clone)]
-pub struct Publisher {
-	webtransport: webtransport_quinn::Session,
+pub struct Publisher<S: webtransport_generic::Session> {
+	webtransport: S,
 
 	announces: Arc<Mutex<HashMap<String, AnnounceRecv>>>,
-	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv>>>,
-	subscribed_queue: Queue<Subscribed, SessionError>,
+	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv<S>>>>,
+	subscribed_queue: Queue<Subscribed<S>, SessionError<S>>,
 
-	outgoing: Queue<Message, SessionError>,
+	outgoing: Queue<Message, SessionError<S>>,
 }
 
-impl Publisher {
-	pub(crate) fn new(webtransport: webtransport_quinn::Session, outgoing: Queue<Message, SessionError>) -> Self {
+impl<S: webtransport_generic::Session> Publisher<S> {
+	pub(crate) fn new(webtransport: S, outgoing: Queue<Message, SessionError<S>>) -> Self {
 		Self {
 			webtransport,
 			announces: Default::default(),
@@ -37,17 +37,17 @@ impl Publisher {
 		}
 	}
 
-	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn accept(session: S) -> Result<(Session<S>, Publisher<S>), SessionError<S>> {
 		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn connect(session: S) -> Result<(Session<S>, Publisher<S>), SessionError<S>> {
 		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
+	pub fn announce(&mut self, namespace: &str) -> Result<Announce<S>, SessionError<S>> {
 		let mut announces = self.announces.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
@@ -68,13 +68,13 @@ impl Publisher {
 		Ok(announce)
 	}
 
-	pub async fn subscribed(&mut self) -> Result<Subscribed, SessionError> {
+	pub async fn subscribed(&mut self) -> Result<Subscribed<S>, SessionError<S>> {
 		self.subscribed_queue.pop().await
 	}
 
 	// Helper to announce and serve any matching subscribers.
 	// TODO this currently takes over the connection; definitely remove Clone
-	pub async fn serve(mut self, broadcast: serve::BroadcastSubscriber) -> Result<(), SessionError> {
+	pub async fn serve(mut self, broadcast: serve::BroadcastSubscriber) -> Result<(), SessionError<S>> {
 		log::info!("serving broadcast: {}", broadcast.namespace);
 
 		let announce = self.announce(&broadcast.namespace)?;
@@ -107,7 +107,7 @@ impl Publisher {
 	fn serve_track(
 		&self,
 		broadcast: &serve::BroadcastSubscriber,
-		subscribe: &Subscribed,
+		subscribe: &Subscribed<S>,
 	) -> Result<serve::TrackSubscriber, ServeError> {
 		if subscribe.namespace() != broadcast.namespace {
 			return Err(ServeError::NotFound);
@@ -116,7 +116,7 @@ impl Publisher {
 		broadcast.get_track(subscribe.name())?.ok_or(ServeError::NotFound)
 	}
 
-	pub(crate) fn recv_message(&mut self, msg: message::Subscriber) -> Result<(), SessionError> {
+	pub(crate) fn recv_message(&mut self, msg: message::Subscriber) -> Result<(), SessionError<S>> {
 		log::debug!("received message: {:?}", msg);
 
 		match msg {
@@ -128,13 +128,13 @@ impl Publisher {
 		}
 	}
 
-	fn recv_announce_ok(&mut self, _msg: message::AnnounceOk) -> Result<(), SessionError> {
+	fn recv_announce_ok(&mut self, _msg: message::AnnounceOk) -> Result<(), SessionError<S>> {
 		// Who cares
 		// TODO make AnnouncePending so we're forced to care
 		Ok(())
 	}
 
-	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
+	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError<S>> {
 		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
 			announce.recv_error(ServeError::Closed(msg.code)).ok();
 		}
@@ -142,11 +142,11 @@ impl Publisher {
 		Ok(())
 	}
 
-	fn recv_announce_cancel(&mut self, _msg: message::AnnounceCancel) -> Result<(), SessionError> {
+	fn recv_announce_cancel(&mut self, _msg: message::AnnounceCancel) -> Result<(), SessionError<S>> {
 		unimplemented!("recv_announce_cancel")
 	}
 
-	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError> {
+	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError<S>> {
 		let mut subscribes = self.subscribed.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
@@ -160,7 +160,7 @@ impl Publisher {
 		self.subscribed_queue.push(subscribe)
 	}
 
-	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
+	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError<S>> {
 		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
 			subscribed.recv_unsubscribe().ok();
 		}
@@ -168,7 +168,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub fn send_message<T: Into<message::Publisher>>(&self, msg: T) -> Result<(), SessionError> {
+	pub fn send_message<T: Into<message::Publisher>>(&self, msg: T) -> Result<(), SessionError<S>> {
 		let msg = msg.into();
 		log::debug!("sending message: {:?}", msg);
 		self.outgoing.push(msg.into())
@@ -182,11 +182,11 @@ impl Publisher {
 		self.announces.lock().unwrap().remove(namespace);
 	}
 
-	pub(super) fn webtransport(&mut self) -> &mut webtransport_quinn::Session {
+	pub(super) fn webtransport(&mut self) -> &mut S {
 		&mut self.webtransport
 	}
 
-	pub fn close(self, err: SessionError) {
+	pub fn close(self, err: SessionError<S>) {
 		self.outgoing.close(err.clone()).ok();
 		self.subscribed_queue.close(err).ok();
 	}

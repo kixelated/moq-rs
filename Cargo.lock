@@ -944,7 +944,6 @@ dependencies = [
  "log",
  "mp4",
  "paste",
- "quinn",
  "rfc6381-codec",
  "rustls",
  "rustls-native-certs",
@@ -955,7 +954,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "webtransport-quinn",
+ "webtransport-generic 0.5.0",
 ]
 
 [[package]]
@@ -2184,6 +2183,13 @@ checksum = "14247bb57be4f377dfb94c72830b8ce8fc6beac03cf4bf7b9732eadd414123fc"
 [[package]]
 name = "webtransport-generic"
 version = "0.5.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "webtransport-generic"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df712317d761312996f654739debeb3838eb02c6fd9146d9efdfd08a46674e45"
 dependencies = [
@@ -2218,7 +2224,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "webtransport-generic",
+ "webtransport-generic 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "webtransport-proto",
 ]
 

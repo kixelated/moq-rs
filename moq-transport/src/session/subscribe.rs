@@ -9,15 +9,15 @@ use crate::{
 
 use super::{SessionError, Subscriber};
 
-pub struct Subscribe {
-	session: Subscriber,
+pub struct Subscribe<S: webtransport_generic::Session> {
+	session: Subscriber<S>,
 	id: u64,
 	track: serve::TrackSubscriber,
 	state: Watch<State>,
 }
 
-impl Subscribe {
-	pub(super) fn new(session: Subscriber, msg: message::Subscribe) -> (SubscribeRecv, Subscribe) {
+impl<S: webtransport_generic::Session> Subscribe<S> {
+	pub(super) fn new(session: Subscriber<S>, msg: message::Subscribe) -> (Subscribe<S>, SubscribeRecv<S>) {
 		let state = Watch::new(State::default());
 
 		let (publisher, subscriber) = serve::Track {
@@ -37,7 +37,7 @@ impl Subscribe {
 
 		let publisher = SubscribeRecv::new(state, publisher);
 
-		(publisher, subscriber)
+		(subscriber, publisher)
 	}
 
 	// Waits until an OK message is received.
@@ -78,7 +78,7 @@ impl Subscribe {
 	}
 }
 
-impl Drop for Subscribe {
+impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
 	fn drop(&mut self) {
 		let msg = message::Unsubscribe { id: self.id };
 		self.session.send_message(msg).ok();
@@ -88,12 +88,12 @@ impl Drop for Subscribe {
 }
 
 #[derive(Clone)]
-pub(super) struct SubscribeRecv {
+pub(super) struct SubscribeRecv<S: webtransport_generic::Session> {
 	publisher: Arc<Mutex<serve::TrackPublisher>>,
 	state: Watch<State>,
 }
 
-impl SubscribeRecv {
+impl<S: webtransport_generic::Session> SubscribeRecv<S> {
 	fn new(state: Watch<State>, publisher: serve::TrackPublisher) -> Self {
 		Self {
 			publisher: Arc::new(Mutex::new(publisher)),
@@ -117,11 +117,7 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	pub async fn recv_stream(
-		&mut self,
-		header: data::Header,
-		stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SessionError> {
+	pub async fn recv_stream(&mut self, header: data::Header, stream: S::RecvStream) -> Result<(), SessionError<S>> {
 		match header {
 			data::Header::Track(track) => self.recv_track(track, stream).await,
 			data::Header::Group(group) => self.recv_group(group, stream).await,
@@ -132,8 +128,8 @@ impl SubscribeRecv {
 	async fn recv_track(
 		&mut self,
 		header: data::TrackHeader,
-		mut stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SessionError> {
+		mut stream: S::RecvStream,
+	) -> Result<(), SessionError<S>> {
 		log::trace!("received track: {:?}", header);
 
 		let mut track = self.publisher.lock().unwrap().create_stream(header.send_order)?;
@@ -165,8 +161,8 @@ impl SubscribeRecv {
 	async fn recv_group(
 		&mut self,
 		header: data::GroupHeader,
-		mut stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SessionError> {
+		mut stream: S::RecvStream,
+	) -> Result<(), SessionError<S>> {
 		log::trace!("received group: {:?}", header);
 
 		let mut group = self.publisher.lock().unwrap().create_group(serve::Group {
@@ -193,8 +189,8 @@ impl SubscribeRecv {
 	async fn recv_object(
 		&mut self,
 		header: data::ObjectHeader,
-		mut stream: webtransport_quinn::RecvStream,
-	) -> Result<(), SessionError> {
+		mut stream: S::RecvStream,
+	) -> Result<(), SessionError<S>> {
 		log::trace!("received object: {:?}", header);
 
 		// TODO avoid buffering the entire object to learn the size.
@@ -220,7 +216,7 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError> {
+	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError<S>> {
 		log::trace!("received datagram: {:?}", datagram);
 
 		self.publisher.lock().unwrap().write_datagram(serve::Datagram {

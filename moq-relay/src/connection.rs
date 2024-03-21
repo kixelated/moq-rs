@@ -58,7 +58,7 @@ impl Connection {
 		Ok(())
 	}
 
-	async fn serve_publisher(mut publisher: Publisher, origin: Origin) -> Result<(), SessionError> {
+	async fn serve_publisher(mut publisher: Publisher, origin: Origin) -> Result<(), SessionError<S>> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -77,7 +77,7 @@ impl Connection {
 		}
 	}
 
-	async fn serve_subscriber(mut subscriber: Subscriber, origin: Origin) -> Result<(), SessionError> {
+	async fn serve_subscriber(mut subscriber: Subscriber, origin: Origin) -> Result<(), SessionError<S>> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

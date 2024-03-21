@@ -232,13 +232,6 @@ impl Encode for VarInt {
 	}
 }
 
-// This is a fork of quinn::VarInt.
-impl From<quinn::VarInt> for VarInt {
-	fn from(v: quinn::VarInt) -> Self {
-		Self(v.into_inner())
-	}
-}
-
 #[async_trait::async_trait]
 impl Encode for u64 {
 	/// Encode a varint to the given writer.

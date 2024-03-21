@@ -16,28 +16,25 @@ pub use subscriber::*;
 
 use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
-use webtransport_quinn::{RecvStream, SendStream};
 
 use crate::{message, setup, util::Queue};
 
-type Messages<T> = Queue<T, SessionError>;
+pub struct Session<S: webtransport_generic::Session> {
+	webtransport: S,
+	control: (S::SendStream, S::RecvStream),
 
-pub struct Session {
-	webtransport: webtransport_quinn::Session,
-	control: (SendStream, RecvStream),
-
-	publisher: Option<Publisher>,
-	subscriber: Option<Subscriber>,
-	outgoing: Messages<message::Message>,
+	publisher: Option<Publisher<S>>,
+	subscriber: Option<Subscriber<S>>,
+	outgoing: Queue<message::Message, SessionError<S>>,
 }
 
-impl Session {
+impl<S: webtransport_generic::Session> Session<S> {
 	fn new(
-		webtransport: webtransport_quinn::Session,
-		control: (SendStream, RecvStream),
+		webtransport: S,
+		control: (S::SendStream, S::RecvStream),
 		role: setup::Role,
-	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let outgoing = Messages::<message::Message>::default();
+	) -> (Self, Option<Publisher<S>>, Option<Subscriber<S>>) {
+		let outgoing = Default::default();
 
 		let publisher = role
 			.is_publisher()
@@ -56,15 +53,15 @@ impl Session {
 	}
 
 	pub async fn connect(
-		session: webtransport_quinn::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		session: S,
+	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError<S>> {
 		Self::connect_role(session, setup::Role::Both).await
 	}
 
 	pub async fn connect_role(
-		session: webtransport_quinn::Session,
+		session: S,
 		role: setup::Role,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError<S>> {
 		let mut control = session.open_bi().await?;
 
 		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
@@ -101,15 +98,15 @@ impl Session {
 	}
 
 	pub async fn accept(
-		session: webtransport_quinn::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		session: S,
+	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError<S>> {
 		Self::accept_role(session, setup::Role::Both).await
 	}
 
 	pub async fn accept_role(
-		session: webtransport_quinn::Session,
+		session: S,
 		role: setup::Role,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError<S>> {
 		let mut control = session.accept_bi().await?;
 
 		let client = setup::Client::decode(&mut control.1).await?;
@@ -151,7 +148,7 @@ impl Session {
 		Ok(Session::new(session, control, role))
 	}
 
-	pub async fn run(self) -> Result<(), SessionError> {
+	pub async fn run(self) -> Result<(), SessionError<S>> {
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(Self::run_send(self.outgoing, self.control.0).boxed());
 		tasks.push(Self::run_recv(self.control.1, self.publisher, self.subscriber.clone()).boxed());
@@ -166,9 +163,9 @@ impl Session {
 	}
 
 	async fn run_send(
-		outgoing: Queue<message::Message, SessionError>,
-		mut stream: SendStream,
-	) -> Result<(), SessionError> {
+		outgoing: Queue<message::Message, SessionError<S>>,
+		mut stream: S::SendStream,
+	) -> Result<(), SessionError<S>> {
 		loop {
 			let msg = outgoing.pop().await?;
 			msg.encode(&mut stream).await?;
@@ -176,10 +173,10 @@ impl Session {
 	}
 
 	async fn run_recv(
-		mut stream: RecvStream,
-		mut publisher: Option<Publisher>,
-		mut subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
+		mut stream: S::RecvStream,
+		mut publisher: Option<Publisher<S>>,
+		mut subscriber: Option<Subscriber<S>>,
+	) -> Result<(), SessionError<S>> {
 		loop {
 			let msg = message::Message::decode(&mut stream).await?;
 
@@ -210,10 +207,7 @@ impl Session {
 		}
 	}
 
-	async fn run_streams(
-		webtransport: webtransport_quinn::Session,
-		subscriber: Subscriber,
-	) -> Result<(), SessionError> {
+	async fn run_streams(webtransport: S, subscriber: Subscriber<S>) -> Result<(), SessionError<S>> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -227,10 +221,7 @@ impl Session {
 		}
 	}
 
-	async fn run_datagrams(
-		webtransport: webtransport_quinn::Session,
-		mut subscriber: Subscriber,
-	) -> Result<(), SessionError> {
+	async fn run_datagrams(webtransport: S, mut subscriber: Subscriber<S>) -> Result<(), SessionError<S>> {
 		loop {
 			let datagram = webtransport.read_datagram().await?;
 			subscriber.recv_datagram(datagram).await?;

@@ -1,5 +1,6 @@
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use tokio::io::AsyncWriteExt;
 
 use crate::serve::ServeError;
 use crate::util::{Watch, WatchWeak};
@@ -8,14 +9,14 @@ use crate::{data, message, serve};
 use super::{Publisher, SessionError};
 
 #[derive(Clone)]
-pub struct Subscribed {
-	session: Publisher,
-	state: Watch<State>,
+pub struct Subscribed<S: webtransport_generic::Session> {
+	session: Publisher<S>,
+	state: Watch<State<S>>,
 	msg: message::Subscribe,
 }
 
-impl Subscribed {
-	pub(super) fn new(session: Publisher, msg: message::Subscribe) -> (Subscribed, SubscribedRecv) {
+impl<S: webtransport_generic::Session> Subscribed<S> {
+	pub(super) fn new(session: Publisher<S>, msg: message::Subscribe) -> (Subscribed<S>, SubscribedRecv<S>) {
 		let state = Watch::new(State::new(session.clone(), msg.id));
 		let recv = SubscribedRecv {
 			state: state.downgrade(),
@@ -33,7 +34,7 @@ impl Subscribed {
 		self.msg.track_name.as_str()
 	}
 
-	pub async fn serve(mut self, mut track: serve::TrackSubscriber) -> Result<(), SessionError> {
+	pub async fn serve(mut self, mut track: serve::TrackSubscriber) -> Result<(), SessionError<S>> {
 		let mut tasks = FuturesUnordered::new();
 
 		self.state.lock_mut().ok(track.latest())?;
@@ -60,7 +61,7 @@ impl Subscribed {
 		}
 	}
 
-	async fn serve_track(mut self, mut track: serve::StreamSubscriber) -> Result<(), SessionError> {
+	async fn serve_track(mut self, mut track: serve::StreamSubscriber) -> Result<(), SessionError<S>> {
 		let mut stream = self.session.webtransport().open_uni().await?;
 
 		let header: data::Header = data::TrackHeader {
@@ -98,7 +99,7 @@ impl Subscribed {
 		Ok(())
 	}
 
-	pub async fn serve_group(mut self, mut group: serve::GroupSubscriber) -> Result<(), SessionError> {
+	pub async fn serve_group(mut self, mut group: serve::GroupSubscriber) -> Result<(), SessionError<S>> {
 		let mut stream = self.session.webtransport().open_uni().await?;
 
 		let header: data::Header = data::GroupHeader {
@@ -136,7 +137,7 @@ impl Subscribed {
 		Ok(())
 	}
 
-	pub async fn serve_object(mut self, mut object: serve::ObjectSubscriber) -> Result<(), SessionError> {
+	pub async fn serve_object(mut self, mut object: serve::ObjectSubscriber) -> Result<(), SessionError<S>> {
 		let mut stream = self.session.webtransport().open_uni().await?;
 
 		let header: data::Header = data::ObjectHeader {
@@ -163,7 +164,7 @@ impl Subscribed {
 		Ok(())
 	}
 
-	pub async fn serve_datagram(&mut self, datagram: serve::Datagram) -> Result<(), SessionError> {
+	pub async fn serve_datagram(&mut self, datagram: serve::Datagram) -> Result<(), SessionError<S>> {
 		let datagram = data::Datagram {
 			subscribe_id: self.msg.id,
 			track_alias: self.msg.track_alias,
@@ -205,11 +206,11 @@ impl Subscribed {
 	}
 }
 
-pub(super) struct SubscribedRecv {
-	state: WatchWeak<State>,
+pub(super) struct SubscribedRecv<S: webtransport_generic::Session> {
+	state: WatchWeak<State<S>>,
 }
 
-impl SubscribedRecv {
+impl<S: webtransport_generic::Session> SubscribedRecv<S> {
 	pub fn recv_unsubscribe(&mut self) -> Result<(), ServeError> {
 		if let Some(state) = self.state.upgrade() {
 			state.lock_mut().close(ServeError::Done)?;
@@ -218,8 +219,8 @@ impl SubscribedRecv {
 	}
 }
 
-struct State {
-	session: Publisher,
+struct State<S: webtransport_generic::Session> {
+	session: Publisher<S>,
 	id: u64,
 
 	ok: bool,
@@ -227,8 +228,8 @@ struct State {
 	closed: Result<(), ServeError>,
 }
 
-impl State {
-	fn new(session: Publisher, id: u64) -> Self {
+impl<S: webtransport_generic::Session> State<S> {
+	fn new(session: Publisher<S>, id: u64) -> Self {
 		Self {
 			session,
 			id,
@@ -239,7 +240,7 @@ impl State {
 	}
 }
 
-impl State {
+impl<S: webtransport_generic::Session> State<S> {
 	fn ok(&mut self, latest: Option<(u64, u64)>) -> Result<(), ServeError> {
 		self.ok = true;
 		self.max = latest;
@@ -295,7 +296,7 @@ impl State {
 	}
 }
 
-impl Drop for State {
+impl<S: webtransport_generic::Session> Drop for State<S> {
 	fn drop(&mut self) {
 		self.close(ServeError::Done).ok();
 		self.session.drop_subscribe(self.id);
