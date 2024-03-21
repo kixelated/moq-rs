@@ -1,7 +1,5 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
-use crate::coding::{AsyncRead, AsyncWrite};
-
 /// Sent by the publisher to announce the availability of a group of tracks.
 #[derive(Clone, Debug)]
 pub struct Announce {
@@ -12,17 +10,19 @@ pub struct Announce {
 	pub params: Params,
 }
 
-impl Announce {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let namespace = String::decode(r).await?;
-		let params = Params::decode(r).await?;
+impl Decode for Announce {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let namespace = String::decode(r)?;
+		let params = Params::decode(r)?;
 
 		Ok(Self { namespace, params })
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.namespace.encode(w).await?;
-		self.params.encode(w).await?;
+impl Encode for Announce {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.namespace.encode(w)?;
+		self.params.encode(w)?;
 
 		Ok(())
 	}

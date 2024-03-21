@@ -1,10 +1,15 @@
+use std::{io, sync};
+
 use crate::{coding, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
-pub enum SessionError<S: webtransport_generic::Session> {
-	// We can't use #[from] here because it would conflict with
+pub enum SessionError {
 	#[error("webtransport error: {0}")]
-	WebTransport(S::Error),
+	WebTransport(sync::Arc<dyn webtransport_generic::SessionError>),
+
+	// This needs an Arc because it's not Clone.
+	#[error("io error: {0}")]
+	Io(sync::Arc<io::Error>),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -42,7 +47,21 @@ pub enum SessionError<S: webtransport_generic::Session> {
 	WrongSize,
 }
 
-impl<S: webtransport_generic::Session> SessionError<S> {
+/*
+impl<T: webtransport_generic::SessionError> From<T> for SessionError {
+	fn from(err: T) -> Self {
+		Self::WebTransport(sync::Arc::new(err))
+	}
+}
+*/
+
+impl From<io::Error> for SessionError {
+	fn from(err: io::Error) -> Self {
+		Self::Io(sync::Arc::new(err))
+	}
+}
+
+impl SessionError {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u64 {
 		match self {
@@ -52,6 +71,7 @@ impl<S: webtransport_generic::Session> SessionError<S> {
 			Self::Version(..) => 406,
 			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
+			Self::Io(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
 			Self::Internal => 500,

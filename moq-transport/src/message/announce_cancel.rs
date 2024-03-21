@@ -1,7 +1,5 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
-use crate::coding::{AsyncRead, AsyncWrite};
-
 /// Sent by the subscriber to reject an Announce after ANNOUNCE_OK
 #[derive(Clone, Debug)]
 pub struct AnnounceCancel {
@@ -14,11 +12,11 @@ pub struct AnnounceCancel {
 	//pub reason: String,
 }
 
-impl AnnounceCancel {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let namespace = String::decode(r).await?;
-		//let code = u64::decode(r).await?;
-		//let reason = String::decode(r).await?;
+impl Decode for AnnounceCancel {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let namespace = String::decode(r)?;
+		//let code = u64::decode(r)?;
+		//let reason = String::decode(r)?;
 
 		Ok(Self {
 			namespace,
@@ -26,11 +24,13 @@ impl AnnounceCancel {
 			//reason,
 		})
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.namespace.encode(w).await?;
-		//self.code.encode(w).await?;
-		//self.reason.encode(w).await?;
+impl Encode for AnnounceCancel {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.namespace.encode(w)?;
+		//self.code.encode(w)?;
+		//self.reason.encode(w)?;
 
 		Ok(())
 	}

@@ -1,6 +1,3 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the publisher to cleanly terminate a Subscribe.
@@ -19,31 +16,42 @@ pub struct SubscribeDone {
 	pub last: Option<(u64, u64)>,
 }
 
-impl SubscribeDone {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r).await?;
-		let code = u64::decode(r).await?;
-		let reason = String::decode(r).await?;
-		let last = match r.read_u8().await.map_err(|_| DecodeError::IoError)? {
+impl Decode for SubscribeDone {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
+		let code = u64::decode(r)?;
+		let reason = String::decode(r)?;
+
+		if r.remaining() < 1 {
+			return Err(DecodeError::More(1));
+		}
+
+		let last = match r.get_u8() {
 			0 => None,
-			1 => Some((u64::decode(r).await?, u64::decode(r).await?)),
+			1 => Some((u64::decode(r)?, u64::decode(r)?)),
 			_ => return Err(DecodeError::InvalidValue),
 		};
 
 		Ok(Self { id, code, reason, last })
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
-		self.code.encode(w).await?;
-		self.reason.encode(w).await?;
+impl Encode for SubscribeDone {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
+		self.code.encode(w)?;
+		self.reason.encode(w)?;
+
+		if w.remaining_mut() < 1 {
+			return Err(EncodeError::More(1));
+		}
 
 		if let Some((group, object)) = self.last {
-			w.write_u8(1).await.map_err(|_| EncodeError::IoError)?;
-			group.encode(w).await?;
-			object.encode(w).await?;
+			w.put_u8(1);
+			group.encode(w)?;
+			object.encode(w)?;
 		} else {
-			w.write_u8(0).await.map_err(|_| EncodeError::IoError)?;
+			w.put_u8(0);
 		}
 
 		Ok(())

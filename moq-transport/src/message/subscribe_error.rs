@@ -1,4 +1,3 @@
-use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the publisher to reject a Subscribe.
@@ -17,12 +16,12 @@ pub struct SubscribeError {
 	pub alias: u64,
 }
 
-impl SubscribeError {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r).await?;
-		let code = u64::decode(r).await?;
-		let reason = String::decode(r).await?;
-		let alias = u64::decode(r).await?;
+impl Decode for SubscribeError {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
+		let code = u64::decode(r)?;
+		let reason = String::decode(r)?;
+		let alias = u64::decode(r)?;
 
 		Ok(Self {
 			id,
@@ -31,12 +30,14 @@ impl SubscribeError {
 			alias,
 		})
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
-		self.code.encode(w).await?;
-		self.reason.encode(w).await?;
-		self.alias.encode(w).await?;
+impl Encode for SubscribeError {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
+		self.code.encode(w)?;
+		self.reason.encode(w)?;
+		self.alias.encode(w)?;
 
 		Ok(())
 	}

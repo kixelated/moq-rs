@@ -1,5 +1,3 @@
-use crate::coding::{AsyncRead, AsyncWrite};
-
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Indicates the endpoint is a publisher, subscriber, or both.
@@ -56,19 +54,17 @@ impl TryFrom<u64> for Role {
 	}
 }
 
-#[async_trait::async_trait]
 impl Decode for Role {
 	/// Decode the role.
-	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = u64::decode(r).await?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = u64::decode(r)?;
 		v.try_into()
 	}
 }
 
-#[async_trait::async_trait]
 impl Encode for Role {
 	/// Encode the role.
-	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		u64::from(*self).encode(w).await
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		u64::from(*self).encode(w)
 	}
 }

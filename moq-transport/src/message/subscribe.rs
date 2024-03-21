@@ -1,4 +1,3 @@
-use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
 /// Sent by the subscriber to request all future objects for the given track.
@@ -22,15 +21,15 @@ pub struct Subscribe {
 	pub params: Params,
 }
 
-impl Subscribe {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r).await?;
-		let track_alias = u64::decode(r).await?;
-		let track_namespace = String::decode(r).await?;
-		let track_name = String::decode(r).await?;
+impl Decode for Subscribe {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
+		let track_alias = u64::decode(r)?;
+		let track_namespace = String::decode(r)?;
+		let track_name = String::decode(r)?;
 
-		let start = SubscribePair::decode(r).await?;
-		let end = SubscribePair::decode(r).await?;
+		let start = SubscribePair::decode(r)?;
+		let end = SubscribePair::decode(r)?;
 
 		// You can't have a start object without a start group.
 		if start.group == SubscribeLocation::None && start.object != SubscribeLocation::None {
@@ -44,7 +43,7 @@ impl Subscribe {
 
 		// NOTE: There's some more location restrictions in the draft, but they're enforced at a higher level.
 
-		let params = Params::decode(r).await?;
+		let params = Params::decode(r)?;
 
 		Ok(Self {
 			id,
@@ -56,17 +55,19 @@ impl Subscribe {
 			params,
 		})
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
-		self.track_alias.encode(w).await?;
-		self.track_namespace.encode(w).await?;
-		self.track_name.encode(w).await?;
+impl Encode for Subscribe {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
+		self.track_alias.encode(w)?;
+		self.track_namespace.encode(w)?;
+		self.track_name.encode(w)?;
 
-		self.start.encode(w).await?;
-		self.end.encode(w).await?;
+		self.start.encode(w)?;
+		self.end.encode(w)?;
 
-		self.params.encode(w).await?;
+		self.params.encode(w)?;
 
 		Ok(())
 	}
@@ -78,17 +79,19 @@ pub struct SubscribePair {
 	pub object: SubscribeLocation,
 }
 
-impl SubscribePair {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
+impl Decode for SubscribePair {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			group: SubscribeLocation::decode(r).await?,
-			object: SubscribeLocation::decode(r).await?,
+			group: SubscribeLocation::decode(r)?,
+			object: SubscribeLocation::decode(r)?,
 		})
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.group.encode(w).await?;
-		self.object.encode(w).await?;
+impl Encode for SubscribePair {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.group.encode(w)?;
+		self.object.encode(w)?;
 		Ok(())
 	}
 }
@@ -102,30 +105,34 @@ pub enum SubscribeLocation {
 	Future(u64),
 }
 
-impl SubscribeLocation {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let kind = u64::decode(r).await?;
+impl Decode for SubscribeLocation {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let kind = u64::decode(r)?;
 
 		match kind {
 			0 => Ok(Self::None),
-			1 => Ok(Self::Absolute(u64::decode(r).await?)),
-			2 => Ok(Self::Latest(u64::decode(r).await?)),
-			3 => Ok(Self::Future(u64::decode(r).await?)),
+			1 => Ok(Self::Absolute(u64::decode(r)?)),
+			2 => Ok(Self::Latest(u64::decode(r)?)),
+			3 => Ok(Self::Future(u64::decode(r)?)),
 			_ => Err(DecodeError::InvalidSubscribeLocation),
 		}
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id().encode(w).await?;
+impl Encode for SubscribeLocation {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id().encode(w)?;
 
 		match self {
 			Self::None => Ok(()),
-			Self::Absolute(val) => val.encode(w).await,
-			Self::Latest(val) => val.encode(w).await,
-			Self::Future(val) => val.encode(w).await,
+			Self::Absolute(val) => val.encode(w),
+			Self::Latest(val) => val.encode(w),
+			Self::Future(val) => val.encode(w),
 		}
 	}
+}
 
+impl SubscribeLocation {
 	fn id(&self) -> u64 {
 		match self {
 			Self::None => 0,

@@ -1,7 +1,4 @@
-use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 #[derive(Clone, Debug)]
 pub struct Datagram {
 	// The subscribe ID.
@@ -23,17 +20,14 @@ pub struct Datagram {
 	pub payload: bytes::Bytes,
 }
 
-impl Datagram {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let subscribe_id = u64::decode(r).await?;
-		let track_alias = u64::decode(r).await?;
-		let group_id = u64::decode(r).await?;
-		let object_id = u64::decode(r).await?;
-		let send_order = u64::decode(r).await?;
-
-		// TODO use with_capacity once we know the size of the datagram...
-		let mut payload = Vec::new();
-		r.read_to_end(&mut payload).await.map_err(|_| DecodeError::IoError)?;
+impl Decode for Datagram {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let subscribe_id = u64::decode(r)?;
+		let track_alias = u64::decode(r)?;
+		let group_id = u64::decode(r)?;
+		let object_id = u64::decode(r)?;
+		let send_order = u64::decode(r)?;
+		let payload = r.copy_to_bytes(r.remaining());
 
 		Ok(Self {
 			subscribe_id,
@@ -41,19 +35,24 @@ impl Datagram {
 			group_id,
 			object_id,
 			send_order,
-			payload: payload.into(),
+			payload,
 		})
 	}
+}
 
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.subscribe_id.encode(w).await?;
-		self.track_alias.encode(w).await?;
-		self.group_id.encode(w).await?;
-		self.object_id.encode(w).await?;
-		self.send_order.encode(w).await?;
-		w.write_all(self.payload.as_ref())
-			.await
-			.map_err(|_| EncodeError::IoError)?;
+impl Encode for Datagram {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.subscribe_id.encode(w)?;
+		self.track_alias.encode(w)?;
+		self.group_id.encode(w)?;
+		self.object_id.encode(w)?;
+		self.send_order.encode(w)?;
+
+		if w.remaining_mut() < self.payload.len() {
+			return Err(EncodeError::More(self.payload.len()));
+		}
+		w.put_slice(&self.payload);
+
 		Ok(())
 	}
 }

@@ -16,28 +16,54 @@ impl Connection {
 	}
 
 	pub async fn run(self, conn: quinn::Connecting) -> anyhow::Result<()> {
-		log::debug!("received QUIC handshake: ip={:?}", conn.remote_address());
+		let handshake = conn
+			.handshake_data()
+			.await?
+			.downcast::<quinn::crypto::rustls::HandshakeData>()?;
+
+		let alpn = handshake.protocol.context("missing ALPN")?;
+
+		log::debug!(
+			"received QUIC handshake: ip={} alpn={} server={}",
+			conn.remote_address(),
+			alpn,
+			handshake.server_name
+		);
 
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
-		log::debug!("established QUIC connection: ip={:?}", conn.remote_address(),);
+		log::debug!(
+			"established QUIC connection: id={} ip={} alpn={} server={}",
+			conn.stable_id(),
+			conn.remote_address(),
+			alpn,
+			handshake.server_name
+		);
 
-		// Wait for the CONNECT request.
-		let request = webtransport_quinn::accept(conn)
-			.await
-			.context("failed to receive WebTransport request")?;
+		let session = if alpn.as_slice() == webtransport_quinn::ALPN {
+			// Wait for the CONNECT request.
+			let request = webtransport_quinn::accept(conn)
+				.await
+				.context("failed to receive WebTransport request")?;
 
-		// Strip any leading and trailing slashes to get the customer ID.
-		let path = request.url().path().trim_matches('/').to_string();
+			// Accept the CONNECT request.
+			let session = request
+				.ok()
+				.await
+				.context("failed to respond to WebTransport request")?;
 
-		log::debug!("received WebTransport CONNECT: path={}", path);
+			let path = request.url().path().trim_matches('/').to_string();
 
-		// Accept the CONNECT request.
-		let session = request
-			.ok()
-			.await
-			.context("failed to respond to WebTransport request")?;
+			log::debug!("received WebTransport CONNECT: path={}", path);
+			session
+		} else if alpn.as_slice() == moq_transport::setup::ALPN {
+			let session: quictransport_quinn::Session = conn.into();
+
+			session
+		} else {
+			anyhow::anyhow!("unsupported ALPN: alpn={:?}", alpn);
+		};
 
 		let (session, publisher, subscriber) = moq_transport::Session::accept(session).await?;
 
@@ -58,7 +84,10 @@ impl Connection {
 		Ok(())
 	}
 
-	async fn serve_publisher(mut publisher: Publisher, origin: Origin) -> Result<(), SessionError<S>> {
+	async fn serve_publisher<S: webtransport_generic::Session>(
+		mut publisher: Publisher<S>,
+		origin: Origin,
+	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -77,7 +106,10 @@ impl Connection {
 		}
 	}
 
-	async fn serve_subscriber(mut subscriber: Subscriber, origin: Origin) -> Result<(), SessionError<S>> {
+	async fn serve_subscriber<S: webtransport_generic::Session>(
+		mut subscriber: Subscriber<S>,
+		origin: Origin,
+	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

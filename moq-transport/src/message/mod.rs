@@ -59,7 +59,7 @@ pub use subscriber::*;
 pub use unannounce::*;
 pub use unsubscribe::*;
 
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 use std::fmt;
 
 // Use a macro to generate the message types rather than copy-paste.
@@ -72,28 +72,32 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-		impl Message {
-			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = u64::decode(r).await?;
+		impl Decode for Message {
+			fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = u64::decode(r)?;
 
 				match t {
 					$($val => {
-						let msg = $name::decode(r).await?;
+						let msg = $name::decode(r)?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
+		}
 
-			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		impl Encode for Message {
+			fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						self.id().encode(w).await?;
-						m.encode(w).await
+						self.id().encode(w)?;
+						m.encode(w)
 					},)*
 				}
 			}
+		}
 
+		impl Message {
 			pub fn id(&self) -> u64 {
 				match self {
 					$(Self::$name(_) => {

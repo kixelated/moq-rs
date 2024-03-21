@@ -1,8 +1,4 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
-
-use crate::coding::{AsyncRead, AsyncWrite};
 
 /// Sent by the publisher to accept a Subscribe.
 #[derive(Clone, Debug)]
@@ -17,17 +13,21 @@ pub struct SubscribeOk {
 	pub latest: Option<(u64, u64)>,
 }
 
-impl SubscribeOk {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r).await?;
-		let expires = match u64::decode(r).await? {
+impl Decode for SubscribeOk {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
+		let expires = match u64::decode(r)? {
 			0 => None,
 			expires => Some(expires),
 		};
 
-		let latest = match r.read_u8().await.map_err(|_| DecodeError::IoError)? {
+		if !r.has_remaining() {
+			return Err(DecodeError::More(1));
+		}
+
+		let latest = match r.get_u8() {
 			0 => None,
-			1 => Some((u64::decode(r).await?, u64::decode(r).await?)),
+			1 => Some((u64::decode(r)?, u64::decode(r)?)),
 			_ => return Err(DecodeError::InvalidValue),
 		};
 
@@ -35,19 +35,23 @@ impl SubscribeOk {
 	}
 }
 
-impl SubscribeOk {
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
-		self.expires.unwrap_or(0).encode(w).await?;
+impl Encode for SubscribeOk {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
+		self.expires.unwrap_or(0).encode(w)?;
+
+		if !w.has_remaining_mut() {
+			return Err(EncodeError::More(1));
+		}
 
 		match self.latest {
 			Some((group, object)) => {
-				w.write_u8(1).await.map_err(|_| EncodeError::IoError)?;
-				group.encode(w).await?;
-				object.encode(w).await?;
+				w.put_u8(1);
+				group.encode(w)?;
+				object.encode(w)?;
 			}
 			None => {
-				w.write_u8(0).await.map_err(|_| EncodeError::IoError)?;
+				w.put_u8(0);
 			}
 		}
 

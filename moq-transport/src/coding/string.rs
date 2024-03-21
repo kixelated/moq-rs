@@ -1,29 +1,29 @@
-use std::cmp::min;
-
-use crate::coding::{AsyncRead, AsyncWrite};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use super::{Decode, DecodeError, Encode, EncodeError};
 
-#[async_trait::async_trait]
 impl Encode for String {
-	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.len().encode(w).await?;
-		w.write_all(self.as_ref()).await.map_err(|_| EncodeError::IoError)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.len().encode(w)?;
+		if w.remaining_mut() < self.len() {
+			return Err(EncodeError::More(self.len()));
+		}
+
+		w.put(self.as_ref());
 		Ok(())
 	}
 }
 
-#[async_trait::async_trait]
 impl Decode for String {
 	/// Decode a string with a varint length prefix.
-	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let size = usize::decode(r).await?;
-		let mut str = String::with_capacity(min(1024, size));
-		r.take(size as u64)
-			.read_to_string(&mut str)
-			.await
-			.map_err(|_| DecodeError::IoError)?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let size = usize::decode(r)?;
+		if r.remaining() < size {
+			return Err(DecodeError::More(size));
+		}
+
+		let mut buf = vec![0; size];
+		r.copy_to_slice(&mut buf);
+		let str = String::from_utf8(buf)?;
+
 		Ok(str)
 	}
 }
