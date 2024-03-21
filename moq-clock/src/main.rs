@@ -94,11 +94,10 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let subscriber = subscriber
-			.subscribe(&config.namespace, &config.track, Default::default())
-			.context("failed to subscribe to track")?;
+		let (prod, sub) = serve::Track::new(&config.namespace, &config.track).produce();
+		subscriber.subscribe(prod).context("failed to subscribe to track")?;
 
-		let clock = clock::Subscriber::new(subscriber.track());
+		let clock = clock::Subscriber::new(sub);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,

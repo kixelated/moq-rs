@@ -1,129 +1,48 @@
 use std::sync::{Arc, Mutex};
 
-use tokio::io::AsyncRead;
-
 use crate::{
 	coding::Reader,
-	data,
-	message::{self, SubscribePair},
+	data, message,
 	serve::{self, ServeError},
-	util::Watch,
 };
 
 use super::{SessionError, Subscriber};
 
+#[derive(Clone)]
 pub struct Subscribe<S: webtransport_generic::Session> {
 	session: Subscriber<S>,
 	id: u64,
-	track: serve::TrackSubscriber,
-	state: Watch<State>,
+	track: Arc<Mutex<serve::TrackPublisher>>,
 }
 
 impl<S: webtransport_generic::Session> Subscribe<S> {
-	pub(super) fn new(session: Subscriber<S>, msg: message::Subscribe) -> (Subscribe<S>, SubscribeRecv) {
-		let state = Watch::new(State::default());
-
-		let (publisher, subscriber) = serve::Track {
-			namespace: msg.track_namespace,
-			name: msg.track_name.clone(),
-		}
-		.produce();
-
-		// TODO apply start/end range
-
-		let subscriber = Subscribe {
-			session,
-			id: msg.id,
-			track: subscriber,
-			state: state.clone(),
-		};
-
-		let publisher = SubscribeRecv::new(state, publisher);
-
-		(subscriber, publisher)
-	}
-
-	// Waits until an OK message is received.
-	pub async fn ok(&self) -> Result<(), ServeError> {
-		loop {
-			let notify = {
-				let state = self.state.lock();
-				if state.ok.is_some() {
-					return Ok(());
-				}
-				state.changed()
-			};
-
-			tokio::select! {
-				_ = notify => {},
-				err = self.track.closed() => return err,
-			};
-		}
-	}
-
-	// Returns the maximum known group/object sequences.
-	pub fn max(&self) -> Option<(u64, u64)> {
-		let ok = self.state.lock().ok.as_ref().and_then(|ok| ok.latest);
-		let cache = self.track.latest();
-
-		// Return the max of both the OK message and the cache.
-		match ok {
-			Some(ok) => match cache {
-				Some(cache) => Some(cache.max(ok)),
-				None => Some(ok),
-			},
-			None => cache,
-		}
-	}
-
-	pub fn track(&self) -> serve::TrackSubscriber {
-		self.track.clone()
-	}
-}
-
-impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
-	fn drop(&mut self) {
-		let msg = message::Unsubscribe { id: self.id };
-		self.session.send_message(msg).ok();
-
-		self.session.drop_subscribe(self.id);
-	}
-}
-
-#[derive(Clone)]
-pub(super) struct SubscribeRecv {
-	publisher: Arc<Mutex<serve::TrackPublisher>>,
-	state: Watch<State>,
-}
-
-impl SubscribeRecv {
-	fn new(state: Watch<State>, publisher: serve::TrackPublisher) -> Self {
+	pub(super) fn new(session: Subscriber<S>, id: u64, track: serve::TrackPublisher) -> Self {
 		Self {
-			publisher: Arc::new(Mutex::new(publisher)),
-			state,
+			session,
+			id,
+			track: Arc::new(Mutex::new(track)),
 		}
 	}
 
-	pub fn recv_ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut();
-		state.ok = Some(msg);
+	pub fn recv_ok(&mut self, _msg: message::SubscribeOk) -> Result<(), ServeError> {
+		// TODO
 		Ok(())
 	}
 
 	pub fn recv_error(&mut self, code: u64) -> Result<(), ServeError> {
-		self.publisher.lock().unwrap().close(ServeError::Closed(code))?;
+		self.track.lock().unwrap().close(ServeError::Closed(code))?;
 		Ok(())
 	}
 
 	pub fn recv_done(&mut self, code: u64) -> Result<(), ServeError> {
-		self.publisher.lock().unwrap().close(ServeError::Closed(code))?;
+		self.track.lock().unwrap().close(ServeError::Closed(code))?;
 		Ok(())
 	}
 
-	pub async fn recv_stream<S: AsyncRead + Unpin>(
+	pub async fn recv_stream(
 		&mut self,
 		header: data::Header,
-		reader: Reader<S>,
+		reader: Reader<S::RecvStream>,
 	) -> Result<(), SessionError> {
 		match header {
 			data::Header::Track(track) => self.recv_track(track, reader).await,
@@ -132,14 +51,14 @@ impl SubscribeRecv {
 		}
 	}
 
-	async fn recv_track<S: AsyncRead + Unpin>(
+	async fn recv_track(
 		&mut self,
 		header: data::TrackHeader,
-		mut reader: Reader<S>,
+		mut reader: Reader<S::RecvStream>,
 	) -> Result<(), SessionError> {
 		log::trace!("received track: {:?}", header);
 
-		let mut track = self.publisher.lock().unwrap().create_stream(header.send_order)?;
+		let mut track = self.track.lock().unwrap().create_stream(header.send_order)?;
 
 		while !reader.done().await? {
 			let chunk: data::TrackObject = reader.decode().await?;
@@ -167,14 +86,14 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	async fn recv_group<S: AsyncRead + Unpin>(
+	async fn recv_group(
 		&mut self,
 		header: data::GroupHeader,
-		mut reader: Reader<S>,
+		mut reader: Reader<S::RecvStream>,
 	) -> Result<(), SessionError> {
 		log::trace!("received group: {:?}", header);
 
-		let mut group = self.publisher.lock().unwrap().create_group(serve::Group {
+		let mut group = self.track.lock().unwrap().create_group(serve::Group {
 			id: header.group_id,
 			send_order: header.send_order,
 		})?;
@@ -197,10 +116,10 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	async fn recv_object<S: AsyncRead + Unpin>(
+	async fn recv_object(
 		&mut self,
 		header: data::ObjectHeader,
-		mut reader: Reader<S>,
+		mut reader: Reader<S::RecvStream>,
 	) -> Result<(), SessionError> {
 		log::trace!("received object: {:?}", header);
 
@@ -211,7 +130,7 @@ impl SubscribeRecv {
 			chunks.push(data);
 		}
 
-		let mut object = self.publisher.lock().unwrap().create_object(serve::ObjectHeader {
+		let mut object = self.track.lock().unwrap().create_object(serve::ObjectHeader {
 			group_id: header.group_id,
 			object_id: header.object_id,
 			send_order: header.send_order,
@@ -230,7 +149,7 @@ impl SubscribeRecv {
 	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError> {
 		log::trace!("received datagram: {:?}", datagram);
 
-		self.publisher.lock().unwrap().write_datagram(serve::Datagram {
+		self.track.lock().unwrap().write_datagram(serve::Datagram {
 			group_id: datagram.group_id,
 			object_id: datagram.object_id,
 			payload: datagram.payload,
@@ -241,13 +160,10 @@ impl SubscribeRecv {
 	}
 }
 
-#[derive(Default)]
-struct State {
-	ok: Option<message::SubscribeOk>,
-}
-
-#[derive(Default)]
-pub struct SubscribeOptions {
-	pub start: SubscribePair,
-	pub end: SubscribePair,
+impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
+	fn drop(&mut self) {
+		let msg = message::Unsubscribe { id: self.id };
+		self.session.send_message(msg).ok();
+		self.session.drop_subscribe(self.id);
+	}
 }

@@ -875,7 +875,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "webtransport-quinn 0.7.0",
+ "webtransport-quinn",
 ]
 
 [[package]]
@@ -899,7 +899,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "webtransport-quinn 0.7.0",
+ "webtransport-quinn",
 ]
 
 [[package]]
@@ -929,8 +929,8 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "webpki",
- "webtransport-generic 0.5.0",
- "webtransport-quinn 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "webtransport-generic",
+ "webtransport-quinn",
 ]
 
 [[package]]
@@ -955,7 +955,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "webtransport-generic 0.5.0",
+ "webtransport-generic",
 ]
 
 [[package]]
@@ -1223,13 +1223,13 @@ dependencies = [
 
 [[package]]
 name = "quictransport-quinn"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bytes",
  "quinn",
  "tokio",
- "webtransport-generic 0.5.0",
- "webtransport-proto 0.6.0",
+ "webtransport-generic",
+ "webtransport-proto",
 ]
 
 [[package]]
@@ -2194,17 +2194,7 @@ checksum = "14247bb57be4f377dfb94c72830b8ce8fc6beac03cf4bf7b9732eadd414123fc"
 
 [[package]]
 name = "webtransport-generic"
-version = "0.5.0"
-dependencies = [
- "bytes",
- "tokio",
-]
-
-[[package]]
-name = "webtransport-generic"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df712317d761312996f654739debeb3838eb02c6fd9146d9efdfd08a46674e45"
+version = "0.8.0"
 dependencies = [
  "bytes",
  "tokio",
@@ -2221,20 +2211,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "webtransport-proto"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebeada5037d6302980ae2e0ab8d840e329c1697c612c6c077172de2b7631a276"
-dependencies = [
- "bytes",
- "http",
- "thiserror",
- "url",
-]
-
-[[package]]
 name = "webtransport-quinn"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bytes",
  "futures",
@@ -2245,27 +2223,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "webtransport-generic 0.5.0",
- "webtransport-proto 0.6.0",
-]
-
-[[package]]
-name = "webtransport-quinn"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c942869a07920baa3cdabaf56279b027e5c87953541837dc5ff9dd5ad3d9b7"
-dependencies = [
- "bytes",
- "futures",
- "http",
- "log",
- "quinn",
- "quinn-proto",
- "thiserror",
- "tokio",
- "url",
- "webtransport-generic 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "webtransport-proto 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "webtransport-generic",
+ "webtransport-proto",
 ]
 
 [[package]]

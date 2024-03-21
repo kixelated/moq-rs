@@ -19,7 +19,7 @@ moq-transport = { path = "../moq-transport" }
 # QUIC
 quinn = "0.10"
 #webtransport-quinn = "0.7"
-webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
+webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn", version = "0.8" }
 url = "2"
 
 # Crypto

@@ -6,11 +6,11 @@ use std::{
 
 use crate::{
 	coding::{Decode, Reader},
-	data, message, setup,
+	data, message, serve, setup,
 	util::Queue,
 };
 
-use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeOptions, SubscribeRecv};
+use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe};
 
 // TODO remove Clone.
 #[derive(Clone)]
@@ -18,7 +18,7 @@ pub struct Subscriber<S: webtransport_generic::Session> {
 	announced: Arc<Mutex<HashMap<String, AnnouncedRecv<S>>>>,
 	announced_queue: Queue<Announced<S>, SessionError>,
 
-	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
+	subscribes: Arc<Mutex<HashMap<u64, Subscribe<S>>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
 
 	outgoing: Queue<message::Message, SessionError>,
@@ -49,30 +49,26 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(
-		&mut self,
-		namespace: &str,
-		name: &str,
-		options: SubscribeOptions,
-	) -> Result<Subscribe<S>, SessionError> {
+	pub fn subscribe(&mut self, track: serve::TrackPublisher) -> Result<(), SessionError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = message::Subscribe {
 			id,
 			track_alias: id,
-			track_namespace: namespace.to_string(),
-			track_name: name.to_string(),
-			start: options.start,
-			end: options.end,
+			track_namespace: track.namespace.to_string(),
+			track_name: track.name.to_string(),
+			// TODO add these to the publisher.
+			start: Default::default(),
+			end: Default::default(),
 			params: Default::default(),
 		};
 
 		self.send_message(msg.clone())?;
 
-		let (publisher, subscribe) = Subscribe::new(self.clone(), msg);
-		self.subscribes.lock().unwrap().insert(id, subscribe);
+		let publisher = Subscribe::new(self.clone(), msg.id, track);
+		self.subscribes.lock().unwrap().insert(id, publisher);
 
-		Ok(publisher)
+		Ok(())
 	}
 
 	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {

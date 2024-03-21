@@ -17,10 +17,9 @@ moq-api = { path = "../moq-api" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.7"
-#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
-quictransport-quinn = { path = "../../webtransport-rs/quictransport-quinn" }
-webtransport-generic = { path = "../../webtransport-rs/webtransport-generic" }
+quictransport-quinn = { path = "../../webtransport-rs/quictransport-quinn", version = "0.8" }
+webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn", version = "0.8" }
+webtransport-generic = { path = "../../webtransport-rs/webtransport-generic", version = "0.8" }
 url = "2"
 
 # Crypto
