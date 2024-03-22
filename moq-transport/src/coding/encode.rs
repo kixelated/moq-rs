@@ -4,6 +4,15 @@ use super::BoundsExceeded;
 
 pub trait Encode: Sized {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError>;
+
+	// Helper function to make sure we have enough bytes to encode
+	fn encode_remaining<W: bytes::BufMut>(buf: &mut W, required: usize) -> Result<(), EncodeError> {
+		if required > buf.remaining_mut() {
+			Err(EncodeError::More(required - buf.remaining_mut()))
+		} else {
+			Ok(())
+		}
+	}
 }
 
 /// An encode error.

@@ -4,6 +4,15 @@ use thiserror::Error;
 
 pub trait Decode: Sized {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError>;
+
+	// Helper function to make sure we have enough bytes to decode
+	fn decode_remaining<B: bytes::Buf>(buf: &mut B, required: usize) -> Result<(), DecodeError> {
+		if required > buf.remaining() {
+			Err(DecodeError::More(required - buf.remaining()))
+		} else {
+			Ok(())
+		}
+	}
 }
 
 /// A decode error.

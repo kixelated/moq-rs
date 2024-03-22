@@ -166,9 +166,7 @@ impl fmt::Display for VarInt {
 impl Decode for VarInt {
 	/// Decode a varint from the given reader.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		if r.remaining() < 1 {
-			return Err(DecodeError::More(1));
-		}
+		Self::decode_remaining(r, 1)?;
 
 		let b = r.get_u8();
 		let tag = b >> 6;
@@ -179,26 +177,17 @@ impl Decode for VarInt {
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				if r.remaining() < 1 {
-					return Err(DecodeError::More(1));
-				}
-
+				Self::decode_remaining(r, 1)?;
 				r.copy_to_slice(buf[1..2].as_mut());
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				if r.remaining() < 3 {
-					return Err(DecodeError::More(3));
-				}
-
+				Self::decode_remaining(r, 3)?;
 				r.copy_to_slice(buf[1..4].as_mut());
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				if r.remaining() < 7 {
-					return Err(DecodeError::More(7));
-				}
-
+				Self::decode_remaining(r, 7)?;
 				r.copy_to_slice(buf[1..8].as_mut());
 				u64::from_be_bytes(buf)
 			}
@@ -214,12 +203,16 @@ impl Encode for VarInt {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
+			Self::encode_remaining(w, 1)?;
 			w.put_u8(x as u8)
 		} else if x < 2u64.pow(14) {
+			Self::encode_remaining(w, 2)?;
 			w.put_u16(0b01 << 14 | x as u16)
 		} else if x < 2u64.pow(30) {
+			Self::encode_remaining(w, 4)?;
 			w.put_u32(0b10 << 30 | x as u32)
 		} else if x < 2u64.pow(62) {
+			Self::encode_remaining(w, 8)?;
 			w.put_u64(0b11 << 62 | x)
 		} else {
 			return Err(BoundsExceeded.into());
