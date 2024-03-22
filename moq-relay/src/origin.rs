@@ -225,8 +225,6 @@ impl Drop for State {
 		for mut track in self.requested.drain(..) {
 			track.close(ServeError::NotFound).ok();
 		}
-
-		self.closed = Err(ServeError::Done);
 	}
 }
 
@@ -256,10 +254,11 @@ impl OriginPublisher {
 			notify.await;
 		}
 	}
+}
 
-	/// Close the broadcast with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
+impl Drop for OriginPublisher {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }
 

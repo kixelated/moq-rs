@@ -1,7 +1,7 @@
 use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transport::session::{Publisher, SessionError, Subscriber};
+use moq_transport::session::{Announced, Publisher, SessionError, Subscriber};
 
 use crate::{Origin, OriginPublisher};
 
@@ -146,7 +146,7 @@ impl Connection {
 					log::info!("serving announce: namespace={}", announce.namespace());
 
 					let publisher = origin.announce(announce.namespace())?;
-					tasks.push(Self::serve_announce(subscriber.clone(), publisher));
+					tasks.push(Self::serve_announce(subscriber.clone(), publisher, announce));
 				}
 			};
 		}
@@ -155,7 +155,12 @@ impl Connection {
 	async fn serve_announce<S: webtransport_generic::Session>(
 		mut subscriber: Subscriber<S>,
 		mut publisher: OriginPublisher,
+		mut announce: Announced<S>,
 	) -> Result<(), SessionError> {
+		// Send ANNOUNCE_OK
+		// We sent ANNOUNCE_CANCEL when the scope drops
+		announce.accept()?;
+
 		loop {
 			let track = publisher.requested().await?;
 			subscriber.subscribe(track)?;
