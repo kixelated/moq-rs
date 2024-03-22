@@ -5,7 +5,7 @@ authors = ["Mike English", "Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -18,8 +18,9 @@ moq-transport = { path = "../moq-transport" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.7"
-#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
+webtransport-quinn = "0.8"
+quictransport-quinn = "0.8"
+webtransport-generic = "0.8"
 url = "2"
 
 # Crypto

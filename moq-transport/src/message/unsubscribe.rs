@@ -1,4 +1,3 @@
-use crate::coding::{AsyncRead, AsyncWrite};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the subscriber to terminate a Subscribe.
@@ -8,16 +7,16 @@ pub struct Unsubscribe {
 	pub id: u64,
 }
 
-impl Unsubscribe {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r).await?;
+impl Decode for Unsubscribe {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
 		Ok(Self { id })
 	}
 }
 
-impl Unsubscribe {
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
+impl Encode for Unsubscribe {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
 		Ok(())
 	}
 }

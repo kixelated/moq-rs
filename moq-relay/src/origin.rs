@@ -4,8 +4,11 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transport::serve::ServeError;
-use moq_transport::session;
+use std::collections::VecDeque;
+
+use moq_transport::serve::{self, ServeError, TrackPublisher, TrackSubscriber};
+use moq_transport::session::SessionError;
+use moq_transport::util::Watch;
 use url::Url;
 
 #[derive(Clone)]
@@ -21,7 +24,7 @@ pub struct Origin {
 	_node: Option<Url>,
 
 	// A map of active broadcasts by namespace.
-	local: Arc<Mutex<HashMap<String, session::Subscriber>>>,
+	origins: Arc<Mutex<HashMap<String, OriginSubscriber>>>,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
 	_quic: quinn::Endpoint,
@@ -32,67 +35,59 @@ impl Origin {
 		Self {
 			_api,
 			_node,
-			local: Default::default(),
+			origins: Default::default(),
 			_quic,
 		}
 	}
 
-	pub async fn announce(
-		&self,
-		mut announce: session::Announced,
-		subscriber: session::Subscriber,
-	) -> anyhow::Result<()> {
-		match self.local.lock().unwrap().entry(announce.namespace().to_string()) {
-			hash_map::Entry::Vacant(entry) => entry.insert(subscriber),
+	pub fn announce(&self, namespace: &str) -> Result<OriginPublisher, SessionError> {
+		let mut origins = self.origins.lock().unwrap();
+		let entry = match origins.entry(namespace.to_string()) {
+			hash_map::Entry::Vacant(entry) => entry,
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
-		announce.accept().ok();
+		let (publisher, subscriber) = self.produce(namespace);
+		entry.insert(subscriber);
 
-		let err = announce.closed().await;
-		self.local.lock().unwrap().remove(announce.namespace());
-		err?;
-
-		Ok(())
-
-		/*
-		// Create a publisher that constantly updates itself as the origin in moq-api.
-		// It holds a reference to the subscriber to prevent dropping early.
-		let mut publisher = Publisher {
-			broadcast: publisher,
-			subscriber,
-			api: None,
-		};
-
-		// Insert the publisher into the database.
-		if let Some(api) = self.api.as_mut() {
-			// Make a URL for the broadcast.
-			let url = self.node.as_ref().ok_or(RelayError::MissingNode)?.clone().join(id)?;
-			let origin = moq_api::Origin { url };
-			api.set_origin(id, &origin).await?;
-
-			// Refresh every 5 minutes
-			publisher.api = Some((api.clone(), origin));
-		}
-
-
-		Ok(())
-		*/
+		Ok(publisher)
 	}
 
-	pub async fn subscribe(&self, subscribe: session::Subscribed) -> anyhow::Result<()> {
-		let mut subscriber = self
-			.local
+	/*
+	// Create a publisher that constantly updates itself as the origin in moq-api.
+	// It holds a reference to the subscriber to prevent dropping early.
+	let mut publisher = Publisher {
+		broadcast: publisher,
+		subscriber,
+		api: None,
+	};
+
+	// Insert the publisher into the database.
+	if let Some(api) = self.api.as_mut() {
+		// Make a URL for the broadcast.
+		let url = self.node.as_ref().ok_or(RelayError::MissingNode)?.clone().join(id)?;
+		let origin = moq_api::Origin { url };
+		api.set_origin(id, &origin).await?;
+
+		// Refresh every 5 minutes
+		publisher.api = Some((api.clone(), origin));
+	}
+
+
+	Ok(())
+	*/
+
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<serve::TrackSubscriber, SessionError> {
+		let mut origin = self
+			.origins
 			.lock()
 			.unwrap()
-			.get(subscribe.namespace())
+			.get(namespace)
 			.cloned()
 			.ok_or(ServeError::NotFound)?;
 
-		let upstream = subscriber.subscribe(subscribe.namespace(), subscribe.name(), Default::default())?;
-		subscribe.serve(upstream.track()).await?;
-
-		Ok(())
+		let track = origin.request_track(name)?;
+		Ok(track)
 		/*
 		let mut routes = self.local.lock().unwrap();
 
@@ -152,6 +147,175 @@ impl Origin {
 		Ok(())
 	}
 	*/
+
+	/// Create a new broadcast.
+	fn produce(&self, namespace: &str) -> (OriginPublisher, OriginSubscriber) {
+		let state = Watch::new(State::new(namespace));
+
+		let publisher = OriginPublisher::new(state.clone());
+		let subscriber = OriginSubscriber::new(state);
+
+		(publisher, subscriber)
+	}
+}
+
+#[derive(Debug)]
+struct State {
+	namespace: String,
+	tracks: HashMap<String, TrackSubscriber>,
+	requested: VecDeque<TrackPublisher>,
+	closed: Result<(), ServeError>,
+}
+
+impl State {
+	pub fn new(namespace: &str) -> Self {
+		Self {
+			namespace: namespace.to_string(),
+			tracks: HashMap::new(),
+			requested: VecDeque::new(),
+			closed: Ok(()),
+		}
+	}
+
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+		// Insert the track into our Map so we deduplicate future requests.
+		if let Some(track) = self.tracks.get(name) {
+			return Ok(Some(track.clone()));
+		}
+
+		self.closed.clone()?;
+		Ok(None)
+	}
+
+	pub fn request_track(&mut self, name: &str) -> Result<TrackSubscriber, ServeError> {
+		// Insert the track into our Map so we deduplicate future requests.
+		let entry = match self.tracks.entry(name.to_string()) {
+			hash_map::Entry::Vacant(entry) => entry,
+			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
+		};
+
+		self.closed.clone()?;
+
+		// Create a new track.
+		let (publisher, subscriber) = serve::Track {
+			namespace: self.namespace.clone(),
+			name: name.to_string(),
+		}
+		.produce();
+
+		// Deduplicate with others
+		// TODO This should be weak
+		entry.insert(subscriber.clone());
+
+		// Send the track to the Publisher to handle.
+		self.requested.push_back(publisher);
+
+		Ok(subscriber)
+	}
+
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+		self.closed.clone()?;
+		self.closed = Err(err);
+		Ok(())
+	}
+}
+
+impl Drop for State {
+	fn drop(&mut self) {
+		for mut track in self.requested.drain(..) {
+			track.close(ServeError::NotFound).ok();
+		}
+	}
+}
+
+/// Publish new tracks for a broadcast by name.
+pub struct OriginPublisher {
+	state: Watch<State>,
+}
+
+impl OriginPublisher {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+
+	/// Block until the next track requested by a subscriber.
+	pub async fn requested(&mut self) -> Result<serve::TrackPublisher, ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if !state.requested.is_empty() {
+					return Ok(state.into_mut().requested.pop_front().unwrap());
+				}
+
+				state.closed.clone()?;
+				state.changed()
+			};
+
+			notify.await;
+		}
+	}
+}
+
+impl Drop for OriginPublisher {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+/// Subscribe to a broadcast by requesting tracks.
+///
+/// This can be cloned to create handles.
+#[derive(Clone)]
+pub struct OriginSubscriber {
+	state: Watch<State>,
+	_dropped: Arc<Dropped>,
+}
+
+impl OriginSubscriber {
+	fn new(state: Watch<State>) -> Self {
+		let _dropped = Arc::new(Dropped::new(state.clone()));
+		Self { state, _dropped }
+	}
+
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+		self.state.lock_mut().get_track(name)
+	}
+
+	pub fn request_track(&mut self, name: &str) -> Result<TrackSubscriber, ServeError> {
+		self.state.lock_mut().request_track(name)
+	}
+
+	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	pub async fn closed(&self) -> ServeError {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if let Some(err) = state.closed.as_ref().err() {
+					return err.clone();
+				}
+
+				state.changed()
+			};
+
+			notify.await;
+		}
+	}
+}
+
+struct Dropped {
+	state: Watch<State>,
+}
+
+impl Dropped {
+	fn new(state: Watch<State>) -> Self {
+		Self { state }
+	}
+}
+
+impl Drop for Dropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(ServeError::Done).ok();
+	}
 }
 
 /*

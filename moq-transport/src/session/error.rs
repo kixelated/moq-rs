@@ -1,9 +1,15 @@
+use std::{io, sync};
+
 use crate::{coding, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
 	#[error("webtransport error: {0}")]
-	WebTransport(#[from] webtransport_quinn::SessionError),
+	WebTransport(sync::Arc<dyn webtransport_generic::SessionError>),
+
+	// This needs an Arc because it's not Clone.
+	#[error("io error: {0}")]
+	Io(sync::Arc<io::Error>),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -18,14 +24,6 @@ pub enum SessionError {
 	// TODO move to a ConnectError
 	#[error("incompatible roles: client={0:?} server={1:?}")]
 	RoleIncompatible(setup::Role, setup::Role),
-
-	/// An error occured while reading from the QUIC stream.
-	#[error("failed to read from stream: {0}")]
-	Read(#[from] webtransport_quinn::ReadError),
-
-	/// An error occured while writing to the QUIC stream.
-	#[error("failed to write to stream: {0}")]
-	Write(#[from] webtransport_quinn::WriteError),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation")]
@@ -49,18 +47,31 @@ pub enum SessionError {
 	WrongSize,
 }
 
+/*
+impl<T: webtransport_generic::SessionError> From<T> for SessionError {
+	fn from(err: T) -> Self {
+		Self::WebTransport(sync::Arc::new(err))
+	}
+}
+*/
+
+impl From<io::Error> for SessionError {
+	fn from(err: io::Error) -> Self {
+		Self::Io(sync::Arc::new(err))
+	}
+}
+
 impl SessionError {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u64 {
 		match self {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
-			Self::Write(_) => 501,
-			Self::Read(_) => 400,
 			Self::WebTransport(_) => 503,
 			Self::Version(..) => 406,
 			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
+			Self::Io(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
 			Self::Internal => 500,

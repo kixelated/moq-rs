@@ -1,8 +1,6 @@
 use super::{Role, Versions};
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
-use crate::coding::{AsyncRead, AsyncWrite};
-
 /// Sent by the client to setup the session.
 // NOTE: This is not a message type, but rather the control stream header.
 // Proposal: https://github.com/moq-wg/moq-transport/issues/138
@@ -18,18 +16,18 @@ pub struct Client {
 	pub params: Params,
 }
 
-impl Client {
+impl Decode for Client {
 	/// Decode a client setup message.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = u64::decode(r).await?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let typ = u64::decode(r)?;
 		if typ != 0x40 {
 			return Err(DecodeError::InvalidMessage(typ));
 		}
 
-		let versions = Versions::decode(r).await?;
-		let mut params = Params::decode(r).await?;
+		let versions = Versions::decode(r)?;
+		let mut params = Params::decode(r)?;
 
-		let role = params.get::<Role>(0).await?.ok_or(DecodeError::MissingParameter)?;
+		let role = params.get::<Role>(0)?.ok_or(DecodeError::MissingParameter)?;
 
 		// Make sure the PATH parameter isn't used
 		// TODO: This assumes WebTransport support only
@@ -39,16 +37,18 @@ impl Client {
 
 		Ok(Self { versions, role, params })
 	}
+}
 
+impl Encode for Client {
 	/// Encode a server setup message.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		0x40_u64.encode(w).await?;
-		self.versions.encode(w).await?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		0x40_u64.encode(w)?;
+		self.versions.encode(w)?;
 
 		let mut params = self.params.clone();
-		params.set(0, self.role).await?;
+		params.set(0, self.role)?;
 
-		params.encode(w).await?;
+		params.encode(w)?;
 
 		Ok(())
 	}

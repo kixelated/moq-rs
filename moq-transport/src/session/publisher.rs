@@ -16,18 +16,18 @@ use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, Subscribe
 
 // TODO remove Clone.
 #[derive(Clone)]
-pub struct Publisher {
-	webtransport: webtransport_quinn::Session,
+pub struct Publisher<S: webtransport_generic::Session> {
+	webtransport: S,
 
 	announces: Arc<Mutex<HashMap<String, AnnounceRecv>>>,
-	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv>>>,
-	subscribed_queue: Queue<Subscribed, SessionError>,
+	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv<S>>>>,
+	subscribed_queue: Queue<Subscribed<S>, SessionError>,
 
 	outgoing: Queue<Message, SessionError>,
 }
 
-impl Publisher {
-	pub(crate) fn new(webtransport: webtransport_quinn::Session, outgoing: Queue<Message, SessionError>) -> Self {
+impl<S: webtransport_generic::Session> Publisher<S> {
+	pub(crate) fn new(webtransport: S, outgoing: Queue<Message, SessionError>) -> Self {
 		Self {
 			webtransport,
 			announces: Default::default(),
@@ -37,17 +37,17 @@ impl Publisher {
 		}
 	}
 
-	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn accept(session: S) -> Result<(Session<S>, Publisher<S>), SessionError> {
 		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn connect(session: S) -> Result<(Session<S>, Publisher<S>), SessionError> {
 		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
+	pub fn announce(&mut self, namespace: &str) -> Result<Announce<S>, SessionError> {
 		let mut announces = self.announces.lock().unwrap();
 
 		// Insert the abort handle into the lookup table.
@@ -68,7 +68,7 @@ impl Publisher {
 		Ok(announce)
 	}
 
-	pub async fn subscribed(&mut self) -> Result<Subscribed, SessionError> {
+	pub async fn subscribed(&mut self) -> Result<Subscribed<S>, SessionError> {
 		self.subscribed_queue.pop().await
 	}
 
@@ -107,7 +107,7 @@ impl Publisher {
 	fn serve_track(
 		&self,
 		broadcast: &serve::BroadcastSubscriber,
-		subscribe: &Subscribed,
+		subscribe: &Subscribed<S>,
 	) -> Result<serve::TrackSubscriber, ServeError> {
 		if subscribe.namespace() != broadcast.namespace {
 			return Err(ServeError::NotFound);
@@ -182,7 +182,7 @@ impl Publisher {
 		self.announces.lock().unwrap().remove(namespace);
 	}
 
-	pub(super) fn webtransport(&mut self) -> &mut webtransport_quinn::Session {
+	pub(super) fn webtransport(&mut self) -> &mut S {
 		&mut self.webtransport
 	}
 

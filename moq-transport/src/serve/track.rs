@@ -28,6 +28,13 @@ pub struct Track {
 }
 
 impl Track {
+	pub fn new(namespace: &str, name: &str) -> Self {
+		Self {
+			namespace: namespace.to_string(),
+			name: name.to_string(),
+		}
+	}
+
 	pub fn produce(self) -> (TrackPublisher, TrackSubscriber) {
 		let state = Watch::new(State::default());
 		let info = Arc::new(self);

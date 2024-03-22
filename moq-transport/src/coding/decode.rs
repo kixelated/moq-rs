@@ -1,28 +1,19 @@
 use super::BoundsExceeded;
-use std::{io, str};
-
+use std::{io, string::FromUtf8Error, sync};
 use thiserror::Error;
 
-// I'm too lazy to add these trait bounds to every message type.
-// TODO Use trait aliases when they're stable, or add these bounds to every method.
-pub trait AsyncRead: tokio::io::AsyncRead + Unpin + Send {}
-impl AsyncRead for webtransport_quinn::RecvStream {}
-impl<T> AsyncRead for tokio::io::Take<&mut T> where T: AsyncRead {}
-impl<T: AsRef<[u8]> + Unpin + Send> AsyncRead for io::Cursor<T> {}
-
-#[async_trait::async_trait]
 pub trait Decode: Sized {
-	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError>;
+	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError>;
 }
 
 /// A decode error.
 #[derive(Error, Debug, Clone)]
 pub enum DecodeError {
-	#[error("unexpected end of buffer")]
-	UnexpectedEnd,
+	#[error("fill buffer")]
+	More(usize),
 
 	#[error("invalid string")]
-	InvalidString(#[from] str::Utf8Error),
+	InvalidString(#[from] FromUtf8Error),
 
 	#[error("invalid message: {0:?}")]
 	InvalidMessage(u64),
@@ -49,6 +40,12 @@ pub enum DecodeError {
 	#[error("invalid parameter")]
 	InvalidParameter,
 
-	#[error("io error")]
-	IoError,
+	#[error("io error: {0}")]
+	Io(sync::Arc<io::Error>),
+}
+
+impl From<io::Error> for DecodeError {
+	fn from(err: io::Error) -> Self {
+		Self::Io(sync::Arc::new(err))
+	}
 }

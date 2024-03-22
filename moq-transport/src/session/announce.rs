@@ -2,14 +2,14 @@ use crate::{message, serve::ServeError, util::Watch};
 
 use super::Publisher;
 
-pub struct Announce {
-	session: Publisher,
+pub struct Announce<S: webtransport_generic::Session> {
+	session: Publisher<S>,
 	msg: message::Announce,
 	state: Watch<State>,
 }
 
-impl Announce {
-	pub(super) fn new(session: Publisher, msg: message::Announce) -> (Announce, AnnounceRecv) {
+impl<S: webtransport_generic::Session> Announce<S> {
+	pub(super) fn new(session: Publisher<S>, msg: message::Announce) -> (Announce<S>, AnnounceRecv) {
 		let state = Watch::default();
 		let recv = AnnounceRecv { state: state.clone() };
 
@@ -49,7 +49,7 @@ impl Announce {
 	}
 }
 
-impl Drop for Announce {
+impl<S: webtransport_generic::Session> Drop for Announce<S> {
 	fn drop(&mut self) {
 		self.close().ok();
 		self.session.drop_announce(&self.msg.namespace);

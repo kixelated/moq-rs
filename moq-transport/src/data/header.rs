@@ -1,4 +1,4 @@
-use crate::coding::{AsyncRead, AsyncWrite, Decode, DecodeError, Encode, EncodeError};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 use paste::paste;
 use std::fmt;
 
@@ -14,28 +14,32 @@ macro_rules! header_types {
 			$($name(paste! { [<$name Header>] })),*
 		}
 
-		impl Header {
-			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = u64::decode(r).await?;
+		impl Decode for Header {
+			fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = u64::decode(r)?;
 
 				match t {
 					$($val => {
-						let msg = <paste! { [<$name Header>] }>::decode(r).await?;
+						let msg = <paste! { [<$name Header>] }>::decode(r)?;
 						Ok(Self::$name(msg))
 					})*
 					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
+		}
 
-			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		impl Encode for Header {
+			fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						self.id().encode(w).await?;
-						m.encode(w).await
+						self.id().encode(w)?;
+						m.encode(w)
 					},)*
 				}
 			}
+		}
 
+		impl Header {
 			pub fn id(&self) -> u64 {
 				match self {
 					$(Self::$name(_) => {

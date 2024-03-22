@@ -4,23 +4,27 @@ use std::{
 	sync::{atomic, Arc, Mutex},
 };
 
-use crate::{data, message, setup, util::Queue};
+use crate::{
+	coding::{Decode, Reader},
+	data, message, serve, setup,
+	util::Queue,
+};
 
-use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeOptions, SubscribeRecv};
+use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe};
 
 // TODO remove Clone.
 #[derive(Clone)]
-pub struct Subscriber {
-	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
-	announced_queue: Queue<Announced, SessionError>,
+pub struct Subscriber<S: webtransport_generic::Session> {
+	announced: Arc<Mutex<HashMap<String, AnnouncedRecv<S>>>>,
+	announced_queue: Queue<Announced<S>, SessionError>,
 
-	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
+	subscribes: Arc<Mutex<HashMap<u64, Subscribe<S>>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
 
 	outgoing: Queue<message::Message, SessionError>,
 }
 
-impl Subscriber {
+impl<S: webtransport_generic::Session> Subscriber<S> {
 	pub(super) fn new(outgoing: Queue<message::Message, SessionError>) -> Self {
 		Self {
 			announced: Default::default(),
@@ -31,44 +35,40 @@ impl Subscriber {
 		}
 	}
 
-	pub async fn accept(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn accept(session: S) -> Result<(Session<S>, Self), SessionError> {
 		let (session, _, subscriber) = Session::accept_role(session, setup::Role::Subscriber).await?;
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn connect(session: webtransport_quinn::Session) -> Result<(Session, Self), SessionError> {
+	pub async fn connect(session: S) -> Result<(Session<S>, Self), SessionError> {
 		let (session, _, subscriber) = Session::connect_role(session, setup::Role::Subscriber).await?;
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn announced(&mut self) -> Result<Announced, SessionError> {
+	pub async fn announced(&mut self) -> Result<Announced<S>, SessionError> {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(
-		&mut self,
-		namespace: &str,
-		name: &str,
-		options: SubscribeOptions,
-	) -> Result<Subscribe, SessionError> {
+	pub fn subscribe(&mut self, track: serve::TrackPublisher) -> Result<(), SessionError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = message::Subscribe {
 			id,
 			track_alias: id,
-			track_namespace: namespace.to_string(),
-			track_name: name.to_string(),
-			start: options.start,
-			end: options.end,
+			track_namespace: track.namespace.to_string(),
+			track_name: track.name.to_string(),
+			// TODO add these to the publisher.
+			start: Default::default(),
+			end: Default::default(),
 			params: Default::default(),
 		};
 
 		self.send_message(msg.clone())?;
 
-		let (publisher, subscribe) = Subscribe::new(self.clone(), msg);
+		let publisher = Subscribe::new(self.clone(), msg.id, track);
 		self.subscribes.lock().unwrap().insert(id, publisher);
 
-		Ok(subscribe)
+		Ok(())
 	}
 
 	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {
@@ -144,14 +144,15 @@ impl Subscriber {
 		self.announced.lock().unwrap().remove(namespace);
 	}
 
-	pub(super) async fn recv_stream(self, mut stream: webtransport_quinn::RecvStream) -> Result<(), SessionError> {
-		let header = data::Header::decode(&mut stream).await?;
+	pub(super) async fn recv_stream(self, stream: S::RecvStream) -> Result<(), SessionError> {
+		let mut reader = Reader::new(stream);
+		let header: data::Header = reader.decode().await?;
 
 		let id = header.subscribe_id();
 		let subscribe = self.subscribes.lock().unwrap().get(&id).cloned();
 
 		if let Some(mut subscribe) = subscribe {
-			subscribe.recv_stream(header, stream).await?
+			subscribe.recv_stream(header, reader).await?
 		}
 
 		Ok(())
@@ -160,7 +161,7 @@ impl Subscriber {
 	// TODO should not be async
 	pub async fn recv_datagram(&mut self, datagram: bytes::Bytes) -> Result<(), SessionError> {
 		let mut cursor = io::Cursor::new(datagram);
-		let datagram = data::Datagram::decode(&mut cursor).await?;
+		let datagram = data::Datagram::decode(&mut cursor)?;
 
 		let subscribe = self.subscribes.lock().unwrap().get(&datagram.subscribe_id).cloned();
 

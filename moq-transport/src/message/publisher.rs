@@ -1,8 +1,9 @@
 use crate::message::{self, Message};
+use std::fmt;
 
 macro_rules! publisher_msgs {
     {$($name:ident,)*} => {
-		#[derive(Clone, Debug)]
+		#[derive(Clone)]
 		pub enum Publisher {
 			$($name(message::$name)),*
 		}
@@ -28,6 +29,15 @@ macro_rules! publisher_msgs {
 				match m {
 					$(Message::$name(m) => Ok(Publisher::$name(m)),)*
 					_ => Err(m),
+				}
+			}
+		}
+
+		impl fmt::Debug for Publisher {
+			// Delegate to the message formatter
+			fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+				match self {
+					$(Self::$name(ref m) => m.fmt(f),)*
 				}
 			}
 		}

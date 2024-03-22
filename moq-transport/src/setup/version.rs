@@ -1,7 +1,5 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
-use crate::coding::{AsyncRead, AsyncWrite};
-
 use std::ops::Deref;
 
 /// A version number negotiated during the setup.
@@ -34,16 +32,17 @@ impl From<Version> for u64 {
 	}
 }
 
-impl Version {
+impl Decode for Version {
 	/// Decode the version number.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = u64::decode(r).await?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = u64::decode(r)?;
 		Ok(Self(v))
 	}
+}
 
-	/// Encode the version number.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.encode(w).await?;
+impl Encode for Version {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.0.encode(w)?;
 		Ok(())
 	}
 }
@@ -52,15 +51,14 @@ impl Version {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Versions(Vec<Version>);
 
-#[async_trait::async_trait]
 impl Decode for Versions {
 	/// Decode the version list.
-	async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let count = u64::decode(r).await?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let count = u64::decode(r)?;
 		let mut vs = Vec::new();
 
 		for _ in 0..count {
-			let v = Version::decode(r).await?;
+			let v = Version::decode(r)?;
 			vs.push(v);
 		}
 
@@ -68,14 +66,13 @@ impl Decode for Versions {
 	}
 }
 
-#[async_trait::async_trait]
 impl Encode for Versions {
 	/// Encode the version list.
-	async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.len().encode(w).await?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.0.len().encode(w)?;
 
 		for v in &self.0 {
-			v.encode(w).await?;
+			v.encode(w)?;
 		}
 
 		Ok(())

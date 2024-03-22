@@ -21,8 +21,8 @@ impl Quic {
 	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
 		let mut client_config = tls.client.clone();
 		let mut server_config = tls.server.clone();
-		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
-		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
+		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
 
 		// Enable BBR congestion control
 		// TODO validate the implementation

@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 
+use crate::coding::{Encode, Writer};
 use crate::serve::ServeError;
 use crate::util::{Watch, WatchWeak};
 use crate::{data, message, serve};
@@ -8,14 +11,14 @@ use crate::{data, message, serve};
 use super::{Publisher, SessionError};
 
 #[derive(Clone)]
-pub struct Subscribed {
-	session: Publisher,
-	state: Watch<State>,
+pub struct Subscribed<S: webtransport_generic::Session> {
+	session: Publisher<S>,
+	state: Watch<State<S>>,
 	msg: message::Subscribe,
 }
 
-impl Subscribed {
-	pub(super) fn new(session: Publisher, msg: message::Subscribe) -> (Subscribed, SubscribedRecv) {
+impl<S: webtransport_generic::Session> Subscribed<S> {
+	pub(super) fn new(session: Publisher<S>, msg: message::Subscribe) -> (Subscribed<S>, SubscribedRecv<S>) {
 		let state = Watch::new(State::new(session.clone(), msg.id));
 		let recv = SubscribedRecv {
 			state: state.downgrade(),
@@ -61,7 +64,14 @@ impl Subscribed {
 	}
 
 	async fn serve_track(mut self, mut track: serve::StreamSubscriber) -> Result<(), SessionError> {
-		let mut stream = self.session.webtransport().open_uni().await?;
+		let stream = self
+			.session
+			.webtransport()
+			.open_uni()
+			.await
+			.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+
+		let mut writer = Writer::new(stream);
 
 		let header: data::Header = data::TrackHeader {
 			subscribe_id: self.msg.id,
@@ -70,7 +80,7 @@ impl Subscribed {
 		}
 		.into();
 
-		header.encode(&mut stream).await?;
+		writer.encode(&header).await?;
 
 		log::trace!("sent track header: {:?}", header);
 
@@ -84,12 +94,12 @@ impl Subscribed {
 				size: object.payload.len(),
 			};
 
-			header.encode(&mut stream).await?;
+			writer.encode(&header).await?;
 
 			log::trace!("sent track object: {:?}", header);
 
 			self.state.lock_mut().update_max(object.group_id, object.object_id)?;
-			stream.write_all(&object.payload).await?;
+			writer.write(&object.payload).await?;
 
 			log::trace!("sent track payload: {:?}", object.payload.len());
 			log::trace!("sent track done");
@@ -99,7 +109,13 @@ impl Subscribed {
 	}
 
 	pub async fn serve_group(mut self, mut group: serve::GroupSubscriber) -> Result<(), SessionError> {
-		let mut stream = self.session.webtransport().open_uni().await?;
+		let stream = self
+			.session
+			.webtransport()
+			.open_uni()
+			.await
+			.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+		let mut writer = Writer::new(stream);
 
 		let header: data::Header = data::GroupHeader {
 			subscribe_id: self.msg.id,
@@ -109,7 +125,7 @@ impl Subscribed {
 		}
 		.into();
 
-		header.encode(&mut stream).await?;
+		writer.encode(&header).await?;
 
 		log::trace!("sent group: {:?}", header);
 
@@ -119,14 +135,14 @@ impl Subscribed {
 				size: object.size,
 			};
 
-			self.state.lock_mut().update_max(group.id, object.object_id)?;
+			writer.encode(&header).await?;
 
-			header.encode(&mut stream).await?;
+			self.state.lock_mut().update_max(group.id, object.object_id)?;
 
 			log::trace!("sent group object: {:?}", header);
 
 			while let Some(chunk) = object.read().await? {
-				stream.write_all(&chunk).await?;
+				writer.write(&chunk).await?;
 				log::trace!("sent group payload: {:?}", chunk.len());
 			}
 
@@ -137,7 +153,13 @@ impl Subscribed {
 	}
 
 	pub async fn serve_object(mut self, mut object: serve::ObjectSubscriber) -> Result<(), SessionError> {
-		let mut stream = self.session.webtransport().open_uni().await?;
+		let stream = self
+			.session
+			.webtransport()
+			.open_uni()
+			.await
+			.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+		let mut writer = Writer::new(stream);
 
 		let header: data::Header = data::ObjectHeader {
 			subscribe_id: self.msg.id,
@@ -147,14 +169,15 @@ impl Subscribed {
 			send_order: object.send_order,
 		}
 		.into();
-		header.encode(&mut stream).await?;
+
+		writer.encode(&header).await?;
 
 		log::trace!("sent object: {:?}", header);
 
 		self.state.lock_mut().update_max(object.group_id, object.object_id)?;
 
 		while let Some(chunk) = object.read().await? {
-			stream.write_all(&chunk).await?;
+			writer.write(&chunk).await?;
 			log::trace!("sent object payload: {:?}", chunk.len());
 		}
 
@@ -174,7 +197,7 @@ impl Subscribed {
 		};
 
 		let mut buffer = Vec::with_capacity(datagram.payload.len() + 100);
-		datagram.encode(&mut buffer).await?; // TODO Not actually async
+		datagram.encode(&mut buffer)?;
 
 		log::trace!("sent datagram: {:?}", datagram);
 
@@ -205,11 +228,11 @@ impl Subscribed {
 	}
 }
 
-pub(super) struct SubscribedRecv {
-	state: WatchWeak<State>,
+pub(super) struct SubscribedRecv<S: webtransport_generic::Session> {
+	state: WatchWeak<State<S>>,
 }
 
-impl SubscribedRecv {
+impl<S: webtransport_generic::Session> SubscribedRecv<S> {
 	pub fn recv_unsubscribe(&mut self) -> Result<(), ServeError> {
 		if let Some(state) = self.state.upgrade() {
 			state.lock_mut().close(ServeError::Done)?;
@@ -218,8 +241,8 @@ impl SubscribedRecv {
 	}
 }
 
-struct State {
-	session: Publisher,
+struct State<S: webtransport_generic::Session> {
+	session: Publisher<S>,
 	id: u64,
 
 	ok: bool,
@@ -227,8 +250,8 @@ struct State {
 	closed: Result<(), ServeError>,
 }
 
-impl State {
-	fn new(session: Publisher, id: u64) -> Self {
+impl<S: webtransport_generic::Session> State<S> {
+	fn new(session: Publisher<S>, id: u64) -> Self {
 		Self {
 			session,
 			id,
@@ -239,7 +262,7 @@ impl State {
 	}
 }
 
-impl State {
+impl<S: webtransport_generic::Session> State<S> {
 	fn ok(&mut self, latest: Option<(u64, u64)>) -> Result<(), ServeError> {
 		self.ok = true;
 		self.max = latest;
@@ -295,7 +318,7 @@ impl State {
 	}
 }
 
-impl Drop for State {
+impl<S: webtransport_generic::Session> Drop for State<S> {
 	fn drop(&mut self) {
 		self.close(ServeError::Done).ok();
 		self.session.drop_subscribe(self.id);

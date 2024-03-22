@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -867,6 +867,7 @@ dependencies = [
  "env_logger",
  "log",
  "moq-transport",
+ "quictransport-quinn",
  "quinn",
  "rustls",
  "rustls-native-certs",
@@ -875,12 +876,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "webtransport-generic",
  "webtransport-quinn",
 ]
 
 [[package]]
 name = "moq-pub"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -889,6 +891,7 @@ dependencies = [
  "log",
  "moq-transport",
  "mp4",
+ "quictransport-quinn",
  "quinn",
  "rfc6381-codec",
  "rustls",
@@ -899,12 +902,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "webtransport-generic",
  "webtransport-quinn",
 ]
 
 [[package]]
 name = "moq-relay"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -916,6 +920,7 @@ dependencies = [
  "log",
  "moq-api",
  "moq-transport",
+ "quictransport-quinn",
  "quinn",
  "ring 0.16.20",
  "rustls",
@@ -928,15 +933,15 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "webpki",
+ "webtransport-generic",
  "webtransport-quinn",
 ]
 
 [[package]]
 name = "moq-transport"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bytes",
  "clap",
  "env_logger",
@@ -944,7 +949,6 @@ dependencies = [
  "log",
  "mp4",
  "paste",
- "quinn",
  "rfc6381-codec",
  "rustls",
  "rustls-native-certs",
@@ -955,7 +959,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "webtransport-quinn",
+ "webtransport-generic",
 ]
 
 [[package]]
@@ -1219,6 +1223,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18fb31db3f9bddb2ea821cde30a9f70117e3f119938b5ee630b7403aa6e2ead9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quictransport-quinn"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d65e68ccd0d35f48bbe9723a2924e6829b819cd165b19d7b2914f85ede01398"
+dependencies = [
+ "bytes",
+ "quinn",
+ "thiserror",
+ "tokio",
+ "url",
+ "webtransport-generic",
 ]
 
 [[package]]
@@ -2183,9 +2201,9 @@ checksum = "14247bb57be4f377dfb94c72830b8ce8fc6beac03cf4bf7b9732eadd414123fc"
 
 [[package]]
 name = "webtransport-generic"
-version = "0.5.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df712317d761312996f654739debeb3838eb02c6fd9146d9efdfd08a46674e45"
+checksum = "bc1fd0d5c7e24e485aa58040fba18d6a4204d4354eca19d34b14540ecd9147b8"
 dependencies = [
  "bytes",
  "tokio",
@@ -2205,9 +2223,9 @@ dependencies = [
 
 [[package]]
 name = "webtransport-quinn"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c942869a07920baa3cdabaf56279b027e5c87953541837dc5ff9dd5ad3d9b7"
+checksum = "27b0ad39e557756d066277901c3024e586aa3e026e4ee9b377f2d45d782e39ff"
 dependencies = [
  "bytes",
  "futures",

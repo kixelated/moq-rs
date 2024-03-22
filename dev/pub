@@ -11,6 +11,7 @@ export RUST_LOG="${RUST_LOG:-debug}"
 HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
+SCHEME="${SCHEME:-https}"
 
 # Generate a random 16 character name by default.
 #NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
@@ -20,7 +21,7 @@ ADDR="${ADDR:-$HOST:$PORT}"
 NAME="${NAME:-bbb}"
 
 # Combine the host into a URL.
-URL="${URL:-"https://$ADDR"}"
+URL="${URL:-"$SCHEME://$ADDR"}"
 
 # Default to a source video
 INPUT="${INPUT:-dev/source.mp4}"

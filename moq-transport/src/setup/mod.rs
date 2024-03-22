@@ -13,3 +13,5 @@ pub use client::*;
 pub use role::*;
 pub use server::*;
 pub use version::*;
+
+pub const ALPN: &[u8] = b"moq-00";

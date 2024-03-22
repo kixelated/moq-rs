@@ -57,20 +57,40 @@ async fn main() -> anyhow::Result<()> {
 		tls_config.dangerous().set_certificate_verifier(Arc::new(noop));
 	}
 
-	tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
-
-	let arc_tls_config = std::sync::Arc::new(tls_config);
-	let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
-
-	let mut endpoint = quinn::Endpoint::client(config.bind)?;
-	endpoint.set_default_client_config(quinn_client_config);
-
 	log::info!("connecting to server: url={}", config.url);
 
-	let session = webtransport_quinn::connect(&endpoint, &config.url)
-		.await
-		.context("failed to create WebTransport session")?;
+	match config.url.scheme() {
+		"https" => {
+			tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
+			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
 
+			let mut endpoint = quinn::Endpoint::client(config.bind)?;
+			endpoint.set_default_client_config(client_config);
+
+			let session = webtransport_quinn::connect(&endpoint, &config.url)
+				.await
+				.context("failed to create WebTransport session")?;
+
+			run(session, config).await
+		}
+		"moqt" => {
+			tls_config.alpn_protocols = vec![moq_transport::setup::ALPN.to_vec()]; // this one is important
+			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
+
+			let mut endpoint = quinn::Endpoint::client(config.bind)?;
+			endpoint.set_default_client_config(client_config);
+
+			let session = quictransport_quinn::connect(&endpoint, &config.url)
+				.await
+				.context("failed to create QUIC Transport session")?;
+
+			run(session, config).await
+		}
+		_ => anyhow::bail!("unsupported scheme: {}", config.url.scheme()),
+	}
+}
+
+async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) -> anyhow::Result<()> {
 	if config.publish {
 		let (session, publisher) = moq_transport::Publisher::connect(session)
 			.await
@@ -94,11 +114,10 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let subscriber = subscriber
-			.subscribe(&config.namespace, &config.track, Default::default())
-			.context("failed to subscribe to track")?;
+		let (prod, sub) = serve::Track::new(&config.namespace, &config.track).produce();
+		subscriber.subscribe(prod).context("failed to subscribe to track")?;
 
-		let clock = clock::Subscriber::new(subscriber.track());
+		let clock = clock::Subscriber::new(sub);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
