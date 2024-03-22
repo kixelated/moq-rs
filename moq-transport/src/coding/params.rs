@@ -20,6 +20,10 @@ impl Decode for Params {
 
 			let size = usize::decode(&mut r)?;
 
+			if r.remaining() < size {
+				return Err(DecodeError::More(size));
+			}
+
 			// Don't allocate the entire requested size to avoid a possible attack
 			// Instead, we allocate up to 1024 and keep appending as we read further.
 			let mut buf = vec![0; size];
@@ -39,6 +43,11 @@ impl Encode for Params {
 		for (kind, value) in self.0.iter() {
 			kind.encode(w)?;
 			value.len().encode(w)?;
+
+			if w.remaining_mut() < value.len() {
+				return Err(EncodeError::More(value.len()));
+			}
+
 			w.put_slice(value);
 		}
 
