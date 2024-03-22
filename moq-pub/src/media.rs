@@ -14,7 +14,7 @@ pub struct Media<I> {
 	input: I,
 }
 
-impl<I: AsyncRead + Send + Unpin + 'static> Media<I> {
+impl<I: AsyncRead + Send + Unpin> Media<I> {
 	pub async fn new(mut input: I, mut broadcast: BroadcastPublisher) -> anyhow::Result<Self> {
 		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");

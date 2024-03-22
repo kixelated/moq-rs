@@ -1,8 +1,9 @@
 use crate::message::{self, Message};
+use std::fmt;
 
 macro_rules! subscriber_msgs {
     {$($name:ident,)*} => {
-		#[derive(Clone, Debug)]
+		#[derive(Clone)]
 		pub enum Subscriber {
 			$($name(message::$name)),*
 		}
@@ -28,6 +29,15 @@ macro_rules! subscriber_msgs {
 				match m {
 					$(Message::$name(m) => Ok(Subscriber::$name(m)),)*
 					_ => Err(m),
+				}
+			}
+		}
+
+		impl fmt::Debug for Subscriber {
+			// Delegate to the message formatter
+			fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+				match self {
+					$(Self::$name(ref m) => m.fmt(f),)*
 				}
 			}
 		}

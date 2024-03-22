@@ -5,7 +5,7 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -20,7 +20,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 log = "0.4"
 
-webtransport-generic = { path = "../../webtransport-rs/webtransport-generic", version = "0.8" }
+webtransport-generic = "0.8"
 
 paste = "1"
 futures = "0.3"
