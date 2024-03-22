@@ -21,9 +21,7 @@ impl Decode for SubscribeOk {
 			expires => Some(expires),
 		};
 
-		if !r.has_remaining() {
-			return Err(DecodeError::More(1));
-		}
+		Self::decode_remaining(r, 1)?;
 
 		let latest = match r.get_u8() {
 			0 => None,
@@ -40,9 +38,7 @@ impl Encode for SubscribeOk {
 		self.id.encode(w)?;
 		self.expires.unwrap_or(0).encode(w)?;
 
-		if !w.has_remaining_mut() {
-			return Err(EncodeError::More(1));
-		}
+		Self::encode_remaining(w, 1)?;
 
 		match self.latest {
 			Some((group, object)) => {

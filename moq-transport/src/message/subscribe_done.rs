@@ -22,10 +22,7 @@ impl Decode for SubscribeDone {
 		let code = u64::decode(r)?;
 		let reason = String::decode(r)?;
 
-		if r.remaining() < 1 {
-			return Err(DecodeError::More(1));
-		}
-
+		Self::decode_remaining(r, 1)?;
 		let last = match r.get_u8() {
 			0 => None,
 			1 => Some((u64::decode(r)?, u64::decode(r)?)),
@@ -42,9 +39,7 @@ impl Encode for SubscribeDone {
 		self.code.encode(w)?;
 		self.reason.encode(w)?;
 
-		if w.remaining_mut() < 1 {
-			return Err(EncodeError::More(1));
-		}
+		Self::encode_remaining(w, 1)?;
 
 		if let Some((group, object)) = self.last {
 			w.put_u8(1);

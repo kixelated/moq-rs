@@ -47,10 +47,7 @@ impl Encode for Datagram {
 		self.group_id.encode(w)?;
 		self.object_id.encode(w)?;
 		self.send_order.encode(w)?;
-
-		if w.remaining_mut() < self.payload.len() {
-			return Err(EncodeError::More(self.payload.len()));
-		}
+		Self::encode_remaining(w, self.payload.len())?;
 		w.put_slice(&self.payload);
 
 		Ok(())

@@ -19,10 +19,7 @@ impl Decode for Params {
 			}
 
 			let size = usize::decode(&mut r)?;
-
-			if r.remaining() < size {
-				return Err(DecodeError::More(size));
-			}
+			Self::decode_remaining(r, size)?;
 
 			// Don't allocate the entire requested size to avoid a possible attack
 			// Instead, we allocate up to 1024 and keep appending as we read further.
@@ -43,11 +40,7 @@ impl Encode for Params {
 		for (kind, value) in self.0.iter() {
 			kind.encode(w)?;
 			value.len().encode(w)?;
-
-			if w.remaining_mut() < value.len() {
-				return Err(EncodeError::More(value.len()));
-			}
-
+			Self::encode_remaining(w, value.len())?;
 			w.put_slice(value);
 		}
 
