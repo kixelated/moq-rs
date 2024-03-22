@@ -36,7 +36,7 @@ impl<S: AsyncRead + Unpin> Reader<S> {
 
 			// Append to the buffer
 			while remain > 0 {
-				remain -= self.stream.read_buf(&mut self.buffer).await?;
+				remain = remain.saturating_sub(self.stream.read_buf(&mut self.buffer).await?);
 			}
 		}
 	}
