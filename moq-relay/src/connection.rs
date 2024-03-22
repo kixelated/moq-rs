@@ -23,29 +23,31 @@ impl Connection {
 			.unwrap();
 
 		let alpn = handshake.protocol.context("missing ALPN")?;
+		let alpn = String::from_utf8_lossy(&alpn);
+		let server_name = handshake.server_name.unwrap_or_default();
 
 		log::debug!(
-			"received QUIC handshake: ip={} alpn={:?} server={:?}",
+			"received QUIC handshake: ip={} alpn={} server={}",
 			conn.remote_address(),
 			alpn,
-			handshake.server_name
+			server_name,
 		);
 
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
 		log::debug!(
-			"established QUIC connection: id={} ip={} alpn={:?} server={:?}",
+			"established QUIC connection: id={} ip={} alpn={} server={}",
 			conn.stable_id(),
 			conn.remote_address(),
 			alpn,
-			handshake.server_name
+			server_name,
 		);
 
-		if alpn.as_slice() == webtransport_quinn::ALPN {
-			self.serve_webtransport(conn).await?;
-		} else {
-			self.serve_quic(conn).await?;
+		match alpn.as_bytes() {
+			webtransport_quinn::ALPN => self.serve_webtransport(conn).await?,
+			moq_transport::setup::ALPN => self.serve_quic(conn).await?,
+			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		}
 
 		Ok(())
