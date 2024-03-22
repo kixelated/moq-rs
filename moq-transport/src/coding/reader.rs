@@ -30,13 +30,18 @@ impl<S: AsyncRead + Unpin> Reader<S> {
 					self.buffer.advance(cursor.position() as usize);
 					return Ok(msg);
 				}
-				Err(DecodeError::More(remain)) => remain, // Try again with more data
+				Err(DecodeError::More(remain)) => remain,
 				Err(err) => return Err(err),
 			};
 
-			// Append to the buffer
-			while remain > 0 {
-				remain = remain.saturating_sub(self.stream.read_buf(&mut self.buffer).await?);
+			// Read in more data until we reach the requested amount.
+			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
+			loop {
+				let size = self.stream.read_buf(&mut self.buffer).await?;
+				remain = remain.saturating_sub(size);
+				if remain == 0 {
+					break;
+				}
 			}
 		}
 	}

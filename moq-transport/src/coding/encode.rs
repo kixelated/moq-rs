@@ -7,8 +7,9 @@ pub trait Encode: Sized {
 
 	// Helper function to make sure we have enough bytes to encode
 	fn encode_remaining<W: bytes::BufMut>(buf: &mut W, required: usize) -> Result<(), EncodeError> {
-		if required > buf.remaining_mut() {
-			Err(EncodeError::More(required - buf.remaining_mut()))
+		let needed = required.saturating_sub(buf.remaining_mut());
+		if needed > 0 {
+			Err(EncodeError::More(needed))
 		} else {
 			Ok(())
 		}

@@ -7,8 +7,9 @@ pub trait Decode: Sized {
 
 	// Helper function to make sure we have enough bytes to decode
 	fn decode_remaining<B: bytes::Buf>(buf: &mut B, required: usize) -> Result<(), DecodeError> {
-		if required > buf.remaining() {
-			Err(DecodeError::More(required - buf.remaining()))
+		let needed = required.saturating_sub(buf.remaining());
+		if needed > 0 {
+			Err(DecodeError::More(needed))
 		} else {
 			Ok(())
 		}
