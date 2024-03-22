@@ -31,7 +31,7 @@ impl<S: AsyncRead + Unpin> Reader<S> {
 					return Ok(msg);
 				}
 				Err(DecodeError::More(remain)) => remain, // Try again with more data
-				Err(err) => return Err(err.into()),
+				Err(err) => return Err(err),
 			};
 
 			// Append to the buffer

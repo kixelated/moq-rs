@@ -87,7 +87,7 @@ impl Origin {
 			.ok_or(ServeError::NotFound)?;
 
 		let track = origin.request_track(name)?;
-		return Ok(track);
+		Ok(track)
 		/*
 		let mut routes = self.local.lock().unwrap();
 
@@ -184,7 +184,7 @@ impl State {
 		}
 
 		self.closed.clone()?;
-		return Ok(None);
+		Ok(None)
 	}
 
 	pub fn request_track(&mut self, name: &str) -> Result<TrackSubscriber, ServeError> {
