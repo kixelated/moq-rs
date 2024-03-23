@@ -1,5 +1,5 @@
 [workspace]
-members = ["moq-transport", "moq-relay", "moq-pub", "moq-api", "moq-clock"]
+members = ["moq-transport", "moq-relay", "moq-pub", "moq-api", "moq-clock", "moq-sub"]
 resolver = "2"
 
 # Use debug symbols in production until things are more stable

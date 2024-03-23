@@ -52,6 +52,13 @@ You should have it installed already if you're a video nerd, otherwise:
 brew install ffmpeg
 ```
 
+### moq-sub
+
+You can use `moq-sub` to subscribe to media streams from a MoQ relay and pipe them to the standard output. By piping the
+command to a video player, e.g. `ffplay` or `mpv`, you can play a MoQ broadcast natively.
+
+Currently, `moq-sub` simply dumps all received segments of the first video and the first audio track directly to `stdout`.
+
 ### moq-api
 
 `moq-api` uses a redis instance to store active origins for clustering.
@@ -68,6 +75,7 @@ We run the redis instance via a container automatically as part of `dev/api`.
 ./dev/cert
 ./dev/relay
 ./dev/pub
+./dev/sub
 ```
 
 They will each print out a URL you can use to publish/watch broadcasts.
@@ -98,11 +106,24 @@ By default, the broadcast name is `dev` but you can overwrite it with the `NAME`
 
 > Watch URL: https://quic.video/watch/dev?server=localhost:4443
 
+By default, the audio track is exlcluded, because the web player does not yet support audio playback. To include audio,
+set the `AUDIO=1` env var.
+
 If you're debugging encoding issues, you can use this script to dump the file to disk instead, defaulting to
 `dev/output.mp4`.
 
 ```bash
 ./dev/pub-file
+```
+
+### moq-sub
+
+The following command subscribes to a stream from a MoQ relay and plays it with `ffplay`.
+By default, the URL is `https://localhost:4433/dev`, so it will play the stream published with `dev/pub` to the relay
+started with `dev/relay`. You can change the broadcast name by setting the `NAME` env var.
+
+```bash
+./dev/sub
 ```
 
 ### moq-api
