@@ -16,7 +16,7 @@ pub enum ServeError {
 	Mode,
 
 	#[error("wrong size")]
-	WrongSize,
+	Size,
 }
 
 impl ServeError {
@@ -27,7 +27,7 @@ impl ServeError {
 			Self::NotFound => 404,
 			Self::Duplicate => 409,
 			Self::Mode => 400,
-			Self::WrongSize => 413,
+			Self::Size => 413,
 		}
 	}
 }

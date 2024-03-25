@@ -3,7 +3,6 @@ use crate::{message, serve::ServeError, util::Watch};
 use super::Subscriber;
 
 pub struct Announced<S: webtransport_generic::Session> {
-	session: Subscriber<S>,
 	namespace: String,
 	state: Watch<State<S>>,
 }
@@ -13,11 +12,7 @@ impl<S: webtransport_generic::Session> Announced<S> {
 		let state = Watch::new(State::new(session.clone(), namespace.clone()));
 		let recv = AnnouncedRecv { state: state.clone() };
 
-		let announced = Self {
-			session,
-			namespace,
-			state,
-		};
+		let announced = Self { namespace, state };
 
 		(announced, recv)
 	}
@@ -51,7 +46,6 @@ impl<S: webtransport_generic::Session> Announced<S> {
 impl<S: webtransport_generic::Session> Drop for Announced<S> {
 	fn drop(&mut self) {
 		self.close(ServeError::Done).ok();
-		self.session.drop_announce(&self.namespace);
 	}
 }
 

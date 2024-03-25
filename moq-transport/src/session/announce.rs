@@ -4,22 +4,26 @@ use super::Publisher;
 
 pub struct Announce<S: webtransport_generic::Session> {
 	session: Publisher<S>,
-	msg: message::Announce,
+	namespace: String,
 	state: Watch<State>,
 }
 
 impl<S: webtransport_generic::Session> Announce<S> {
-	pub(super) fn new(session: Publisher<S>, msg: message::Announce) -> (Announce<S>, AnnounceRecv) {
+	pub(super) fn new(session: Publisher<S>, namespace: &str) -> (Announce<S>, AnnounceRecv) {
 		let state = Watch::default();
 		let recv = AnnounceRecv { state: state.clone() };
 
-		let announce = Self { session, msg, state };
+		let announce = Self {
+			session,
+			namespace: namespace.to_string(),
+			state,
+		};
 
 		(announce, recv)
 	}
 
 	pub fn namespace(&self) -> &str {
-		&self.msg.namespace
+		&self.namespace
 	}
 
 	fn close(&mut self) -> Result<(), ServeError> {
@@ -29,7 +33,7 @@ impl<S: webtransport_generic::Session> Announce<S> {
 
 		self.session
 			.send_message(message::Unannounce {
-				namespace: self.msg.namespace.clone(),
+				namespace: self.namespace.clone(),
 			})
 			.ok();
 
@@ -52,7 +56,6 @@ impl<S: webtransport_generic::Session> Announce<S> {
 impl<S: webtransport_generic::Session> Drop for Announce<S> {
 	fn drop(&mut self) {
 		self.close().ok();
-		self.session.drop_announce(&self.msg.namespace);
 	}
 }
 

@@ -1,22 +1,207 @@
-//! A fragment is a stream of bytes with a header, split into a [Publisher] and [Subscriber] handle.
+//! A fragment is a stream of bytes with a header, split into a [Writer] and [Reader] handle.
 //!
-//! A [Publisher] writes an ordered stream of bytes in chunks.
+//! A [Writer] writes an ordered stream of bytes in chunks.
 //! There's no framing, so these chunks can be of any size or position, and won't be maintained over the network.
 //!
-//! A [Subscriber] reads an ordered stream of bytes in chunks.
+//! A [Reader] reads an ordered stream of bytes in chunks.
 //! These chunks are returned directly from the QUIC connection, so they may be of any size or position.
-//! You can clone the [Subscriber] and each will read a copy of of all future chunks. (fanout)
+//! You can clone the [Reader] and each will read a copy of of all future chunks. (fanout)
 //!
-//! The fragment is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
-use std::{fmt, ops::Deref, sync::Arc};
+//! The fragment is closed with [ServeError::Closed] when all writers or readers are dropped.
+use std::{cmp, fmt, ops::Deref, sync::Arc};
 
-use super::ServeError;
+use super::{ServeError, Track};
 use crate::util::Watch;
 use bytes::Bytes;
 
-/// Static information about the segment.
+pub struct Objects {
+	pub track: Arc<Track>,
+}
+
+impl Objects {
+	pub fn produce(self) -> (ObjectsWriter, ObjectsReader) {
+		let state = Watch::new(ObjectsState::default());
+
+		let writer = ObjectsWriter {
+			state: state.clone(),
+			track: self.track.clone(),
+		};
+		let reader = ObjectsReader::new(state, self.track);
+
+		(writer, reader)
+	}
+}
+
+#[derive(Debug)]
+struct ObjectsState {
+	// The latest group.
+	objects: Vec<ObjectReader>,
+
+	// Increased each time objects changes.
+	epoch: usize,
+
+	// Set when the writer or all readers are dropped.
+	closed: Result<(), ServeError>,
+}
+
+impl ObjectsState {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+		self.closed.clone()?;
+		self.closed = Err(err);
+		Ok(())
+	}
+}
+
+impl Default for ObjectsState {
+	fn default() -> Self {
+		Self {
+			objects: Vec::new(),
+			epoch: 0,
+			closed: Ok(()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct ObjectsWriter {
+	state: Watch<ObjectsState>,
+	pub track: Arc<Track>,
+}
+
+impl ObjectsWriter {
+	pub fn write(&mut self, object: Object, payload: Bytes) -> Result<(), ServeError> {
+		let mut writer = self.create(object)?;
+		writer.write(payload)?;
+		Ok(())
+	}
+
+	pub fn create(&mut self, object: Object) -> Result<ObjectWriter, ServeError> {
+		let object = ObjectInfo {
+			track: self.track.clone(),
+			group_id: object.group_id,
+			object_id: object.object_id,
+			priority: object.priority,
+		};
+
+		let (writer, reader) = object.produce();
+
+		let mut state = self.state.lock_mut();
+
+		if let Some(first) = state.objects.first() {
+			match writer.group_id.cmp(&first.group_id) {
+				// Drop this old group
+				cmp::Ordering::Less => return Ok(writer),
+				cmp::Ordering::Greater => state.objects.clear(),
+				cmp::Ordering::Equal => {}
+			}
+		}
+
+		state.objects.push(reader);
+		state.epoch += 1;
+
+		Ok(writer)
+	}
+
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+		self.state.lock_mut().close(err)
+	}
+}
+
+impl Deref for ObjectsWriter {
+	type Target = Track;
+
+	fn deref(&self) -> &Self::Target {
+		&self.track
+	}
+}
+
+impl Drop for ObjectsWriter {
+	fn drop(&mut self) {
+		self.close(ServeError::Done).ok();
+	}
+}
+
 #[derive(Clone, Debug)]
-pub struct ObjectHeader {
+pub struct ObjectsReader {
+	state: Watch<ObjectsState>,
+	pub track: Arc<Track>,
+	epoch: usize,
+
+	_dropped: Arc<ObjectsDropped>,
+}
+
+impl ObjectsReader {
+	fn new(state: Watch<ObjectsState>, track: Arc<Track>) -> Self {
+		let _dropped = Arc::new(ObjectsDropped { state: state.clone() });
+		Self {
+			state,
+			track,
+			epoch: 0,
+			_dropped,
+		}
+	}
+
+	pub async fn next(&mut self) -> Result<Option<ObjectReader>, ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				if self.epoch < state.epoch {
+					let index = state.objects.len().saturating_sub(state.epoch - self.epoch);
+					self.epoch = state.epoch - state.objects.len() + index + 1;
+					return Ok(Some(state.objects[index].clone()));
+				}
+
+				match &state.closed {
+					Ok(()) => state.changed(),
+					Err(ServeError::Done) => return Err(ServeError::Done),
+					Err(err) => return Err(err.clone()),
+				}
+			};
+
+			notify.await;
+		}
+	}
+
+	// Returns the largest group/sequence
+	pub fn latest(&self) -> Option<(u64, u64)> {
+		let state = self.state.lock();
+		state
+			.objects
+			.iter()
+			.max_by_key(|a| (a.group_id, a.object_id))
+			.map(|a| (a.group_id, a.object_id))
+	}
+}
+
+impl Deref for ObjectsReader {
+	type Target = Track;
+
+	fn deref(&self) -> &Self::Target {
+		&self.track
+	}
+}
+
+struct ObjectsDropped {
+	state: Watch<ObjectsState>,
+}
+
+impl fmt::Debug for ObjectsDropped {
+	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Ok(())
+	}
+}
+
+impl Drop for ObjectsDropped {
+	fn drop(&mut self) {
+		self.state.lock_mut().close(ServeError::Done).ok();
+	}
+}
+
+/// Static information about the segment.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ObjectInfo {
+	pub track: Arc<Track>,
+
 	// The sequence number of the group within the track.
 	pub group_id: u64,
 
@@ -24,26 +209,29 @@ pub struct ObjectHeader {
 	pub object_id: u64,
 
 	// The priority of the stream.
-	pub send_order: u64,
-
-	// The size of the object
-	pub size: usize,
+	pub priority: u64,
 }
 
-impl ObjectHeader {
-	pub fn produce(self) -> (ObjectPublisher, ObjectSubscriber) {
-		let state = Watch::new(State::default());
-		let info = Arc::new(self);
+impl Deref for ObjectInfo {
+	type Target = Track;
 
-		let publisher = ObjectPublisher::new(state.clone(), info.clone());
-		let subscriber = ObjectSubscriber::new(state, info);
-
-		(publisher, subscriber)
+	fn deref(&self) -> &Self::Target {
+		&self.track
 	}
 }
 
-/// Same as below but with a fully known payload.
-#[derive(Clone)]
+impl ObjectInfo {
+	pub fn produce(self) -> (ObjectWriter, ObjectReader) {
+		let state = Watch::new(ObjectState::default());
+		let info = Arc::new(self);
+
+		let writer = ObjectWriter::new(state.clone(), info.clone());
+		let reader = ObjectReader::new(state, info);
+
+		(writer, reader)
+	}
+}
+
 pub struct Object {
 	// The sequence number of the group within the track.
 	pub group_id: u64,
@@ -52,43 +240,18 @@ pub struct Object {
 	pub object_id: u64,
 
 	// The priority of the stream.
-	pub send_order: u64,
-
-	// The payload.
-	pub payload: Bytes,
+	pub priority: u64,
 }
 
-impl From<Object> for ObjectHeader {
-	fn from(info: Object) -> Self {
-		Self {
-			group_id: info.group_id,
-			object_id: info.object_id,
-			send_order: info.send_order,
-			size: info.payload.len(),
-		}
-	}
-}
-
-impl fmt::Debug for Object {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Object")
-			.field("group_id", &self.group_id)
-			.field("object_id", &self.object_id)
-			.field("send_order", &self.send_order)
-			.field("payload", &self.payload.len())
-			.finish()
-	}
-}
-
-struct State {
+struct ObjectState {
 	// The data that has been received thus far.
 	chunks: Vec<Bytes>,
 
-	// Set when the publisher is dropped.
+	// Set when the writer is dropped.
 	closed: Result<(), ServeError>,
 }
 
-impl State {
+impl ObjectState {
 	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed.clone()?;
 		self.closed = Err(err);
@@ -96,9 +259,9 @@ impl State {
 	}
 }
 
-impl fmt::Debug for State {
+impl fmt::Debug for ObjectState {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("State")
+		f.debug_struct("ObjectState")
 			.field("chunks", &self.chunks.len())
 			.field("size", &self.chunks.iter().map(|c| c.len()).sum::<usize>())
 			.field("closed", &self.closed)
@@ -106,7 +269,7 @@ impl fmt::Debug for State {
 	}
 }
 
-impl Default for State {
+impl Default for ObjectState {
 	fn default() -> Self {
 		Self {
 			chunks: Vec::new(),
@@ -115,36 +278,24 @@ impl Default for State {
 	}
 }
 
-/// Used to write data to a segment and notify subscribers.
+/// Used to write data to a segment and notify readers.
 #[derive(Debug)]
-pub struct ObjectPublisher {
+pub struct ObjectWriter {
 	// Mutable segment state.
-	state: Watch<State>,
+	state: Watch<ObjectState>,
 
 	// Immutable segment state.
-	info: Arc<ObjectHeader>,
-
-	// The amount of promised data that has yet to be written.
-	remain: usize,
+	pub object: Arc<ObjectInfo>,
 }
 
-impl ObjectPublisher {
+impl ObjectWriter {
 	/// Create a new segment with the given info.
-	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
-		Self {
-			state,
-			remain: info.size,
-			info,
-		}
+	fn new(state: Watch<ObjectState>, object: Arc<ObjectInfo>) -> Self {
+		Self { state, object }
 	}
 
 	/// Write a new chunk of bytes.
 	pub fn write(&mut self, chunk: Bytes) -> Result<(), ServeError> {
-		if chunk.len() > self.remain {
-			return Err(ServeError::WrongSize);
-		}
-		self.remain -= chunk.len();
-
 		let mut state = self.state.lock_mut();
 		state.closed.clone()?;
 		state.chunks.push(chunk);
@@ -153,52 +304,47 @@ impl ObjectPublisher {
 	}
 
 	/// Close the segment with an error.
-	pub fn close(&mut self, mut err: ServeError) -> Result<(), ServeError> {
-		if err == ServeError::Done && self.remain != 0 {
-			err = ServeError::WrongSize;
-		}
-
-		self.state.lock_mut().close(err)?;
-		Ok(())
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+		self.state.lock_mut().close(err)
 	}
 }
 
-impl Drop for ObjectPublisher {
+impl Drop for ObjectWriter {
 	fn drop(&mut self) {
 		self.close(ServeError::Done).ok();
 	}
 }
 
-impl Deref for ObjectPublisher {
-	type Target = ObjectHeader;
+impl Deref for ObjectWriter {
+	type Target = ObjectInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.object
 	}
 }
 
 /// Notified when a segment has new data available.
 #[derive(Clone, Debug)]
-pub struct ObjectSubscriber {
+pub struct ObjectReader {
 	// Modify the segment state.
-	state: Watch<State>,
+	state: Watch<ObjectState>,
 
 	// Immutable segment state.
-	info: Arc<ObjectHeader>,
+	pub object: Arc<ObjectInfo>,
 
 	// The number of chunks that we've read.
-	// NOTE: Cloned subscribers inherit this index, but then run in parallel.
+	// NOTE: Cloned readers inherit this index, but then run in parallel.
 	index: usize,
 
-	_dropped: Arc<Dropped>,
+	_dropped: Arc<ObjectDropped>,
 }
 
-impl ObjectSubscriber {
-	fn new(state: Watch<State>, info: Arc<ObjectHeader>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
+impl ObjectReader {
+	fn new(state: Watch<ObjectState>, object: Arc<ObjectInfo>) -> Self {
+		let _dropped = Arc::new(ObjectDropped::new(state.clone()));
 		Self {
 			state,
-			info,
+			object,
 			index: 0,
 			_dropped,
 		}
@@ -237,32 +383,32 @@ impl ObjectSubscriber {
 	}
 }
 
-impl Deref for ObjectSubscriber {
-	type Target = ObjectHeader;
+impl Deref for ObjectReader {
+	type Target = ObjectInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.object
 	}
 }
 
-struct Dropped {
-	state: Watch<State>,
+struct ObjectDropped {
+	state: Watch<ObjectState>,
 }
 
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
+impl ObjectDropped {
+	fn new(state: Watch<ObjectState>) -> Self {
 		Self { state }
 	}
 }
 
-impl Drop for Dropped {
+impl Drop for ObjectDropped {
 	fn drop(&mut self) {
 		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }
 
-impl fmt::Debug for Dropped {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Dropped").finish()
+impl fmt::Debug for ObjectDropped {
+	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Ok(())
 	}
 }

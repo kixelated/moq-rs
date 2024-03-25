@@ -1,15 +1,15 @@
-//! A broadcast is a collection of tracks, split into two handles: [Publisher] and [Subscriber].
+//! A broadcast is a collection of tracks, split into two handles: [Writer] and [Reader].
 //!
-//! The [Publisher] can create tracks, either manually or on request.
-//! It receives all requests by a [Subscriber] for a tracks that don't exist.
+//! The [Writer] can create tracks, either manually or on request.
+//! It receives all requests by a [Reader] for a tracks that don't exist.
 //! The simplest implementation is to close every unknown track with [ServeError::NotFound].
 //!
-//! A [Subscriber] can request tracks by name.
+//! A [Reader] can request tracks by name.
 //! If the track already exists, it will be returned.
 //! If the track doesn't exist, it will be sent to [Unknown] to be handled.
-//! A [Subscriber] can be cloned to create multiple subscriptions.
+//! A [Reader] can be cloned to create multiple subscriptions.
 //!
-//! The broadcast is automatically closed with [ServeError::Done] when [Publisher] is dropped, or all [Subscriber]s are dropped.
+//! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
 use std::{
 	collections::{hash_map, HashMap},
 	fmt,
@@ -17,7 +17,7 @@ use std::{
 	sync::Arc,
 };
 
-use super::{ServeError, Track, TrackPublisher, TrackSubscriber};
+use super::{ServeError, Track, TrackReader, TrackWriter};
 use crate::util::Watch;
 
 /// Static information about a broadcast.
@@ -33,26 +33,26 @@ impl Broadcast {
 		}
 	}
 
-	pub fn produce(self) -> (BroadcastPublisher, BroadcastSubscriber) {
+	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
 		let state = Watch::new(State::default());
 		let info = Arc::new(self);
 
-		let publisher = BroadcastPublisher::new(state.clone(), info.clone());
-		let subscriber = BroadcastSubscriber::new(state, info);
+		let writer = BroadcastWriter::new(state.clone(), info.clone());
+		let reader = BroadcastReader::new(state, info);
 
-		(publisher, subscriber)
+		(writer, reader)
 	}
 }
 
 /// Dynamic information about the broadcast.
 #[derive(Debug)]
 struct State {
-	tracks: HashMap<String, TrackSubscriber>,
+	tracks: HashMap<String, TrackReader>,
 	closed: Result<(), ServeError>,
 }
 
 impl State {
-	pub fn get(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+	pub fn get(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
 			// Return any error if we couldn't find a track.
@@ -60,7 +60,7 @@ impl State {
 		}
 	}
 
-	pub fn insert(&mut self, track: TrackSubscriber) -> Result<(), ServeError> {
+	pub fn insert(&mut self, track: TrackReader) -> Result<(), ServeError> {
 		match self.tracks.entry(track.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate),
 			hash_map::Entry::Vacant(v) => v.insert(track),
@@ -69,7 +69,7 @@ impl State {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, name: &str) -> Option<TrackSubscriber> {
+	pub fn remove(&mut self, name: &str) -> Option<TrackReader> {
 		self.tracks.remove(name)
 	}
 
@@ -91,29 +91,29 @@ impl Default for State {
 
 /// Publish new tracks for a broadcast by name.
 #[derive(Debug)]
-pub struct BroadcastPublisher {
+pub struct BroadcastWriter {
 	state: Watch<State>,
-	info: Arc<Broadcast>,
+	pub broadcast: Arc<Broadcast>,
 }
 
-impl BroadcastPublisher {
-	fn new(state: Watch<State>, info: Arc<Broadcast>) -> Self {
-		Self { state, info }
+impl BroadcastWriter {
+	fn new(state: Watch<State>, broadcast: Arc<Broadcast>) -> Self {
+		Self { state, broadcast }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
-	pub fn create_track(&mut self, track: &str) -> Result<TrackPublisher, ServeError> {
-		let (publisher, subscriber) = Track {
+	pub fn create_track(&mut self, track: &str) -> Result<TrackWriter, ServeError> {
+		let (writer, reader) = Track {
 			namespace: self.namespace.clone(),
 			name: track.to_owned(),
 		}
 		.produce();
 
-		self.state.lock_mut().insert(subscriber)?;
-		Ok(publisher)
+		self.state.lock_mut().insert(reader)?;
+		Ok(writer)
 	}
 
-	pub fn remove_track(&mut self, track: &str) -> Option<TrackSubscriber> {
+	pub fn remove_track(&mut self, track: &str) -> Option<TrackReader> {
 		self.state.lock_mut().remove(track)
 	}
 
@@ -123,11 +123,11 @@ impl BroadcastPublisher {
 	}
 }
 
-impl Deref for BroadcastPublisher {
+impl Deref for BroadcastWriter {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.broadcast
 	}
 }
 
@@ -135,24 +135,28 @@ impl Deref for BroadcastPublisher {
 ///
 /// This can be cloned to create handles.
 #[derive(Clone, Debug)]
-pub struct BroadcastSubscriber {
+pub struct BroadcastReader {
 	state: Watch<State>,
-	info: Arc<Broadcast>,
+	pub broadcast: Arc<Broadcast>,
 	_dropped: Arc<Dropped>,
 }
 
-impl BroadcastSubscriber {
-	fn new(state: Watch<State>, info: Arc<Broadcast>) -> Self {
+impl BroadcastReader {
+	fn new(state: Watch<State>, broadcast: Arc<Broadcast>) -> Self {
 		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, info, _dropped }
+		Self {
+			state,
+			broadcast,
+			_dropped,
+		}
 	}
 
 	/// Get a track from the broadcast by name.
-	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		self.state.lock().get(name)
 	}
 
-	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
+	/// Wait until if the broadcast is closed, either because the writer was dropped or called [Writer::close].
 	pub async fn closed(&self) -> ServeError {
 		loop {
 			let notify = {
@@ -169,11 +173,11 @@ impl BroadcastSubscriber {
 	}
 }
 
-impl Deref for BroadcastSubscriber {
+impl Deref for BroadcastReader {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.broadcast
 	}
 }
 

@@ -6,7 +6,7 @@ use std::{
 
 use std::collections::VecDeque;
 
-use moq_transport::serve::{self, ServeError, TrackPublisher, TrackSubscriber};
+use moq_transport::serve::{self, ServeError, TrackReader, TrackWriter};
 use moq_transport::session::SessionError;
 use moq_transport::util::Watch;
 use url::Url;
@@ -77,7 +77,7 @@ impl Origin {
 	Ok(())
 	*/
 
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<serve::TrackSubscriber, SessionError> {
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<serve::TrackReader, SessionError> {
 		let mut origin = self
 			.origins
 			.lock()
@@ -162,8 +162,8 @@ impl Origin {
 #[derive(Debug)]
 struct State {
 	namespace: String,
-	tracks: HashMap<String, TrackSubscriber>,
-	requested: VecDeque<TrackPublisher>,
+	tracks: HashMap<String, TrackReader>,
+	requested: VecDeque<TrackWriter>,
 	closed: Result<(), ServeError>,
 }
 
@@ -177,7 +177,7 @@ impl State {
 		}
 	}
 
-	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		// Insert the track into our Map so we deduplicate future requests.
 		if let Some(track) = self.tracks.get(name) {
 			return Ok(Some(track.clone()));
@@ -187,7 +187,7 @@ impl State {
 		Ok(None)
 	}
 
-	pub fn request_track(&mut self, name: &str) -> Result<TrackSubscriber, ServeError> {
+	pub fn request_track(&mut self, name: &str) -> Result<TrackReader, ServeError> {
 		// Insert the track into our Map so we deduplicate future requests.
 		let entry = match self.tracks.entry(name.to_string()) {
 			hash_map::Entry::Vacant(entry) => entry,
@@ -239,7 +239,7 @@ impl OriginPublisher {
 	}
 
 	/// Block until the next track requested by a subscriber.
-	pub async fn requested(&mut self) -> Result<serve::TrackPublisher, ServeError> {
+	pub async fn requested(&mut self) -> Result<serve::TrackWriter, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -277,11 +277,11 @@ impl OriginSubscriber {
 		Self { state, _dropped }
 	}
 
-	pub fn get_track(&self, name: &str) -> Result<Option<TrackSubscriber>, ServeError> {
+	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		self.state.lock_mut().get_track(name)
 	}
 
-	pub fn request_track(&mut self, name: &str) -> Result<TrackSubscriber, ServeError> {
+	pub fn request_track(&mut self, name: &str) -> Result<TrackReader, ServeError> {
 		self.state.lock_mut().request_track(name)
 	}
 

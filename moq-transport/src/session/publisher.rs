@@ -48,22 +48,18 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 	}
 
 	pub fn announce(&mut self, namespace: &str) -> Result<Announce<S>, SessionError> {
-		let mut announces = self.announces.lock().unwrap();
+		let (announce, recv) = Announce::new(self.clone(), namespace);
 
 		// Insert the abort handle into the lookup table.
-		let entry = match announces.entry(namespace.to_string()) {
+		match self.announces.lock().unwrap().entry(namespace.to_string()) {
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
-			hash_map::Entry::Vacant(entry) => entry,
+			hash_map::Entry::Vacant(entry) => entry.insert(recv),
 		};
 
-		let msg = message::Announce {
+		self.send_message(message::Announce {
 			namespace: namespace.to_string(),
 			params: Default::default(),
-		};
-		self.send_message(msg.clone())?;
-
-		let (announce, recv) = Announce::new(self.clone(), msg);
-		entry.insert(recv);
+		})?;
 
 		Ok(announce)
 	}
@@ -74,7 +70,7 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 
 	// Helper to announce and serve any matching subscribers.
 	// TODO this currently takes over the connection; definitely remove Clone
-	pub async fn serve(mut self, broadcast: serve::BroadcastSubscriber) -> Result<(), SessionError> {
+	pub async fn serve(mut self, broadcast: serve::BroadcastReader) -> Result<(), SessionError> {
 		log::info!("serving broadcast: {}", broadcast.namespace);
 
 		let announce = self.announce(&broadcast.namespace)?;
@@ -106,9 +102,9 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 
 	fn serve_track(
 		&self,
-		broadcast: &serve::BroadcastSubscriber,
+		broadcast: &serve::BroadcastReader,
 		subscribe: &Subscribed<S>,
-	) -> Result<serve::TrackSubscriber, ServeError> {
+	) -> Result<serve::TrackReader, ServeError> {
 		if subscribe.namespace() != broadcast.namespace {
 			return Err(ServeError::NotFound);
 		}
@@ -135,15 +131,19 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 	}
 
 	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
-		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
+		if let Some(mut announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
 			announce.recv_error(ServeError::Closed(msg.code)).ok();
 		}
 
 		Ok(())
 	}
 
-	fn recv_announce_cancel(&mut self, _msg: message::AnnounceCancel) -> Result<(), SessionError> {
-		unimplemented!("recv_announce_cancel")
+	fn recv_announce_cancel(&mut self, msg: message::AnnounceCancel) -> Result<(), SessionError> {
+		if let Some(mut announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
+			announce.recv_error(ServeError::Done).ok();
+		}
+
+		Ok(())
 	}
 
 	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError> {
@@ -161,24 +161,33 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 	}
 
 	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
-		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
+		if let Some(mut subscribed) = self.subscribed.lock().unwrap().remove(&msg.id) {
 			subscribed.recv_unsubscribe().ok();
 		}
 
 		Ok(())
 	}
 
-	pub fn send_message<T: Into<message::Publisher>>(&self, msg: T) -> Result<(), SessionError> {
+	pub fn send_message<T: Into<message::Publisher>>(&mut self, msg: T) -> Result<(), SessionError> {
 		let msg = msg.into();
+
+		// Remove from the lookup on sending a terminal message.
+		match &msg {
+			message::Publisher::Unannounce(msg) => self.drop_announce(&msg.namespace), // TODO not terminal?
+			message::Publisher::SubscribeDone(msg) => self.drop_subscribe(msg.id),
+			message::Publisher::SubscribeError(msg) => self.drop_subscribe(msg.id),
+			_ => {}
+		}
+
 		log::debug!("sending message: {:?}", msg);
 		self.outgoing.push(msg.into())
 	}
 
-	pub(super) fn drop_subscribe(&mut self, id: u64) {
+	fn drop_subscribe(&mut self, id: u64) {
 		self.subscribed.lock().unwrap().remove(&id);
 	}
 
-	pub(super) fn drop_announce(&mut self, namespace: &str) {
+	fn drop_announce(&mut self, namespace: &str) {
 		self.announces.lock().unwrap().remove(namespace);
 	}
 

@@ -99,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
 async fn run<T: webtransport_generic::Session, I: AsyncRead + Send + Unpin>(
 	session: T,
 	mut media: Media<I>,
-	broadcast: serve::BroadcastSubscriber,
+	broadcast: serve::BroadcastReader,
 ) -> anyhow::Result<()> {
 	let (session, publisher) = moq_transport::Publisher::connect(session)
 		.await

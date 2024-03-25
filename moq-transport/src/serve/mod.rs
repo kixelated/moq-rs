@@ -3,6 +3,7 @@ mod datagram;
 mod error;
 mod group;
 mod object;
+mod state;
 mod stream;
 mod track;
 
@@ -13,3 +14,5 @@ pub use group::*;
 pub use object::*;
 pub use stream::*;
 pub use track::*;
+
+use state::*;

@@ -10,6 +10,8 @@ use crate::{
 	util::Queue,
 };
 
+use webtransport_generic::RecvStream;
+
 use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe};
 
 // TODO remove Clone.
@@ -49,30 +51,27 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(&mut self, track: serve::TrackPublisher) -> Result<(), SessionError> {
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<(), SessionError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
-		let msg = message::Subscribe {
-			id,
-			track_alias: id,
-			track_namespace: track.namespace.to_string(),
-			track_name: track.name.to_string(),
-			// TODO add these to the publisher.
-			start: Default::default(),
-			end: Default::default(),
-			params: Default::default(),
-		};
-
-		self.send_message(msg.clone())?;
-
-		let publisher = Subscribe::new(self.clone(), msg.id, track);
-		self.subscribes.lock().unwrap().insert(id, publisher);
+		let subscribe = Subscribe::new(self.clone(), id, track)?;
+		self.subscribes.lock().unwrap().insert(id, subscribe);
 
 		Ok(())
 	}
 
 	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {
 		let msg = msg.into();
+
+		// Remove our entry on terminal state.
+		match &msg {
+			message::Subscriber::AnnounceCancel(msg) => self.drop_announce(&msg.namespace),
+			message::Subscriber::AnnounceError(msg) => self.drop_announce(&msg.namespace),
+			// TODO not terminal; we should wait for the done message.
+			message::Subscriber::Unsubscribe(msg) => self.drop_subscribe(msg.id),
+			_ => {}
+		}
+
 		log::debug!("sending message: {:?}", msg);
 		self.outgoing.push(msg.into())
 	}
@@ -105,7 +104,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 	}
 
 	fn recv_unannounce(&mut self, msg: message::Unannounce) -> Result<(), SessionError> {
-		if let Some(announce) = self.announced.lock().unwrap().get_mut(&msg.namespace) {
+		if let Some(mut announce) = self.announced.lock().unwrap().remove(&msg.namespace) {
 			announce.recv_unannounce().ok();
 		}
 
@@ -121,7 +120,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 	}
 
 	fn recv_subscribe_error(&mut self, msg: message::SubscribeError) -> Result<(), SessionError> {
-		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+		if let Some(mut subscriber) = self.subscribes.lock().unwrap().remove(&msg.id) {
 			subscriber.recv_error(msg.code).ok();
 		}
 
@@ -129,30 +128,115 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 	}
 
 	fn recv_subscribe_done(&mut self, msg: message::SubscribeDone) -> Result<(), SessionError> {
-		if let Some(subscriber) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
+		if let Some(mut subscriber) = self.subscribes.lock().unwrap().remove(&msg.id) {
 			subscriber.recv_done(msg.code).ok();
 		}
 
 		Ok(())
 	}
 
-	pub(super) fn drop_subscribe(&mut self, id: u64) {
-		self.subscribes.lock().unwrap().remove(&id);
+	fn drop_announce(&mut self, namespace: &str) {
+		self.announced.lock().unwrap().remove(namespace);
 	}
 
-	pub(super) fn drop_announce(&mut self, namespace: &str) {
-		self.announced.lock().unwrap().remove(namespace);
+	fn drop_subscribe(&mut self, id: u64) {
+		self.subscribes.lock().unwrap().remove(&id);
 	}
 
 	pub(super) async fn recv_stream(self, stream: S::RecvStream) -> Result<(), SessionError> {
 		let mut reader = Reader::new(stream);
 		let header: data::Header = reader.decode().await?;
 
-		let id = header.subscribe_id();
-		let subscribe = self.subscribes.lock().unwrap().get(&id).cloned();
+		// This is super silly, but I couldn't figure out a way to avoid the mutex guard across awaits.
+		enum Writer {
+			Track(serve::StreamWriter),
+			Group(serve::GroupWriter),
+			Object(serve::ObjectWriter),
+		}
 
-		if let Some(mut subscribe) = subscribe {
-			subscribe.recv_stream(header, reader).await?
+		let writer = {
+			let id = header.subscribe_id();
+			let mut subscribes = self.subscribes.lock().unwrap();
+			let subscribe = match subscribes.get_mut(&id) {
+				Some(subscribe) => subscribe,
+				None => return Ok(reader.into_inner().stop(1)), // TODO define error codes?
+			};
+
+			match header {
+				data::Header::Track(track) => Writer::Track(subscribe.recv_track(track)?),
+				data::Header::Group(group) => Writer::Group(subscribe.recv_group(group)?),
+				data::Header::Object(object) => Writer::Object(subscribe.recv_object(object)?),
+			}
+		};
+
+		match writer {
+			Writer::Track(track) => Self::recv_track(track, reader).await?,
+			Writer::Group(group) => Self::recv_group(group, reader).await?,
+			Writer::Object(object) => Self::recv_object(object, reader).await?,
+		};
+
+		Ok(())
+	}
+
+	async fn recv_track(mut track: serve::StreamWriter, mut reader: Reader<S::RecvStream>) -> Result<(), SessionError> {
+		log::trace!("received track: {:?}", track);
+
+		let mut prev: Option<serve::StreamGroupWriter> = None;
+
+		while !reader.done().await? {
+			let chunk: data::TrackObject = reader.decode().await?;
+
+			let mut group = match prev {
+				Some(group) if group.group_id == chunk.group_id => group,
+				_ => track.create(chunk.group_id)?,
+			};
+
+			let mut object = group.create(chunk.size)?;
+
+			let mut remain = chunk.size;
+			while remain > 0 {
+				let chunk = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
+				log::trace!("received track payload: {:?}", chunk.len());
+				remain -= chunk.len();
+				object.write(chunk)?;
+			}
+
+			prev = Some(group);
+		}
+
+		Ok(())
+	}
+
+	async fn recv_group(mut group: serve::GroupWriter, mut reader: Reader<S::RecvStream>) -> Result<(), SessionError> {
+		log::trace!("received group: {:?}", group.group);
+
+		while !reader.done().await? {
+			let object: data::GroupObject = reader.decode().await?;
+
+			log::trace!("received group object: {:?}", object);
+			let mut remain = object.size;
+			let mut object = group.create(object.size)?;
+
+			while remain > 0 {
+				let data = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
+				log::trace!("received group payload: {:?}", data.len());
+				remain -= data.len();
+				object.write(data)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	async fn recv_object(
+		mut object: serve::ObjectWriter,
+		mut reader: Reader<S::RecvStream>,
+	) -> Result<(), SessionError> {
+		log::trace!("received object: {:?}", object.object);
+
+		while let Some(data) = reader.read(usize::MAX).await? {
+			log::trace!("received object payload: {:?}", data.len());
+			object.write(data)?;
 		}
 
 		Ok(())
@@ -163,9 +247,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		let mut cursor = io::Cursor::new(datagram);
 		let datagram = data::Datagram::decode(&mut cursor)?;
 
-		let subscribe = self.subscribes.lock().unwrap().get(&datagram.subscribe_id).cloned();
-
-		if let Some(subscribe) = subscribe {
+		if let Some(subscribe) = self.subscribes.lock().unwrap().get_mut(&datagram.subscribe_id) {
 			subscribe.recv_datagram(datagram)?;
 		}
 

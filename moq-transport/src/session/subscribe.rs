@@ -1,27 +1,35 @@
-use std::sync::{Arc, Mutex};
-
 use crate::{
-	coding::Reader,
 	data, message,
-	serve::{self, ServeError},
+	serve::{self, ServeError, TrackWriter, TrackWriterMode},
 };
 
-use super::{SessionError, Subscriber};
+use super::{SessionResult, Subscriber};
 
-#[derive(Clone)]
-pub struct Subscribe<S: webtransport_generic::Session> {
+// Held by the application
+pub(super) struct Subscribe<S: webtransport_generic::Session> {
 	session: Subscriber<S>,
 	id: u64,
-	track: Arc<Mutex<serve::TrackPublisher>>,
+	writer: Option<TrackWriterMode>,
 }
 
 impl<S: webtransport_generic::Session> Subscribe<S> {
-	pub(super) fn new(session: Subscriber<S>, id: u64, track: serve::TrackPublisher) -> Self {
-		Self {
+	pub fn new(mut session: Subscriber<S>, id: u64, track: TrackWriter) -> SessionResult<Self> {
+		session.send_message(message::Subscribe {
+			id,
+			track_alias: id,
+			track_namespace: track.namespace.clone(),
+			track_name: track.name.clone(),
+			// TODO add these to the publisher.
+			start: Default::default(),
+			end: Default::default(),
+			params: Default::default(),
+		})?;
+
+		Ok(Self {
 			session,
 			id,
-			track: Arc::new(Mutex::new(track)),
-		}
+			writer: Some(track.into()),
+		})
 	}
 
 	pub fn recv_ok(&mut self, _msg: message::SubscribeOk) -> Result<(), ServeError> {
@@ -30,130 +38,73 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 	}
 
 	pub fn recv_error(&mut self, code: u64) -> Result<(), ServeError> {
-		self.track.lock().unwrap().close(ServeError::Closed(code))?;
-		Ok(())
+		self.close(ServeError::Closed(code))
 	}
 
 	pub fn recv_done(&mut self, code: u64) -> Result<(), ServeError> {
-		self.track.lock().unwrap().close(ServeError::Closed(code))?;
-		Ok(())
+		self.close(ServeError::Closed(code))
 	}
 
-	pub async fn recv_stream(
-		&mut self,
-		header: data::Header,
-		reader: Reader<S::RecvStream>,
-	) -> Result<(), SessionError> {
-		match header {
-			data::Header::Track(track) => self.recv_track(track, reader).await,
-			data::Header::Group(group) => self.recv_group(group, reader).await,
-			data::Header::Object(object) => self.recv_object(object, reader).await,
-		}
+	fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+		self.writer.as_mut().unwrap().close(err)
 	}
 
-	async fn recv_track(
-		&mut self,
-		header: data::TrackHeader,
-		mut reader: Reader<S::RecvStream>,
-	) -> Result<(), SessionError> {
-		log::trace!("received track: {:?}", header);
+	pub fn recv_track(&mut self, header: data::TrackHeader) -> Result<serve::StreamWriter, ServeError> {
+		let stream = match self.writer.take().unwrap() {
+			TrackWriterMode::Track(init) => init.stream(header.send_order),
+			_ => return Err(ServeError::Mode),
+		};
 
-		let mut track = self.track.lock().unwrap().create_stream(header.send_order)?;
+		self.writer = Some(stream.clone().into());
 
-		while !reader.done().await? {
-			let chunk: data::TrackObject = reader.decode().await?;
-
-			let mut remain = chunk.size;
-
-			let mut chunks = vec![];
-			while remain > 0 {
-				let chunk = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
-				log::trace!("received track payload: {:?}", chunk.len());
-				remain -= chunk.len();
-				chunks.push(chunk);
-			}
-
-			let object = serve::StreamObject {
-				object_id: chunk.object_id,
-				group_id: chunk.group_id,
-				payload: bytes::Bytes::from(chunks.concat()),
-			};
-			log::trace!("received track object: {:?}", track);
-
-			track.write_object(object)?;
-		}
-
-		Ok(())
+		Ok(stream)
 	}
 
-	async fn recv_group(
-		&mut self,
-		header: data::GroupHeader,
-		mut reader: Reader<S::RecvStream>,
-	) -> Result<(), SessionError> {
-		log::trace!("received group: {:?}", header);
+	pub fn recv_group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
+		let mut groups = match self.writer.take().unwrap() {
+			TrackWriterMode::Track(init) => init.groups(),
+			TrackWriterMode::Groups(groups) => groups,
+			_ => return Err(ServeError::Mode),
+		};
 
-		let mut group = self.track.lock().unwrap().create_group(serve::Group {
-			id: header.group_id,
-			send_order: header.send_order,
+		let writer = groups.create(serve::Group {
+			group_id: header.group_id,
+			priority: header.send_order,
 		})?;
+		self.writer = Some(groups.into());
 
-		while !reader.done().await? {
-			let object: data::GroupObject = reader.decode().await?;
-
-			log::trace!("received group object: {:?}", object);
-			let mut remain = object.size;
-			let mut object = group.create_object(object.size)?;
-
-			while remain > 0 {
-				let data = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
-				log::trace!("received group payload: {:?}", data.len());
-				remain -= data.len();
-				object.write(data)?;
-			}
-		}
-
-		Ok(())
+		Ok(writer)
 	}
 
-	async fn recv_object(
-		&mut self,
-		header: data::ObjectHeader,
-		mut reader: Reader<S::RecvStream>,
-	) -> Result<(), SessionError> {
-		log::trace!("received object: {:?}", header);
+	pub fn recv_object(&mut self, header: data::ObjectHeader) -> Result<serve::ObjectWriter, ServeError> {
+		let mut objects = match self.writer.take().unwrap() {
+			TrackWriterMode::Track(init) => init.objects(),
+			TrackWriterMode::Objects(objects) => objects,
+			_ => return Err(ServeError::Mode),
+		};
 
-		// TODO avoid buffering the entire object to learn the size.
-		let mut chunks = vec![];
-		while let Some(data) = reader.read(usize::MAX).await? {
-			log::trace!("received object payload: {:?}", data.len());
-			chunks.push(data);
-		}
-
-		let mut object = self.track.lock().unwrap().create_object(serve::ObjectHeader {
+		let writer = objects.create(serve::Object {
 			group_id: header.group_id,
 			object_id: header.object_id,
-			send_order: header.send_order,
-			size: chunks.iter().map(|c| c.len()).sum(),
+			priority: header.send_order,
 		})?;
+		self.writer = Some(objects.into());
 
-		log::trace!("received object: {:?}", object);
-
-		for chunk in chunks {
-			object.write(chunk)?;
-		}
-
-		Ok(())
+		Ok(writer)
 	}
 
-	pub fn recv_datagram(&self, datagram: data::Datagram) -> Result<(), SessionError> {
-		log::trace!("received datagram: {:?}", datagram);
+	pub fn recv_datagram(&mut self, datagram: data::Datagram) -> Result<(), ServeError> {
+		let mut datagrams = match self.writer.take().unwrap() {
+			TrackWriterMode::Track(init) => init.datagrams(),
+			TrackWriterMode::Datagrams(datagrams) => datagrams,
+			_ => return Err(ServeError::Mode),
+		};
 
-		self.track.lock().unwrap().write_datagram(serve::Datagram {
+		datagrams.write(serve::Datagram {
 			group_id: datagram.group_id,
 			object_id: datagram.object_id,
+			priority: datagram.send_order,
 			payload: datagram.payload,
-			send_order: datagram.send_order,
 		})?;
 
 		Ok(())
@@ -164,6 +115,5 @@ impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
 	fn drop(&mut self) {
 		let msg = message::Unsubscribe { id: self.id };
 		self.session.send_message(msg).ok();
-		self.session.drop_subscribe(self.id);
 	}
 }

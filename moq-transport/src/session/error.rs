@@ -81,3 +81,5 @@ impl SessionError {
 		}
 	}
 }
+
+pub type SessionResult<T> = Result<T, SessionError>;

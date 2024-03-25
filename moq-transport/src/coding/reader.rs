@@ -63,7 +63,11 @@ impl<S: AsyncRead + Unpin> Reader<S> {
 		Ok(self.buffer.is_empty() && self.stream.read_buf(&mut self.buffer).await? == 0)
 	}
 
-	pub fn into_inner(self) -> (bytes::BytesMut, S) {
-		(self.buffer, self.stream)
+	pub fn buffered(&self) -> &[u8] {
+		&self.buffer
+	}
+
+	pub fn into_inner(self) -> S {
+		self.stream
 	}
 }

@@ -12,9 +12,10 @@ pub use announce::*;
 pub use announced::*;
 pub use error::*;
 pub use publisher::*;
-pub use subscribe::*;
 pub use subscribed::*;
 pub use subscriber::*;
+
+use subscribe::*;
 
 use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
