@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use crate::util::Watch;
+use crate::util::State;
 
 use super::{ServeError, Track};
 
@@ -10,10 +10,10 @@ pub struct Datagrams {
 
 impl Datagrams {
 	pub fn produce(self) -> (DatagramsWriter, DatagramsReader) {
-		let state = Watch::new(DatagramsState::default());
+		let (writer, reader) = State::default();
 
-		let writer = DatagramsWriter::new(state.clone(), self.track.clone());
-		let reader = DatagramsReader::new(state, self.track);
+		let writer = DatagramsWriter::new(writer, self.track.clone());
+		let reader = DatagramsReader::new(reader, self.track);
 
 		(writer, reader)
 	}
@@ -31,14 +31,6 @@ struct DatagramsState {
 	closed: Result<(), ServeError>,
 }
 
-impl DatagramsState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
-}
-
 impl Default for DatagramsState {
 	fn default() -> Self {
 		Self {
@@ -51,18 +43,17 @@ impl Default for DatagramsState {
 
 #[derive(Debug)]
 pub struct DatagramsWriter {
-	state: Watch<DatagramsState>,
+	state: State<DatagramsState>,
 	pub track: Arc<Track>,
 }
 
 impl DatagramsWriter {
-	fn new(state: Watch<DatagramsState>, track: Arc<Track>) -> Self {
+	fn new(state: State<DatagramsState>, track: Arc<Track>) -> Self {
 		Self { state, track }
 	}
 
 	pub fn write(&mut self, datagram: Datagram) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 
 		state.latest = Some(datagram);
 		state.epoch += 1;
@@ -70,35 +61,24 @@ impl DatagramsWriter {
 		Ok(())
 	}
 
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
-	}
-}
-
-impl Drop for DatagramsWriter {
-	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+		Ok(())
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct DatagramsReader {
-	state: Watch<DatagramsState>,
+	state: State<DatagramsState>,
 	pub track: Arc<Track>,
 
 	epoch: u64,
-	_dropped: Arc<DatagramDropped>,
 }
 
 impl DatagramsReader {
-	fn new(state: Watch<DatagramsState>, track: Arc<Track>) -> Self {
-		let _dropped = Arc::new(DatagramDropped::new(state.clone()));
-		Self {
-			state,
-			track,
-			epoch: 0,
-			_dropped,
-		}
+	fn new(state: State<DatagramsState>, track: Arc<Track>) -> Self {
+		Self { state, track, epoch: 0 }
 	}
 
 	pub async fn read(&mut self) -> Result<Option<Datagram>, ServeError> {
@@ -110,10 +90,10 @@ impl DatagramsReader {
 					return Ok(state.latest.clone());
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Err(ServeError::Done),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None), // No more updates will come
 				}
 			};
 
@@ -128,28 +108,6 @@ impl DatagramsReader {
 			.latest
 			.as_ref()
 			.map(|datagram| (datagram.group_id, datagram.object_id))
-	}
-}
-
-struct DatagramDropped {
-	state: Watch<DatagramsState>,
-}
-
-impl DatagramDropped {
-	fn new(state: Watch<DatagramsState>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for DatagramDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for DatagramDropped {
-	fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
 	}
 }
 

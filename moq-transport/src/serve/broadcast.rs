@@ -12,13 +12,12 @@
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
 use std::{
 	collections::{hash_map, HashMap},
-	fmt,
 	ops::Deref,
 	sync::Arc,
 };
 
 use super::{ServeError, Track, TrackReader, TrackWriter};
-use crate::util::Watch;
+use crate::util::State;
 
 /// Static information about a broadcast.
 #[derive(Debug)]
@@ -34,11 +33,11 @@ impl Broadcast {
 	}
 
 	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
-		let state = Watch::new(State::default());
+		let (send, recv) = State::default();
 		let info = Arc::new(self);
 
-		let writer = BroadcastWriter::new(state.clone(), info.clone());
-		let reader = BroadcastReader::new(state, info);
+		let writer = BroadcastWriter::new(send, info.clone());
+		let reader = BroadcastReader::new(recv, info);
 
 		(writer, reader)
 	}
@@ -46,12 +45,12 @@ impl Broadcast {
 
 /// Dynamic information about the broadcast.
 #[derive(Debug)]
-struct State {
+struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
 	closed: Result<(), ServeError>,
 }
 
-impl State {
+impl BroadcastState {
 	pub fn get(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		match self.tracks.get(name) {
 			Some(track) => Ok(Some(track.clone())),
@@ -80,7 +79,7 @@ impl State {
 	}
 }
 
-impl Default for State {
+impl Default for BroadcastState {
 	fn default() -> Self {
 		Self {
 			tracks: HashMap::new(),
@@ -92,12 +91,12 @@ impl Default for State {
 /// Publish new tracks for a broadcast by name.
 #[derive(Debug)]
 pub struct BroadcastWriter {
-	state: Watch<State>,
+	state: State<BroadcastState>,
 	pub broadcast: Arc<Broadcast>,
 }
 
 impl BroadcastWriter {
-	fn new(state: Watch<State>, broadcast: Arc<Broadcast>) -> Self {
+	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
 		Self { state, broadcast }
 	}
 
@@ -109,17 +108,18 @@ impl BroadcastWriter {
 		}
 		.produce();
 
-		self.state.lock_mut().insert(reader)?;
+		self.state.lock_mut().ok_or(ServeError::Done)?.insert(reader)?;
+
 		Ok(writer)
 	}
 
-	pub fn remove_track(&mut self, track: &str) -> Option<TrackReader> {
-		self.state.lock_mut().remove(track)
+	pub fn remove_track(&mut self, track: &str) -> Result<Option<TrackReader>, ServeError> {
+		Ok(self.state.lock_mut().ok_or(ServeError::Done)?.remove(track))
 	}
 
 	/// Close the broadcast with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		self.state.lock_mut().ok_or(ServeError::Done)?.close(err)
 	}
 }
 
@@ -136,40 +136,18 @@ impl Deref for BroadcastWriter {
 /// This can be cloned to create handles.
 #[derive(Clone, Debug)]
 pub struct BroadcastReader {
-	state: Watch<State>,
+	state: State<BroadcastState>,
 	pub broadcast: Arc<Broadcast>,
-	_dropped: Arc<Dropped>,
 }
 
 impl BroadcastReader {
-	fn new(state: Watch<State>, broadcast: Arc<Broadcast>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self {
-			state,
-			broadcast,
-			_dropped,
-		}
+	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
+		Self { state, broadcast }
 	}
 
 	/// Get a track from the broadcast by name.
 	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
 		self.state.lock().get(name)
-	}
-
-	/// Wait until if the broadcast is closed, either because the writer was dropped or called [Writer::close].
-	pub async fn closed(&self) -> ServeError {
-		loop {
-			let notify = {
-				let state = self.state.lock();
-				if let Some(err) = state.closed.as_ref().err() {
-					return err.clone();
-				}
-
-				state.changed()
-			};
-
-			notify.await;
-		}
 	}
 }
 
@@ -178,27 +156,5 @@ impl Deref for BroadcastReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.broadcast
-	}
-}
-
-struct Dropped {
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for Dropped {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Dropped").finish()
 	}
 }

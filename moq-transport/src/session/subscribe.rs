@@ -1,20 +1,35 @@
 use crate::{
 	data, message,
 	serve::{self, ServeError, TrackWriter, TrackWriterMode},
+	util::State,
 };
 
-use super::{SessionResult, Subscriber};
+use super::Subscriber;
+
+struct SubscribeState {
+	ok: Option<message::SubscribeOk>,
+	closed: Result<(), ServeError>,
+}
+
+impl Default for SubscribeState {
+	fn default() -> Self {
+		Self {
+			ok: Default::default(),
+			closed: Ok(()),
+		}
+	}
+}
 
 // Held by the application
-pub(super) struct Subscribe<S: webtransport_generic::Session> {
-	session: Subscriber<S>,
+pub struct Subscribe<S: webtransport_generic::Session> {
+	state: State<SubscribeState>,
+	subscriber: Subscriber<S>,
 	id: u64,
-	writer: Option<TrackWriterMode>,
 }
 
 impl<S: webtransport_generic::Session> Subscribe<S> {
-	pub fn new(mut session: Subscriber<S>, id: u64, track: TrackWriter) -> SessionResult<Self> {
-		session.send_message(message::Subscribe {
+	pub(super) fn new(mut subscriber: Subscriber<S>, id: u64, track: TrackWriter) -> (Subscribe<S>, SubscribeRecv) {
+		subscriber.send_message(message::Subscribe {
 			id,
 			track_alias: id,
 			track_namespace: track.namespace.clone(),
@@ -23,35 +38,77 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 			start: Default::default(),
 			end: Default::default(),
 			params: Default::default(),
-		})?;
+		});
 
-		Ok(Self {
-			session,
+		let (send, recv) = State::default();
+
+		let send = Subscribe {
+			state: send,
+			subscriber,
 			id,
+		};
+
+		let recv = SubscribeRecv {
+			state: recv,
 			writer: Some(track.into()),
-		})
+		};
+
+		(send, recv)
 	}
 
-	pub fn recv_ok(&mut self, _msg: message::SubscribeOk) -> Result<(), ServeError> {
-		// TODO
+	// Block until the subscription is closed.
+	pub async fn serve(self) -> Result<(), ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+				state.modified().ok_or(ServeError::Done)?
+			};
+
+			notify.await
+		}
+	}
+}
+
+impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
+	fn drop(&mut self) {
+		self.subscriber.send_message(message::Unsubscribe { id: self.id });
+	}
+}
+
+pub(super) struct SubscribeRecv {
+	state: State<SubscribeState>,
+	writer: Option<TrackWriterMode>,
+}
+
+impl SubscribeRecv {
+	pub fn recv_ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		if state.ok.is_some() {
+			return Err(ServeError::Duplicate);
+		}
+
+		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		state.ok = Some(msg);
+
 		Ok(())
 	}
 
-	pub fn recv_error(&mut self, code: u64) -> Result<(), ServeError> {
-		self.close(ServeError::Closed(code))
-	}
+	pub fn recv_error(mut self, err: ServeError) -> Result<(), ServeError> {
+		let writer = self.writer.take().ok_or(ServeError::Done)?;
+		writer.close(err.clone())?;
 
-	pub fn recv_done(&mut self, code: u64) -> Result<(), ServeError> {
-		self.close(ServeError::Closed(code))
-	}
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
 
-	fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.writer.as_mut().unwrap().close(err)
+		Ok(())
 	}
 
 	pub fn recv_track(&mut self, header: data::TrackHeader) -> Result<serve::StreamWriter, ServeError> {
-		let stream = match self.writer.take().unwrap() {
-			TrackWriterMode::Track(init) => init.stream(header.send_order),
+		let writer = self.writer.take().ok_or(ServeError::Done)?;
+
+		let stream = match writer {
+			TrackWriterMode::Track(init) => init.stream(header.send_order)?,
 			_ => return Err(ServeError::Mode),
 		};
 
@@ -61,8 +118,10 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 	}
 
 	pub fn recv_group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
-		let mut groups = match self.writer.take().unwrap() {
-			TrackWriterMode::Track(init) => init.groups(),
+		let writer = self.writer.take().ok_or(ServeError::Done)?;
+
+		let mut groups = match writer {
+			TrackWriterMode::Track(init) => init.groups()?,
 			TrackWriterMode::Groups(groups) => groups,
 			_ => return Err(ServeError::Mode),
 		};
@@ -71,14 +130,17 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 			group_id: header.group_id,
 			priority: header.send_order,
 		})?;
+
 		self.writer = Some(groups.into());
 
 		Ok(writer)
 	}
 
 	pub fn recv_object(&mut self, header: data::ObjectHeader) -> Result<serve::ObjectWriter, ServeError> {
-		let mut objects = match self.writer.take().unwrap() {
-			TrackWriterMode::Track(init) => init.objects(),
+		let writer = self.writer.take().ok_or(ServeError::Done)?;
+
+		let mut objects = match writer {
+			TrackWriterMode::Track(init) => init.objects()?,
 			TrackWriterMode::Objects(objects) => objects,
 			_ => return Err(ServeError::Mode),
 		};
@@ -88,14 +150,17 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 			object_id: header.object_id,
 			priority: header.send_order,
 		})?;
+
 		self.writer = Some(objects.into());
 
 		Ok(writer)
 	}
 
 	pub fn recv_datagram(&mut self, datagram: data::Datagram) -> Result<(), ServeError> {
-		let mut datagrams = match self.writer.take().unwrap() {
-			TrackWriterMode::Track(init) => init.datagrams(),
+		let writer = self.writer.take().ok_or(ServeError::Done)?;
+
+		let mut datagrams = match writer {
+			TrackWriterMode::Track(init) => init.datagrams()?,
 			TrackWriterMode::Datagrams(datagrams) => datagrams,
 			_ => return Err(ServeError::Mode),
 		};
@@ -108,12 +173,5 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 		})?;
 
 		Ok(())
-	}
-}
-
-impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
-	fn drop(&mut self) {
-		let msg = message::Unsubscribe { id: self.id };
-		self.session.send_message(msg).ok();
 	}
 }

@@ -76,10 +76,7 @@ impl SessionError {
 			Self::Duplicate => 409,
 			Self::Internal => 500,
 			Self::WrongSize => 400,
-
 			Self::Cache(err) => err.code(),
 		}
 	}
 }
-
-pub type SessionResult<T> = Result<T, SessionError>;

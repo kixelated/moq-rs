@@ -11,7 +11,7 @@
 use std::{cmp, fmt, ops::Deref, sync::Arc};
 
 use super::{ServeError, Track};
-use crate::util::Watch;
+use crate::util::State;
 use bytes::Bytes;
 
 pub struct Objects {
@@ -20,13 +20,13 @@ pub struct Objects {
 
 impl Objects {
 	pub fn produce(self) -> (ObjectsWriter, ObjectsReader) {
-		let state = Watch::new(ObjectsState::default());
+		let (writer, reader) = State::default();
 
 		let writer = ObjectsWriter {
-			state: state.clone(),
+			state: writer,
 			track: self.track.clone(),
 		};
-		let reader = ObjectsReader::new(state, self.track);
+		let reader = ObjectsReader::new(reader, self.track);
 
 		(writer, reader)
 	}
@@ -40,16 +40,8 @@ struct ObjectsState {
 	// Increased each time objects changes.
 	epoch: usize,
 
-	// Set when the writer or all readers are dropped.
+	// Can be sent by the writer with an explicit error code.
 	closed: Result<(), ServeError>,
-}
-
-impl ObjectsState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
 impl Default for ObjectsState {
@@ -64,7 +56,7 @@ impl Default for ObjectsState {
 
 #[derive(Debug)]
 pub struct ObjectsWriter {
-	state: Watch<ObjectsState>,
+	state: State<ObjectsState>,
 	pub track: Arc<Track>,
 }
 
@@ -85,7 +77,7 @@ impl ObjectsWriter {
 
 		let (writer, reader) = object.produce();
 
-		let mut state = self.state.lock_mut();
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 
 		if let Some(first) = state.objects.first() {
 			match writer.group_id.cmp(&first.group_id) {
@@ -102,8 +94,11 @@ impl ObjectsWriter {
 		Ok(writer)
 	}
 
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
+		Ok(())
 	}
 }
 
@@ -115,30 +110,16 @@ impl Deref for ObjectsWriter {
 	}
 }
 
-impl Drop for ObjectsWriter {
-	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
-	}
-}
-
 #[derive(Clone, Debug)]
 pub struct ObjectsReader {
-	state: Watch<ObjectsState>,
+	state: State<ObjectsState>,
 	pub track: Arc<Track>,
 	epoch: usize,
-
-	_dropped: Arc<ObjectsDropped>,
 }
 
 impl ObjectsReader {
-	fn new(state: Watch<ObjectsState>, track: Arc<Track>) -> Self {
-		let _dropped = Arc::new(ObjectsDropped { state: state.clone() });
-		Self {
-			state,
-			track,
-			epoch: 0,
-			_dropped,
-		}
+	fn new(state: State<ObjectsState>, track: Arc<Track>) -> Self {
+		Self { state, track, epoch: 0 }
 	}
 
 	pub async fn next(&mut self) -> Result<Option<ObjectReader>, ServeError> {
@@ -151,10 +132,10 @@ impl ObjectsReader {
 					return Ok(Some(state.objects[index].clone()));
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Err(ServeError::Done),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None), // No more updates will come
 				}
 			};
 
@@ -178,22 +159,6 @@ impl Deref for ObjectsReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.track
-	}
-}
-
-struct ObjectsDropped {
-	state: Watch<ObjectsState>,
-}
-
-impl fmt::Debug for ObjectsDropped {
-	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
-	}
-}
-
-impl Drop for ObjectsDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }
 
@@ -222,11 +187,11 @@ impl Deref for ObjectInfo {
 
 impl ObjectInfo {
 	pub fn produce(self) -> (ObjectWriter, ObjectReader) {
-		let state = Watch::new(ObjectState::default());
+		let (writer, reader) = State::default();
 		let info = Arc::new(self);
 
-		let writer = ObjectWriter::new(state.clone(), info.clone());
-		let reader = ObjectReader::new(state, info);
+		let writer = ObjectWriter::new(writer, info.clone());
+		let reader = ObjectReader::new(reader, info);
 
 		(writer, reader)
 	}
@@ -249,14 +214,6 @@ struct ObjectState {
 
 	// Set when the writer is dropped.
 	closed: Result<(), ServeError>,
-}
-
-impl ObjectState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
 impl fmt::Debug for ObjectState {
@@ -282,7 +239,7 @@ impl Default for ObjectState {
 #[derive(Debug)]
 pub struct ObjectWriter {
 	// Mutable segment state.
-	state: Watch<ObjectState>,
+	state: State<ObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<ObjectInfo>,
@@ -290,28 +247,24 @@ pub struct ObjectWriter {
 
 impl ObjectWriter {
 	/// Create a new segment with the given info.
-	fn new(state: Watch<ObjectState>, object: Arc<ObjectInfo>) -> Self {
+	fn new(state: State<ObjectState>, object: Arc<ObjectInfo>) -> Self {
 		Self { state, object }
 	}
 
 	/// Write a new chunk of bytes.
 	pub fn write(&mut self, chunk: Bytes) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.chunks.push(chunk);
 
 		Ok(())
 	}
 
 	/// Close the segment with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
-	}
-}
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
 
-impl Drop for ObjectWriter {
-	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
+		Ok(())
 	}
 }
 
@@ -327,7 +280,7 @@ impl Deref for ObjectWriter {
 #[derive(Clone, Debug)]
 pub struct ObjectReader {
 	// Modify the segment state.
-	state: Watch<ObjectState>,
+	state: State<ObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<ObjectInfo>,
@@ -335,18 +288,14 @@ pub struct ObjectReader {
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
 	index: usize,
-
-	_dropped: Arc<ObjectDropped>,
 }
 
 impl ObjectReader {
-	fn new(state: Watch<ObjectState>, object: Arc<ObjectInfo>) -> Self {
-		let _dropped = Arc::new(ObjectDropped::new(state.clone()));
+	fn new(state: State<ObjectState>, object: Arc<ObjectInfo>) -> Self {
 		Self {
 			state,
 			object,
 			index: 0,
-			_dropped,
 		}
 	}
 
@@ -362,10 +311,10 @@ impl ObjectReader {
 					return Ok(Some(chunk));
 				}
 
-				match &state.closed {
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
-					Ok(()) => state.changed(),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None), // No more updates will come
 				}
 			};
 
@@ -388,27 +337,5 @@ impl Deref for ObjectReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.object
-	}
-}
-
-struct ObjectDropped {
-	state: Watch<ObjectState>,
-}
-
-impl ObjectDropped {
-	fn new(state: Watch<ObjectState>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for ObjectDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for ObjectDropped {
-	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
 	}
 }

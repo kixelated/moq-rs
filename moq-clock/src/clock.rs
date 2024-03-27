@@ -1,7 +1,7 @@
 use anyhow::Context;
 use moq_transport::serve::{
 	DatagramsReader, Group, GroupWriter, GroupsReader, GroupsWriter, ObjectsReader, StreamReader, TrackReader,
-	TrackReaderMode, TrackWriter,
+	TrackReaderMode,
 };
 
 use chrono::prelude::*;
@@ -11,8 +11,8 @@ pub struct Publisher {
 }
 
 impl Publisher {
-	pub fn new(track: TrackWriter) -> Self {
-		Self { track: track.groups() }
+	pub fn new(track: GroupsWriter) -> Self {
+		Self { track }
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {

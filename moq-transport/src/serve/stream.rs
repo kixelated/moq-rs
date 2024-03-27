@@ -1,7 +1,9 @@
 use bytes::Bytes;
 use std::{fmt, ops::Deref, sync::Arc};
 
-use super::{ServeError, State, StateReader, StateWriter, Track};
+use crate::util::State;
+
+use super::{ServeError, Track};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Stream {
@@ -57,19 +59,20 @@ impl Default for StreamState {
 #[derive(Debug, Clone)]
 pub struct StreamWriter {
 	// Mutable stream state.
-	state: StateWriter<StreamState>,
+	state: State<StreamState>,
 
 	// Immutable stream state.
 	pub stream: Arc<Stream>,
 }
 
 impl StreamWriter {
-	fn new(state: StateWriter<StreamState>, stream: Arc<Stream>) -> Self {
+	fn new(state: State<StreamState>, stream: Arc<Stream>) -> Self {
 		Self { state, stream }
 	}
 
 	pub fn create(&mut self, group_id: u64) -> Result<StreamGroupWriter, ServeError> {
-		let mut state = self.state.lock_mut()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+
 		if let Some(latest) = &state.latest {
 			if latest.group_id > group_id {
 				return Err(ServeError::Duplicate);
@@ -95,7 +98,7 @@ impl StreamWriter {
 	pub fn append(&mut self) -> Result<StreamGroupWriter, ServeError> {
 		let next = self
 			.state
-			.lock()?
+			.lock()
 			.latest
 			.as_ref()
 			.map(|g| g.group_id + 1)
@@ -104,8 +107,10 @@ impl StreamWriter {
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut()?.close(err);
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
 		Ok(())
 	}
 }
@@ -122,7 +127,7 @@ impl Deref for StreamWriter {
 #[derive(Clone, Debug)]
 pub struct StreamReader {
 	// Modify the stream state.
-	state: StateReader<StreamState>,
+	state: State<StreamState>,
 
 	// Immutable stream state.
 	pub stream: Arc<Stream>,
@@ -133,7 +138,7 @@ pub struct StreamReader {
 }
 
 impl StreamReader {
-	fn new(state: StateReader<StreamState>, stream: Arc<Stream>) -> Self {
+	fn new(state: State<StreamState>, stream: Arc<Stream>) -> Self {
 		Self {
 			state,
 			stream,
@@ -152,10 +157,10 @@ impl StreamReader {
 					return Ok(Some(latest));
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
 				}
 			};
 
@@ -192,21 +197,31 @@ impl Deref for StreamGroup {
 	}
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct StreamGroupState {
 	// The objects that have been received thus far.
 	objects: Vec<StreamObjectReader>,
+	closed: Result<(), ServeError>,
+}
+
+impl Default for StreamGroupState {
+	fn default() -> Self {
+		Self {
+			objects: Vec::new(),
+			closed: Ok(()),
+		}
+	}
 }
 
 #[derive(Debug)]
 pub struct StreamGroupWriter {
-	state: StateWriter<StreamGroupState>,
+	state: State<StreamGroupState>,
 	pub group: Arc<StreamGroup>,
 	next: u64,
 }
 
 impl StreamGroupWriter {
-	fn new(state: StateWriter<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
+	fn new(state: State<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
 		Self { state, group, next: 0 }
 	}
 
@@ -218,7 +233,7 @@ impl StreamGroupWriter {
 	}
 
 	pub fn create(&mut self, size: usize) -> Result<StreamObjectWriter, ServeError> {
-		let mut state = self.state.lock_mut()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 
 		let (writer, reader) = StreamObject {
 			group: self.group.clone(),
@@ -233,8 +248,10 @@ impl StreamGroupWriter {
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut()?.close(err);
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
 		Ok(())
 	}
 }
@@ -250,12 +267,12 @@ impl Deref for StreamGroupWriter {
 #[derive(Debug, Clone)]
 pub struct StreamGroupReader {
 	pub group: Arc<StreamGroup>,
-	state: StateReader<StreamGroupState>,
+	state: State<StreamGroupState>,
 	index: usize,
 }
 
 impl StreamGroupReader {
-	fn new(state: StateReader<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
+	fn new(state: State<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
 		Self { state, group, index: 0 }
 	}
 
@@ -276,10 +293,10 @@ impl StreamGroupReader {
 					return Ok(Some(state.objects[self.index].clone()));
 				}
 
-				match state.closed() {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
 				}
 			};
 
@@ -333,10 +350,20 @@ impl Deref for StreamObject {
 	}
 }
 
-#[derive(Default)]
 struct StreamObjectState {
 	// The data that has been received thus far.
 	chunks: Vec<Bytes>,
+
+	closed: Result<(), ServeError>,
+}
+
+impl Default for StreamObjectState {
+	fn default() -> Self {
+		Self {
+			chunks: Vec::new(),
+			closed: Ok(()),
+		}
+	}
 }
 
 impl fmt::Debug for StreamObjectState {
@@ -352,7 +379,7 @@ impl fmt::Debug for StreamObjectState {
 #[derive(Debug)]
 pub struct StreamObjectWriter {
 	// Mutable segment state.
-	state: StateWriter<StreamObjectState>,
+	state: State<StreamObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<StreamObject>,
@@ -363,7 +390,7 @@ pub struct StreamObjectWriter {
 
 impl StreamObjectWriter {
 	/// Create a new segment with the given info.
-	fn new(state: StateWriter<StreamObjectState>, object: Arc<StreamObject>) -> Self {
+	fn new(state: State<StreamObjectState>, object: Arc<StreamObject>) -> Self {
 		Self {
 			state,
 			remain: object.size,
@@ -378,26 +405,36 @@ impl StreamObjectWriter {
 		}
 		self.remain -= chunk.len();
 
-		let mut state = self.state.lock_mut()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.chunks.push(chunk);
 
 		Ok(())
 	}
 
-	/// Close the segment with an error.
-	pub fn close(&mut self, mut err: ServeError) -> Result<(), ServeError> {
-		if err == ServeError::Done && self.remain != 0 {
-			err = ServeError::Size;
-		}
+	/// Close the stream with an error.
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
 
-		self.state.lock_mut()?.close(err);
 		Ok(())
 	}
 }
 
 impl Drop for StreamObjectWriter {
+	// Make sure we fully write the segment, otherwise close it with an error.
 	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
+		if self.remain == 0 {
+			return;
+		}
+
+		let state = self.state.lock();
+		if state.closed.is_err() {
+			return;
+		}
+
+		if let Some(mut state) = state.into_mut() {
+			state.closed = Err(ServeError::Size);
+		}
 	}
 }
 
@@ -413,7 +450,7 @@ impl Deref for StreamObjectWriter {
 #[derive(Clone, Debug)]
 pub struct StreamObjectReader {
 	// Modify the segment state.
-	state: StateReader<StreamObjectState>,
+	state: State<StreamObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<StreamObject>,
@@ -424,7 +461,7 @@ pub struct StreamObjectReader {
 }
 
 impl StreamObjectReader {
-	fn new(state: StateReader<StreamObjectState>, object: Arc<StreamObject>) -> Self {
+	fn new(state: State<StreamObjectState>, object: Arc<StreamObject>) -> Self {
 		Self {
 			state,
 			object,
@@ -444,10 +481,10 @@ impl StreamObjectReader {
 					return Ok(Some(chunk));
 				}
 
-				match state.closed() {
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err),
-					Ok(()) => state.changed(),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
 				}
 			};
 

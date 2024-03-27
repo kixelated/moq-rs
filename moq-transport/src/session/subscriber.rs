@@ -6,28 +6,31 @@ use std::{
 
 use crate::{
 	coding::{Decode, Reader},
-	data, message, serve, setup,
+	data,
+	message::{self, Message},
+	serve::{self, ServeError},
+	setup,
 	util::Queue,
 };
 
 use webtransport_generic::RecvStream;
 
-use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe};
+use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeRecv};
 
 // TODO remove Clone.
 #[derive(Clone)]
 pub struct Subscriber<S: webtransport_generic::Session> {
-	announced: Arc<Mutex<HashMap<String, AnnouncedRecv<S>>>>,
-	announced_queue: Queue<Announced<S>, SessionError>,
+	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
+	announced_queue: Queue<Announced<S>>,
 
-	subscribes: Arc<Mutex<HashMap<u64, Subscribe<S>>>>,
+	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
 
-	outgoing: Queue<message::Message, SessionError>,
+	outgoing: Queue<Message>,
 }
 
 impl<S: webtransport_generic::Session> Subscriber<S> {
-	pub(super) fn new(outgoing: Queue<message::Message, SessionError>) -> Self {
+	pub(super) fn new(outgoing: Queue<Message>) -> Self {
 		Self {
 			announced: Default::default(),
 			announced_queue: Default::default(),
@@ -47,45 +50,46 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn announced(&mut self) -> Result<Announced<S>, SessionError> {
+	pub async fn announced(&mut self) -> Announced<S> {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<(), SessionError> {
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe<S>, ServeError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
-		let subscribe = Subscribe::new(self.clone(), id, track)?;
-		self.subscribes.lock().unwrap().insert(id, subscribe);
+		let (send, recv) = Subscribe::new(self.clone(), id, track);
+		self.subscribes.lock().unwrap().insert(id, recv);
 
-		Ok(())
+		Ok(send)
 	}
 
-	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) -> Result<(), SessionError> {
+	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) {
 		let msg = msg.into();
 
 		// Remove our entry on terminal state.
 		match &msg {
 			message::Subscriber::AnnounceCancel(msg) => self.drop_announce(&msg.namespace),
 			message::Subscriber::AnnounceError(msg) => self.drop_announce(&msg.namespace),
-			// TODO not terminal; we should wait for the done message.
-			message::Subscriber::Unsubscribe(msg) => self.drop_subscribe(msg.id),
 			_ => {}
 		}
 
-		log::debug!("sending message: {:?}", msg);
-		self.outgoing.push(msg.into())
+		self.outgoing.push(msg.into());
 	}
 
 	pub(super) fn recv_message(&mut self, msg: message::Publisher) -> Result<(), SessionError> {
-		log::debug!("received message: {:?}", msg);
-
-		match msg {
+		let res = match msg {
 			message::Publisher::Announce(msg) => self.recv_announce(msg),
 			message::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
 			message::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
 			message::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
 			message::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+		};
+
+		if let Err(err) = res {
+			log::warn!("failed to process message: {}", err);
 		}
+
+		Ok(())
 	}
 
 	fn recv_announce(&mut self, msg: message::Announce) -> Result<(), SessionError> {
@@ -97,50 +101,51 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		};
 
 		let (announced, recv) = Announced::new(self.clone(), msg.namespace);
-		self.announced_queue.push(announced)?;
+		self.announced_queue.push(announced);
 		entry.insert(recv);
 
 		Ok(())
 	}
 
 	fn recv_unannounce(&mut self, msg: message::Unannounce) -> Result<(), SessionError> {
-		if let Some(mut announce) = self.announced.lock().unwrap().remove(&msg.namespace) {
-			announce.recv_unannounce().ok();
-		}
+		let announce = self
+			.announced
+			.lock()
+			.unwrap()
+			.remove(&msg.namespace)
+			.ok_or(ServeError::Done)?;
+
+		announce.recv_unannounce().ok();
 
 		Ok(())
 	}
 
 	fn recv_subscribe_ok(&mut self, msg: message::SubscribeOk) -> Result<(), SessionError> {
-		if let Some(sub) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
-			sub.recv_ok(msg).ok();
-		}
+		let mut subscribes = self.subscribes.lock().unwrap();
+		let subscribe = subscribes.get_mut(&msg.id).ok_or(ServeError::Done)?;
+		subscribe.recv_ok(msg)?;
 
 		Ok(())
 	}
 
 	fn recv_subscribe_error(&mut self, msg: message::SubscribeError) -> Result<(), SessionError> {
-		if let Some(mut subscriber) = self.subscribes.lock().unwrap().remove(&msg.id) {
-			subscriber.recv_error(msg.code).ok();
-		}
+		let mut subscribes = self.subscribes.lock().unwrap();
+		let subscribe = subscribes.remove(&msg.id).ok_or(ServeError::Done)?;
+		subscribe.recv_error(ServeError::Closed(msg.code))?;
 
 		Ok(())
 	}
 
 	fn recv_subscribe_done(&mut self, msg: message::SubscribeDone) -> Result<(), SessionError> {
-		if let Some(mut subscriber) = self.subscribes.lock().unwrap().remove(&msg.id) {
-			subscriber.recv_done(msg.code).ok();
-		}
+		let mut subscribes = self.subscribes.lock().unwrap();
+		let subscribe = subscribes.remove(&msg.id).ok_or(ServeError::Done)?;
+		subscribe.recv_error(ServeError::Closed(msg.code))?;
 
 		Ok(())
 	}
 
 	fn drop_announce(&mut self, namespace: &str) {
 		self.announced.lock().unwrap().remove(namespace);
-	}
-
-	fn drop_subscribe(&mut self, id: u64) {
-		self.subscribes.lock().unwrap().remove(&id);
 	}
 
 	pub(super) async fn recv_stream(self, stream: S::RecvStream) -> Result<(), SessionError> {
@@ -247,15 +252,10 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		let mut cursor = io::Cursor::new(datagram);
 		let datagram = data::Datagram::decode(&mut cursor)?;
 
-		if let Some(subscribe) = self.subscribes.lock().unwrap().get_mut(&datagram.subscribe_id) {
-			subscribe.recv_datagram(datagram)?;
-		}
+		let mut subscribes = self.subscribes.lock().unwrap();
+		let subscribe = subscribes.get_mut(&datagram.subscribe_id).ok_or(ServeError::Done)?;
+		subscribe.recv_datagram(datagram)?;
 
 		Ok(())
-	}
-
-	pub fn close(self, err: SessionError) {
-		self.outgoing.close(err.clone()).ok();
-		self.announced_queue.close(err).ok();
 	}
 }

@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use std::{cmp, fmt, ops::Deref, sync::Arc};
 
-use crate::util::Watch;
+use crate::util::State;
 
 use super::{ServeError, Track};
 
@@ -20,10 +20,10 @@ pub struct Groups {
 
 impl Groups {
 	pub fn produce(self) -> (GroupsWriter, GroupsReader) {
-		let state = Watch::new(GroupsState::default());
+		let (writer, reader) = State::default();
 
-		let writer = GroupsWriter::new(state.clone(), self.track.clone());
-		let reader = GroupsReader::new(state, self.track);
+		let writer = GroupsWriter::new(writer, self.track.clone());
+		let reader = GroupsReader::new(reader, self.track);
 
 		(writer, reader)
 	}
@@ -45,14 +45,6 @@ struct GroupsState {
 	closed: Result<(), ServeError>,
 }
 
-impl GroupsState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
-}
-
 impl Default for GroupsState {
 	fn default() -> Self {
 		Self {
@@ -66,12 +58,12 @@ impl Default for GroupsState {
 #[derive(Debug)]
 pub struct GroupsWriter {
 	pub track: Arc<Track>,
-	state: Watch<GroupsState>,
+	state: State<GroupsState>,
 	next: u64, // Not in the state to avoid a lock
 }
 
 impl GroupsWriter {
-	fn new(state: Watch<GroupsState>, track: Arc<Track>) -> Self {
+	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
 		Self { track, state, next: 0 }
 	}
 
@@ -91,8 +83,7 @@ impl GroupsWriter {
 		};
 		let (writer, reader) = group.produce();
 
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		if let Some(latest) = &state.latest {
 			match writer.group_id.cmp(&latest.group_id) {
@@ -110,8 +101,12 @@ impl GroupsWriter {
 		Ok(writer)
 	}
 
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
+	/// Close the segment with an error.
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
+		Ok(())
 	}
 }
 
@@ -123,21 +118,15 @@ impl Deref for GroupsWriter {
 	}
 }
 
-impl Drop for GroupsWriter {
-	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct GroupsReader {
 	pub track: Arc<Track>,
-	state: Watch<GroupsState>,
+	state: State<GroupsState>,
 	epoch: u64,
 }
 
 impl GroupsReader {
-	fn new(state: Watch<GroupsState>, track: Arc<Track>) -> Self {
+	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
 		Self { track, state, epoch: 0 }
 	}
 
@@ -151,10 +140,10 @@ impl GroupsReader {
 					return Ok(state.latest.clone());
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
 				}
 			};
 
@@ -174,22 +163,6 @@ impl Deref for GroupsReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.track
-	}
-}
-
-struct GroupsDropped {
-	state: Watch<GroupsState>,
-}
-
-impl Drop for GroupsDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for GroupsDropped {
-	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
 	}
 }
 
@@ -219,11 +192,11 @@ pub struct GroupInfo {
 
 impl GroupInfo {
 	pub fn produce(self) -> (GroupWriter, GroupReader) {
-		let state = Watch::new(GroupState::default());
+		let (writer, reader) = State::default();
 		let info = Arc::new(self);
 
-		let writer = GroupWriter::new(state.clone(), info.clone());
-		let reader = GroupReader::new(state, info);
+		let writer = GroupWriter::new(writer, info.clone());
+		let reader = GroupReader::new(reader, info);
 
 		(writer, reader)
 	}
@@ -246,14 +219,6 @@ struct GroupState {
 	closed: Result<(), ServeError>,
 }
 
-impl GroupState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
-}
-
 impl Default for GroupState {
 	fn default() -> Self {
 		Self {
@@ -267,7 +232,7 @@ impl Default for GroupState {
 #[derive(Debug)]
 pub struct GroupWriter {
 	// Mutable stream state.
-	state: Watch<GroupState>,
+	state: State<GroupState>,
 
 	// Immutable stream state.
 	pub group: Arc<GroupInfo>,
@@ -277,7 +242,7 @@ pub struct GroupWriter {
 }
 
 impl GroupWriter {
-	fn new(state: Watch<GroupState>, group: Arc<GroupInfo>) -> Self {
+	fn new(state: State<GroupState>, group: Arc<GroupInfo>) -> Self {
 		Self { state, group, next: 0 }
 	}
 
@@ -301,15 +266,17 @@ impl GroupWriter {
 
 		self.next += 1;
 
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.objects.push(reader);
+
 		Ok(writer)
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
+	pub fn close(self, err: ServeError) {
+		if let Some(mut state) = self.state.lock_mut() {
+			state.closed = Err(err);
+		}
 	}
 }
 
@@ -325,7 +292,7 @@ impl Deref for GroupWriter {
 #[derive(Clone, Debug)]
 pub struct GroupReader {
 	// Modify the stream state.
-	state: Watch<GroupState>,
+	state: State<GroupState>,
 
 	// Immutable stream state.
 	pub group: Arc<GroupInfo>,
@@ -333,19 +300,11 @@ pub struct GroupReader {
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
 	index: usize,
-
-	_dropped: Arc<GroupDropped>,
 }
 
 impl GroupReader {
-	fn new(state: Watch<GroupState>, group: Arc<GroupInfo>) -> Self {
-		let _dropped = Arc::new(GroupDropped::new(state.clone()));
-		Self {
-			state,
-			group,
-			index: 0,
-			_dropped,
-		}
+	fn new(state: State<GroupState>, group: Arc<GroupInfo>) -> Self {
+		Self { state, group, index: 0 }
 	}
 
 	pub fn latest(&self) -> u64 {
@@ -372,10 +331,10 @@ impl GroupReader {
 					return Ok(Some(object));
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
 				}
 			};
 
@@ -392,28 +351,6 @@ impl Deref for GroupReader {
 	}
 }
 
-struct GroupDropped {
-	state: Watch<GroupState>,
-}
-
-impl GroupDropped {
-	fn new(state: Watch<GroupState>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for GroupDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for GroupDropped {
-	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
-	}
-}
-
 /// A subset of Object, since we use the group's info.
 #[derive(Clone, PartialEq, Debug)]
 pub struct GroupObject {
@@ -427,11 +364,11 @@ pub struct GroupObject {
 
 impl GroupObject {
 	pub fn produce(self) -> (GroupObjectWriter, GroupObjectReader) {
-		let state = Watch::new(GroupObjectState::default());
+		let (writer, reader) = State::default();
 		let info = Arc::new(self);
 
-		let writer = GroupObjectWriter::new(state.clone(), info.clone());
-		let reader = GroupObjectReader::new(state, info);
+		let writer = GroupObjectWriter::new(writer, info.clone());
+		let reader = GroupObjectReader::new(reader, info);
 
 		(writer, reader)
 	}
@@ -451,14 +388,6 @@ struct GroupObjectState {
 
 	// Set when the writer is dropped.
 	closed: Result<(), ServeError>,
-}
-
-impl GroupObjectState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
 impl fmt::Debug for GroupObjectState {
@@ -484,7 +413,7 @@ impl Default for GroupObjectState {
 #[derive(Debug)]
 pub struct GroupObjectWriter {
 	// Mutable segment state.
-	state: Watch<GroupObjectState>,
+	state: State<GroupObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<GroupObject>,
@@ -495,7 +424,7 @@ pub struct GroupObjectWriter {
 
 impl GroupObjectWriter {
 	/// Create a new segment with the given info.
-	fn new(state: Watch<GroupObjectState>, object: Arc<GroupObject>) -> Self {
+	fn new(state: State<GroupObjectState>, object: Arc<GroupObject>) -> Self {
 		Self {
 			state,
 			remain: object.size,
@@ -510,27 +439,34 @@ impl GroupObjectWriter {
 		}
 		self.remain -= chunk.len();
 
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.chunks.push(chunk);
 
 		Ok(())
 	}
 
 	/// Close the segment with an error.
-	pub fn close(&mut self, mut err: ServeError) -> Result<(), ServeError> {
-		if err == ServeError::Done && self.remain != 0 {
-			err = ServeError::Size;
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		if self.remain != 0 {
+			return Err(ServeError::Size);
 		}
 
-		self.state.lock_mut().close(err)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
 		Ok(())
 	}
 }
 
 impl Drop for GroupObjectWriter {
 	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
+		if self.remain == 0 {
+			return;
+		}
+
+		if let Some(mut state) = self.state.lock_mut() {
+			state.closed = Err(ServeError::Size);
+		}
 	}
 }
 
@@ -546,7 +482,7 @@ impl Deref for GroupObjectWriter {
 #[derive(Clone, Debug)]
 pub struct GroupObjectReader {
 	// Modify the segment state.
-	state: Watch<GroupObjectState>,
+	state: State<GroupObjectState>,
 
 	// Immutable segment state.
 	pub object: Arc<GroupObject>,
@@ -554,18 +490,14 @@ pub struct GroupObjectReader {
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
 	index: usize,
-
-	_dropped: Arc<GroupObjectDropped>,
 }
 
 impl GroupObjectReader {
-	fn new(state: Watch<GroupObjectState>, object: Arc<GroupObject>) -> Self {
-		let _dropped = Arc::new(GroupObjectDropped::new(state.clone()));
+	fn new(state: State<GroupObjectState>, object: Arc<GroupObject>) -> Self {
 		Self {
 			state,
 			object,
 			index: 0,
-			_dropped,
 		}
 	}
 
@@ -581,10 +513,10 @@ impl GroupObjectReader {
 					return Ok(Some(chunk));
 				}
 
-				match &state.closed {
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
-					Ok(()) => state.changed(),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None), // No more changes will come
 				}
 			};
 
@@ -607,27 +539,5 @@ impl Deref for GroupObjectReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.object
-	}
-}
-
-struct GroupObjectDropped {
-	state: Watch<GroupObjectState>,
-}
-
-impl GroupObjectDropped {
-	fn new(state: Watch<GroupObjectState>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for GroupObjectDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for GroupObjectDropped {
-	fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-		Ok(())
 	}
 }

@@ -34,7 +34,7 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create_track("0.mp4")?.groups();
+		let mut init_track = broadcast.create_track("0.mp4")?.groups()?;
 		init_track.next(0)?.write(init.into())?;
 
 		let mut tracks = HashMap::new();
@@ -103,7 +103,7 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 	}
 
 	fn serve_catalog(track: TrackWriter, init_track_name: &str, moov: &mp4::MoovBox) -> Result<(), anyhow::Error> {
-		let mut segment = track.groups().next(0)?;
+		let mut segment = track.groups()?.next(0)?;
 
 		let mut tracks = Vec::new();
 
@@ -242,7 +242,7 @@ struct Track {
 impl Track {
 	fn new(track: TrackWriter, timescale: u64) -> Self {
 		Self {
-			track: track.groups(),
+			track: track.groups().unwrap(),
 			current: None,
 			timescale,
 		}

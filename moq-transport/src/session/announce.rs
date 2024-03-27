@@ -1,83 +1,123 @@
-use crate::{message, serve::ServeError, util::Watch};
+use std::collections::VecDeque;
 
-use super::Publisher;
+use crate::{message, serve::ServeError, Publisher};
+
+use super::Subscribed;
+
+use crate::util::State;
+
+struct AnnounceState<S: webtransport_generic::Session> {
+	subscribers: VecDeque<Subscribed<S>>,
+	ok: bool,
+	closed: Result<(), ServeError>,
+}
+
+impl<S: webtransport_generic::Session> Default for AnnounceState<S> {
+	fn default() -> Self {
+		Self {
+			subscribers: Default::default(),
+			ok: false,
+			closed: Ok(()),
+		}
+	}
+}
+
+impl<S: webtransport_generic::Session> Drop for AnnounceState<S> {
+	fn drop(&mut self) {
+		for subscriber in self.subscribers.drain(..) {
+			subscriber.close(ServeError::NotFound).ok();
+		}
+	}
+}
 
 pub struct Announce<S: webtransport_generic::Session> {
-	session: Publisher<S>,
+	publisher: Publisher<S>,
 	namespace: String,
-	state: Watch<State>,
+	state: State<AnnounceState<S>>,
 }
 
 impl<S: webtransport_generic::Session> Announce<S> {
-	pub(super) fn new(session: Publisher<S>, namespace: &str) -> (Announce<S>, AnnounceRecv) {
-		let state = Watch::default();
-		let recv = AnnounceRecv { state: state.clone() };
-
-		let announce = Self {
-			session,
+	pub(super) fn new(mut publisher: Publisher<S>, namespace: &str) -> (Announce<S>, AnnounceRecv<S>) {
+		publisher.send_message(message::Announce {
 			namespace: namespace.to_string(),
-			state,
+			params: Default::default(),
+		});
+
+		let (send, recv) = State::default();
+
+		let send = Self {
+			publisher,
+			namespace: namespace.to_string(),
+			state: send,
 		};
+		let recv = AnnounceRecv { state: recv };
 
-		(announce, recv)
+		(send, recv)
 	}
 
-	pub fn namespace(&self) -> &str {
-		&self.namespace
+	// Run until we get an error
+	pub async fn serve(self) -> Result<(), ServeError> {
+		loop {
+			let state = self.state.lock();
+			state.closed.clone()?;
+			state.modified().ok_or(ServeError::Done)?.await
+		}
 	}
 
-	fn close(&mut self) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
-		state.closed = Err(ServeError::Done);
-
-		self.session
-			.send_message(message::Unannounce {
-				namespace: self.namespace.clone(),
-			})
-			.ok();
-
-		Ok(())
-	}
-
-	pub async fn closed(&self) -> Result<(), ServeError> {
+	pub async fn subscribed(&mut self) -> Result<Subscribed<S>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
+				if !state.subscribers.is_empty() {
+					let mut state = state.into_mut().ok_or(ServeError::Done)?;
+					let subscriber = state.subscribers.pop_front().unwrap();
+					return Ok(subscriber);
+				}
+
 				state.closed.clone()?;
-				state.changed()
+				state.modified().ok_or(ServeError::Done)?
 			};
 
-			notify.await;
+			notify.await
 		}
 	}
 }
 
 impl<S: webtransport_generic::Session> Drop for Announce<S> {
 	fn drop(&mut self) {
-		self.close().ok();
+		self.publisher.send_message(message::Unannounce {
+			namespace: self.namespace.to_string(),
+		});
 	}
 }
 
-pub(super) struct AnnounceRecv {
-	state: Watch<State>,
+pub(super) struct AnnounceRecv<S: webtransport_generic::Session> {
+	state: State<AnnounceState<S>>,
 }
 
-impl AnnounceRecv {
-	pub fn recv_error(&mut self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut();
-		state.closed.clone()?;
-		state.closed = Err(err);
+impl<S: webtransport_generic::Session> AnnounceRecv<S> {
+	pub fn recv_ok(&mut self) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		if state.ok {
+			return Err(ServeError::Duplicate);
+		}
+
+		state.ok = true;
+
 		Ok(())
 	}
-}
 
-struct State {
-	closed: Result<(), ServeError>,
-}
+	pub fn recv_error(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
 
-impl Default for State {
-	fn default() -> Self {
-		Self { closed: Ok(()) }
+		Ok(())
+	}
+
+	pub fn recv_subscribe(&mut self, subscriber: Subscribed<S>) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.subscribers.push_back(subscriber);
+
+		Ok(())
 	}
 }

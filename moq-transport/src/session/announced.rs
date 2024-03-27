@@ -1,114 +1,86 @@
-use crate::{message, serve::ServeError, util::Watch};
+use crate::{message, serve::ServeError, util::State};
 
 use super::Subscriber;
 
+// There's currently no feedback from the peer, so the shared state is empty.
+// If Unannounce contained an error code then we'd be talking.
+#[derive(Default)]
+struct AnnouncedState {}
+
 pub struct Announced<S: webtransport_generic::Session> {
+	session: Subscriber<S>,
 	namespace: String,
-	state: Watch<State<S>>,
+	state: State<AnnouncedState>,
+
+	ok: bool,
+	error: Option<ServeError>,
 }
 
 impl<S: webtransport_generic::Session> Announced<S> {
-	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv<S>) {
-		let state = Watch::new(State::new(session.clone(), namespace.clone()));
-		let recv = AnnouncedRecv { state: state.clone() };
+	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv) {
+		let (send, recv) = State::default();
+		let send = Self {
+			session,
+			namespace,
+			ok: false,
+			error: None,
+			state: send,
+		};
+		let recv = AnnouncedRecv { _state: recv };
 
-		let announced = Self { namespace, state };
-
-		(announced, recv)
+		(send, recv)
 	}
 
 	pub fn namespace(&self) -> &str {
 		&self.namespace
 	}
 
-	// Send an ANNOUNCE_OK
-	pub fn accept(&mut self) -> Result<(), ServeError> {
-		self.state.lock_mut().accept()
-	}
+	// Send an ANNOUNCE_OK and block until we get an UNANNOUNCE
+	pub async fn serve(mut self) -> Result<(), ServeError> {
+		self.session.send_message(message::AnnounceOk {
+			namespace: self.namespace.clone(),
+		});
 
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
-	}
+		self.ok = true;
 
-	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			let notify = {
-				let state = self.state.lock();
-				state.closed.clone()?;
-				state.changed()
-			};
-
-			notify.await;
+			// Wow this is dumb and yet pretty cool.
+			// Basically loop until the state changes and exit when Recv is dropped.
+			self.state.lock().modified().ok_or(ServeError::Done)?.await;
 		}
+	}
+
+	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
+		self.error = Some(err);
+		Ok(())
 	}
 }
 
 impl<S: webtransport_generic::Session> Drop for Announced<S> {
 	fn drop(&mut self) {
-		self.close(ServeError::Done).ok();
-	}
-}
-
-pub(super) struct AnnouncedRecv<S: webtransport_generic::Session> {
-	state: Watch<State<S>>,
-}
-
-impl<S: webtransport_generic::Session> AnnouncedRecv<S> {
-	pub fn recv_unannounce(&mut self) -> Result<(), ServeError> {
-		self.state.lock_mut().close(ServeError::Done)
-	}
-}
-
-struct State<S: webtransport_generic::Session> {
-	namespace: String,
-	session: Subscriber<S>,
-	ok: bool,
-	closed: Result<(), ServeError>,
-}
-
-impl<S: webtransport_generic::Session> State<S> {
-	fn new(session: Subscriber<S>, namespace: String) -> Self {
-		Self {
-			session,
-			namespace,
-			ok: false,
-			closed: Ok(()),
-		}
-	}
-
-	pub fn accept(&mut self) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.ok = true;
-
-		self.session
-			.send_message(message::AnnounceOk {
-				namespace: self.namespace.clone(),
-			})
-			.ok();
-
-		Ok(())
-	}
-
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err.clone());
+		let err = self.error.clone().unwrap_or(ServeError::Done);
 
 		if self.ok {
-			self.session
-				.send_message(message::AnnounceCancel {
-					namespace: self.namespace.clone(),
-				})
-				.ok();
+			self.session.send_message(message::AnnounceCancel {
+				namespace: self.namespace.clone(),
+			});
 		} else {
-			self.session
-				.send_message(message::AnnounceError {
-					namespace: self.namespace.clone(),
-					code: err.code(),
-					reason: err.to_string(),
-				})
-				.ok();
+			self.session.send_message(message::AnnounceError {
+				namespace: self.namespace.clone(),
+				code: err.code(),
+				reason: err.to_string(),
+			});
 		}
+	}
+}
 
+pub(super) struct AnnouncedRecv {
+	_state: State<AnnouncedState>,
+}
+
+impl AnnouncedRecv {
+	pub fn recv_unannounce(self) -> Result<(), ServeError> {
+		// Will cause the state to be dropped
 		Ok(())
 	}
 }

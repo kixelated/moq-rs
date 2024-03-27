@@ -12,14 +12,14 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::Watch;
+use crate::util::State;
 
 use super::{
 	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
 	ObjectsWriter, ServeError, Stream, StreamReader, StreamWriter,
 };
 use paste::paste;
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,11 +37,11 @@ impl Track {
 	}
 
 	pub fn produce(self) -> (TrackWriter, TrackReader) {
-		let state = Watch::new(TrackState::default());
+		let (writer, reader) = State::default();
 		let info = Arc::new(self);
 
-		let writer = TrackWriter::new(state.clone(), info.clone());
-		let reader = TrackReader::new(state, info);
+		let writer = TrackWriter::new(writer, info.clone());
+		let reader = TrackReader::new(reader, info);
 
 		(writer, reader)
 	}
@@ -51,14 +51,6 @@ impl Track {
 struct TrackState {
 	mode: Option<TrackReaderMode>,
 	closed: Result<(), ServeError>,
-}
-
-impl TrackState {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
 impl Default for TrackState {
@@ -73,64 +65,66 @@ impl Default for TrackState {
 /// Creates new streams for a track.
 #[derive(Debug)]
 pub struct TrackWriter {
-	state: Watch<TrackState>,
+	state: State<TrackState>,
 	pub track: Arc<Track>,
 }
 
 impl TrackWriter {
 	/// Create a track with the given name.
-	fn new(state: Watch<TrackState>, track: Arc<Track>) -> Self {
+	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
 		Self { state, track }
 	}
 
-	pub fn stream(self, priority: u64) -> StreamWriter {
+	pub fn stream(self, priority: u64) -> Result<StreamWriter, ServeError> {
 		let streams = Stream {
 			track: self.track.clone(),
 			priority,
 		};
 		let (writer, reader) = streams.produce();
 
-		self.state.lock_mut().mode = Some(reader.into());
-		writer
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
 	}
 
-	pub fn groups(self) -> GroupsWriter {
+	pub fn groups(self) -> Result<GroupsWriter, ServeError> {
 		let groups = Groups {
 			track: self.track.clone(),
 		};
 		let (writer, reader) = groups.produce();
 
-		self.state.lock_mut().mode = Some(reader.into());
-		writer
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
 	}
 
-	pub fn objects(self) -> ObjectsWriter {
+	pub fn objects(self) -> Result<ObjectsWriter, ServeError> {
 		let objects = Objects {
 			track: self.track.clone(),
 		};
 		let (writer, reader) = objects.produce();
 
-		self.state.lock_mut().mode = Some(reader.into());
-		writer
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
 	}
 
-	pub fn datagrams(self) -> DatagramsWriter {
+	pub fn datagrams(self) -> Result<DatagramsWriter, ServeError> {
 		let datagrams = Datagrams {
 			track: self.track.clone(),
 		};
 		let (writer, reader) = datagrams.produce();
 
-		self.state.lock_mut().mode = Some(reader.into());
-		writer
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
 	}
 
 	/// Close the track with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
-	}
-
-	pub fn closed(&self) -> Result<(), ServeError> {
-		self.state.lock().closed.clone()
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+		Ok(())
 	}
 }
 
@@ -142,27 +136,16 @@ impl Deref for TrackWriter {
 	}
 }
 
-impl Drop for TrackWriter {
-	fn drop(&mut self) {
-		let state = self.state.lock();
-		if state.mode.is_none() {
-			state.into_mut().close(ServeError::Done).ok();
-		}
-	}
-}
-
 /// Receives new streams for a track.
 #[derive(Clone, Debug)]
 pub struct TrackReader {
-	state: Watch<TrackState>,
+	state: State<TrackState>,
 	pub track: Arc<Track>,
-	_dropped: Arc<TrackDropped>,
 }
 
 impl TrackReader {
-	fn new(state: Watch<TrackState>, track: Arc<Track>) -> Self {
-		let _dropped = Arc::new(TrackDropped::new(state.clone()));
-		Self { state, track, _dropped }
+	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
+		Self { state, track }
 	}
 
 	pub async fn mode(self) -> Result<TrackReaderMode, ServeError> {
@@ -173,10 +156,10 @@ impl TrackReader {
 					return Ok(mode.clone());
 				}
 
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Err(ServeError::Done),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Err(ServeError::Done),
 				}
 			};
 
@@ -242,7 +225,7 @@ macro_rules! track_writers {
 			})*
 
 			impl TrackWriterMode {
-				pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+				pub fn close(self, err: ServeError) -> Result<(), ServeError>{
 					match self {
 						$(Self::$name(writer) => writer.close(err),)*
 					}
@@ -253,25 +236,3 @@ macro_rules! track_writers {
 }
 
 track_writers!(Track, Stream, Groups, Objects, Datagrams,);
-
-struct TrackDropped {
-	state: Watch<TrackState>,
-}
-
-impl TrackDropped {
-	fn new(state: Watch<TrackState>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for TrackDropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for TrackDropped {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("TrackDropped").finish()
-	}
-}
