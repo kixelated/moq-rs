@@ -72,6 +72,10 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 
 impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
 	fn drop(&mut self) {
+		if self.state.lock().closed.is_err() {
+			return;
+		}
+
 		self.subscriber.send_message(message::Unsubscribe { id: self.id });
 	}
 }

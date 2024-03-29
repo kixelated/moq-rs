@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-	coding::{Decode, Reader},
+	coding::Decode,
 	data,
 	message::{self, Message},
 	serve::{self, ServeError},
@@ -15,7 +15,7 @@ use crate::{
 
 use webtransport_generic::RecvStream;
 
-use super::{Announced, AnnouncedRecv, Session, SessionError, Subscribe, SubscribeRecv};
+use super::{Announced, AnnouncedRecv, Reader, Session, SessionError, Subscribe, SubscribeRecv};
 
 // TODO remove Clone.
 #[derive(Clone)]
@@ -164,7 +164,12 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let subscribe = match subscribes.get_mut(&id) {
 				Some(subscribe) => subscribe,
-				None => return Ok(reader.into_inner().stop(1)), // TODO define error codes?
+				None => {
+					return {
+						reader.into_inner().close(1);
+						Ok(())
+					}
+				} // TODO define error codes?
 			};
 
 			match header {
@@ -200,7 +205,8 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 
 			let mut remain = chunk.size;
 			while remain > 0 {
-				let chunk = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
+				let chunk = reader.read_chunk(remain).await?.ok_or(SessionError::WrongSize)?;
+
 				log::trace!("received track payload: {:?}", chunk.len());
 				remain -= chunk.len();
 				object.write(chunk)?;
@@ -223,7 +229,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 			let mut object = group.create(object.size)?;
 
 			while remain > 0 {
-				let data = reader.read(remain).await?.ok_or(SessionError::WrongSize)?;
+				let data = reader.read_chunk(remain).await?.ok_or(SessionError::WrongSize)?;
 				log::trace!("received group payload: {:?}", data.len());
 				remain -= data.len();
 				object.write(data)?;
@@ -239,7 +245,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 	) -> Result<(), SessionError> {
 		log::trace!("received object: {:?}", object.object);
 
-		while let Some(data) = reader.read(usize::MAX).await? {
+		while let Some(data) = reader.read_chunk(usize::MAX).await? {
 			log::trace!("received object payload: {:?}", data.len());
 			object.write(data)?;
 		}

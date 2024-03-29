@@ -12,7 +12,7 @@ use tokio::io::AsyncRead;
 
 // TODO: clap complete
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 

@@ -85,6 +85,10 @@ impl<S: webtransport_generic::Session> Announce<S> {
 
 impl<S: webtransport_generic::Session> Drop for Announce<S> {
 	fn drop(&mut self) {
+		if self.state.lock().closed.is_err() {
+			return;
+		}
+
 		self.publisher.send_message(message::Unannounce {
 			namespace: self.namespace.to_string(),
 		});

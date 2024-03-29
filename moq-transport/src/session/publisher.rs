@@ -203,12 +203,12 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 		self.webtransport
 			.open_uni()
 			.await
-			.map_err(|e| SessionError::WebTransport(Arc::new(e)))
+			.map_err(SessionError::from_webtransport)
 	}
 
 	pub(super) fn send_datagram(&self, data: bytes::Bytes) -> Result<(), SessionError> {
 		self.webtransport
 			.send_datagram(data)
-			.map_err(|e| SessionError::WebTransport(Arc::new(e)))
+			.map_err(SessionError::from_webtransport)
 	}
 }

@@ -7,8 +7,7 @@ use std::{
 use std::collections::VecDeque;
 
 use moq_transport::serve::{self, ServeError, TrackReader, TrackWriter};
-use moq_transport::session::SessionError;
-use moq_transport::util::Watch;
+use moq_transport::util::State;
 use url::Url;
 
 #[derive(Clone)]
@@ -40,11 +39,11 @@ impl Origin {
 		}
 	}
 
-	pub fn announce(&self, namespace: &str) -> Result<OriginPublisher, SessionError> {
+	pub fn announce(&self, namespace: &str) -> Result<OriginPublisher, ServeError> {
 		let mut origins = self.origins.lock().unwrap();
 		let entry = match origins.entry(namespace.to_string()) {
 			hash_map::Entry::Vacant(entry) => entry,
-			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
+			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate),
 		};
 
 		let (publisher, subscriber) = self.produce(namespace);
@@ -77,14 +76,9 @@ impl Origin {
 	Ok(())
 	*/
 
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<serve::TrackReader, SessionError> {
-		let mut origin = self
-			.origins
-			.lock()
-			.unwrap()
-			.get(namespace)
-			.cloned()
-			.ok_or(ServeError::NotFound)?;
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<serve::TrackReader, ServeError> {
+		let origins = self.origins.lock().unwrap();
+		let mut origin = origins.get(namespace).cloned().ok_or(ServeError::NotFound)?;
 
 		let track = origin.request_track(name)?;
 		Ok(track)
@@ -150,24 +144,24 @@ impl Origin {
 
 	/// Create a new broadcast.
 	fn produce(&self, namespace: &str) -> (OriginPublisher, OriginSubscriber) {
-		let state = Watch::new(State::new(namespace));
+		let (send, recv) = State::new(OriginState::new(namespace));
 
-		let publisher = OriginPublisher::new(state.clone());
-		let subscriber = OriginSubscriber::new(state);
+		let publisher = OriginPublisher::new(send);
+		let subscriber = OriginSubscriber::new(recv);
 
 		(publisher, subscriber)
 	}
 }
 
 #[derive(Debug)]
-struct State {
+struct OriginState {
 	namespace: String,
 	tracks: HashMap<String, TrackReader>,
 	requested: VecDeque<TrackWriter>,
 	closed: Result<(), ServeError>,
 }
 
-impl State {
+impl OriginState {
 	pub fn new(namespace: &str) -> Self {
 		Self {
 			namespace: namespace.to_string(),
@@ -188,11 +182,15 @@ impl State {
 	}
 
 	pub fn request_track(&mut self, name: &str) -> Result<TrackReader, ServeError> {
+		log::info!("requesting track: name={}", name);
+
 		// Insert the track into our Map so we deduplicate future requests.
 		let entry = match self.tracks.entry(name.to_string()) {
 			hash_map::Entry::Vacant(entry) => entry,
 			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
 		};
+
+		log::info!("not in cache, making it");
 
 		self.closed.clone()?;
 
@@ -212,17 +210,11 @@ impl State {
 
 		Ok(subscriber)
 	}
-
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
-impl Drop for State {
+impl Drop for OriginState {
 	fn drop(&mut self) {
-		for mut track in self.requested.drain(..) {
+		for track in self.requested.drain(..) {
 			track.close(ServeError::NotFound).ok();
 		}
 	}
@@ -230,35 +222,33 @@ impl Drop for State {
 
 /// Publish new tracks for a broadcast by name.
 pub struct OriginPublisher {
-	state: Watch<State>,
+	state: State<OriginState>,
 }
 
 impl OriginPublisher {
-	fn new(state: Watch<State>) -> Self {
+	fn new(state: State<OriginState>) -> Self {
 		Self { state }
 	}
 
 	/// Block until the next track requested by a subscriber.
-	pub async fn requested(&mut self) -> Result<serve::TrackWriter, ServeError> {
+	pub async fn requested(&mut self) -> Result<Option<serve::TrackWriter>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if !state.requested.is_empty() {
-					return Ok(state.into_mut().requested.pop_front().unwrap());
+					let mut state = state.into_mut().ok_or(ServeError::Done)?;
+					return Ok(state.requested.pop_front());
 				}
 
 				state.closed.clone()?;
-				state.changed()
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(None),
+				}
 			};
 
 			notify.await;
 		}
-	}
-}
-
-impl Drop for OriginPublisher {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
 	}
 }
 
@@ -267,54 +257,20 @@ impl Drop for OriginPublisher {
 /// This can be cloned to create handles.
 #[derive(Clone)]
 pub struct OriginSubscriber {
-	state: Watch<State>,
-	_dropped: Arc<Dropped>,
+	state: State<OriginState>,
 }
 
 impl OriginSubscriber {
-	fn new(state: Watch<State>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self { state, _dropped }
+	fn new(state: State<OriginState>) -> Self {
+		Self { state }
 	}
 
 	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
-		self.state.lock_mut().get_track(name)
+		self.state.lock().get_track(name)
 	}
 
 	pub fn request_track(&mut self, name: &str) -> Result<TrackReader, ServeError> {
-		self.state.lock_mut().request_track(name)
-	}
-
-	/// Wait until if the broadcast is closed, either because the publisher was dropped or called [Publisher::close].
-	pub async fn closed(&self) -> ServeError {
-		loop {
-			let notify = {
-				let state = self.state.lock();
-				if let Some(err) = state.closed.as_ref().err() {
-					return err.clone();
-				}
-
-				state.changed()
-			};
-
-			notify.await;
-		}
-	}
-}
-
-struct Dropped {
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
+		self.state.lock_mut().ok_or(ServeError::Done)?.request_track(name)
 	}
 }
 

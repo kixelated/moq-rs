@@ -273,10 +273,10 @@ impl GroupWriter {
 	}
 
 	/// Close the stream with an error.
-	pub fn close(self, err: ServeError) {
-		if let Some(mut state) = self.state.lock_mut() {
-			state.closed = Err(err);
-		}
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+		Ok(())
 	}
 }
 

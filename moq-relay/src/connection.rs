@@ -1,9 +1,12 @@
 use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transport::session::{Announced, Publisher, SessionError, Subscriber};
+use moq_transport::{
+	serve::ServeError,
+	session::{Announced, Publisher, SessionError, Subscriber},
+};
 
-use crate::{Origin, OriginPublisher};
+use crate::Origin;
 
 #[derive(Clone)]
 pub struct Connection {
@@ -119,12 +122,11 @@ impl Connection {
 						log::info!("failed serving subscribe: err={}", err)
 					}
 				},
-				res = publisher.subscribed() => {
-					let subscribe = res?;
+				subscribe = publisher.subscribed() => {
 					log::info!("serving subscribe: namespace={} name={}", subscribe.namespace(), subscribe.name());
 
 					let track = origin.subscribe(subscribe.namespace(), subscribe.name())?;
-					tasks.push(subscribe.serve(track).boxed());
+					tasks.push(subscribe.serve(track));
 				}
 			};
 		}
@@ -143,12 +145,8 @@ impl Connection {
 						log::info!("failed serving announce: err={}", err)
 					}
 				},
-				res = subscriber.announced() => {
-					let announce = res?;
-					log::info!("serving announce: namespace={}", announce.namespace());
-
-					let publisher = origin.announce(announce.namespace())?;
-					tasks.push(Self::serve_announce(subscriber.clone(), publisher, announce));
+				announce = subscriber.announced() => {
+					tasks.push(Self::serve_announce(subscriber.clone(), origin.clone(), announce));
 				}
 			};
 		}
@@ -156,16 +154,43 @@ impl Connection {
 
 	async fn serve_announce<S: webtransport_generic::Session>(
 		mut subscriber: Subscriber<S>,
-		mut publisher: OriginPublisher,
-		mut announce: Announced<S>,
-	) -> Result<(), SessionError> {
-		// Send ANNOUNCE_OK
-		// We sent ANNOUNCE_CANCEL when the scope drops
-		announce.accept()?;
+		origin: Origin,
+		announce: Announced<S>,
+	) -> Result<(), ServeError> {
+		log::info!("serving announce: namespace={}", announce.namespace());
+
+		let mut publisher = match origin.announce(announce.namespace()) {
+			Ok(publisher) => publisher,
+			Err(err) => {
+				announce.close(err.clone())?;
+				return Err(err);
+			}
+		};
+
+		let mut tasks = FuturesUnordered::new();
+
+		// Send ANNOUNCE_OK and wait for any UNANNOUNCE
+		let mut announce = announce.serve().boxed();
 
 		loop {
-			let track = publisher.requested().await?;
-			subscriber.subscribe(track)?;
+			tokio::select! {
+				// If the announce is closed, return the error
+				res = &mut announce => return res,
+
+				// Wait for the next subscriber and serve the track.
+				res = publisher.requested() => {
+					let track = res?.ok_or(ServeError::Done)?;
+					log::info!("track requested: name={}", track.name);
+					let subscribe = subscriber.subscribe(track)?;
+					tasks.push(subscribe.serve());
+				},
+				res = tasks.next(), if !tasks.is_empty() => {
+					log::info!("done serving subscribe");
+					if let Err(err) = res.unwrap() {
+						log::warn!("failed serving subscribe: err={}", err)
+					}
+				},
+			}
 		}
 	}
 }

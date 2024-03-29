@@ -1,15 +1,19 @@
-use std::{io, sync};
+use std::sync::Arc;
+
+use webtransport_generic::ErrorCode;
 
 use crate::{coding, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
 	#[error("webtransport error: {0}")]
-	WebTransport(sync::Arc<dyn webtransport_generic::SessionError>),
+	WebTransport(Arc<dyn ErrorCode>),
 
-	// This needs an Arc because it's not Clone.
-	#[error("io error: {0}")]
-	Io(sync::Arc<io::Error>),
+	#[error("write error: {0}")]
+	Write(Arc<dyn ErrorCode>),
+
+	#[error("read error: {0}")]
+	Read(Arc<dyn ErrorCode>),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -47,19 +51,27 @@ pub enum SessionError {
 	WrongSize,
 }
 
+impl SessionError {
+	pub(super) fn from_webtransport<E: ErrorCode>(err: E) -> Self {
+		Self::WebTransport(Arc::new(err))
+	}
+
+	pub(super) fn from_read<E: ErrorCode>(err: E) -> Self {
+		Self::Read(Arc::new(err))
+	}
+
+	pub(super) fn from_write<E: ErrorCode>(err: E) -> Self {
+		Self::Write(Arc::new(err))
+	}
+}
+
 /*
 impl<T: webtransport_generic::SessionError> From<T> for SessionError {
 	fn from(err: T) -> Self {
-		Self::WebTransport(sync::Arc::new(err))
+		Self::WebTransport(Arc::new(err))
 	}
 }
 */
-
-impl From<io::Error> for SessionError {
-	fn from(err: io::Error) -> Self {
-		Self::Io(sync::Arc::new(err))
-	}
-}
 
 impl SessionError {
 	/// An integer code that is sent over the wire.
@@ -68,10 +80,11 @@ impl SessionError {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
 			Self::WebTransport(_) => 503,
+			Self::Read(_) => 500,
+			Self::Write(_) => 500,
 			Self::Version(..) => 406,
 			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
-			Self::Io(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
 			Self::Internal => 500,

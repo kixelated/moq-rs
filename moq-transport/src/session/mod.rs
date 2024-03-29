@@ -2,11 +2,11 @@ mod announce;
 mod announced;
 mod error;
 mod publisher;
+mod reader;
 mod subscribe;
 mod subscribed;
 mod subscriber;
-
-use std::sync::Arc;
+mod writer;
 
 pub use announce::*;
 pub use announced::*;
@@ -15,12 +15,14 @@ pub use publisher::*;
 pub use subscribed::*;
 pub use subscriber::*;
 
+use reader::*;
+use writer::*;
+
 use subscribe::*;
 
 use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 
-use crate::coding::{Reader, Writer};
 use crate::message::Message;
 use crate::util::Queue;
 use crate::{message, setup};
@@ -72,10 +74,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 		session: S,
 		role: setup::Role,
 	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError> {
-		let control = session
-			.open_bi()
-			.await
-			.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+		let control = session.open_bi().await.map_err(SessionError::from_webtransport)?;
 		let mut sender = Writer::new(control.0);
 		let mut recver = Reader::new(control.1);
 
@@ -119,10 +118,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 		session: S,
 		role: setup::Role,
 	) -> Result<(Session<S>, Option<Publisher<S>>, Option<Subscriber<S>>), SessionError> {
-		let control = session
-			.accept_bi()
-			.await
-			.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+		let control = session.accept_bi().await.map_err(SessionError::from_webtransport)?;
 		let mut sender = Writer::new(control.0);
 		let mut recver = Reader::new(control.1);
 
@@ -231,7 +227,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 		loop {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
-					let stream = res.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+					let stream = res.map_err(SessionError::from_webtransport)?;
 					tasks.push(Subscriber::recv_stream(subscriber.clone(), stream));
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
@@ -244,7 +240,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 			let datagram = webtransport
 				.recv_datagram()
 				.await
-				.map_err(|e| SessionError::WebTransport(Arc::new(e)))?;
+				.map_err(SessionError::from_webtransport)?;
 
 			subscriber.recv_datagram(datagram).await?;
 		}

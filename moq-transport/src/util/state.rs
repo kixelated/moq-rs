@@ -57,6 +57,7 @@ pub struct State<T> {
 impl<T> State<T> {
 	pub fn new(initial: T) -> (Self, Self) {
 		let state = Arc::new(Mutex::new(StateInner::new(initial)));
+
 		(
 			Self {
 				state: state.clone(),
@@ -72,6 +73,7 @@ impl<T> State<T> {
 	pub fn lock(&self) -> StateRef<T> {
 		StateRef {
 			state: self.state.clone(),
+			drop: self.drop.clone(),
 			lock: self.state.lock().unwrap(),
 		}
 	}
@@ -79,23 +81,16 @@ impl<T> State<T> {
 	pub fn lock_mut(&self) -> Option<StateMut<T>> {
 		let lock = self.state.lock().unwrap();
 		lock.dropped?;
-		Some(StateMut { lock })
+		Some(StateMut {
+			lock,
+			_drop: self.drop.clone(),
+		})
 	}
 
 	pub fn downgrade(&self) -> StateWeak<T> {
 		StateWeak {
 			state: Arc::downgrade(&self.state),
 			drop: Arc::downgrade(&self.drop),
-		}
-	}
-
-	// Create a copy of the state that will close the state when dropped.
-	pub fn split(&self) -> State<T> {
-		Self {
-			state: self.state.clone(),
-			drop: Arc::new(StateDrop {
-				state: self.state.clone(),
-			}),
 		}
 	}
 }
@@ -127,6 +122,7 @@ impl<T: fmt::Debug> fmt::Debug for State<T> {
 pub struct StateRef<'a, T> {
 	state: Arc<Mutex<StateInner<T>>>,
 	lock: MutexGuard<'a, StateInner<T>>,
+	drop: Arc<StateDrop<T>>,
 }
 
 impl<'a, T> StateRef<'a, T> {
@@ -143,7 +139,10 @@ impl<'a, T> StateRef<'a, T> {
 	// Upgrade to a mutable references that automatically calls notify on drop.
 	pub fn into_mut(self) -> Option<StateMut<'a, T>> {
 		self.lock.dropped?;
-		Some(StateMut { lock: self.lock })
+		Some(StateMut {
+			lock: self.lock,
+			_drop: self.drop,
+		})
 	}
 }
 
@@ -163,6 +162,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for StateRef<'a, T> {
 
 pub struct StateMut<'a, T> {
 	lock: MutexGuard<'a, StateInner<T>>,
+	_drop: Arc<StateDrop<T>>,
 }
 
 impl<'a, T> Deref for StateMut<'a, T> {
@@ -234,9 +234,7 @@ struct StateDrop<T> {
 impl<T> Drop for StateDrop<T> {
 	fn drop(&mut self) {
 		let mut state = self.state.lock().unwrap();
-		if state.dropped.is_none() {
-			state.dropped = None;
-			state.notify();
-		}
+		state.dropped = None;
+		state.notify();
 	}
 }
