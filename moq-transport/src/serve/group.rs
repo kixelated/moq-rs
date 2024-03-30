@@ -57,14 +57,18 @@ impl Default for GroupsState {
 
 #[derive(Debug)]
 pub struct GroupsWriter {
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 	state: State<GroupsState>,
 	next: u64, // Not in the state to avoid a lock
 }
 
 impl GroupsWriter {
 	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
-		Self { track, state, next: 0 }
+		Self {
+			info: track,
+			state,
+			next: 0,
+		}
 	}
 
 	// Helper to increment the group by one.
@@ -77,7 +81,7 @@ impl GroupsWriter {
 
 	pub fn create(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
 		let group = GroupInfo {
-			track: self.track.clone(),
+			track: self.info.clone(),
 			group_id: group.group_id,
 			priority: group.priority,
 		};
@@ -114,20 +118,24 @@ impl Deref for GroupsWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct GroupsReader {
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 	state: State<GroupsState>,
 	epoch: u64,
 }
 
 impl GroupsReader {
 	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
-		Self { track, state, epoch: 0 }
+		Self {
+			info: track,
+			state,
+			epoch: 0,
+		}
 	}
 
 	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
@@ -162,7 +170,7 @@ impl Deref for GroupsReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
@@ -235,7 +243,7 @@ pub struct GroupWriter {
 	state: State<GroupState>,
 
 	// Immutable stream state.
-	pub group: Arc<GroupInfo>,
+	pub info: Arc<GroupInfo>,
 
 	// The next object sequence number to use.
 	next: u64,
@@ -243,7 +251,11 @@ pub struct GroupWriter {
 
 impl GroupWriter {
 	fn new(state: State<GroupState>, group: Arc<GroupInfo>) -> Self {
-		Self { state, group, next: 0 }
+		Self {
+			state,
+			info: group,
+			next: 0,
+		}
 	}
 
 	/// Create the next object ID with the given payload.
@@ -258,7 +270,7 @@ impl GroupWriter {
 	/// BAD STUFF will happen if the size is wrong; this is an advanced feature.
 	pub fn create(&mut self, size: usize) -> Result<GroupObjectWriter, ServeError> {
 		let (writer, reader) = GroupObject {
-			group: self.group.clone(),
+			group: self.info.clone(),
 			object_id: self.next,
 			size,
 		}
@@ -284,7 +296,7 @@ impl Deref for GroupWriter {
 	type Target = GroupInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.group
+		&self.info
 	}
 }
 
@@ -295,7 +307,7 @@ pub struct GroupReader {
 	state: State<GroupState>,
 
 	// Immutable stream state.
-	pub group: Arc<GroupInfo>,
+	pub info: Arc<GroupInfo>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
@@ -304,7 +316,11 @@ pub struct GroupReader {
 
 impl GroupReader {
 	fn new(state: State<GroupState>, group: Arc<GroupInfo>) -> Self {
-		Self { state, group, index: 0 }
+		Self {
+			state,
+			info: group,
+			index: 0,
+		}
 	}
 
 	pub fn latest(&self) -> u64 {
@@ -347,7 +363,7 @@ impl Deref for GroupReader {
 	type Target = GroupInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.group
+		&self.info
 	}
 }
 
@@ -416,7 +432,7 @@ pub struct GroupObjectWriter {
 	state: State<GroupObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<GroupObject>,
+	pub info: Arc<GroupObject>,
 
 	// The amount of promised data that has yet to be written.
 	remain: usize,
@@ -428,7 +444,7 @@ impl GroupObjectWriter {
 		Self {
 			state,
 			remain: object.size,
-			object,
+			info: object,
 		}
 	}
 
@@ -474,7 +490,7 @@ impl Deref for GroupObjectWriter {
 	type Target = GroupObject;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }
 
@@ -485,7 +501,7 @@ pub struct GroupObjectReader {
 	state: State<GroupObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<GroupObject>,
+	pub info: Arc<GroupObject>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
@@ -496,7 +512,7 @@ impl GroupObjectReader {
 	fn new(state: State<GroupObjectState>, object: Arc<GroupObject>) -> Self {
 		Self {
 			state,
-			object,
+			info: object,
 			index: 0,
 		}
 	}
@@ -538,6 +554,6 @@ impl Deref for GroupObjectReader {
 	type Target = GroupObject;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }

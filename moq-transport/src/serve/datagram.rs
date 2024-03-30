@@ -44,12 +44,12 @@ impl Default for DatagramsState {
 #[derive(Debug)]
 pub struct DatagramsWriter {
 	state: State<DatagramsState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 }
 
 impl DatagramsWriter {
 	fn new(state: State<DatagramsState>, track: Arc<Track>) -> Self {
-		Self { state, track }
+		Self { state, info: track }
 	}
 
 	pub fn write(&mut self, datagram: Datagram) -> Result<(), ServeError> {
@@ -71,14 +71,18 @@ impl DatagramsWriter {
 #[derive(Debug, Clone)]
 pub struct DatagramsReader {
 	state: State<DatagramsState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 
 	epoch: u64,
 }
 
 impl DatagramsReader {
 	fn new(state: State<DatagramsState>, track: Arc<Track>) -> Self {
-		Self { state, track, epoch: 0 }
+		Self {
+			state,
+			info: track,
+			epoch: 0,
+		}
 	}
 
 	pub async fn read(&mut self) -> Result<Option<Datagram>, ServeError> {

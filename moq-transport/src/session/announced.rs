@@ -1,6 +1,8 @@
+use std::ops;
+
 use crate::{message, serve::ServeError, util::State};
 
-use super::Subscriber;
+use super::{AnnounceInfo, Subscriber};
 
 // There's currently no feedback from the peer, so the shared state is empty.
 // If Unannounce contained an error code then we'd be talking.
@@ -9,8 +11,9 @@ struct AnnouncedState {}
 
 pub struct Announced<S: webtransport_generic::Session> {
 	session: Subscriber<S>,
-	namespace: String,
 	state: State<AnnouncedState>,
+
+	pub info: AnnounceInfo,
 
 	ok: bool,
 	error: Option<ServeError>,
@@ -18,10 +21,12 @@ pub struct Announced<S: webtransport_generic::Session> {
 
 impl<S: webtransport_generic::Session> Announced<S> {
 	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv) {
+		let info = AnnounceInfo { namespace };
+
 		let (send, recv) = State::default();
 		let send = Self {
 			session,
-			namespace,
+			info,
 			ok: false,
 			error: None,
 			state: send,
@@ -29,10 +34,6 @@ impl<S: webtransport_generic::Session> Announced<S> {
 		let recv = AnnouncedRecv { _state: recv };
 
 		(send, recv)
-	}
-
-	pub fn namespace(&self) -> &str {
-		&self.namespace
 	}
 
 	// Send an ANNOUNCE_OK and block until we get an UNANNOUNCE
@@ -53,6 +54,14 @@ impl<S: webtransport_generic::Session> Announced<S> {
 	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
 		self.error = Some(err);
 		Ok(())
+	}
+}
+
+impl<S: webtransport_generic::Session> ops::Deref for Announced<S> {
+	type Target = AnnounceInfo;
+
+	fn deref(&self) -> &AnnounceInfo {
+		&self.info
 	}
 }
 

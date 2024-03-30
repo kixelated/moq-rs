@@ -1,3 +1,5 @@
+use std::ops;
+
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
@@ -8,7 +10,7 @@ use crate::serve::{ServeError, TrackReaderMode};
 use crate::util::State;
 use crate::{data, message, serve, Publisher};
 
-use super::{SessionError, Writer};
+use super::{SessionError, SubscribeInfo, Writer};
 
 #[derive(Debug)]
 struct SubscribedState {
@@ -40,16 +42,23 @@ pub struct Subscribed<S: webtransport_generic::Session> {
 
 	closed: Result<(), ServeError>,
 	ok: bool,
+
+	pub info: SubscribeInfo,
 }
 
 impl<S: webtransport_generic::Session> Subscribed<S> {
 	pub(super) fn new(publisher: Publisher<S>, msg: message::Subscribe) -> (Self, SubscribedRecv) {
 		let (send, recv) = State::default();
+		let info = SubscribeInfo {
+			namespace: msg.track_namespace.clone(),
+			name: msg.track_name.clone(),
+		};
 
 		let send = Self {
 			publisher,
 			state: send,
 			msg,
+			info,
 			closed: Ok(()),
 			ok: false,
 		};
@@ -59,14 +68,6 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		let recv = SubscribedRecv { _state: recv };
 
 		(send, recv)
-	}
-
-	pub fn namespace(&self) -> &str {
-		self.msg.track_namespace.as_str()
-	}
-
-	pub fn name(&self) -> &str {
-		self.msg.track_name.as_str()
 	}
 
 	pub async fn serve(mut self, track: serve::TrackReader) -> Result<(), SessionError> {
@@ -92,6 +93,14 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
 		self.closed = Err(err);
 		Ok(())
+	}
+}
+
+impl<S: webtransport_generic::Session> ops::Deref for Subscribed<S> {
+	type Target = SubscribeInfo;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
 	}
 }
 
@@ -170,7 +179,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 
 	async fn serve_groups(self, mut groups: serve::GroupsReader) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
-		let mut done = None;
+		let mut done: Option<Result<(), ServeError>> = None;
 
 		loop {
 			tokio::select! {
@@ -183,17 +192,20 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 							send_order: group.priority,
 						};
 
-						tasks.push(Self::serve_group(header, group, self.publisher.clone(), self.state.clone()));
+						let publisher = self.publisher.clone();
+						let state = self.state.clone();
+						let info = group.info.clone();
+
+						tasks.push(async move {
+							if let Err(err) = Self::serve_group(header, group, publisher, state).await {
+								log::warn!("failed to serve group: group={:?} err={:?}", info, err);
+							}
+						});
 					},
 					Ok(None) => done = Some(Ok(())),
 					Err(err) => done = Some(Err(err.into())),
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						log::warn!("failed to serve group: {}", err);
-					}
-				},
-				else => return done.unwrap(),
+				_ = tasks.select_next_some() => {},
 			}
 		}
 	}
@@ -258,16 +270,20 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 							send_order: object.priority,
 						};
 
-						tasks.push(Self::serve_object(header, object, self.publisher.clone(), self.state.clone()));
+						let publisher = self.publisher.clone();
+						let state = self.state.clone();
+						let info = object.info.clone();
+
+						tasks.push(async move {
+							if let Err(err) = Self::serve_object(header, object, publisher, state).await {
+								log::warn!("failed to serve object: object={:?} err={:?}", info, err);
+							};
+						});
 					},
 					Ok(None) => done = Some(Ok(())),
 					Err(err) => done = Some(Err(err.into())),
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						log::warn!("failed to serve object: {}", err);
-					}
-				},
+				_ = tasks.select_next_some() => {},
 				else => return done.unwrap(),
 			}
 		}

@@ -24,7 +24,7 @@ impl Objects {
 
 		let writer = ObjectsWriter {
 			state: writer,
-			track: self.track.clone(),
+			info: self.track.clone(),
 		};
 		let reader = ObjectsReader::new(reader, self.track);
 
@@ -57,7 +57,7 @@ impl Default for ObjectsState {
 #[derive(Debug)]
 pub struct ObjectsWriter {
 	state: State<ObjectsState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 }
 
 impl ObjectsWriter {
@@ -69,7 +69,7 @@ impl ObjectsWriter {
 
 	pub fn create(&mut self, object: Object) -> Result<ObjectWriter, ServeError> {
 		let object = ObjectInfo {
-			track: self.track.clone(),
+			track: self.info.clone(),
 			group_id: object.group_id,
 			object_id: object.object_id,
 			priority: object.priority,
@@ -106,20 +106,24 @@ impl Deref for ObjectsWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
 #[derive(Clone, Debug)]
 pub struct ObjectsReader {
 	state: State<ObjectsState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 	epoch: usize,
 }
 
 impl ObjectsReader {
 	fn new(state: State<ObjectsState>, track: Arc<Track>) -> Self {
-		Self { state, track, epoch: 0 }
+		Self {
+			state,
+			info: track,
+			epoch: 0,
+		}
 	}
 
 	pub async fn next(&mut self) -> Result<Option<ObjectReader>, ServeError> {
@@ -158,7 +162,7 @@ impl Deref for ObjectsReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
@@ -242,13 +246,13 @@ pub struct ObjectWriter {
 	state: State<ObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<ObjectInfo>,
+	pub info: Arc<ObjectInfo>,
 }
 
 impl ObjectWriter {
 	/// Create a new segment with the given info.
 	fn new(state: State<ObjectState>, object: Arc<ObjectInfo>) -> Self {
-		Self { state, object }
+		Self { state, info: object }
 	}
 
 	/// Write a new chunk of bytes.
@@ -272,7 +276,7 @@ impl Deref for ObjectWriter {
 	type Target = ObjectInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }
 
@@ -283,7 +287,7 @@ pub struct ObjectReader {
 	state: State<ObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<ObjectInfo>,
+	pub info: Arc<ObjectInfo>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
@@ -294,7 +298,7 @@ impl ObjectReader {
 	fn new(state: State<ObjectState>, object: Arc<ObjectInfo>) -> Self {
 		Self {
 			state,
-			object,
+			info: object,
 			index: 0,
 		}
 	}
@@ -336,6 +340,6 @@ impl Deref for ObjectReader {
 	type Target = ObjectInfo;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }

@@ -3,10 +3,10 @@ use anyhow::Context;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transport::{
 	serve::ServeError,
-	session::{Announced, Publisher, SessionError, Subscriber},
+	session::{Announced, Publisher, SessionError, Subscribed, Subscriber},
 };
 
-use crate::Origin;
+use crate::{Origin, RelayError};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -82,7 +82,7 @@ impl Connection {
 		}
 
 		// Return the first error
-		tasks.next().await.unwrap()?;
+		tasks.select_next_some().await?;
 
 		Ok(())
 	}
@@ -104,7 +104,7 @@ impl Connection {
 		}
 
 		// Return the first error
-		tasks.next().await.unwrap()?;
+		tasks.select_next_some().await?;
 
 		Ok(())
 	}
@@ -117,19 +117,32 @@ impl Connection {
 
 		loop {
 			tokio::select! {
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						log::info!("failed serving subscribe: err={}", err)
-					}
-				},
 				subscribe = publisher.subscribed() => {
-					log::info!("serving subscribe: namespace={} name={}", subscribe.namespace(), subscribe.name());
+					let origin = origin.clone();
+					tasks.push(async move {
+						let info = subscribe.info.clone();
 
-					let track = origin.subscribe(subscribe.namespace(), subscribe.name())?;
-					tasks.push(subscribe.serve(track));
-				}
+						if let Err(err) = Self::serve_subscribe(origin.clone(), subscribe).await {
+							log::warn!("failed serving subscribe: info={:?} err={:?}", info, err)
+
+						}
+					});
+				},
+				_= tasks.select_next_some() => {},
 			};
 		}
+	}
+
+	async fn serve_subscribe<S: webtransport_generic::Session>(
+		origin: Origin,
+		subscribe: Subscribed<S>,
+	) -> Result<(), RelayError> {
+		log::info!("serving subscribe: info={:?}", subscribe.info,);
+
+		let track = origin.subscribe(&subscribe.namespace, &subscribe.name)?;
+		subscribe.serve(track).await?;
+
+		Ok(())
 	}
 
 	async fn serve_subscriber<S: webtransport_generic::Session>(
@@ -140,30 +153,38 @@ impl Connection {
 
 		loop {
 			tokio::select! {
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						log::info!("failed serving announce: err={}", err)
-					}
-				},
 				announce = subscriber.announced() => {
-					tasks.push(Self::serve_announce(subscriber.clone(), origin.clone(), announce));
-				}
+					let info = announce.info.clone();
+					let subscriber = subscriber.clone();
+					let origin = origin.clone();
+
+					tasks.push(async move {
+						if let Err(err) = Self::serve_announce(subscriber, origin, announce).await {
+							log::warn!("failed serving announce: info={:?} err={:?}", info, err)
+						}
+					});
+				},
+				_ = tasks.select_next_some() => {},
 			};
 		}
 	}
 
 	async fn serve_announce<S: webtransport_generic::Session>(
-		mut subscriber: Subscriber<S>,
-		origin: Origin,
+		subscriber: Subscriber<S>,
+		mut origin: Origin,
 		announce: Announced<S>,
-	) -> Result<(), ServeError> {
-		log::info!("serving announce: namespace={}", announce.namespace());
+	) -> Result<(), RelayError> {
+		log::info!("serving announce: info={:?}", announce.info);
 
-		let mut publisher = match origin.announce(announce.namespace()) {
+		let mut publisher = match origin.announce(&announce.namespace) {
 			Ok(publisher) => publisher,
 			Err(err) => {
-				announce.close(err.clone())?;
-				return Err(err);
+				match &err {
+					RelayError::Serve(err) => announce.close(err.clone()),
+					_ => announce.close(ServeError::Closed(1)),
+				}?;
+
+				return Err(err.into());
 			}
 		};
 
@@ -175,21 +196,28 @@ impl Connection {
 		loop {
 			tokio::select! {
 				// If the announce is closed, return the error
-				res = &mut announce => return res,
+				res = &mut announce => return Ok(res?),
 
 				// Wait for the next subscriber and serve the track.
 				res = publisher.requested() => {
 					let track = res?.ok_or(ServeError::Done)?;
-					log::info!("track requested: name={}", track.name);
-					let subscribe = subscriber.subscribe(track)?;
-					tasks.push(subscribe.serve());
+					let mut subscriber = subscriber.clone();
+
+					tasks.push(async move {
+						let info = track.info.clone();
+						log::info!("local subscribe: track={:?}", track);
+
+						match subscriber.subscribe(track) {
+							Ok(subscribe) => if let Err(err) = subscribe.run().await {
+								log::warn!("local subscribe done: track={:?} err={:?}", info, err);
+							},
+							Err(err) => {
+								log::warn!("local subscribe failed: track={:?} err={:?}", info, err);
+							},
+						};
+					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					log::info!("done serving subscribe");
-					if let Err(err) = res.unwrap() {
-						log::warn!("failed serving subscribe: err={}", err)
-					}
-				},
+				_ = tasks.select_next_some() => {}
 			}
 		}
 	}

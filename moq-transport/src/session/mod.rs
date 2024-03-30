@@ -170,7 +170,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 			tasks.push(Self::run_datagrams(self.webtransport, subscriber).boxed());
 		}
 
-		let res = tasks.next().await.unwrap();
+		let res = tasks.select_next_some().await;
 		Err(res.expect_err("run terminated with OK"))
 	}
 
@@ -228,9 +228,15 @@ impl<S: webtransport_generic::Session> Session<S> {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
 					let stream = res.map_err(SessionError::from_webtransport)?;
-					tasks.push(Subscriber::recv_stream(subscriber.clone(), stream));
+					let subscriber = subscriber.clone();
+
+					tasks.push(async move {
+						if let Err(err) = Subscriber::recv_stream(subscriber, stream).await {
+							log::warn!("failed to serve stream: err={:?}", err);
+						};
+					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
+				_ = tasks.select_next_some() => {},
 			};
 		}
 	}

@@ -1,10 +1,15 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops};
 
 use crate::{message, serve::ServeError, Publisher};
 
 use super::Subscribed;
 
 use crate::util::State;
+
+#[derive(Debug, Clone)]
+pub struct AnnounceInfo {
+	pub namespace: String,
+}
 
 struct AnnounceState<S: webtransport_generic::Session> {
 	subscribers: VecDeque<Subscribed<S>>,
@@ -32,14 +37,19 @@ impl<S: webtransport_generic::Session> Drop for AnnounceState<S> {
 
 pub struct Announce<S: webtransport_generic::Session> {
 	publisher: Publisher<S>,
-	namespace: String,
 	state: State<AnnounceState<S>>,
+
+	pub info: AnnounceInfo,
 }
 
 impl<S: webtransport_generic::Session> Announce<S> {
-	pub(super) fn new(mut publisher: Publisher<S>, namespace: &str) -> (Announce<S>, AnnounceRecv<S>) {
+	pub(super) fn new(mut publisher: Publisher<S>, namespace: String) -> (Announce<S>, AnnounceRecv<S>) {
+		let info = AnnounceInfo {
+			namespace: namespace.clone(),
+		};
+
 		publisher.send_message(message::Announce {
-			namespace: namespace.to_string(),
+			namespace,
 			params: Default::default(),
 		});
 
@@ -47,7 +57,7 @@ impl<S: webtransport_generic::Session> Announce<S> {
 
 		let send = Self {
 			publisher,
-			namespace: namespace.to_string(),
+			info,
 			state: send,
 		};
 		let recv = AnnounceRecv { state: recv };
@@ -90,8 +100,16 @@ impl<S: webtransport_generic::Session> Drop for Announce<S> {
 		}
 
 		self.publisher.send_message(message::Unannounce {
-			namespace: self.namespace.to_string(),
+			namespace: self.info.namespace.to_string(),
 		});
+	}
+}
+
+impl<S: webtransport_generic::Session> ops::Deref for Announce<S> {
+	type Target = AnnounceInfo;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
 	}
 }
 

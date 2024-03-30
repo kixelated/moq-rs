@@ -92,12 +92,12 @@ impl Default for BroadcastState {
 #[derive(Debug)]
 pub struct BroadcastWriter {
 	state: State<BroadcastState>,
-	pub broadcast: Arc<Broadcast>,
+	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastWriter {
 	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
-		Self { state, broadcast }
+		Self { state, info: broadcast }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
@@ -127,7 +127,7 @@ impl Deref for BroadcastWriter {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
-		&self.broadcast
+		&self.info
 	}
 }
 
@@ -137,12 +137,12 @@ impl Deref for BroadcastWriter {
 #[derive(Clone, Debug)]
 pub struct BroadcastReader {
 	state: State<BroadcastState>,
-	pub broadcast: Arc<Broadcast>,
+	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastReader {
 	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
-		Self { state, broadcast }
+		Self { state, info: broadcast }
 	}
 
 	/// Get a track from the broadcast by name.
@@ -155,6 +155,6 @@ impl Deref for BroadcastReader {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
-		&self.broadcast
+		&self.info
 	}
 }

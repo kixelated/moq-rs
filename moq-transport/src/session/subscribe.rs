@@ -1,3 +1,5 @@
+use std::ops;
+
 use crate::{
 	data, message,
 	serve::{self, ServeError, TrackWriter, TrackWriterMode},
@@ -5,6 +7,12 @@ use crate::{
 };
 
 use super::Subscriber;
+
+#[derive(Debug, Clone)]
+pub struct SubscribeInfo {
+	pub namespace: String,
+	pub name: String,
+}
 
 struct SubscribeState {
 	ok: Option<message::SubscribeOk>,
@@ -25,6 +33,8 @@ pub struct Subscribe<S: webtransport_generic::Session> {
 	state: State<SubscribeState>,
 	subscriber: Subscriber<S>,
 	id: u64,
+
+	pub info: SubscribeInfo,
 }
 
 impl<S: webtransport_generic::Session> Subscribe<S> {
@@ -40,12 +50,18 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 			params: Default::default(),
 		});
 
+		let info = SubscribeInfo {
+			namespace: track.namespace.clone(),
+			name: track.name.clone(),
+		};
+
 		let (send, recv) = State::default();
 
 		let send = Subscribe {
 			state: send,
 			subscriber,
 			id,
+			info,
 		};
 
 		let recv = SubscribeRecv {
@@ -57,7 +73,7 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 	}
 
 	// Block until the subscription is closed.
-	pub async fn serve(self) -> Result<(), ServeError> {
+	pub async fn run(self) -> Result<(), ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -77,6 +93,14 @@ impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
 		}
 
 		self.subscriber.send_message(message::Unsubscribe { id: self.id });
+	}
+}
+
+impl<S: webtransport_generic::Session> ops::Deref for Subscribe<S> {
+	type Target = SubscribeInfo;
+
+	fn deref(&self) -> &SubscribeInfo {
+		&self.info
 	}
 }
 

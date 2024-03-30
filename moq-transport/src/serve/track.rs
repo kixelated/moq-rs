@@ -12,7 +12,7 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::State;
+use crate::util::{State, StateWeak};
 
 use super::{
 	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
@@ -66,18 +66,18 @@ impl Default for TrackState {
 #[derive(Debug)]
 pub struct TrackWriter {
 	state: State<TrackState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 }
 
 impl TrackWriter {
 	/// Create a track with the given name.
-	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
-		Self { state, track }
+	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
+		Self { state, info }
 	}
 
 	pub fn stream(self, priority: u64) -> Result<StreamWriter, ServeError> {
 		let streams = Stream {
-			track: self.track.clone(),
+			track: self.info.clone(),
 			priority,
 		};
 		let (writer, reader) = streams.produce();
@@ -89,7 +89,7 @@ impl TrackWriter {
 
 	pub fn groups(self) -> Result<GroupsWriter, ServeError> {
 		let groups = Groups {
-			track: self.track.clone(),
+			track: self.info.clone(),
 		};
 		let (writer, reader) = groups.produce();
 
@@ -100,7 +100,7 @@ impl TrackWriter {
 
 	pub fn objects(self) -> Result<ObjectsWriter, ServeError> {
 		let objects = Objects {
-			track: self.track.clone(),
+			track: self.info.clone(),
 		};
 		let (writer, reader) = objects.produce();
 
@@ -111,7 +111,7 @@ impl TrackWriter {
 
 	pub fn datagrams(self) -> Result<DatagramsWriter, ServeError> {
 		let datagrams = Datagrams {
-			track: self.track.clone(),
+			track: self.info.clone(),
 		};
 		let (writer, reader) = datagrams.produce();
 
@@ -132,7 +132,7 @@ impl Deref for TrackWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
@@ -140,12 +140,12 @@ impl Deref for TrackWriter {
 #[derive(Clone, Debug)]
 pub struct TrackReader {
 	state: State<TrackState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 }
 
 impl TrackReader {
-	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
-		Self { state, track }
+	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
+		Self { state, info }
 	}
 
 	pub async fn mode(self) -> Result<TrackReaderMode, ServeError> {
@@ -173,13 +173,34 @@ impl TrackReader {
 		// TODO populate from SUBSCRIBE_OK
 		None
 	}
+
+	pub fn weak(&self) -> TrackReaderWeak {
+		TrackReaderWeak::new(self.state.downgrade(), self.info.clone())
+	}
 }
 
 impl Deref for TrackReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
+	}
+}
+
+#[derive(Clone)]
+pub struct TrackReaderWeak {
+	state: StateWeak<TrackState>,
+	pub info: Arc<Track>,
+}
+
+impl TrackReaderWeak {
+	fn new(state: StateWeak<TrackState>, info: Arc<Track>) -> Self {
+		Self { state, info }
+	}
+
+	pub fn upgrade(&self) -> Option<TrackReader> {
+		let state = self.state.upgrade()?;
+		Some(TrackReader::new(state, self.info.clone()))
 	}
 }
 

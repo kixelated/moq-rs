@@ -227,6 +227,15 @@ impl<T> StateWeak<T> {
 	}
 }
 
+impl<T> Clone for StateWeak<T> {
+	fn clone(&self) -> Self {
+		Self {
+			state: self.state.clone(),
+			drop: self.drop.clone(),
+		}
+	}
+}
+
 struct StateDrop<T> {
 	state: Arc<Mutex<StateInner<T>>>,
 }

@@ -55,7 +55,7 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 			hash_map::Entry::Vacant(entry) => entry,
 		};
 
-		let (send, recv) = Announce::new(self.clone(), namespace);
+		let (send, recv) = Announce::new(self.clone(), namespace.to_string());
 		entry.insert(recv);
 
 		// Unannounce on close
@@ -72,15 +72,22 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 			tokio::select! {
 				subscribe = announce.subscribed() => {
 					let subscribe = subscribe?;
+					let broadcast = broadcast.clone();
 
-					let track = broadcast.get_track(subscribe.name())?;
-					tasks.push(Self::serve_subscribe(subscribe, track));
+					tasks.push(async move {
+						let info = subscribe.info.clone();
+
+						match broadcast.get_track(&subscribe.name) {
+							Ok(track) => if let Err(err) = Self::serve_subscribe(subscribe, track).await {
+								log::warn!("failed serving subscribe: subscribe={:?} err={:?}", info, err)
+							},
+							Err(err) => {
+								log::warn!("failed getting subscribe: subscribe={:?} err={:?}", info, err)
+							},
+						}
+					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						log::info!("failed serving subscribe: err={}", err)
-					}
-				},
+				_ = tasks.select_next_some() => {},
 			}
 		}
 	}

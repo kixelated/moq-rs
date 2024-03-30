@@ -219,7 +219,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 	}
 
 	async fn recv_group(mut group: serve::GroupWriter, mut reader: Reader<S::RecvStream>) -> Result<(), SessionError> {
-		log::trace!("received group: {:?}", group.group);
+		log::trace!("received group: {:?}", group.info);
 
 		while !reader.done().await? {
 			let object: data::GroupObject = reader.decode().await?;
@@ -243,7 +243,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		mut object: serve::ObjectWriter,
 		mut reader: Reader<S::RecvStream>,
 	) -> Result<(), SessionError> {
-		log::trace!("received object: {:?}", object.object);
+		log::trace!("received object: {:?}", object.info);
 
 		while let Some(data) = reader.read_chunk(usize::MAX).await? {
 			log::trace!("received object payload: {:?}", data.len());
