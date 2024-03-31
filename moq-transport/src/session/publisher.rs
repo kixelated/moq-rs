@@ -87,7 +87,7 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 						}
 					});
 				},
-				_ = tasks.select_next_some() => {},
+				_ = tasks.next(), if !tasks.is_empty() => {},
 			}
 		}
 	}

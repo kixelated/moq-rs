@@ -85,8 +85,4 @@ impl<S: webtransport_generic::RecvStream> Reader<S> {
 			.map_err(SessionError::from_read)?;
 		Ok(size == 0)
 	}
-
-	pub fn into_inner(self) -> S {
-		self.stream
-	}
 }

@@ -24,7 +24,7 @@ impl Objects {
 
 		let writer = ObjectsWriter {
 			state: writer,
-			info: self.track.clone(),
+			track: self.track.clone(),
 		};
 		let reader = ObjectsReader::new(reader, self.track);
 
@@ -57,7 +57,7 @@ impl Default for ObjectsState {
 #[derive(Debug)]
 pub struct ObjectsWriter {
 	state: State<ObjectsState>,
-	pub info: Arc<Track>,
+	pub track: Arc<Track>,
 }
 
 impl ObjectsWriter {
@@ -69,7 +69,7 @@ impl ObjectsWriter {
 
 	pub fn create(&mut self, object: Object) -> Result<ObjectWriter, ServeError> {
 		let object = ObjectInfo {
-			track: self.info.clone(),
+			track: self.track.clone(),
 			group_id: object.group_id,
 			object_id: object.object_id,
 			priority: object.priority,
@@ -106,24 +106,20 @@ impl Deref for ObjectsWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.track
 	}
 }
 
 #[derive(Clone, Debug)]
 pub struct ObjectsReader {
 	state: State<ObjectsState>,
-	pub info: Arc<Track>,
+	pub track: Arc<Track>,
 	epoch: usize,
 }
 
 impl ObjectsReader {
 	fn new(state: State<ObjectsState>, track: Arc<Track>) -> Self {
-		Self {
-			state,
-			info: track,
-			epoch: 0,
-		}
+		Self { state, track, epoch: 0 }
 	}
 
 	pub async fn next(&mut self) -> Result<Option<ObjectReader>, ServeError> {
@@ -162,7 +158,7 @@ impl Deref for ObjectsReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.track
 	}
 }
 

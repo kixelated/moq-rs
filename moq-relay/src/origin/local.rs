@@ -2,16 +2,16 @@ use std::collections::hash_map;
 use std::collections::HashMap;
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::ops;
 use std::sync::Arc;
+use std::sync::Weak;
 
-use moq_transport::serve::TrackReaderWeak;
 use moq_transport::serve::{self, ServeError, TrackReader, TrackWriter};
 use moq_transport::util::State;
 use url::Url;
 
 use crate::RelayError;
-
 pub struct Locals {
 	pub api: Option<moq_api::Client>,
 	pub node: Option<Url>,
@@ -53,15 +53,18 @@ impl LocalsProducer {
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
-		let (publisher, subscriber) = Local {
-			locals: self.info.clone(),
-			namespace,
-		}
-		.produce();
+		let (writer, reader) = Local { namespace }.produce(self.clone());
 
-		entry.insert(subscriber);
+		entry.insert(reader);
 
-		Ok(publisher)
+		Ok(writer)
+	}
+
+	pub fn unannounce(&mut self, namespace: &str) -> Result<(), RelayError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.lookup.remove(namespace).ok_or(ServeError::NotFound)?;
+
+		Ok(())
 	}
 }
 
@@ -99,34 +102,31 @@ impl ops::Deref for LocalsConsumer {
 }
 
 pub struct Local {
-	pub locals: Arc<Locals>,
 	pub namespace: String,
 }
 
 impl Local {
 	/// Create a new broadcast.
-	pub fn produce(self) -> (LocalProducer, LocalConsumer) {
+	fn produce(self, parent: LocalsProducer) -> (LocalProducer, LocalConsumer) {
 		let (send, recv) = State::default();
 		let info = Arc::new(self);
 
-		let publisher = LocalProducer::new(info.clone(), send);
-		let subscriber = LocalConsumer::new(info, recv);
+		let writer = LocalProducer::new(info.clone(), send, parent);
+		let reader = LocalConsumer::new(info, recv);
 
-		(publisher, subscriber)
+		(writer, reader)
 	}
 }
 
-impl ops::Deref for Local {
-	type Target = Locals;
-
-	fn deref(&self) -> &Self::Target {
-		&self.locals
+impl fmt::Debug for Local {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Local").field("namespace", &self.namespace).finish()
 	}
 }
 
 #[derive(Default)]
 struct LocalState {
-	tracks: HashMap<String, TrackReaderWeak>,
+	tracks: HashMap<String, LocalTrackWeak>,
 	requested: VecDeque<TrackWriter>,
 }
 
@@ -144,16 +144,22 @@ pub struct LocalProducer {
 	state: State<LocalState>,
 
 	refresh: tokio::time::Interval,
+	parent: LocalsProducer,
 }
 
 impl LocalProducer {
-	fn new(info: Arc<Local>, state: State<LocalState>) -> Self {
+	fn new(info: Arc<Local>, state: State<LocalState>, parent: LocalsProducer) -> Self {
 		let refresh = tokio::time::interval(tokio::time::Duration::from_secs(300));
 
-		Self { info, state, refresh }
+		Self {
+			info,
+			state,
+			refresh,
+			parent,
+		}
 	}
 
-	/// Block until the next track requested by a subscriber.
+	/// Block until the next track requested by a reader.
 	pub async fn requested(&mut self) -> Result<Option<serve::TrackWriter>, RelayError> {
 		loop {
 			let notify = {
@@ -180,13 +186,20 @@ impl LocalProducer {
 	async fn refresh(&mut self) -> Result<(), RelayError> {
 		self.refresh.tick().await;
 
-		if let (Some(api), Some(node)) = (self.info.api.as_ref(), self.info.node.as_ref()) {
+		if let (Some(api), Some(node)) = (self.parent.api.as_ref(), self.parent.node.as_ref()) {
 			// Refresh the origin in moq-api.
 			let origin = moq_api::Origin { url: node.clone() };
 			api.set_origin(&self.info.namespace, origin).await.map_err(Arc::new)?;
 		}
 
 		Ok(())
+	}
+}
+
+impl Drop for LocalProducer {
+	fn drop(&mut self) {
+		let namespace = self.namespace.to_string();
+		self.parent.unannounce(&namespace).ok();
 	}
 }
 
@@ -212,33 +225,35 @@ impl LocalConsumer {
 		Self { info, state }
 	}
 
-	pub fn subscribe(&self, name: &str) -> Result<TrackReader, RelayError> {
+	pub fn subscribe(&self, name: &str) -> Result<LocalTrackReader, RelayError> {
 		let state = self.state.lock();
 
-		// Insert the track into our Map so we deduplicate future requests.
+		// Try to reuse the track if there are still active readers
 		if let Some(track) = state.tracks.get(name) {
 			if let Some(track) = track.upgrade() {
-				return Ok(track.clone());
+				return Ok(track);
 			}
 		}
 
 		// Create a new track.
-		let (publisher, subscriber) = serve::Track {
+		let (writer, reader) = serve::Track {
 			namespace: self.info.namespace.clone(),
 			name: name.to_string(),
 		}
 		.produce();
 
+		let reader = LocalTrackReader::new(reader, self.state.clone());
+
 		// Upgrade the lock to mutable.
 		let mut state = state.into_mut().ok_or(ServeError::Done)?;
 
 		// Insert the track into our Map so we deduplicate future requests.
-		state.tracks.insert(name.to_string(), subscriber.weak());
+		state.tracks.insert(name.to_string(), reader.downgrade());
 
-		// Send the track to the Publisher to handle.
-		state.requested.push_back(publisher);
+		// Send the track to the writer to handle.
+		state.requested.push_back(writer);
 
-		Ok(subscriber)
+		Ok(reader)
 	}
 }
 
@@ -247,5 +262,70 @@ impl ops::Deref for LocalConsumer {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+#[derive(Clone)]
+pub struct LocalTrackReader {
+	pub reader: TrackReader,
+	drop: Arc<LocalTrackDrop>,
+}
+
+impl LocalTrackReader {
+	fn new(reader: TrackReader, parent: State<LocalState>) -> Self {
+		let drop = Arc::new(LocalTrackDrop {
+			parent,
+			name: reader.name.clone(),
+		});
+
+		Self { reader, drop }
+	}
+
+	fn downgrade(&self) -> LocalTrackWeak {
+		LocalTrackWeak {
+			reader: self.reader.clone(),
+			drop: Arc::downgrade(&self.drop),
+		}
+	}
+}
+
+impl ops::Deref for LocalTrackReader {
+	type Target = TrackReader;
+
+	fn deref(&self) -> &Self::Target {
+		&self.reader
+	}
+}
+
+impl ops::DerefMut for LocalTrackReader {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.reader
+	}
+}
+
+struct LocalTrackWeak {
+	reader: TrackReader,
+	drop: Weak<LocalTrackDrop>,
+}
+
+impl LocalTrackWeak {
+	fn upgrade(&self) -> Option<LocalTrackReader> {
+		Some(LocalTrackReader {
+			reader: self.reader.clone(),
+			drop: self.drop.upgrade()?,
+		})
+	}
+}
+
+struct LocalTrackDrop {
+	parent: State<LocalState>,
+	name: String,
+}
+
+impl Drop for LocalTrackDrop {
+	fn drop(&mut self) {
+		if let Some(mut parent) = self.parent.lock_mut() {
+			parent.tracks.remove(&self.name);
+		}
 	}
 }

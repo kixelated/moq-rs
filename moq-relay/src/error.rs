@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use moq_transport::serve::ServeError;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -8,7 +9,7 @@ pub enum RelayError {
 	Transport(#[from] moq_transport::SessionError),
 
 	#[error("serve error: {0}")]
-	Serve(#[from] moq_transport::serve::ServeError),
+	Serve(#[from] ServeError),
 
 	#[error("api error: {0}")]
 	Api(#[from] Arc<moq_api::ApiError>),
@@ -24,4 +25,13 @@ pub enum RelayError {
 
 	#[error("missing node")]
 	MissingNode,
+}
+
+impl From<RelayError> for ServeError {
+	fn from(err: RelayError) -> Self {
+		match err {
+			RelayError::Serve(err) => err,
+			_ => ServeError::Internal(err.to_string()),
+		}
+	}
 }

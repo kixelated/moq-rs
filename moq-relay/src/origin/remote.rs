@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::ops;
 use std::sync::Arc;
 
@@ -83,7 +84,8 @@ impl RemotesProducer {
 						namespace
 					});
 				}
-				namespace = tasks.select_next_some() => {
+				res = tasks.next(), if !tasks.is_empty() => {
+					let namespace = res.unwrap();
 					self.state.lock_mut().ok_or(ServeError::Done)?.lookup.remove(&namespace);
 				},
 			}
@@ -140,6 +142,12 @@ impl ops::Deref for RemotesConsumer {
 pub struct Remote {
 	pub remotes: Arc<Remotes>,
 	pub namespace: String,
+}
+
+impl fmt::Debug for Remote {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Remote").field("namespace", &self.namespace).finish()
+	}
 }
 
 impl ops::Deref for Remote {
@@ -203,7 +211,7 @@ impl RemoteProducer {
 
 		// Run the session
 		let mut session = session.run().boxed();
-		let mut tracks = FuturesUnordered::new();
+		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
@@ -219,13 +227,13 @@ impl RemoteProducer {
 						}
 					};
 
-					tracks.push(async move {
-						if let Err(err) = subscribe.run().await {
+					tasks.push(async move {
+						if let Err(err) = subscribe.closed().await {
 							log::warn!("failed serving track: track={:?} err={:?}", info, err);
 						}
 					});
 				}
-				_ = tracks.select_next_some() => {},
+				_ = tasks.next(), if !tasks.is_empty() => {},
 				res = &mut session => res?,
 			}
 		}

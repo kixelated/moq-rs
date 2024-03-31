@@ -72,13 +72,16 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 		(send, recv)
 	}
 
-	// Block until the subscription is closed.
-	pub async fn run(self) -> Result<(), ServeError> {
+	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				state.closed.clone()?;
-				state.modified().ok_or(ServeError::Done)?
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
 			};
 
 			notify.await
@@ -88,10 +91,6 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 
 impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
 	fn drop(&mut self) {
-		if self.state.lock().closed.is_err() {
-			return;
-		}
-
 		self.subscriber.send_message(message::Unsubscribe { id: self.id });
 	}
 }
@@ -110,7 +109,7 @@ pub(super) struct SubscribeRecv {
 }
 
 impl SubscribeRecv {
-	pub fn recv_ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
+	pub fn ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		if state.ok.is_some() {
 			return Err(ServeError::Duplicate);
@@ -122,7 +121,7 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	pub fn recv_error(mut self, err: ServeError) -> Result<(), ServeError> {
+	pub fn error(mut self, err: ServeError) -> Result<(), ServeError> {
 		let writer = self.writer.take().ok_or(ServeError::Done)?;
 		writer.close(err.clone())?;
 
@@ -132,7 +131,7 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	pub fn recv_track(&mut self, header: data::TrackHeader) -> Result<serve::StreamWriter, ServeError> {
+	pub fn track(&mut self, header: data::TrackHeader) -> Result<serve::StreamWriter, ServeError> {
 		let writer = self.writer.take().ok_or(ServeError::Done)?;
 
 		let stream = match writer {
@@ -145,7 +144,7 @@ impl SubscribeRecv {
 		Ok(stream)
 	}
 
-	pub fn recv_group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
+	pub fn group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
 		let writer = self.writer.take().ok_or(ServeError::Done)?;
 
 		let mut groups = match writer {
@@ -164,7 +163,7 @@ impl SubscribeRecv {
 		Ok(writer)
 	}
 
-	pub fn recv_object(&mut self, header: data::ObjectHeader) -> Result<serve::ObjectWriter, ServeError> {
+	pub fn object(&mut self, header: data::ObjectHeader) -> Result<serve::ObjectWriter, ServeError> {
 		let writer = self.writer.take().ok_or(ServeError::Done)?;
 
 		let mut objects = match writer {
@@ -184,7 +183,7 @@ impl SubscribeRecv {
 		Ok(writer)
 	}
 
-	pub fn recv_datagram(&mut self, datagram: data::Datagram) -> Result<(), ServeError> {
+	pub fn datagram(&mut self, datagram: data::Datagram) -> Result<(), ServeError> {
 		let writer = self.writer.take().ok_or(ServeError::Done)?;
 
 		let mut datagrams = match writer {

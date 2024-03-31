@@ -12,7 +12,7 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::{State, StateWeak};
+use crate::util::State;
 
 use super::{
 	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
@@ -76,11 +76,11 @@ impl TrackWriter {
 	}
 
 	pub fn stream(self, priority: u64) -> Result<StreamWriter, ServeError> {
-		let streams = Stream {
+		let (writer, reader) = Stream {
 			track: self.info.clone(),
 			priority,
-		};
-		let (writer, reader) = streams.produce();
+		}
+		.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.mode = Some(reader.into());
@@ -88,10 +88,10 @@ impl TrackWriter {
 	}
 
 	pub fn groups(self) -> Result<GroupsWriter, ServeError> {
-		let groups = Groups {
+		let (writer, reader) = Groups {
 			track: self.info.clone(),
-		};
-		let (writer, reader) = groups.produce();
+		}
+		.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.mode = Some(reader.into());
@@ -99,10 +99,10 @@ impl TrackWriter {
 	}
 
 	pub fn objects(self) -> Result<ObjectsWriter, ServeError> {
-		let objects = Objects {
+		let (writer, reader) = Objects {
 			track: self.info.clone(),
-		};
-		let (writer, reader) = objects.produce();
+		}
+		.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.mode = Some(reader.into());
@@ -110,10 +110,10 @@ impl TrackWriter {
 	}
 
 	pub fn datagrams(self) -> Result<DatagramsWriter, ServeError> {
-		let datagrams = Datagrams {
+		let (writer, reader) = Datagrams {
 			track: self.info.clone(),
-		};
-		let (writer, reader) = datagrams.produce();
+		}
+		.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.mode = Some(reader.into());
@@ -174,8 +174,20 @@ impl TrackReader {
 		None
 	}
 
-	pub fn weak(&self) -> TrackReaderWeak {
-		TrackReaderWeak::new(self.state.downgrade(), self.info.clone())
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
+			};
+
+			notify.await
+		}
 	}
 }
 
@@ -184,23 +196,6 @@ impl Deref for TrackReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-#[derive(Clone)]
-pub struct TrackReaderWeak {
-	state: StateWeak<TrackState>,
-	pub info: Arc<Track>,
-}
-
-impl TrackReaderWeak {
-	fn new(state: StateWeak<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, info }
-	}
-
-	pub fn upgrade(&self) -> Option<TrackReader> {
-		let state = self.state.upgrade()?;
-		Some(TrackReader::new(state, self.info.clone()))
 	}
 }
 

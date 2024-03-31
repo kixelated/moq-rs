@@ -236,7 +236,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 						};
 					});
 				},
-				_ = tasks.select_next_some() => {},
+				_ = tasks.next(), if !tasks.is_empty() => {},
 			};
 		}
 	}

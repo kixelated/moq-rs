@@ -73,12 +73,12 @@ impl Connection {
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(session.run().boxed());
 
-		if let Some(publisher) = publisher {
-			tasks.push(Self::serve_publisher(publisher, self.origin.clone()).boxed());
+		if let Some(remote) = publisher {
+			tasks.push(Self::serve_subscriber(remote, self.origin.clone()).boxed());
 		}
 
-		if let Some(subscriber) = subscriber {
-			tasks.push(Self::serve_subscriber(subscriber, self.origin).boxed());
+		if let Some(remote) = subscriber {
+			tasks.push(Self::serve_publisher(remote, self.origin).boxed());
 		}
 
 		// Return the first error
@@ -95,12 +95,12 @@ impl Connection {
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(session.run().boxed());
 
-		if let Some(publisher) = publisher {
-			tasks.push(Self::serve_publisher(publisher, self.origin.clone()).boxed());
+		if let Some(remote) = publisher {
+			tasks.push(Self::serve_subscriber(remote, self.origin.clone()).boxed());
 		}
 
-		if let Some(subscriber) = subscriber {
-			tasks.push(Self::serve_subscriber(subscriber, self.origin).boxed());
+		if let Some(remote) = subscriber {
+			tasks.push(Self::serve_publisher(remote, self.origin).boxed());
 		}
 
 		// Return the first error
@@ -109,26 +109,28 @@ impl Connection {
 		Ok(())
 	}
 
-	async fn serve_publisher<S: webtransport_generic::Session>(
-		mut publisher: Publisher<S>,
+	async fn serve_subscriber<S: webtransport_generic::Session>(
+		mut remote: Publisher<S>,
 		origin: Origin,
 	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				subscribe = publisher.subscribed() => {
+				subscribe = remote.subscribed() => {
 					let origin = origin.clone();
+
 					tasks.push(async move {
 						let info = subscribe.info.clone();
 
-						if let Err(err) = Self::serve_subscribe(origin.clone(), subscribe).await {
-							log::warn!("failed serving subscribe: info={:?} err={:?}", info, err)
-
+						match Self::serve_subscribe(origin, subscribe).await {
+							Err(RelayError::Serve(err)) => log::info!("finished serving subscribe: info={:?} err={:?}", info, err),
+							Err(err) => log::warn!("failed serving subscribe: info={:?} err={:?}", info, err),
+							Ok(_) => log::info!("finished serving subscribe: info={:?}", info),
 						}
 					});
 				},
-				_= tasks.select_next_some() => {},
+				_= tasks.next(), if !tasks.is_empty() => {},
 			};
 		}
 	}
@@ -137,45 +139,52 @@ impl Connection {
 		origin: Origin,
 		subscribe: Subscribed<S>,
 	) -> Result<(), RelayError> {
-		log::info!("serving subscribe: info={:?}", subscribe.info,);
+		let track = match origin.subscribe(&subscribe.namespace, &subscribe.name) {
+			Ok(track) => track,
+			Err(err) => {
+				subscribe.close(err.clone().into())?;
+				return Err(err);
+			}
+		};
 
-		let track = origin.subscribe(&subscribe.namespace, &subscribe.name)?;
-		subscribe.serve(track).await?;
+		subscribe.serve(track.reader).await?;
 
 		Ok(())
 	}
 
-	async fn serve_subscriber<S: webtransport_generic::Session>(
-		mut subscriber: Subscriber<S>,
+	async fn serve_publisher<S: webtransport_generic::Session>(
+		mut remote: Subscriber<S>,
 		origin: Origin,
 	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				announce = subscriber.announced() => {
+				announce = remote.announced() => {
 					let info = announce.info.clone();
-					let subscriber = subscriber.clone();
+					let remote = remote.clone();
 					let origin = origin.clone();
 
+					log::warn!("serving announce: info={:?}", info);
+
 					tasks.push(async move {
-						if let Err(err) = Self::serve_announce(subscriber, origin, announce).await {
+						if let Err(err) = Self::serve_announce(remote, origin, announce).await {
 							log::warn!("failed serving announce: info={:?} err={:?}", info, err)
+						} else {
+							log::info!("finished serving announce: info={:?}", info)
 						}
 					});
 				},
-				_ = tasks.select_next_some() => {},
+				_ = tasks.next(), if !tasks.is_empty() => {},
 			};
 		}
 	}
 
 	async fn serve_announce<S: webtransport_generic::Session>(
-		subscriber: Subscriber<S>,
+		remote: Subscriber<S>,
 		mut origin: Origin,
 		announce: Announced<S>,
 	) -> Result<(), RelayError> {
-		log::info!("serving announce: info={:?}", announce.info);
-
 		let mut publisher = match origin.announce(&announce.namespace) {
 			Ok(publisher) => publisher,
 			Err(err) => {
@@ -201,23 +210,22 @@ impl Connection {
 				// Wait for the next subscriber and serve the track.
 				res = publisher.requested() => {
 					let track = res?.ok_or(ServeError::Done)?;
-					let mut subscriber = subscriber.clone();
+					let mut subscriber = remote.clone();
 
 					tasks.push(async move {
 						let info = track.info.clone();
-						log::info!("local subscribe: track={:?}", track);
+						log::info!("relay: track={:?}", info);
 
 						match subscriber.subscribe(track) {
-							Ok(subscribe) => if let Err(err) = subscribe.run().await {
-								log::warn!("local subscribe done: track={:?} err={:?}", info, err);
+							Ok(subscribe) => {
+								let err = subscribe.closed().await;
+								log::info!("relay finished: track={:?} err={:?}", info, err);
 							},
-							Err(err) => {
-								log::warn!("local subscribe failed: track={:?} err={:?}", info, err);
-							},
+							Err(err) => log::warn!("relay failed: track={:?} err={:?}", info, err),
 						};
 					});
 				},
-				_ = tasks.select_next_some() => {}
+				_ = tasks.next(), if !tasks.is_empty() => {}
 			}
 		}
 	}

@@ -15,6 +15,7 @@ use super::{SessionError, SubscribeInfo, Writer};
 #[derive(Debug)]
 struct SubscribedState {
 	max: Option<(u64, u64)>,
+	closed: Result<(), ServeError>,
 }
 
 impl SubscribedState {
@@ -31,7 +32,10 @@ impl SubscribedState {
 
 impl Default for SubscribedState {
 	fn default() -> Self {
-		Self { max: None }
+		Self {
+			max: None,
+			closed: Ok(()),
+		}
 	}
 }
 
@@ -39,8 +43,6 @@ pub struct Subscribed<S: webtransport_generic::Session> {
 	publisher: Publisher<S>,
 	state: State<SubscribedState>,
 	msg: message::Subscribe,
-
-	closed: Result<(), ServeError>,
 	ok: bool,
 
 	pub info: SubscribeInfo,
@@ -59,20 +61,25 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 			state: send,
 			msg,
 			info,
-			closed: Ok(()),
 			ok: false,
 		};
 
 		// Prevents updates after being closed
-		// TODO actively abort on close
-		let recv = SubscribedRecv { _state: recv };
+		let recv = SubscribedRecv { state: recv };
 
 		(send, recv)
 	}
 
 	pub async fn serve(mut self, track: serve::TrackReader) -> Result<(), SessionError> {
-		self.ok = true; // So we sent SubscribeDone on drop
+		let res = self.serve_inner(track).await;
+		if let Err(err) = &res {
+			self.close(err.clone().into())?;
+		}
 
+		res
+	}
+
+	async fn serve_inner(&mut self, track: serve::TrackReader) -> Result<(), SessionError> {
 		let latest = track.latest();
 		self.state.lock_mut().ok_or(ServeError::Done)?.max = latest;
 
@@ -82,7 +89,10 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 			latest,
 		});
 
+		self.ok = true; // So we sent SubscribeDone on drop
+
 		match track.mode().await? {
+			// TODO cancel track/datagrams on closed
 			TrackReaderMode::Stream(stream) => self.serve_track(stream).await,
 			TrackReaderMode::Groups(groups) => self.serve_groups(groups).await,
 			TrackReaderMode::Objects(objects) => self.serve_objects(objects).await,
@@ -90,9 +100,30 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		}
 	}
 
-	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed = Err(err);
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(err);
+
 		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
+			};
+
+			notify.await;
+		}
 	}
 }
 
@@ -106,9 +137,10 @@ impl<S: webtransport_generic::Session> ops::Deref for Subscribed<S> {
 
 impl<S: webtransport_generic::Session> Drop for Subscribed<S> {
 	fn drop(&mut self) {
-		// WARN: there's a deadlock if you hold the lock while sending a terminal message...
-		let err = self.closed.as_ref().err().cloned().unwrap_or(ServeError::Done);
-		let max = self.state.lock().max;
+		let state = self.state.lock();
+		let err = state.closed.as_ref().err().cloned().unwrap_or(ServeError::Done);
+		let max = state.max;
+		drop(state); // Important to avoid a deadlock
 
 		if self.ok {
 			self.publisher.send_message(message::SubscribeDone {
@@ -129,7 +161,7 @@ impl<S: webtransport_generic::Session> Drop for Subscribed<S> {
 }
 
 impl<S: webtransport_generic::Session> Subscribed<S> {
-	async fn serve_track(self, mut track: serve::StreamReader) -> Result<(), SessionError> {
+	async fn serve_track(&mut self, mut track: serve::StreamReader) -> Result<(), SessionError> {
 		let mut stream = self.publisher.open_uni().await?;
 
 		// TODO figure out u32 vs u64 priority
@@ -177,7 +209,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		Ok(())
 	}
 
-	async fn serve_groups(self, mut groups: serve::GroupsReader) -> Result<(), SessionError> {
+	async fn serve_groups(&mut self, mut groups: serve::GroupsReader) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut done: Option<Result<(), ServeError>> = None;
 
@@ -205,7 +237,9 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 					Ok(None) => done = Some(Ok(())),
 					Err(err) => done = Some(Err(err.into())),
 				},
-				_ = tasks.select_next_some() => {},
+				res = self.closed(), if done.is_none() => done = Some(res),
+				_ = tasks.next(), if !tasks.is_empty() => {},
+				else => return Ok(done.unwrap()?),
 			}
 		}
 	}
@@ -254,7 +288,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		Ok(())
 	}
 
-	pub async fn serve_objects(self, mut objects: serve::ObjectsReader) -> Result<(), SessionError> {
+	pub async fn serve_objects(&mut self, mut objects: serve::ObjectsReader) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut done = None;
 
@@ -281,10 +315,11 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 						});
 					},
 					Ok(None) => done = Some(Ok(())),
-					Err(err) => done = Some(Err(err.into())),
+					Err(err) => done = Some(Err(err)),
 				},
-				_ = tasks.select_next_some() => {},
-				else => return done.unwrap(),
+				_ = tasks.next(), if !tasks.is_empty() => {},
+				res = self.closed() => done = Some(res),
+				else => return Ok(done.unwrap()?),
 			}
 		}
 	}
@@ -322,7 +357,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		Ok(())
 	}
 
-	async fn serve_datagrams(self, mut datagrams: serve::DatagramsReader) -> Result<(), SessionError> {
+	async fn serve_datagrams(&mut self, mut datagrams: serve::DatagramsReader) -> Result<(), SessionError> {
 		while let Some(datagram) = datagrams.read().await? {
 			let datagram = data::Datagram {
 				subscribe_id: self.msg.id,
@@ -350,12 +385,17 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 }
 
 pub(super) struct SubscribedRecv {
-	_state: State<SubscribedState>,
+	state: State<SubscribedState>,
 }
 
 impl SubscribedRecv {
 	pub fn recv_unsubscribe(&mut self) -> Result<(), ServeError> {
-		// TODO properly cancel
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		state.closed = Err(ServeError::Cancel);
+
 		Ok(())
 	}
 }

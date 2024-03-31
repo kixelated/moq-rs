@@ -1,4 +1,4 @@
-use moq_transport::serve::{ServeError, TrackReader};
+use moq_transport::serve::ServeError;
 use url::Url;
 
 mod local;
@@ -38,14 +38,20 @@ impl Origin {
 		self.locals.0.announce(namespace.to_string())
 	}
 
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<TrackReader, RelayError> {
-		if let Some(local) = self.locals.1.find(namespace) {
-			local.subscribe(name)
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<LocalTrackReader, RelayError> {
+		let track = if let Some(local) = self.locals.1.find(namespace) {
+			log::info!("subscribing to: {:?}", local.info);
+			local.subscribe(name)?
+		/*
 		} else if let Some((_, remotes)) = self.remotes.as_ref() {
 			let remote = remotes.fetch(namespace)?;
-			remote.subscribe(name)
+			log::info!("subscribing to: {:?}", remote.info);
+			remote.subscribe(name)?
+			*/
 		} else {
-			Err(ServeError::NotFound.into())
-		}
+			return Err(ServeError::NotFound.into());
+		};
+
+		Ok(track)
 	}
 }

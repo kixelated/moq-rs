@@ -45,7 +45,7 @@ pub enum SessionError {
 	Internal,
 
 	#[error("cache error: {0}")]
-	Cache(#[from] serve::ServeError),
+	Serve(#[from] serve::ServeError),
 
 	#[error("wrong size")]
 	WrongSize,
@@ -89,7 +89,16 @@ impl SessionError {
 			Self::Duplicate => 409,
 			Self::Internal => 500,
 			Self::WrongSize => 400,
-			Self::Cache(err) => err.code(),
+			Self::Serve(err) => err.code(),
+		}
+	}
+}
+
+impl From<SessionError> for serve::ServeError {
+	fn from(err: SessionError) -> Self {
+		match err {
+			SessionError::Serve(err) => err,
+			_ => serve::ServeError::Internal(err.to_string()),
 		}
 	}
 }

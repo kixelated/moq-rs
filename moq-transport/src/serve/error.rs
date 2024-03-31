@@ -21,6 +21,9 @@ pub enum ServeError {
 
 	#[error("wrong size")]
 	Size,
+
+	#[error("internal error: {0}")]
+	Internal(String),
 }
 
 impl ServeError {
@@ -33,6 +36,7 @@ impl ServeError {
 			Self::Duplicate => 409,
 			Self::Mode => 400,
 			Self::Size => 413,
+			Self::Internal(_) => 500,
 		}
 	}
 }
