@@ -19,7 +19,6 @@ impl Datagrams {
 	}
 }
 
-#[derive(Debug)]
 struct DatagramsState {
 	// The latest datagram
 	latest: Option<Datagram>,
@@ -41,7 +40,6 @@ impl Default for DatagramsState {
 	}
 }
 
-#[derive(Debug)]
 pub struct DatagramsWriter {
 	state: State<DatagramsState>,
 	pub track: Arc<Track>,
@@ -68,7 +66,7 @@ impl DatagramsWriter {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DatagramsReader {
 	state: State<DatagramsState>,
 	pub track: Arc<Track>,

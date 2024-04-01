@@ -12,13 +12,12 @@ pub use announce::*;
 pub use announced::*;
 pub use error::*;
 pub use publisher::*;
+pub use subscribe::*;
 pub use subscribed::*;
 pub use subscriber::*;
 
 use reader::*;
 use writer::*;
-
-use subscribe::*;
 
 use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -232,7 +231,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 
 					tasks.push(async move {
 						if let Err(err) = Subscriber::recv_stream(subscriber, stream).await {
-							log::warn!("failed to serve stream: err={:?}", err);
+							log::warn!("failed to serve stream: {}", err);
 						};
 					});
 				},
@@ -248,7 +247,7 @@ impl<S: webtransport_generic::Session> Session<S> {
 				.await
 				.map_err(SessionError::from_webtransport)?;
 
-			subscriber.recv_datagram(datagram).await?;
+			subscriber.recv_datagram(datagram)?;
 		}
 	}
 }

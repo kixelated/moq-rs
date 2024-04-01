@@ -47,7 +47,6 @@ impl Track {
 	}
 }
 
-#[derive(Debug)]
 struct TrackState {
 	mode: Option<TrackReaderMode>,
 	closed: Result<(), ServeError>,
@@ -63,7 +62,6 @@ impl Default for TrackState {
 }
 
 /// Creates new streams for a track.
-#[derive(Debug)]
 pub struct TrackWriter {
 	state: State<TrackState>,
 	pub info: Arc<Track>,
@@ -137,7 +135,7 @@ impl Deref for TrackWriter {
 }
 
 /// Receives new streams for a track.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TrackReader {
 	state: State<TrackState>,
 	pub info: Arc<Track>,
@@ -202,7 +200,7 @@ impl Deref for TrackReader {
 macro_rules! track_readers {
     {$($name:ident,)*} => {
 		paste! {
-			#[derive(Debug, Clone)]
+			#[derive(Clone)]
 			pub enum TrackReaderMode {
 				$($name([<$name Reader>])),*
 			}
@@ -229,7 +227,6 @@ track_readers!(Stream, Groups, Objects, Datagrams,);
 macro_rules! track_writers {
     {$($name:ident,)*} => {
 		paste! {
-			#[derive(Debug)]
 			pub enum TrackWriterMode {
 				$($name([<$name Writer>])),*
 			}

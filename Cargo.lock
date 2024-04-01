@@ -1228,6 +1228,8 @@ dependencies = [
 [[package]]
 name = "quictransport-quinn"
 version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04227967142d740ffc66367bad009a6315e626c4830fcdb9d55904bd3ae1e3f9"
 dependencies = [
  "bytes",
  "quinn",
@@ -2200,6 +2202,8 @@ checksum = "14247bb57be4f377dfb94c72830b8ce8fc6beac03cf4bf7b9732eadd414123fc"
 [[package]]
 name = "webtransport-generic"
 version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3796cc7d83f889b8fd4c1a731b08d83618ea1a3a2e3fe09225562754acc9b814"
 dependencies = [
  "bytes",
 ]
@@ -2207,6 +2211,8 @@ dependencies = [
 [[package]]
 name = "webtransport-proto"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7de84935ba0f2292c5f78f042758fc4a0ce506699e674d059c517f56b04091be"
 dependencies = [
  "bytes",
  "http",
@@ -2217,6 +2223,8 @@ dependencies = [
 [[package]]
 name = "webtransport-quinn"
 version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18ac46cd68286fd4a70bc69dcab62bafbbe407927ae643f3bfce26f27090b19a"
 dependencies = [
  "bytes",
  "futures",

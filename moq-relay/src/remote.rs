@@ -4,12 +4,14 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::ops;
 use std::sync::Arc;
+use std::sync::Weak;
 
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use moq_transport::serve::{ServeError, Track, TrackReader, TrackWriter};
 use moq_transport::util::State;
+use url::Url;
 
 use crate::RelayError;
 
@@ -35,7 +37,7 @@ impl Remotes {
 
 #[derive(Default)]
 struct RemotesState {
-	lookup: HashMap<String, RemoteConsumer>,
+	lookup: HashMap<Url, RemoteConsumer>,
 	requested: VecDeque<RemoteProducer>,
 }
 
@@ -74,19 +76,22 @@ impl RemotesProducer {
 			tokio::select! {
 				remote = self.next() => {
 					let remote = remote?;
-					let namespace = remote.info.namespace.clone();
+					let url = remote.url.clone();
 
 					tasks.push(async move {
+						let info = remote.info.clone();
+
+						log::warn!("serving remote: {:?}", info);
 						if let Err(err) = remote.run().await {
-							log::warn!("failed serving remote: err={}", err);
+							log::warn!("failed serving remote: {:?}, error: {}", info, err);
 						}
 
-						namespace
+						url
 					});
 				}
 				res = tasks.next(), if !tasks.is_empty() => {
-					let namespace = res.unwrap();
-					self.state.lock_mut().ok_or(ServeError::Done)?.lookup.remove(&namespace);
+					let url = res.unwrap();
+					self.state.lock_mut().ok_or(ServeError::Done)?.lookup.remove(&url);
 				},
 			}
 		}
@@ -103,7 +108,7 @@ impl ops::Deref for RemotesProducer {
 
 #[derive(Clone)]
 pub struct RemotesConsumer {
-	info: Arc<Remotes>,
+	pub info: Arc<Remotes>,
 	state: State<RemotesState>,
 }
 
@@ -112,22 +117,31 @@ impl RemotesConsumer {
 		Self { info, state }
 	}
 
-	pub fn fetch(&self, namespace: &str) -> Result<RemoteConsumer, RelayError> {
+	pub async fn route(&self, namespace: &str) -> Result<Option<RemoteConsumer>, RelayError> {
+		// Always fetch the origin instead of using the (potentially invalid) cache.
+		let origin = match self.api.get_origin(namespace).await.map_err(Arc::new)? {
+			None => return Ok(None),
+			Some(origin) => origin,
+		};
+
 		let state = self.state.lock();
-		if let Some(remote) = state.lookup.get(namespace).cloned() {
-			return Ok(remote);
+		if let Some(remote) = state.lookup.get(&origin.url).cloned() {
+			return Ok(Some(remote));
 		}
 
 		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+
 		let remote = Remote {
-			namespace: namespace.to_string(),
+			url: origin.url.clone(),
 			remotes: self.info.clone(),
 		};
 
 		let (writer, reader) = remote.produce();
 		state.requested.push_back(writer);
 
-		Ok(reader)
+		state.lookup.insert(origin.url, reader.clone());
+
+		Ok(Some(reader))
 	}
 }
 
@@ -141,12 +155,12 @@ impl ops::Deref for RemotesConsumer {
 
 pub struct Remote {
 	pub remotes: Arc<Remotes>,
-	pub namespace: String,
+	pub url: Url,
 }
 
 impl fmt::Debug for Remote {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Remote").field("namespace", &self.namespace).finish()
+		f.debug_struct("Remote").field("url", &self.url.to_string()).finish()
 	}
 }
 
@@ -172,7 +186,7 @@ impl Remote {
 }
 
 struct RemoteState {
-	tracks: HashMap<String, TrackReader>,
+	tracks: HashMap<(String, String), RemoteTrackWeak>,
 	requested: VecDeque<TrackWriter>,
 	closed: Result<(), RelayError>,
 }
@@ -207,7 +221,9 @@ impl RemoteProducer {
 	}
 
 	pub async fn run_inner(&mut self) -> Result<(), RelayError> {
-		let (session, mut subscriber) = self.connect().await?;
+		// TODO reuse QUIC and MoQ sessions
+		let session = webtransport_quinn::connect(&self.quic, &self.url).await?;
+		let (session, mut subscriber) = moq_transport::Subscriber::connect(session).await?;
 
 		// Run the session
 		let mut session = session.run().boxed();
@@ -222,46 +238,22 @@ impl RemoteProducer {
 					let subscribe = match subscriber.subscribe(track) {
 						Ok(subscribe) => subscribe,
 						Err(err) => {
-							log::warn!("failed subscribing: track={:?} err={:?}", info, err);
+							log::warn!("failed subscribing: {:?}, error: {}", info, err);
 							continue
 						}
 					};
 
 					tasks.push(async move {
 						if let Err(err) = subscribe.closed().await {
-							log::warn!("failed serving track: track={:?} err={:?}", info, err);
+							log::warn!("failed serving track: {:?}, error: {}", info, err);
 						}
 					});
 				}
 				_ = tasks.next(), if !tasks.is_empty() => {},
+
 				res = &mut session => res?,
 			}
 		}
-	}
-
-	async fn connect(
-		&mut self,
-	) -> Result<
-		(
-			moq_transport::Session<webtransport_quinn::Session>,
-			moq_transport::Subscriber<webtransport_quinn::Session>,
-		),
-		RelayError,
-	> {
-		let remotes = &self.info.remotes;
-
-		let origin = remotes
-			.api
-			.get_origin(&self.info.namespace)
-			.await
-			.map_err(Arc::new)?
-			.ok_or(ServeError::NotFound)?;
-
-		// TODO reuse QUIC and MoQ sessions
-		let session = webtransport_quinn::connect(&remotes.quic, &origin.url).await?;
-		let (session, subscriber) = moq_transport::Subscriber::connect(session).await?;
-
-		Ok((session, subscriber))
 	}
 
 	/// Block until the next track requested by a consumer.
@@ -302,15 +294,22 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, name: &str) -> Result<TrackReader, RelayError> {
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<RemoteTrackReader, RelayError> {
+		let key = (namespace.to_string(), name.to_string());
 		let state = self.state.lock();
-		if let Some(track) = state.tracks.get(name).cloned() {
-			return Ok(track);
+		if let Some(track) = state.tracks.get(&key) {
+			if let Some(track) = track.upgrade() {
+				return Ok(track);
+			}
 		}
 
 		let mut state = state.into_mut().ok_or(ServeError::Done)?;
 
-		let (writer, reader) = Track::new(&self.info.namespace, name).produce();
+		let (writer, reader) = Track::new(namespace, name).produce();
+		let reader = RemoteTrackReader::new(reader, self.state.clone());
+
+		// Insert the track into our Map so we deduplicate future requests.
+		state.tracks.insert(key, reader.downgrade());
 		state.requested.push_back(writer);
 
 		Ok(reader)
@@ -322,5 +321,70 @@ impl ops::Deref for RemoteConsumer {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+#[derive(Clone)]
+pub struct RemoteTrackReader {
+	pub reader: TrackReader,
+	drop: Arc<RemoteTrackDrop>,
+}
+
+impl RemoteTrackReader {
+	fn new(reader: TrackReader, parent: State<RemoteState>) -> Self {
+		let drop = Arc::new(RemoteTrackDrop {
+			parent,
+			key: (reader.namespace.clone(), reader.name.clone()),
+		});
+
+		Self { reader, drop }
+	}
+
+	fn downgrade(&self) -> RemoteTrackWeak {
+		RemoteTrackWeak {
+			reader: self.reader.clone(),
+			drop: Arc::downgrade(&self.drop),
+		}
+	}
+}
+
+impl ops::Deref for RemoteTrackReader {
+	type Target = TrackReader;
+
+	fn deref(&self) -> &Self::Target {
+		&self.reader
+	}
+}
+
+impl ops::DerefMut for RemoteTrackReader {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.reader
+	}
+}
+
+struct RemoteTrackWeak {
+	reader: TrackReader,
+	drop: Weak<RemoteTrackDrop>,
+}
+
+impl RemoteTrackWeak {
+	fn upgrade(&self) -> Option<RemoteTrackReader> {
+		Some(RemoteTrackReader {
+			reader: self.reader.clone(),
+			drop: self.drop.upgrade()?,
+		})
+	}
+}
+
+struct RemoteTrackDrop {
+	parent: State<RemoteState>,
+	key: (String, String),
+}
+
+impl Drop for RemoteTrackDrop {
+	fn drop(&mut self) {
+		if let Some(mut parent) = self.parent.lock_mut() {
+			parent.tracks.remove(&self.key);
+		}
 	}
 }

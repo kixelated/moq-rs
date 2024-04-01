@@ -44,7 +44,7 @@ pub enum SessionError {
 	#[error("internal error")]
 	Internal,
 
-	#[error("cache error: {0}")]
+	#[error("serve error: {0}")]
 	Serve(#[from] serve::ServeError),
 
 	#[error("wrong size")]

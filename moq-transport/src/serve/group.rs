@@ -8,7 +8,7 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{cmp, fmt, ops::Deref, sync::Arc};
+use std::{cmp, ops::Deref, sync::Arc};
 
 use crate::util::State;
 
@@ -38,7 +38,6 @@ impl Deref for Groups {
 }
 
 // State shared between the writer and reader.
-#[derive(Debug)]
 struct GroupsState {
 	latest: Option<GroupReader>,
 	epoch: u64, // Updated each time latest changes
@@ -55,7 +54,6 @@ impl Default for GroupsState {
 	}
 }
 
-#[derive(Debug)]
 pub struct GroupsWriter {
 	pub info: Arc<Track>,
 	state: State<GroupsState>,
@@ -122,7 +120,7 @@ impl Deref for GroupsWriter {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GroupsReader {
 	pub info: Arc<Track>,
 	state: State<GroupsState>,
@@ -218,7 +216,6 @@ impl Deref for GroupInfo {
 	}
 }
 
-#[derive(Debug)]
 struct GroupState {
 	// The data that has been received thus far.
 	objects: Vec<GroupObjectReader>,
@@ -237,7 +234,6 @@ impl Default for GroupState {
 }
 
 /// Used to write data to a stream and notify readers.
-#[derive(Debug)]
 pub struct GroupWriter {
 	// Mutable stream state.
 	state: State<GroupState>,
@@ -301,7 +297,7 @@ impl Deref for GroupWriter {
 }
 
 /// Notified when a stream has new data available.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GroupReader {
 	// Modify the stream state.
 	state: State<GroupState>,
@@ -370,7 +366,7 @@ impl Deref for GroupReader {
 /// A subset of Object, since we use the group's info.
 #[derive(Clone, PartialEq, Debug)]
 pub struct GroupObject {
-	group: Arc<GroupInfo>,
+	pub group: Arc<GroupInfo>,
 
 	pub object_id: u64,
 
@@ -406,16 +402,6 @@ struct GroupObjectState {
 	closed: Result<(), ServeError>,
 }
 
-impl fmt::Debug for GroupObjectState {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("GroupObjectState")
-			.field("chunks", &self.chunks.len())
-			.field("size", &self.chunks.iter().map(|c| c.len()).sum::<usize>())
-			.field("closed", &self.closed)
-			.finish()
-	}
-}
-
 impl Default for GroupObjectState {
 	fn default() -> Self {
 		Self {
@@ -426,7 +412,6 @@ impl Default for GroupObjectState {
 }
 
 /// Used to write data to a segment and notify readers.
-#[derive(Debug)]
 pub struct GroupObjectWriter {
 	// Mutable segment state.
 	state: State<GroupObjectState>,
@@ -495,7 +480,7 @@ impl Deref for GroupObjectWriter {
 }
 
 /// Notified when a segment has new data available.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GroupObjectReader {
 	// Modify the segment state.
 	state: State<GroupObjectState>,

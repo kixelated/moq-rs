@@ -15,7 +15,7 @@ pub struct SubscribeInfo {
 }
 
 struct SubscribeState {
-	ok: Option<message::SubscribeOk>,
+	ok: bool,
 	closed: Result<(), ServeError>,
 }
 
@@ -109,14 +109,14 @@ pub(super) struct SubscribeRecv {
 }
 
 impl SubscribeRecv {
-	pub fn ok(&mut self, msg: message::SubscribeOk) -> Result<(), ServeError> {
+	pub fn ok(&mut self) -> Result<(), ServeError> {
 		let state = self.state.lock();
-		if state.ok.is_some() {
+		if state.ok {
 			return Err(ServeError::Duplicate);
 		}
 
 		let mut state = state.into_mut().ok_or(ServeError::Done)?;
-		state.ok = Some(msg);
+		state.ok = true;
 
 		Ok(())
 	}

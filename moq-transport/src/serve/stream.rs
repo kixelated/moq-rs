@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use crate::util::State;
 
@@ -31,7 +31,6 @@ impl Deref for Stream {
 	}
 }
 
-#[derive(Debug)]
 struct StreamState {
 	// The latest group.
 	latest: Option<StreamGroupReader>,
@@ -56,18 +55,18 @@ impl Default for StreamState {
 /// Used to write data to a stream and notify readers.
 ///
 /// This is Clone as a work-around, but be very careful because it's meant to be sequential.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StreamWriter {
 	// Mutable stream state.
 	state: State<StreamState>,
 
 	// Immutable stream state.
-	pub stream: Arc<Stream>,
+	pub info: Arc<Stream>,
 }
 
 impl StreamWriter {
-	fn new(state: State<StreamState>, stream: Arc<Stream>) -> Self {
-		Self { state, stream }
+	fn new(state: State<StreamState>, info: Arc<Stream>) -> Self {
+		Self { state, info }
 	}
 
 	pub fn create(&mut self, group_id: u64) -> Result<StreamGroupWriter, ServeError> {
@@ -80,7 +79,7 @@ impl StreamWriter {
 		}
 
 		let group = Arc::new(StreamGroup {
-			stream: self.stream.clone(),
+			stream: self.info.clone(),
 			group_id,
 		});
 
@@ -119,18 +118,18 @@ impl Deref for StreamWriter {
 	type Target = Stream;
 
 	fn deref(&self) -> &Self::Target {
-		&self.stream
+		&self.info
 	}
 }
 
 /// Notified when a stream has new data available.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StreamReader {
 	// Modify the stream state.
 	state: State<StreamState>,
 
 	// Immutable stream state.
-	pub stream: Arc<Stream>,
+	pub info: Arc<Stream>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
@@ -138,12 +137,8 @@ pub struct StreamReader {
 }
 
 impl StreamReader {
-	fn new(state: State<StreamState>, stream: Arc<Stream>) -> Self {
-		Self {
-			state,
-			stream,
-			epoch: 0,
-		}
+	fn new(state: State<StreamState>, info: Arc<Stream>) -> Self {
+		Self { state, info, epoch: 0 }
 	}
 
 	/// Block until the next group is available.
@@ -179,7 +174,7 @@ impl Deref for StreamReader {
 	type Target = Stream;
 
 	fn deref(&self) -> &Self::Target {
-		&self.stream
+		&self.info
 	}
 }
 
@@ -197,7 +192,6 @@ impl Deref for StreamGroup {
 	}
 }
 
-#[derive(Debug)]
 struct StreamGroupState {
 	// The objects that have been received thus far.
 	objects: Vec<StreamObjectReader>,
@@ -213,7 +207,6 @@ impl Default for StreamGroupState {
 	}
 }
 
-#[derive(Debug)]
 pub struct StreamGroupWriter {
 	state: State<StreamGroupState>,
 	pub group: Arc<StreamGroup>,
@@ -264,7 +257,7 @@ impl Deref for StreamGroupWriter {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StreamGroupReader {
 	pub group: Arc<StreamGroup>,
 	state: State<StreamGroupState>,
@@ -366,17 +359,7 @@ impl Default for StreamObjectState {
 	}
 }
 
-impl fmt::Debug for StreamObjectState {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("StreamObjectState")
-			.field("chunks", &self.chunks.len())
-			.field("size", &self.chunks.iter().map(|c| c.len()).sum::<usize>())
-			.finish()
-	}
-}
-
 /// Used to write data to a segment and notify readers.
-#[derive(Debug)]
 pub struct StreamObjectWriter {
 	// Mutable segment state.
 	state: State<StreamObjectState>,
@@ -447,7 +430,7 @@ impl Deref for StreamObjectWriter {
 }
 
 /// Notified when a segment has new data available.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StreamObjectReader {
 	// Modify the segment state.
 	state: State<StreamObjectState>,

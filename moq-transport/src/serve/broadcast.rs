@@ -44,7 +44,6 @@ impl Broadcast {
 }
 
 /// Dynamic information about the broadcast.
-#[derive(Debug)]
 struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
 	closed: Result<(), ServeError>,
@@ -89,7 +88,6 @@ impl Default for BroadcastState {
 }
 
 /// Publish new tracks for a broadcast by name.
-#[derive(Debug)]
 pub struct BroadcastWriter {
 	state: State<BroadcastState>,
 	pub info: Arc<Broadcast>,
@@ -134,7 +132,7 @@ impl Deref for BroadcastWriter {
 /// Subscribe to a broadcast by requesting tracks.
 ///
 /// This can be cloned to create handles.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BroadcastReader {
 	state: State<BroadcastState>,
 	pub info: Arc<Broadcast>,

@@ -36,18 +36,26 @@ impl<S: webtransport_generic::Session> Announced<S> {
 		(send, recv)
 	}
 
-	// Send an ANNOUNCE_OK and block until we get an UNANNOUNCE
-	pub async fn serve(mut self) -> Result<(), ServeError> {
+	// Send an ANNOUNCE_OK
+	pub fn ok(&mut self) -> Result<(), ServeError> {
+		if self.ok {
+			return Err(ServeError::Duplicate);
+		}
+
 		self.session.send_message(message::AnnounceOk {
 			namespace: self.namespace.clone(),
 		});
 
 		self.ok = true;
 
+		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			// Wow this is dumb and yet pretty cool.
 			// Basically loop until the state changes and exit when Recv is dropped.
-			self.state.lock().modified().ok_or(ServeError::Done)?.await;
+			self.state.lock().modified().ok_or(ServeError::Cancel)?.await;
 		}
 	}
 

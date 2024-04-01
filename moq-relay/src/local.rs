@@ -9,9 +9,11 @@ use std::sync::Weak;
 
 use moq_transport::serve::{self, ServeError, TrackReader, TrackWriter};
 use moq_transport::util::State;
+use tokio::time;
 use url::Url;
 
 use crate::RelayError;
+
 pub struct Locals {
 	pub api: Option<moq_api::Client>,
 	pub node: Option<Url>,
@@ -45,24 +47,36 @@ impl LocalsProducer {
 		Self { info, state }
 	}
 
-	pub fn announce(&mut self, namespace: String) -> Result<LocalProducer, RelayError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+	pub async fn announce(&mut self, namespace: &str) -> Result<LocalProducer, RelayError> {
+		let (mut writer, reader) = Local {
+			namespace: namespace.to_string(),
+			locals: self.info.clone(),
+		}
+		.produce(self.clone());
 
-		let entry = match state.lookup.entry(namespace.clone()) {
-			hash_map::Entry::Vacant(entry) => entry,
+		// Try to insert with the API.
+		writer.register().await?;
+
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		match state.lookup.entry(namespace.to_string()) {
+			hash_map::Entry::Vacant(entry) => entry.insert(reader),
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
-
-		let (writer, reader) = Local { namespace }.produce(self.clone());
-
-		entry.insert(reader);
 
 		Ok(writer)
 	}
 
-	pub fn unannounce(&mut self, namespace: &str) -> Result<(), RelayError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
-		state.lookup.remove(namespace).ok_or(ServeError::NotFound)?;
+	async fn unannounce(&mut self, namespace: &str) -> Result<(), RelayError> {
+		self.state
+			.lock_mut()
+			.ok_or(ServeError::Done)?
+			.lookup
+			.remove(namespace)
+			.ok_or(ServeError::NotFound)?;
+
+		if let Some(api) = self.api.as_ref() {
+			api.delete_origin(namespace).await.map_err(Arc::new)?;
+		}
 
 		Ok(())
 	}
@@ -78,7 +92,7 @@ impl ops::Deref for LocalsProducer {
 
 #[derive(Clone)]
 pub struct LocalsConsumer {
-	info: Arc<Locals>,
+	pub info: Arc<Locals>,
 	state: State<LocalsState>,
 }
 
@@ -87,7 +101,7 @@ impl LocalsConsumer {
 		Self { info, state }
 	}
 
-	pub fn find(&self, namespace: &str) -> Option<LocalConsumer> {
+	pub fn route(&self, namespace: &str) -> Option<LocalConsumer> {
 		let state = self.state.lock();
 		state.lookup.get(namespace).cloned()
 	}
@@ -103,6 +117,7 @@ impl ops::Deref for LocalsConsumer {
 
 pub struct Local {
 	pub namespace: String,
+	pub locals: Arc<Locals>,
 }
 
 impl Local {
@@ -143,13 +158,15 @@ pub struct LocalProducer {
 	pub info: Arc<Local>,
 	state: State<LocalState>,
 
-	refresh: tokio::time::Interval,
 	parent: LocalsProducer,
+	refresh: tokio::time::Interval,
 }
 
 impl LocalProducer {
 	fn new(info: Arc<Local>, state: State<LocalState>, parent: LocalsProducer) -> Self {
-		let refresh = tokio::time::interval(tokio::time::Duration::from_secs(300));
+		let delay = time::Duration::from_secs(300);
+		let mut refresh = time::interval(delay);
+		refresh.reset_after(delay); // Skip the first tick
 
 		Self {
 			info,
@@ -177,29 +194,21 @@ impl LocalProducer {
 
 			tokio::select! {
 				// TODO make this fully async so we don't block requested()
-				res = self.refresh() => res?,
+				_ = self.refresh.tick() => self.register().await?,
 				_ = notify => {},
 			}
 		}
 	}
 
-	async fn refresh(&mut self) -> Result<(), RelayError> {
-		self.refresh.tick().await;
-
-		if let (Some(api), Some(node)) = (self.parent.api.as_ref(), self.parent.node.as_ref()) {
+	pub async fn register(&mut self) -> Result<(), RelayError> {
+		if let (Some(api), Some(node)) = (self.info.locals.api.as_ref(), self.info.locals.node.as_ref()) {
 			// Refresh the origin in moq-api.
 			let origin = moq_api::Origin { url: node.clone() };
-			api.set_origin(&self.info.namespace, origin).await.map_err(Arc::new)?;
+			log::debug!("registering origin: namespace={} url={}", self.namespace, node);
+			api.set_origin(&self.namespace, origin).await.map_err(Arc::new)?;
 		}
 
 		Ok(())
-	}
-}
-
-impl Drop for LocalProducer {
-	fn drop(&mut self) {
-		let namespace = self.namespace.to_string();
-		self.parent.unannounce(&namespace).ok();
 	}
 }
 
@@ -208,6 +217,15 @@ impl ops::Deref for LocalProducer {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+impl Drop for LocalProducer {
+	fn drop(&mut self) {
+		// TODO this is super lazy, but doing async stuff in Drop is annoying.
+		let mut parent = self.parent.clone();
+		let namespace = self.namespace.clone();
+		tokio::spawn(async move { parent.unannounce(&namespace).await });
 	}
 }
 

@@ -8,7 +8,7 @@
 //! You can clone the [Reader] and each will read a copy of of all future chunks. (fanout)
 //!
 //! The fragment is closed with [ServeError::Closed] when all writers or readers are dropped.
-use std::{cmp, fmt, ops::Deref, sync::Arc};
+use std::{cmp, ops::Deref, sync::Arc};
 
 use super::{ServeError, Track};
 use crate::util::State;
@@ -32,7 +32,6 @@ impl Objects {
 	}
 }
 
-#[derive(Debug)]
 struct ObjectsState {
 	// The latest group.
 	objects: Vec<ObjectReader>,
@@ -54,7 +53,6 @@ impl Default for ObjectsState {
 	}
 }
 
-#[derive(Debug)]
 pub struct ObjectsWriter {
 	state: State<ObjectsState>,
 	pub track: Arc<Track>,
@@ -110,7 +108,7 @@ impl Deref for ObjectsWriter {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ObjectsReader {
 	state: State<ObjectsState>,
 	pub track: Arc<Track>,
@@ -216,16 +214,6 @@ struct ObjectState {
 	closed: Result<(), ServeError>,
 }
 
-impl fmt::Debug for ObjectState {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ObjectState")
-			.field("chunks", &self.chunks.len())
-			.field("size", &self.chunks.iter().map(|c| c.len()).sum::<usize>())
-			.field("closed", &self.closed)
-			.finish()
-	}
-}
-
 impl Default for ObjectState {
 	fn default() -> Self {
 		Self {
@@ -236,7 +224,6 @@ impl Default for ObjectState {
 }
 
 /// Used to write data to a segment and notify readers.
-#[derive(Debug)]
 pub struct ObjectWriter {
 	// Mutable segment state.
 	state: State<ObjectState>,
@@ -277,7 +264,7 @@ impl Deref for ObjectWriter {
 }
 
 /// Notified when a segment has new data available.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ObjectReader {
 	// Modify the segment state.
 	state: State<ObjectState>,

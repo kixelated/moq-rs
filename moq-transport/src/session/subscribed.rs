@@ -230,7 +230,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 
 						tasks.push(async move {
 							if let Err(err) = Self::serve_group(header, group, publisher, state).await {
-								log::warn!("failed to serve group: group={:?} err={:?}", info, err);
+								log::warn!("failed to serve group: {:?}, error: {}", info, err);
 							}
 						});
 					},
@@ -310,7 +310,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 
 						tasks.push(async move {
 							if let Err(err) = Self::serve_object(header, object, publisher, state).await {
-								log::warn!("failed to serve object: object={:?} err={:?}", info, err);
+								log::warn!("failed to serve object: {:?}, error: {}", info, err);
 							};
 						});
 					},
@@ -318,7 +318,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 					Err(err) => done = Some(Err(err)),
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
-				res = self.closed() => done = Some(res),
+				res = self.closed(), if done.is_none() => done = Some(res),
 				else => return Ok(done.unwrap()?),
 			}
 		}

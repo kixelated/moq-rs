@@ -79,10 +79,10 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 
 						match broadcast.get_track(&subscribe.name) {
 							Ok(track) => if let Err(err) = Self::serve_subscribe(subscribe, track).await {
-								log::warn!("failed serving subscribe: subscribe={:?} err={:?}", info, err)
+								log::warn!("failed serving subscribe: {:?}, error: {}", info, err)
 							},
 							Err(err) => {
-								log::warn!("failed getting subscribe: subscribe={:?} err={:?}", info, err)
+								log::warn!("failed getting subscribe: {:?}, error: {}", info, err)
 							},
 						}
 					});
@@ -126,25 +126,25 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 	}
 
 	fn recv_announce_ok(&mut self, msg: message::AnnounceOk) -> Result<(), SessionError> {
-		let mut announces = self.announces.lock().unwrap();
-		let announce = announces.get_mut(&msg.namespace).ok_or(ServeError::Done)?;
-		announce.recv_ok()?;
+		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
+			announce.recv_ok()?;
+		}
 
 		Ok(())
 	}
 
 	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
-		let mut announces = self.announces.lock().unwrap();
-		let announce = announces.remove(&msg.namespace).ok_or(ServeError::Done)?;
-		announce.recv_error(ServeError::Closed(msg.code))?;
+		if let Some(announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
+			announce.recv_error(ServeError::Closed(msg.code))?;
+		}
 
 		Ok(())
 	}
 
 	fn recv_announce_cancel(&mut self, msg: message::AnnounceCancel) -> Result<(), SessionError> {
-		let mut announces = self.announces.lock().unwrap();
-		let announce = announces.remove(&msg.namespace).ok_or(ServeError::Done)?;
-		announce.recv_error(ServeError::Done)?;
+		if let Some(announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
+			announce.recv_error(ServeError::Cancel)?;
+		}
 
 		Ok(())
 	}
@@ -179,9 +179,9 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 	}
 
 	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
-		let mut subscribes = self.subscribed.lock().unwrap();
-		let subscribed = subscribes.get_mut(&msg.id).ok_or(ServeError::Done)?;
-		subscribed.recv_unsubscribe()?;
+		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
+			subscribed.recv_unsubscribe()?;
+		}
 
 		Ok(())
 	}
