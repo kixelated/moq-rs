@@ -22,7 +22,7 @@ impl<S: webtransport_generic::SendStream> Writer<S> {
 		self.buffer.clear();
 		msg.encode(&mut self.buffer)?;
 
-		while self.buffer.len() > 0 {
+		while !self.buffer.is_empty() {
 			self.stream
 				.write_buf(&mut self.buffer)
 				.await

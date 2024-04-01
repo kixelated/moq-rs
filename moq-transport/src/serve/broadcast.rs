@@ -33,7 +33,7 @@ impl Broadcast {
 	}
 
 	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = Arc::new(self);
 
 		let writer = BroadcastWriter::new(send, info.clone());

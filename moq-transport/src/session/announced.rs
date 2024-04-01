@@ -23,7 +23,7 @@ impl<S: webtransport_generic::Session> Announced<S> {
 	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv) {
 		let info = AnnounceInfo { namespace };
 
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let send = Self {
 			session,
 			info,

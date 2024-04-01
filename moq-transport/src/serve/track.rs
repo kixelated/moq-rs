@@ -37,7 +37,7 @@ impl Track {
 	}
 
 	pub fn produce(self) -> (TrackWriter, TrackReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = TrackWriter::new(writer, info.clone());

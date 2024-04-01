@@ -25,7 +25,7 @@ pub struct Remotes {
 
 impl Remotes {
 	pub fn produce(self) -> (RemotesProducer, RemotesConsumer) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = Arc::new(self);
 
 		let producer = RemotesProducer::new(info.clone(), send);
@@ -187,7 +187,7 @@ impl ops::Deref for Remote {
 impl Remote {
 	/// Create a new broadcast.
 	pub fn produce(self) -> (RemoteProducer, RemoteConsumer) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = Arc::new(self);
 
 		let consumer = RemoteConsumer::new(info.clone(), recv);
@@ -276,7 +276,7 @@ impl RemoteProducer {
 				// Keep running the session
 				res = &mut session, if !tasks.is_empty() || done.is_none() => return Ok(res?),
 
-				else => return Ok(done.unwrap()?),
+				else => return done.unwrap(),
 			}
 		}
 	}

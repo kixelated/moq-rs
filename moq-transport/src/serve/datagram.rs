@@ -10,7 +10,7 @@ pub struct Datagrams {
 
 impl Datagrams {
 	pub fn produce(self) -> (DatagramsWriter, DatagramsReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 
 		let writer = DatagramsWriter::new(writer, self.track.clone());
 		let reader = DatagramsReader::new(reader, self.track);

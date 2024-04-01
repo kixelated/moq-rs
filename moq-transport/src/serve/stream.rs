@@ -13,7 +13,7 @@ pub struct Stream {
 
 impl Stream {
 	pub fn produce(self) -> (StreamWriter, StreamReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = StreamWriter::new(writer, info.clone());
@@ -83,7 +83,7 @@ impl StreamWriter {
 			group_id,
 		});
 
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 
 		let reader = StreamGroupReader::new(reader, group.clone());
 		let writer = StreamGroupWriter::new(writer, group);
@@ -331,7 +331,7 @@ pub struct StreamObject {
 
 impl StreamObject {
 	pub fn produce(self) -> (StreamObjectWriter, StreamObjectReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = StreamObjectWriter::new(writer, info.clone());

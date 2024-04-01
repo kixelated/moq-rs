@@ -21,7 +21,7 @@ pub struct Locals {
 
 impl Locals {
 	pub fn produce(self) -> (LocalsProducer, LocalsConsumer) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = Arc::new(self);
 
 		let producer = LocalsProducer::new(info.clone(), send);
@@ -120,7 +120,7 @@ pub struct Local {
 impl Local {
 	/// Create a new broadcast.
 	fn produce(self, parent: LocalsProducer) -> (LocalProducer, LocalConsumer) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = Arc::new(self);
 
 		let writer = LocalProducer::new(info.clone(), send, parent);

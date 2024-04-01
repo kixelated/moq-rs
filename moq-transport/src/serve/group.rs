@@ -20,7 +20,7 @@ pub struct Groups {
 
 impl Groups {
 	pub fn produce(self) -> (GroupsWriter, GroupsReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 
 		let writer = GroupsWriter::new(writer, self.track.clone());
 		let reader = GroupsReader::new(reader, self.track);
@@ -201,7 +201,7 @@ pub struct GroupInfo {
 
 impl GroupInfo {
 	pub fn produce(self) -> (GroupWriter, GroupReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = GroupWriter::new(writer, info.clone());
@@ -382,7 +382,7 @@ pub struct GroupObject {
 
 impl GroupObject {
 	pub fn produce(self) -> (GroupObjectWriter, GroupObjectReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = GroupObjectWriter::new(writer, info.clone());

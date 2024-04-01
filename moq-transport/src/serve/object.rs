@@ -20,7 +20,7 @@ pub struct Objects {
 
 impl Objects {
 	pub fn produce(self) -> (ObjectsWriter, ObjectsReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 
 		let writer = ObjectsWriter {
 			state: writer,
@@ -188,7 +188,7 @@ impl Deref for ObjectInfo {
 
 impl ObjectInfo {
 	pub fn produce(self) -> (ObjectWriter, ObjectReader) {
-		let (writer, reader) = State::default();
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
 		let writer = ObjectWriter::new(writer, info.clone());

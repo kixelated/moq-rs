@@ -53,7 +53,7 @@ impl<S: webtransport_generic::Session> Announce<S> {
 			params: Default::default(),
 		});
 
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 
 		let send = Self {
 			publisher,

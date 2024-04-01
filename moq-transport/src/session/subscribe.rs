@@ -55,7 +55,7 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 			name: track.name.clone(),
 		};
 
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 
 		let send = Subscribe {
 			state: send,

@@ -50,7 +50,7 @@ pub struct Subscribed<S: webtransport_generic::Session> {
 
 impl<S: webtransport_generic::Session> Subscribed<S> {
 	pub(super) fn new(publisher: Publisher<S>, msg: message::Subscribe) -> (Self, SubscribedRecv) {
-		let (send, recv) = State::default();
+		let (send, recv) = State::init();
 		let info = SubscribeInfo {
 			namespace: msg.track_namespace.clone(),
 			name: msg.track_name.clone(),
@@ -235,7 +235,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 						});
 					},
 					Ok(None) => done = Some(Ok(())),
-					Err(err) => done = Some(Err(err.into())),
+					Err(err) => done = Some(Err(err)),
 				},
 				res = self.closed(), if done.is_none() => done = Some(res),
 				_ = tasks.next(), if !tasks.is_empty() => {},

@@ -105,7 +105,7 @@ impl<T> Clone for State<T> {
 }
 
 impl<T: Default> State<T> {
-	pub fn default() -> (Self, Self) {
+	pub fn init() -> (Self, Self) {
 		Self::new(T::default())
 	}
 }
