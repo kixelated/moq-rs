@@ -1227,9 +1227,9 @@ dependencies = [
 
 [[package]]
 name = "quictransport-quinn"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d65e68ccd0d35f48bbe9723a2924e6829b819cd165b19d7b2914f85ede01398"
+checksum = "04227967142d740ffc66367bad009a6315e626c4830fcdb9d55904bd3ae1e3f9"
 dependencies = [
  "bytes",
  "quinn",
@@ -2201,19 +2201,18 @@ checksum = "14247bb57be4f377dfb94c72830b8ce8fc6beac03cf4bf7b9732eadd414123fc"
 
 [[package]]
 name = "webtransport-generic"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc1fd0d5c7e24e485aa58040fba18d6a4204d4354eca19d34b14540ecd9147b8"
+checksum = "3796cc7d83f889b8fd4c1a731b08d83618ea1a3a2e3fe09225562754acc9b814"
 dependencies = [
  "bytes",
- "tokio",
 ]
 
 [[package]]
 name = "webtransport-proto"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebeada5037d6302980ae2e0ab8d840e329c1697c612c6c077172de2b7631a276"
+checksum = "7de84935ba0f2292c5f78f042758fc4a0ce506699e674d059c517f56b04091be"
 dependencies = [
  "bytes",
  "http",
@@ -2223,9 +2222,9 @@ dependencies = [
 
 [[package]]
 name = "webtransport-quinn"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27b0ad39e557756d066277901c3024e586aa3e026e4ee9b377f2d45d782e39ff"
+checksum = "18ac46cd68286fd4a70bc69dcab62bafbbe407927ae643f3bfce26f27090b19a"
 dependencies = [
  "bytes",
  "futures",

@@ -1,14 +1,17 @@
 use anyhow::Context;
-use moq_transport::serve;
+use moq_transport::serve::{
+	DatagramsReader, Group, GroupWriter, GroupsReader, GroupsWriter, ObjectsReader, StreamReader, TrackReader,
+	TrackReaderMode,
+};
 
 use chrono::prelude::*;
 
 pub struct Publisher {
-	track: serve::TrackPublisher,
+	track: GroupsWriter,
 }
 
 impl Publisher {
-	pub fn new(track: serve::TrackPublisher) -> Self {
+	pub fn new(track: GroupsWriter) -> Self {
 		Self { track }
 	}
 
@@ -22,9 +25,9 @@ impl Publisher {
 		loop {
 			let segment = self
 				.track
-				.create_group(serve::Group {
-					id: sequence as u64,
-					send_order: 0,
+				.create(Group {
+					group_id: sequence as u64,
+					priority: 0,
 				})
 				.context("failed to create minute segment")?;
 
@@ -46,19 +49,15 @@ impl Publisher {
 		}
 	}
 
-	async fn send_segment(mut segment: serve::GroupPublisher, mut now: DateTime<Utc>) -> anyhow::Result<()> {
+	async fn send_segment(mut segment: GroupWriter, mut now: DateTime<Utc>) -> anyhow::Result<()> {
 		// Everything but the second.
 		let base = now.format("%Y-%m-%d %H:%M:").to_string();
 
-		segment
-			.write_object(base.clone().into())
-			.context("failed to write base")?;
+		segment.write(base.clone().into()).context("failed to write base")?;
 
 		loop {
 			let delta = now.format("%S").to_string();
-			segment
-				.write_object(delta.clone().into())
-				.context("failed to write delta")?;
+			segment.write(delta.clone().into()).context("failed to write delta")?;
 
 			println!("{}{}", base, delta);
 
@@ -79,83 +78,69 @@ impl Publisher {
 	}
 }
 pub struct Subscriber {
-	track: serve::TrackSubscriber,
+	track: TrackReader,
 }
 
 impl Subscriber {
-	pub fn new(track: serve::TrackSubscriber) -> Self {
+	pub fn new(track: TrackReader) -> Self {
 		Self { track }
 	}
 
-	pub async fn run(mut self) -> anyhow::Result<()> {
-		while let Some(stream) = self.track.next().await.context("failed to get stream")? {
-			match stream {
-				serve::TrackMode::Group(group) => tokio::spawn(async move {
-					if let Err(err) = Self::recv_group(group).await {
-						log::warn!("failed to receive group: {:?}", err);
-					}
-				}),
-				serve::TrackMode::Object(object) => tokio::spawn(async move {
-					if let Err(err) = Self::recv_object(object).await {
-						log::warn!("failed to receive group: {:?}", err);
-					}
-				}),
-				serve::TrackMode::Stream(stream) => tokio::spawn(async move {
-					if let Err(err) = Self::recv_track(stream).await {
-						log::warn!("failed to receive stream: {:?}", err);
-					}
-				}),
-				serve::TrackMode::Datagram(datagram) => tokio::spawn(async move {
-					if let Err(err) = Self::recv_datagram(datagram) {
-						log::warn!("failed to receive datagram: {:?}", err);
-					}
-				}),
-			};
+	pub async fn run(self) -> anyhow::Result<()> {
+		match self.track.mode().await.context("failed to get mode")? {
+			TrackReaderMode::Stream(stream) => Self::recv_stream(stream).await,
+			TrackReaderMode::Groups(groups) => Self::recv_groups(groups).await,
+			TrackReaderMode::Objects(objects) => Self::recv_objects(objects).await,
+			TrackReaderMode::Datagrams(datagrams) => Self::recv_datagrams(datagrams).await,
+		}
+	}
+
+	async fn recv_stream(mut track: StreamReader) -> anyhow::Result<()> {
+		while let Some(mut group) = track.next().await? {
+			while let Some(object) = group.read_next().await? {
+				let str = String::from_utf8_lossy(&object);
+				println!("{}", str);
+			}
 		}
 
 		Ok(())
 	}
 
-	async fn recv_track(mut track: serve::StreamSubscriber) -> anyhow::Result<()> {
-		while let Some(fragment) = track.next().await? {
-			let str = String::from_utf8_lossy(&fragment.payload);
+	async fn recv_groups(mut groups: GroupsReader) -> anyhow::Result<()> {
+		while let Some(mut group) = groups.next().await? {
+			let base = group
+				.read_next()
+				.await
+				.context("failed to get first object")?
+				.context("empty group")?;
+
+			let base = String::from_utf8_lossy(&base);
+
+			while let Some(object) = group.read_next().await? {
+				let str = String::from_utf8_lossy(&object);
+				println!("{}{}", base, str);
+			}
+		}
+
+		Ok(())
+	}
+
+	async fn recv_objects(mut objects: ObjectsReader) -> anyhow::Result<()> {
+		while let Some(mut object) = objects.next().await? {
+			let payload = object.read_all().await?;
+			let str = String::from_utf8_lossy(&payload);
 			println!("{}", str);
 		}
 
 		Ok(())
 	}
 
-	async fn recv_group(mut segment: serve::GroupSubscriber) -> anyhow::Result<()> {
-		let mut first = segment
-			.next()
-			.await
-			.context("failed to get first fragment")?
-			.context("no fragments in segment")?;
-
-		let base = first.read_all().await?;
-		let base = String::from_utf8_lossy(&base);
-
-		while let Some(mut fragment) = segment.next().await? {
-			let value = fragment.read_all().await.context("failed to read fragment")?;
-			let str = String::from_utf8_lossy(&value);
-
-			println!("{}{}", base, str);
+	async fn recv_datagrams(mut datagrams: DatagramsReader) -> anyhow::Result<()> {
+		while let Some(datagram) = datagrams.read().await? {
+			let str = String::from_utf8_lossy(&datagram.payload);
+			println!("{}", str);
 		}
 
-		Ok(())
-	}
-
-	async fn recv_object(mut object: serve::ObjectSubscriber) -> anyhow::Result<()> {
-		let value = object.read_all().await.context("failed to read object")?;
-		let str = String::from_utf8_lossy(&value);
-
-		println!("{}", str);
-		Ok(())
-	}
-
-	fn recv_datagram(datagram: serve::Datagram) -> anyhow::Result<()> {
-		let str = String::from_utf8_lossy(&datagram.payload);
-		println!("{}", str);
 		Ok(())
 	}
 }

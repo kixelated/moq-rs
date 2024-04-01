@@ -1,27 +1,28 @@
-//! A track is a collection of semi-reliable and semi-ordered streams, split into a [Publisher] and [Subscriber] handle.
+//! A track is a collection of semi-reliable and semi-ordered streams, split into a [Writer] and [Reader] handle.
 //!
-//! A [Publisher] creates streams with a sequence number and priority.
+//! A [Writer] creates streams with a sequence number and priority.
 //! The sequest number is used to determine the order of streams, while the priority is used to determine which stream to transmit first.
 //! This may seem counter-intuitive, but is designed for live streaming where the newest streams may be higher priority.
-//! A cloned [Publisher] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
+//! A cloned [Writer] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
 //!
-//! A [Subscriber] may not receive all streams in order or at all.
+//! A [Reader] may not receive all streams in order or at all.
 //! These streams are meant to be transmitted over congested networks and the key to MoQ Tranport is to not block on them.
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
-//! A cloned [Subscriber] will receive a copy of all new stream going forward (fanout).
+//! A cloned [Reader] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [ServeError::Closed] when all publishers or subscribers are dropped.
+//! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::Watch;
+use crate::util::State;
 
 use super::{
-	Datagram, Group, GroupPublisher, GroupSubscriber, Object, ObjectHeader, ObjectPublisher, ObjectSubscriber,
-	ServeError, Stream, StreamPublisher, StreamSubscriber,
+	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
+	ObjectsWriter, ServeError, Stream, StreamReader, StreamWriter,
 };
-use std::{cmp, fmt, ops::Deref, sync::Arc};
+use paste::paste;
+use std::{ops::Deref, sync::Arc};
 
 /// Static information about a track.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Track {
 	pub namespace: String,
 	pub name: String,
@@ -35,202 +36,100 @@ impl Track {
 		}
 	}
 
-	pub fn produce(self) -> (TrackPublisher, TrackSubscriber) {
-		let state = Watch::new(State::default());
+	pub fn produce(self) -> (TrackWriter, TrackReader) {
+		let (writer, reader) = State::init();
 		let info = Arc::new(self);
 
-		let publisher = TrackPublisher::new(state.clone(), info.clone());
-		let subscriber = TrackSubscriber::new(state, info);
+		let writer = TrackWriter::new(writer, info.clone());
+		let reader = TrackReader::new(reader, info);
 
-		(publisher, subscriber)
+		(writer, reader)
 	}
 }
 
-// The state of the cache, depending on the mode>
-#[derive(Debug)]
-enum Mode {
-	Init,
-	Stream(StreamSubscriber),
-	Group(GroupSubscriber),
-	Object(Vec<ObjectSubscriber>),
-	Datagram(Datagram),
-}
-
-#[derive(Debug)]
-struct State {
-	mode: Mode,
-	epoch: usize,
-
-	// Set when the publisher is closed/dropped, or all subscribers are dropped.
+struct TrackState {
+	mode: Option<TrackReaderMode>,
 	closed: Result<(), ServeError>,
 }
 
-impl State {
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
-
-	pub fn insert_group(&mut self, group: GroupSubscriber) -> Result<(), ServeError> {
-		self.closed.clone()?;
-
-		match &self.mode {
-			Mode::Init => {}
-			Mode::Group(old) => match group.id.cmp(&old.id) {
-				cmp::Ordering::Less => return Ok(()),
-				cmp::Ordering::Equal => return Err(ServeError::Duplicate),
-				cmp::Ordering::Greater => {}
-			},
-			_ => return Err(ServeError::Mode),
-		};
-
-		self.mode = Mode::Group(group);
-		self.epoch += 1;
-
-		Ok(())
-	}
-
-	pub fn insert_object(&mut self, object: ObjectSubscriber) -> Result<(), ServeError> {
-		self.closed.clone()?;
-
-		match &mut self.mode {
-			Mode::Init => {
-				self.mode = Mode::Object(vec![object]);
-			}
-			Mode::Object(objects) => {
-				let first = objects.first().unwrap();
-
-				match object.group_id.cmp(&first.group_id) {
-					// Drop this old group
-					cmp::Ordering::Less => return Ok(()),
-					cmp::Ordering::Greater => objects.clear(),
-					cmp::Ordering::Equal => {}
-				}
-
-				objects.push(object);
-			}
-			_ => return Err(ServeError::Mode),
-		};
-
-		self.epoch += 1;
-
-		Ok(())
-	}
-
-	pub fn insert_datagram(&mut self, datagram: Datagram) -> Result<(), ServeError> {
-		self.closed.clone()?;
-
-		match &self.mode {
-			Mode::Init | Mode::Datagram(_) => {}
-			_ => return Err(ServeError::Mode),
-		};
-
-		self.mode = Mode::Datagram(datagram);
-		self.epoch += 1;
-
-		Ok(())
-	}
-
-	pub fn set_stream(&mut self, stream: StreamSubscriber) -> Result<(), ServeError> {
-		self.closed.clone()?;
-
-		match &self.mode {
-			Mode::Init => {}
-			_ => return Err(ServeError::Mode),
-		};
-
-		self.mode = Mode::Stream(stream);
-		self.epoch += 1;
-
-		Ok(())
-	}
-}
-
-impl Default for State {
+impl Default for TrackState {
 	fn default() -> Self {
 		Self {
-			mode: Mode::Init,
-			epoch: 0,
+			mode: None,
 			closed: Ok(()),
 		}
 	}
 }
 
 /// Creates new streams for a track.
-#[derive(Debug)]
-pub struct TrackPublisher {
-	state: Watch<State>,
-	info: Arc<Track>,
+pub struct TrackWriter {
+	state: State<TrackState>,
+	pub info: Arc<Track>,
 }
 
-impl TrackPublisher {
+impl TrackWriter {
 	/// Create a track with the given name.
-	fn new(state: Watch<State>, info: Arc<Track>) -> Self {
+	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
 		Self { state, info }
 	}
 
-	/// Create a group with the given info.
-	pub fn create_group(&mut self, group: Group) -> Result<GroupPublisher, ServeError> {
-		let (publisher, subscriber) = group.produce();
-		self.state.lock_mut().insert_group(subscriber)?;
-		Ok(publisher)
-	}
-
-	/// Create an object with the given info and payload.
-	pub fn write_object(&mut self, object: Object) -> Result<(), ServeError> {
-		let payload = object.payload.clone();
-		let header = ObjectHeader::from(object);
-		let (mut publisher, subscriber) = header.produce();
-		publisher.write(payload)?;
-		self.state.lock_mut().insert_object(subscriber)?;
-		Ok(())
-	}
-
-	/// Create an object with the given info and size, but no payload yet.
-	pub fn create_object(&mut self, object: ObjectHeader) -> Result<ObjectPublisher, ServeError> {
-		let (publisher, subscriber) = object.produce();
-		self.state.lock_mut().insert_object(subscriber)?;
-		Ok(publisher)
-	}
-
-	/// Create a single stream for the entire track, served in strict order.
-	pub fn create_stream(&mut self, send_order: u64) -> Result<StreamPublisher, ServeError> {
-		let (publisher, subscriber) = Stream {
-			namespace: self.namespace.clone(),
-			name: self.name.clone(),
-			send_order,
+	pub fn stream(self, priority: u64) -> Result<StreamWriter, ServeError> {
+		let (writer, reader) = Stream {
+			track: self.info.clone(),
+			priority,
 		}
 		.produce();
-		self.state.lock_mut().set_stream(subscriber)?;
-		Ok(publisher)
+
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
 	}
 
-	/// Create a datagram that is not cached.
-	pub fn write_datagram(&mut self, info: Datagram) -> Result<(), ServeError> {
-		self.state.lock_mut().insert_datagram(info)?;
-		Ok(())
-	}
-
-	/// Close the stream with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().close(err)
-	}
-
-	pub async fn closed(&self) -> Result<(), ServeError> {
-		loop {
-			let notify = {
-				let state = self.state.lock();
-				state.closed.clone()?;
-				state.changed()
-			};
-
-			notify.await
+	pub fn groups(self) -> Result<GroupsWriter, ServeError> {
+		let (writer, reader) = Groups {
+			track: self.info.clone(),
 		}
+		.produce();
+
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
+	}
+
+	pub fn objects(self) -> Result<ObjectsWriter, ServeError> {
+		let (writer, reader) = Objects {
+			track: self.info.clone(),
+		}
+		.produce();
+
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
+	}
+
+	pub fn datagrams(self) -> Result<DatagramsWriter, ServeError> {
+		let (writer, reader) = Datagrams {
+			track: self.info.clone(),
+		}
+		.produce();
+
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
+		state.mode = Some(reader.into());
+		Ok(writer)
+	}
+
+	/// Close the track with an error.
+	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
+		state.closed = Err(err);
+		Ok(())
 	}
 }
 
-impl Deref for TrackPublisher {
+impl Deref for TrackWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
@@ -239,79 +138,41 @@ impl Deref for TrackPublisher {
 }
 
 /// Receives new streams for a track.
-#[derive(Clone, Debug)]
-pub struct TrackSubscriber {
-	state: Watch<State>,
-	info: Arc<Track>,
-	epoch: usize,
-	_dropped: Arc<Dropped>,
+#[derive(Clone)]
+pub struct TrackReader {
+	state: State<TrackState>,
+	pub info: Arc<Track>,
 }
 
-impl TrackSubscriber {
-	fn new(state: Watch<State>, info: Arc<Track>) -> Self {
-		let _dropped = Arc::new(Dropped::new(state.clone()));
-		Self {
-			state,
-			info,
-			epoch: 0,
-			_dropped,
-		}
+impl TrackReader {
+	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
+		Self { state, info }
 	}
 
-	/// Block until the next stream arrives
-	pub async fn next(&mut self) -> Result<Option<TrackMode>, ServeError> {
+	pub async fn mode(self) -> Result<TrackReaderMode, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
-
-				if self.epoch != state.epoch {
-					match &state.mode {
-						Mode::Init => {}
-						Mode::Stream(stream) => {
-							self.epoch = state.epoch;
-							return Ok(Some(stream.clone().into()));
-						}
-						Mode::Group(group) => {
-							self.epoch = state.epoch;
-							return Ok(Some(group.clone().into()));
-						}
-						Mode::Object(objects) => {
-							let index = objects.len().saturating_sub(state.epoch - self.epoch);
-							self.epoch = state.epoch - objects.len() + index + 1;
-							return Ok(Some(objects[index].clone().into()));
-						}
-						Mode::Datagram(datagram) => {
-							self.epoch = state.epoch;
-							return Ok(Some(datagram.clone().into()));
-						}
-					}
+				if let Some(mode) = &state.mode {
+					return Ok(mode.clone());
 				}
 
-				// Otherwise check if we need to return an error.
-				match &state.closed {
-					Ok(()) => state.changed(),
-					Err(ServeError::Done) => return Ok(None),
-					Err(err) => return Err(err.clone()),
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Err(ServeError::Done),
 				}
 			};
 
-			notify.await
+			notify.await;
 		}
 	}
 
 	// Returns the largest group/sequence
 	pub fn latest(&self) -> Option<(u64, u64)> {
-		let state = self.state.lock();
-		match &state.mode {
-			Mode::Init => None,
-			Mode::Datagram(datagram) => Some((datagram.group_id, datagram.object_id)),
-			Mode::Group(group) => Some((group.id, group.latest())),
-			Mode::Object(objects) => objects
-				.iter()
-				.max_by_key(|a| (a.group_id, a.object_id))
-				.map(|a| (a.group_id, a.object_id)),
-			Mode::Stream(stream) => stream.latest(),
-		}
+		// We don't even know the mode yet.
+		// TODO populate from SUBSCRIBE_OK
+		None
 	}
 
 	pub async fn closed(&self) -> Result<(), ServeError> {
@@ -319,7 +180,11 @@ impl TrackSubscriber {
 			let notify = {
 				let state = self.state.lock();
 				state.closed.clone()?;
-				state.changed()
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
 			};
 
 			notify.await
@@ -327,7 +192,7 @@ impl TrackSubscriber {
 	}
 }
 
-impl Deref for TrackSubscriber {
+impl Deref for TrackReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
@@ -335,56 +200,55 @@ impl Deref for TrackSubscriber {
 	}
 }
 
-#[derive(Debug)]
-pub enum TrackMode {
-	Stream(StreamSubscriber),
-	Group(GroupSubscriber),
-	Object(ObjectSubscriber),
-	Datagram(Datagram),
-}
+macro_rules! track_readers {
+    {$($name:ident,)*} => {
+		paste! {
+			#[derive(Clone)]
+			pub enum TrackReaderMode {
+				$($name([<$name Reader>])),*
+			}
 
-impl From<StreamSubscriber> for TrackMode {
-	fn from(subscriber: StreamSubscriber) -> Self {
-		Self::Stream(subscriber)
+			$(impl From<[<$name Reader>]> for TrackReaderMode {
+				fn from(reader: [<$name Reader >]) -> Self {
+					Self::$name(reader)
+				}
+			})*
+
+			impl TrackReaderMode {
+				pub fn latest(&self) -> Option<(u64, u64)> {
+					match self {
+						$(Self::$name(reader) => reader.latest(),)*
+					}
+				}
+			}
+		}
 	}
 }
 
-impl From<GroupSubscriber> for TrackMode {
-	fn from(subscriber: GroupSubscriber) -> Self {
-		Self::Group(subscriber)
+track_readers!(Stream, Groups, Objects, Datagrams,);
+
+macro_rules! track_writers {
+    {$($name:ident,)*} => {
+		paste! {
+			pub enum TrackWriterMode {
+				$($name([<$name Writer>])),*
+			}
+
+			$(impl From<[<$name Writer>]> for TrackWriterMode {
+				fn from(writer: [<$name Writer>]) -> Self {
+					Self::$name(writer)
+				}
+			})*
+
+			impl TrackWriterMode {
+				pub fn close(self, err: ServeError) -> Result<(), ServeError>{
+					match self {
+						$(Self::$name(writer) => writer.close(err),)*
+					}
+				}
+			}
+		}
 	}
 }
 
-impl From<ObjectSubscriber> for TrackMode {
-	fn from(subscriber: ObjectSubscriber) -> Self {
-		Self::Object(subscriber)
-	}
-}
-
-impl From<Datagram> for TrackMode {
-	fn from(info: Datagram) -> Self {
-		Self::Datagram(info)
-	}
-}
-
-struct Dropped {
-	state: Watch<State>,
-}
-
-impl Dropped {
-	fn new(state: Watch<State>) -> Self {
-		Self { state }
-	}
-}
-
-impl Drop for Dropped {
-	fn drop(&mut self) {
-		self.state.lock_mut().close(ServeError::Done).ok();
-	}
-}
-
-impl fmt::Debug for Dropped {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Dropped").finish()
-	}
-}
+track_writers!(Track, Stream, Groups, Objects, Datagrams,);

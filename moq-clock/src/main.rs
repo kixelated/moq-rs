@@ -92,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) -> anyhow::Result<()> {
 	if config.publish {
-		let (session, publisher) = moq_transport::Publisher::connect(session)
+		let (session, mut publisher) = moq_transport::Publisher::connect(session)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
@@ -102,7 +102,7 @@ async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) 
 		.produce();
 
 		let track = broadcast.create_track(&config.track)?;
-		let clock = clock::Publisher::new(track);
+		let clock = clock::Publisher::new(track.groups()?);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,

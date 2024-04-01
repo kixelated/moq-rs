@@ -4,19 +4,18 @@ use anyhow::Context;
 
 use tokio::task::JoinSet;
 
-use crate::{Config, Connection, Origin, Tls};
+use crate::{
+	Config, Connection, Locals, LocalsConsumer, LocalsProducer, Remotes, RemotesConsumer, RemotesProducer, Tls,
+};
 
-pub struct Quic {
+pub struct Relay {
 	quic: quinn::Endpoint,
 
-	// The active connections.
-	conns: JoinSet<anyhow::Result<()>>,
-
-	// The map of active broadcasts by path.
-	origin: Origin,
+	locals: (LocalsProducer, LocalsConsumer),
+	remotes: Option<(RemotesProducer, RemotesConsumer)>,
 }
 
-impl Quic {
+impl Relay {
 	// Create a QUIC endpoint that can be used for both clients and servers.
 	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
 		let mut client_config = tls.client.clone();
@@ -53,32 +52,47 @@ impl Quic {
 			moq_api::Client::new(url)
 		});
 
-		if let Some(ref node) = config.api_node {
+		let node = config.api_node.map(|node| {
 			log::info!("advertising origin: url={}", node);
-		}
+			node
+		});
 
-		let origin = Origin::new(api, config.api_node, quic.clone());
-		let conns = JoinSet::new();
+		let remotes = api.clone().map(|api| {
+			Remotes {
+				api,
+				quic: quic.clone(),
+			}
+			.produce()
+		});
+		let locals = Locals { api, node }.produce();
 
-		Ok(Self { quic, origin, conns })
+		Ok(Self { quic, locals, remotes })
 	}
 
-	pub async fn serve(mut self) -> anyhow::Result<()> {
+	pub async fn run(self) -> anyhow::Result<()> {
 		log::info!("listening on {}", self.quic.local_addr()?);
+
+		let mut tasks = JoinSet::new();
+
+		let remotes = self.remotes.map(|(producer, consumer)| {
+			tasks.spawn(producer.run());
+			consumer
+		});
 
 		loop {
 			tokio::select! {
 				res = self.quic.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let session = Connection::new(self.origin.clone());
-					self.conns.spawn(session.run(conn));
+					let session = Connection::new(self.locals.clone(), remotes.clone());
+
+					tasks.spawn(async move {
+						if let Err(err) = session.run(conn).await {
+							log::warn!("connection terminated: {:?}", err);
+						}
+						Ok(())
+					});
 				},
-				res = self.conns.join_next(), if !self.conns.is_empty() => {
-					let res = res.expect("no tasks").expect("task aborted");
-					if let Err(err) = res {
-						log::warn!("connection terminated: {:?}", err);
-					}
-				},
+				res = tasks.join_next(), if !tasks.is_empty() => res.expect("no tasks").expect("task aborted")?,
 			}
 		}
 	}

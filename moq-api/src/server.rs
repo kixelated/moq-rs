@@ -90,6 +90,18 @@ async fn set_origin(
 	// Convert the input back to JSON after validating it add adding any fields (TODO)
 	let payload = serde_json::to_string(&origin)?;
 
+	// Attempt to get the current value for the key
+	let current: Option<String> = redis::cmd("GET").arg(&key).query_async(&mut redis).await?;
+
+	if let Some(current) = &current {
+		if current.eq(&payload) {
+			// The value is the same, so we're done.
+			return Ok(());
+		} else {
+			return Err(AppError::Duplicate);
+		}
+	}
+
 	let res: Option<String> = redis::cmd("SET")
 		.arg(key)
 		.arg(payload)

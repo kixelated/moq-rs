@@ -1,5 +1,5 @@
 use anyhow::{self, Context};
-use moq_transport::serve::{BroadcastPublisher, Group, GroupPublisher, TrackPublisher};
+use moq_transport::serve::{BroadcastWriter, GroupWriter, GroupsWriter, TrackWriter};
 use mp4::{self, ReadBox};
 use serde_json::json;
 use std::cmp::max;
@@ -15,7 +15,7 @@ pub struct Media<I> {
 }
 
 impl<I: AsyncRead + Send + Unpin> Media<I> {
-	pub async fn new(mut input: I, mut broadcast: BroadcastPublisher) -> anyhow::Result<Self> {
+	pub async fn new(mut input: I, mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
 		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
@@ -34,11 +34,8 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create_track("0.mp4")?;
-
-		init_track
-			.create_group(Group { id: 0, send_order: 0 })?
-			.write_object(init.into())?;
+		let mut init_track = broadcast.create_track("0.mp4")?.groups()?;
+		init_track.next(0)?.write(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -54,10 +51,10 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 			tracks.insert(id, track);
 		}
 
-		let mut catalog = broadcast.create_track(".catalog")?;
+		let catalog = broadcast.create_track(".catalog")?;
 
 		// Create the catalog track
-		Self::serve_catalog(&mut catalog, &init_track.name, &moov)?;
+		Self::serve_catalog(catalog, &init_track.name, &moov)?;
 
 		Ok(Media { tracks, input })
 	}
@@ -105,12 +102,8 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		}
 	}
 
-	fn serve_catalog(
-		track: &mut TrackPublisher,
-		init_track_name: &str,
-		moov: &mp4::MoovBox,
-	) -> Result<(), anyhow::Error> {
-		let mut segment = track.create_group(Group { id: 0, send_order: 0 })?;
+	fn serve_catalog(track: TrackWriter, init_track_name: &str, moov: &mp4::MoovBox) -> Result<(), anyhow::Error> {
+		let mut segment = track.groups()?.next(0)?;
 
 		let mut tracks = Vec::new();
 
@@ -192,7 +185,7 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		segment.write_object(catalog_str.into())?;
+		segment.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -237,23 +230,19 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 struct Track {
 	// The track we're producing
-	track: TrackPublisher,
+	track: GroupsWriter,
 
 	// The current segment
-	current: Option<GroupPublisher>,
+	current: Option<GroupWriter>,
 
 	// The number of units per second.
 	timescale: u64,
-
-	// The number of segments produced.
-	sequence: u64,
 }
 
 impl Track {
-	fn new(track: TrackPublisher, timescale: u64) -> Self {
+	fn new(track: TrackWriter, timescale: u64) -> Self {
 		Self {
-			track,
-			sequence: 0,
+			track: track.groups().unwrap(),
 			current: None,
 			timescale,
 		}
@@ -263,7 +252,7 @@ impl Track {
 		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				current.write_object(raw.into())?;
+				current.write(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -278,18 +267,13 @@ impl Track {
 			.try_into()
 			.context("timestamp too large")?;
 
+		let priority = u32::MAX.checked_sub(timestamp).context("priority too large")?.into();
+
 		// Create a new segment.
-		let mut segment = self.track.create_group(Group {
-			id: self.sequence,
-
-			// Newer segments are higher priority
-			send_order: u32::MAX.checked_sub(timestamp).context("priority too large")?.into(),
-		})?;
-
-		self.sequence += 1;
+		let mut segment = self.track.next(priority)?;
 
 		// Write the fragment in it's own object.
-		segment.write_object(raw.into())?;
+		segment.write(raw.into())?;
 
 		// Save for the next iteration
 		self.current = Some(segment);
@@ -299,7 +283,7 @@ impl Track {
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
 		let segment = self.current.as_mut().context("missing current fragment")?;
-		segment.write_object(raw.into())?;
+		segment.write(raw.into())?;
 
 		Ok(())
 	}

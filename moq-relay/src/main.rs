@@ -4,20 +4,22 @@ use clap::Parser;
 mod config;
 mod connection;
 mod error;
-mod origin;
-mod quic;
+mod local;
+mod relay;
+mod remote;
 mod tls;
 mod web;
 
 pub use config::*;
 pub use connection::*;
 pub use error::*;
-pub use origin::*;
-pub use quic::*;
+pub use local::*;
+pub use relay::*;
+pub use remote::*;
 pub use tls::*;
 pub use web::*;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
@@ -31,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 	let tls = Tls::load(&config)?;
 
 	// Create a QUIC server for media.
-	let quic = Quic::new(config.clone(), tls.clone())
+	let relay = Relay::new(config.clone(), tls.clone())
 		.await
 		.context("failed to create server")?;
 
@@ -42,10 +44,10 @@ async fn main() -> anyhow::Result<()> {
 
 		// Unfortunately we can't use preconditions because Tokio still executes the branch; just ignore the result
 		tokio::select! {
-			res = quic.serve() => res.context("failed to run quic server"),
+			res = relay.run() => res.context("failed to run quic server"),
 			res = web.serve() => res.context("failed to run web server"),
 		}
 	} else {
-		quic.serve().await.context("failed to run quic server")
+		relay.run().await.context("failed to run quic server")
 	}
 }

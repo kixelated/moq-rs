@@ -12,7 +12,7 @@ use tokio::io::AsyncRead;
 
 // TODO: clap complete
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 
@@ -99,9 +99,9 @@ async fn main() -> anyhow::Result<()> {
 async fn run<T: webtransport_generic::Session, I: AsyncRead + Send + Unpin>(
 	session: T,
 	mut media: Media<I>,
-	broadcast: serve::BroadcastSubscriber,
+	broadcast: serve::BroadcastReader,
 ) -> anyhow::Result<()> {
-	let (session, publisher) = moq_transport::Publisher::connect(session)
+	let (session, mut publisher) = moq_transport::Publisher::connect(session)
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 
