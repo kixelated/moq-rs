@@ -9,7 +9,7 @@ use std::sync::Weak;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
-use moq_transport::serve::{ServeError, Track, TrackReader, TrackWriter};
+use moq_transport::serve::{Track, TrackReader, TrackWriter};
 use moq_transport::util::State;
 use url::Url;
 
@@ -53,16 +53,18 @@ impl RemotesProducer {
 		Self { info, state }
 	}
 
-	async fn next(&mut self) -> Result<RemoteProducer, RelayError> {
+	async fn next(&mut self) -> Result<Option<RemoteProducer>, RelayError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if !state.requested.is_empty() {
-					let mut state = state.into_mut().ok_or(ServeError::Done)?;
-					return Ok(state.requested.pop_front().unwrap());
+					return Ok(state.into_mut().and_then(|mut state| state.requested.pop_front()));
 				}
 
-				state.modified().ok_or(ServeError::Done)?
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(None),
+				}
 			};
 
 			notify.await
@@ -75,7 +77,11 @@ impl RemotesProducer {
 		loop {
 			tokio::select! {
 				remote = self.next() => {
-					let remote = remote?;
+					let remote = match remote? {
+						Some(remote) => remote,
+						None => return Ok(()),
+					};
+
 					let url = remote.url.clone();
 
 					tasks.push(async move {
@@ -91,7 +97,10 @@ impl RemotesProducer {
 				}
 				res = tasks.next(), if !tasks.is_empty() => {
 					let url = res.unwrap();
-					self.state.lock_mut().ok_or(ServeError::Done)?.lookup.remove(&url);
+
+					if let Some(mut state) = self.state.lock_mut() {
+						state.lookup.remove(&url);
+					}
 				},
 			}
 		}
@@ -129,7 +138,10 @@ impl RemotesConsumer {
 			return Ok(Some(remote));
 		}
 
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		let mut state = match state.into_mut() {
+			Some(state) => state,
+			None => return Ok(None),
+		};
 
 		let remote = Remote {
 			url: origin.url.clone(),
@@ -213,7 +225,10 @@ impl RemoteProducer {
 
 	pub async fn run(mut self) -> Result<(), RelayError> {
 		if let Err(err) = self.run_inner().await {
-			self.state.lock_mut().ok_or(ServeError::Done)?.closed = Err(err.clone());
+			if let Some(mut state) = self.state.lock_mut() {
+				state.closed = Err(err.clone());
+			}
+
 			return Err(err);
 		}
 
@@ -229,10 +244,17 @@ impl RemoteProducer {
 		let mut session = session.run().boxed();
 		let mut tasks = FuturesUnordered::new();
 
+		let mut done = None;
+
 		loop {
 			tokio::select! {
-				track = self.next() => {
-					let track = track?;
+				track = self.next(), if done.is_none() => {
+					let track = match track {
+						Ok(Some(track)) => track,
+						Ok(None) => { done = Some(Ok(())); continue },
+						Err(err) => { done = Some(Err(err)); continue },
+					};
+
 					let info = track.info.clone();
 
 					let subscribe = match subscriber.subscribe(track) {
@@ -251,22 +273,27 @@ impl RemoteProducer {
 				}
 				_ = tasks.next(), if !tasks.is_empty() => {},
 
-				res = &mut session => res?,
+				// Keep running the session
+				res = &mut session, if !tasks.is_empty() || done.is_none() => return Ok(res?),
+
+				else => return Ok(done.unwrap()?),
 			}
 		}
 	}
 
 	/// Block until the next track requested by a consumer.
-	async fn next(&self) -> Result<TrackWriter, RelayError> {
+	async fn next(&self) -> Result<Option<TrackWriter>, RelayError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if !state.requested.is_empty() {
-					let mut state = state.into_mut().ok_or(ServeError::Done)?;
-					return Ok(state.requested.pop_front().unwrap());
+					return Ok(state.into_mut().and_then(|mut state| state.requested.pop_front()));
 				}
 
-				state.modified().ok_or(ServeError::Done)?
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(None),
+				}
 			};
 
 			notify.await
@@ -294,16 +321,19 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<RemoteTrackReader, RelayError> {
+	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<Option<RemoteTrackReader>, RelayError> {
 		let key = (namespace.to_string(), name.to_string());
 		let state = self.state.lock();
 		if let Some(track) = state.tracks.get(&key) {
 			if let Some(track) = track.upgrade() {
-				return Ok(track);
+				return Ok(Some(track));
 			}
 		}
 
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		let mut state = match state.into_mut() {
+			Some(state) => state,
+			None => return Ok(None),
+		};
 
 		let (writer, reader) = Track::new(namespace, name).produce();
 		let reader = RemoteTrackReader::new(reader, self.state.clone());
@@ -312,7 +342,7 @@ impl RemoteConsumer {
 		state.tracks.insert(key, reader.downgrade());
 		state.requested.push_back(writer);
 
-		Ok(reader)
+		Ok(Some(reader))
 	}
 }
 

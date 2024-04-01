@@ -51,7 +51,7 @@ impl DatagramsWriter {
 	}
 
 	pub fn write(&mut self, datagram: Datagram) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		state.latest = Some(datagram);
 		state.epoch += 1;
@@ -60,8 +60,12 @@ impl DatagramsWriter {
 	}
 
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
+
 		Ok(())
 	}
 }

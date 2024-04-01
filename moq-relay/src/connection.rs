@@ -141,21 +141,22 @@ impl Connection {
 	) -> Result<(), RelayError> {
 		if let Some(local) = self.locals.1.route(&subscribe.namespace) {
 			log::debug!("using local announce: {:?}", local.info);
-			let track = local.subscribe(&subscribe.name)?;
-
-			log::info!("serving from local: {:?}", track.info);
-			// NOTE: Depends on drop(track) being called afterwards
-			return Ok(subscribe.serve(track.reader).await?);
+			if let Some(track) = local.subscribe(&subscribe.name)? {
+				log::info!("serving from local: {:?}", track.info);
+				// NOTE: Depends on drop(track) being called afterwards
+				return Ok(subscribe.serve(track.reader).await?);
+			}
 		}
 
 		if let Some(remotes) = &self.remotes {
 			if let Some(remote) = remotes.route(&subscribe.namespace).await? {
 				log::debug!("using remote announce: {:?}", remote.info);
-				let track = remote.subscribe(&subscribe.namespace, &subscribe.name)?;
-				log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
+				if let Some(track) = remote.subscribe(&subscribe.namespace, &subscribe.name)? {
+					log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
 
-				// NOTE: Depends on drop(track) being called afterwards
-				return Ok(subscribe.serve(track.reader).await?);
+					// NOTE: Depends on drop(track) being called afterwards
+					return Ok(subscribe.serve(track.reader).await?);
+				}
 			}
 		}
 
@@ -207,14 +208,23 @@ impl Connection {
 
 		let mut tasks = FuturesUnordered::new();
 
+		let mut done = None;
+
 		loop {
 			tokio::select! {
 				// If the announce is closed, return the error
-				res = announce.closed() => return Ok(res?),
+				res = announce.closed(), if done.is_none() => done = Some(res),
 
 				// Wait for the next subscriber and serve the track.
-				res = publisher.requested() => {
-					let track = res?.ok_or(ServeError::Done)?;
+				res = publisher.requested(), if done.is_none() => {
+					let track = match res? {
+						Some(track) => track,
+						None => {
+							done = Some(Ok(()));
+							continue
+						},
+					};
+
 					let mut subscriber = remote.clone();
 
 					tasks.push(async move {
@@ -232,6 +242,9 @@ impl Connection {
 					});
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {}
+
+				// Done must be set and there are no tasks left
+				else => return Ok(done.unwrap()?),
 			}
 		}
 	}

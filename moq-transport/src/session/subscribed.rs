@@ -81,7 +81,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 
 	async fn serve_inner(&mut self, track: serve::TrackReader) -> Result<(), SessionError> {
 		let latest = track.latest();
-		self.state.lock_mut().ok_or(ServeError::Done)?.max = latest;
+		self.state.lock_mut().ok_or(ServeError::Cancel)?.max = latest;
 
 		self.publisher.send_message(message::SubscribeOk {
 			id: self.msg.id,
@@ -393,8 +393,9 @@ impl SubscribedRecv {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
-		state.closed = Err(ServeError::Cancel);
+		if let Some(mut state) = state.into_mut() {
+			state.closed = Err(ServeError::Cancel);
+		}
 
 		Ok(())
 	}

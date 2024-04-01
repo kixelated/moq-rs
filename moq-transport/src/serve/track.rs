@@ -80,7 +80,7 @@ impl TrackWriter {
 		}
 		.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.mode = Some(reader.into());
 		Ok(writer)
 	}
@@ -91,7 +91,7 @@ impl TrackWriter {
 		}
 		.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.mode = Some(reader.into());
 		Ok(writer)
 	}
@@ -102,7 +102,7 @@ impl TrackWriter {
 		}
 		.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.mode = Some(reader.into());
 		Ok(writer)
 	}
@@ -113,14 +113,17 @@ impl TrackWriter {
 		}
 		.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.mode = Some(reader.into());
 		Ok(writer)
 	}
 
 	/// Close the track with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 		Ok(())
 	}

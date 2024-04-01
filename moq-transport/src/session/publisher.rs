@@ -68,10 +68,17 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 
 		let mut tasks = FuturesUnordered::new();
 
+		let mut done = None;
+
 		loop {
 			tokio::select! {
-				subscribe = announce.subscribed() => {
-					let subscribe = subscribe?;
+				subscribe = announce.subscribed(), if done.is_none() => {
+					let subscribe = match subscribe {
+						Ok(Some(subscribe)) => subscribe,
+						Ok(None) => { done = Some(Ok(())); continue },
+						Err(err) => { done = Some(Err(err)); continue },
+					};
+
 					let broadcast = broadcast.clone();
 
 					tasks.push(async move {
@@ -88,6 +95,7 @@ impl<S: webtransport_generic::Session> Publisher<S> {
 					});
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
+				else => return Ok(done.unwrap()?)
 			}
 		}
 	}

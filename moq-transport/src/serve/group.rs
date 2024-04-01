@@ -105,7 +105,10 @@ impl GroupsWriter {
 
 	/// Close the segment with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -274,7 +277,7 @@ impl GroupWriter {
 
 		self.next += 1;
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.objects.push(reader);
 
 		Ok(writer)
@@ -282,7 +285,10 @@ impl GroupWriter {
 
 	/// Close the stream with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 		Ok(())
 	}
@@ -440,7 +446,7 @@ impl GroupObjectWriter {
 		}
 		self.remain -= chunk.len();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.chunks.push(chunk);
 
 		Ok(())
@@ -452,7 +458,10 @@ impl GroupObjectWriter {
 			return Err(ServeError::Size);
 		}
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())

@@ -176,7 +176,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 
 		let writer = {
 			let mut subscribes = self.subscribes.lock().unwrap();
-			let subscribe = subscribes.get_mut(&id).ok_or(ServeError::Done)?;
+			let subscribe = subscribes.get_mut(&id).ok_or(ServeError::NotFound)?;
 
 			match header {
 				data::Header::Track(track) => Writer::Track(subscribe.track(track)?),

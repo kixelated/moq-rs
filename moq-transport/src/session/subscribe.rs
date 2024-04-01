@@ -115,17 +115,22 @@ impl SubscribeRecv {
 			return Err(ServeError::Duplicate);
 		}
 
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
-		state.ok = true;
+		if let Some(mut state) = state.into_mut() {
+			state.ok = true;
+		}
 
 		Ok(())
 	}
 
 	pub fn error(mut self, err: ServeError) -> Result<(), ServeError> {
-		let writer = self.writer.take().ok_or(ServeError::Done)?;
-		writer.close(err.clone())?;
+		if let Some(writer) = self.writer.take() {
+			writer.close(err.clone())?;
+		}
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())

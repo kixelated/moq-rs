@@ -70,12 +70,6 @@ impl BroadcastState {
 	pub fn remove(&mut self, name: &str) -> Option<TrackReader> {
 		self.tracks.remove(name)
 	}
-
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		self.closed.clone()?;
-		self.closed = Err(err);
-		Ok(())
-	}
 }
 
 impl Default for BroadcastState {
@@ -106,18 +100,25 @@ impl BroadcastWriter {
 		}
 		.produce();
 
-		self.state.lock_mut().ok_or(ServeError::Done)?.insert(reader)?;
+		self.state.lock_mut().ok_or(ServeError::Cancel)?.insert(reader)?;
 
 		Ok(writer)
 	}
 
-	pub fn remove_track(&mut self, track: &str) -> Result<Option<TrackReader>, ServeError> {
-		Ok(self.state.lock_mut().ok_or(ServeError::Done)?.remove(track))
+	pub fn remove_track(&mut self, track: &str) -> Option<TrackReader> {
+		self.state.lock_mut()?.remove(track)
 	}
 
 	/// Close the broadcast with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		self.state.lock_mut().ok_or(ServeError::Done)?.close(err)
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		if let Some(mut state) = state.into_mut() {
+			state.closed = Err(err);
+		}
+
+		Ok(())
 	}
 }
 

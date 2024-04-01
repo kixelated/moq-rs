@@ -68,24 +68,33 @@ impl<S: webtransport_generic::Session> Announce<S> {
 	// Run until we get an error
 	pub async fn serve(self) -> Result<(), ServeError> {
 		loop {
-			let state = self.state.lock();
-			state.closed.clone()?;
-			state.modified().ok_or(ServeError::Done)?.await
+			let notify = {
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(()),
+				}
+			};
+
+			notify.await
 		}
 	}
 
-	pub async fn subscribed(&mut self) -> Result<Subscribed<S>, ServeError> {
+	pub async fn subscribed(&mut self) -> Result<Option<Subscribed<S>>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
 				if !state.subscribers.is_empty() {
-					let mut state = state.into_mut().ok_or(ServeError::Done)?;
-					let subscriber = state.subscribers.pop_front().unwrap();
-					return Ok(subscriber);
+					return Ok(state.into_mut().and_then(|mut state| state.subscribers.pop_front()));
 				}
 
 				state.closed.clone()?;
-				state.modified().ok_or(ServeError::Done)?
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(None),
+				}
 			};
 
 			notify.await
@@ -119,18 +128,22 @@ pub(super) struct AnnounceRecv<S: webtransport_generic::Session> {
 
 impl<S: webtransport_generic::Session> AnnounceRecv<S> {
 	pub fn recv_ok(&mut self) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
-		if state.ok {
-			return Err(ServeError::Duplicate);
-		}
+		if let Some(mut state) = self.state.lock_mut() {
+			if state.ok {
+				return Err(ServeError::Duplicate);
+			}
 
-		state.ok = true;
+			state.ok = true;
+		}
 
 		Ok(())
 	}
 
 	pub fn recv_error(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Done)?;
 		state.closed = Err(err);
 
 		Ok(())

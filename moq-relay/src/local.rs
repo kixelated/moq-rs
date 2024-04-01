@@ -57,7 +57,7 @@ impl LocalsProducer {
 		// Try to insert with the API.
 		writer.register().await?;
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().unwrap();
 		match state.lookup.entry(namespace.to_string()) {
 			hash_map::Entry::Vacant(entry) => entry.insert(reader),
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
@@ -67,12 +67,9 @@ impl LocalsProducer {
 	}
 
 	async fn unannounce(&mut self, namespace: &str) -> Result<(), RelayError> {
-		self.state
-			.lock_mut()
-			.ok_or(ServeError::Done)?
-			.lookup
-			.remove(namespace)
-			.ok_or(ServeError::NotFound)?;
+		if let Some(mut state) = self.state.lock_mut() {
+			state.lookup.remove(namespace).ok_or(ServeError::NotFound)?;
+		}
 
 		if let Some(api) = self.api.as_ref() {
 			api.delete_origin(namespace).await.map_err(Arc::new)?;
@@ -182,8 +179,7 @@ impl LocalProducer {
 			let notify = {
 				let state = self.state.lock();
 				if !state.requested.is_empty() {
-					let mut state = state.into_mut().ok_or(ServeError::Done)?;
-					return Ok(state.requested.pop_front());
+					return Ok(state.into_mut().and_then(|mut state| state.requested.pop_front()));
 				}
 
 				match state.modified() {
@@ -243,13 +239,13 @@ impl LocalConsumer {
 		Self { info, state }
 	}
 
-	pub fn subscribe(&self, name: &str) -> Result<LocalTrackReader, RelayError> {
+	pub fn subscribe(&self, name: &str) -> Result<Option<LocalTrackReader>, RelayError> {
 		let state = self.state.lock();
 
 		// Try to reuse the track if there are still active readers
 		if let Some(track) = state.tracks.get(name) {
 			if let Some(track) = track.upgrade() {
-				return Ok(track);
+				return Ok(Some(track));
 			}
 		}
 
@@ -263,7 +259,10 @@ impl LocalConsumer {
 		let reader = LocalTrackReader::new(reader, self.state.clone());
 
 		// Upgrade the lock to mutable.
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
+		let mut state = match state.into_mut() {
+			Some(state) => state,
+			None => return Ok(None),
+		};
 
 		// Insert the track into our Map so we deduplicate future requests.
 		state.tracks.insert(name.to_string(), reader.downgrade());
@@ -271,7 +270,7 @@ impl LocalConsumer {
 		// Send the track to the writer to handle.
 		state.requested.push_back(writer);
 
-		Ok(reader)
+		Ok(Some(reader))
 	}
 }
 

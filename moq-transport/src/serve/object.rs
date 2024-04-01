@@ -75,7 +75,7 @@ impl ObjectsWriter {
 
 		let (writer, reader) = object.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		if let Some(first) = state.objects.first() {
 			match writer.group_id.cmp(&first.group_id) {
@@ -93,7 +93,10 @@ impl ObjectsWriter {
 	}
 
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -240,7 +243,7 @@ impl ObjectWriter {
 
 	/// Write a new chunk of bytes.
 	pub fn write(&mut self, chunk: Bytes) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.chunks.push(chunk);
 
 		Ok(())
@@ -248,7 +251,10 @@ impl ObjectWriter {
 
 	/// Close the segment with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())

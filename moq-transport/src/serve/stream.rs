@@ -70,7 +70,7 @@ impl StreamWriter {
 	}
 
 	pub fn create(&mut self, group_id: u64) -> Result<StreamGroupWriter, ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		if let Some(latest) = &state.latest {
 			if latest.group_id > group_id {
@@ -107,7 +107,10 @@ impl StreamWriter {
 
 	/// Close the stream with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -226,7 +229,7 @@ impl StreamGroupWriter {
 	}
 
 	pub fn create(&mut self, size: usize) -> Result<StreamObjectWriter, ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		let (writer, reader) = StreamObject {
 			group: self.group.clone(),
@@ -242,7 +245,10 @@ impl StreamGroupWriter {
 
 	/// Close the stream with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -388,7 +394,7 @@ impl StreamObjectWriter {
 		}
 		self.remain -= chunk.len();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.chunks.push(chunk);
 
 		Ok(())
@@ -396,7 +402,10 @@ impl StreamObjectWriter {
 
 	/// Close the stream with an error.
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
