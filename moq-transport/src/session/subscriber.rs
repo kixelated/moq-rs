@@ -52,7 +52,6 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		self.announced_queue.pop().await
 	}
 
-	#[must_use = "unsubscribe on drop"]
 	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe<S>, ServeError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
