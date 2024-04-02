@@ -130,9 +130,16 @@ impl ObjectsReader {
 		loop {
 			let notify = {
 				let state = self.state.lock();
-				for object in &state.objects[self.index..] {
-					self.pending.push(object.clone());
+				if self.index <= state.objects.len() {
+					for object in &state.objects[self.index..] {
+						self.pending.push(object.clone());
+					}
+				} else {
+					for object in &state.objects[..state.objects.len()] {
+						self.pending.push(object.clone())
+					}
 				}
+
 				self.index = state.objects.len();
 
 				if let Some(object) = self.pending.pop() {
