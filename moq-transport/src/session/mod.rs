@@ -26,6 +26,7 @@ use crate::message::Message;
 use crate::util::Queue;
 use crate::{message, setup};
 
+#[must_use = "run() must be called"]
 pub struct Session<S: webtransport_generic::Session> {
 	webtransport: S,
 

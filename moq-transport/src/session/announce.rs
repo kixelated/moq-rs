@@ -35,6 +35,7 @@ impl<S: webtransport_generic::Session> Drop for AnnounceState<S> {
 	}
 }
 
+#[must_use = "unannounce on drop"]
 pub struct Announce<S: webtransport_generic::Session> {
 	publisher: Publisher<S>,
 	state: State<AnnounceState<S>>,
