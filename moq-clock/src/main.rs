@@ -115,13 +115,14 @@ async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) 
 			.context("failed to create MoQ Transport session")?;
 
 		let (prod, sub) = serve::Track::new(&config.namespace, &config.track).produce();
-		subscriber.subscribe(prod).context("failed to subscribe to track")?;
+		let subscribe = subscriber.subscribe(prod).context("failed to subscribe to track")?;
 
 		let clock = clock::Subscriber::new(sub);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
+			res = subscribe.closed() => res.context("subscribe closed")?,
 		}
 	}
 

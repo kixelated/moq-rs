@@ -29,6 +29,7 @@ impl Default for SubscribeState {
 }
 
 // Held by the application
+#[must_use = "unsubscribe on drop"]
 pub struct Subscribe<S: webtransport_generic::Session> {
 	state: State<SubscribeState>,
 	subscriber: Subscriber<S>,
