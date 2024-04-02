@@ -136,7 +136,7 @@ impl ObjectsReader {
 					}
 				} else {
 					for object in &state.objects[..state.objects.len()] {
-						self.pending.push(object.clone())
+						self.pending.push(object.clone());
 					}
 				}
 
