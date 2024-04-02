@@ -36,6 +36,9 @@ struct ObjectsState {
 	// The latest group.
 	objects: Vec<ObjectReader>,
 
+	// Incremented each time we push an object.
+	epoch: usize,
+
 	// Can be sent by the writer with an explicit error code.
 	closed: Result<(), ServeError>,
 }
@@ -44,6 +47,7 @@ impl Default for ObjectsState {
 	fn default() -> Self {
 		Self {
 			objects: Vec::new(),
+			epoch: 0,
 			closed: Ok(()),
 		}
 	}
@@ -83,6 +87,7 @@ impl ObjectsWriter {
 		}
 
 		state.objects.push(reader);
+		state.epoch += 1;
 
 		Ok(writer)
 	}
@@ -110,7 +115,7 @@ impl Deref for ObjectsWriter {
 pub struct ObjectsReader {
 	state: State<ObjectsState>,
 	pub track: Arc<Track>,
-	index: usize,
+	epoch: usize,
 
 	// The objects ready to be returned
 	pending: BinaryHeap<ObjectReader>,
@@ -121,7 +126,7 @@ impl ObjectsReader {
 		Self {
 			state,
 			track,
-			index: 0,
+			epoch: 0,
 			pending: BinaryHeap::new(),
 		}
 	}
@@ -130,10 +135,15 @@ impl ObjectsReader {
 		loop {
 			let notify = {
 				let state = self.state.lock();
-				for object in &state.objects[self.index..] {
-					self.pending.push(object.clone());
+				if self.epoch < state.epoch {
+					// Add all of the new objects from the current group to our priority queue.
+					let index = state.objects.len().saturating_sub(state.epoch - self.epoch);
+					for object in &state.objects[index..] {
+						self.pending.push(object.clone());
+					}
+
+					self.epoch = state.epoch;
 				}
-				self.index = state.objects.len();
 
 				if let Some(object) = self.pending.pop() {
 					return Ok(Some(object));
