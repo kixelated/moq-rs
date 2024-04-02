@@ -87,7 +87,7 @@ impl Relay {
 
 					tasks.spawn(async move {
 						if let Err(err) = session.run(conn).await {
-							log::warn!("connection terminated: {:?}", err);
+							log::warn!("connection terminated: {}", err);
 						}
 						Ok(())
 					});
