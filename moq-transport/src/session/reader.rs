@@ -6,13 +6,13 @@ use crate::coding::{Decode, DecodeError};
 
 use super::SessionError;
 
-pub struct Reader<S: webtransport_generic::RecvStream> {
-	stream: S,
+pub struct Reader {
+	stream: web_transport::RecvStream,
 	buffer: BytesMut,
 }
 
-impl<S: webtransport_generic::RecvStream> Reader<S> {
-	pub fn new(stream: S) -> Self {
+impl Reader {
+	pub fn new(stream: web_transport::RecvStream) -> Self {
 		Self {
 			stream,
 			buffer: Default::default(),
@@ -24,29 +24,23 @@ impl<S: webtransport_generic::RecvStream> Reader<S> {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
 			// Try to decode with the current buffer.
-			let mut remain = match T::decode(&mut cursor) {
+			let required = match T::decode(&mut cursor) {
 				Ok(msg) => {
 					self.buffer.advance(cursor.position() as usize);
 					return Ok(msg);
 				}
-				Err(DecodeError::More(remain)) => remain, // Try again with more data
+				Err(DecodeError::More(required)) => self.buffer.len() + required, // Try again with more data
 				Err(err) => return Err(err.into()),
 			};
 
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {
-				let size = self
-					.stream
-					.read_buf(&mut self.buffer)
-					.await
-					.map_err(SessionError::from_read)?;
-				if size == 0 {
-					return Err(DecodeError::More(remain).into());
-				}
+				if !self.stream.read_buf(&mut self.buffer).await? {
+					return Err(DecodeError::More(required - self.buffer.len()).into());
+				};
 
-				remain = remain.saturating_sub(size);
-				if remain == 0 {
+				if self.buffer.len() >= required {
 					break;
 				}
 			}
@@ -60,17 +54,7 @@ impl<S: webtransport_generic::RecvStream> Reader<S> {
 			return Ok(Some(data));
 		}
 
-		let chunk = match self.stream.read_chunk().await.map_err(SessionError::from_read)? {
-			Some(chunk) if chunk.len() <= max => Some(chunk),
-			Some(mut chunk) => {
-				// The chunk is too big; add the tail to the buffer for next read.
-				self.buffer.extend_from_slice(&chunk.split_off(max));
-				Some(chunk)
-			}
-			None => None,
-		};
-
-		Ok(chunk)
+		Ok(self.stream.read_chunk(max).await?)
 	}
 
 	pub async fn done(&mut self) -> Result<bool, SessionError> {
@@ -78,11 +62,6 @@ impl<S: webtransport_generic::RecvStream> Reader<S> {
 			return Ok(false);
 		}
 
-		let size = self
-			.stream
-			.read_buf(&mut self.buffer)
-			.await
-			.map_err(SessionError::from_read)?;
-		Ok(size == 0)
+		Ok(!self.stream.read_buf(&mut self.buffer).await?)
 	}
 }

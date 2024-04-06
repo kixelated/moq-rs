@@ -11,13 +11,13 @@ pub struct AnnounceInfo {
 	pub namespace: String,
 }
 
-struct AnnounceState<S: webtransport_generic::Session> {
-	subscribers: VecDeque<Subscribed<S>>,
+struct AnnounceState {
+	subscribers: VecDeque<Subscribed>,
 	ok: bool,
 	closed: Result<(), ServeError>,
 }
 
-impl<S: webtransport_generic::Session> Default for AnnounceState<S> {
+impl Default for AnnounceState {
 	fn default() -> Self {
 		Self {
 			subscribers: Default::default(),
@@ -27,7 +27,7 @@ impl<S: webtransport_generic::Session> Default for AnnounceState<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Drop for AnnounceState<S> {
+impl Drop for AnnounceState {
 	fn drop(&mut self) {
 		for subscriber in self.subscribers.drain(..) {
 			subscriber.close(ServeError::NotFound).ok();
@@ -36,15 +36,15 @@ impl<S: webtransport_generic::Session> Drop for AnnounceState<S> {
 }
 
 #[must_use = "unannounce on drop"]
-pub struct Announce<S: webtransport_generic::Session> {
-	publisher: Publisher<S>,
-	state: State<AnnounceState<S>>,
+pub struct Announce {
+	publisher: Publisher,
+	state: State<AnnounceState>,
 
 	pub info: AnnounceInfo,
 }
 
-impl<S: webtransport_generic::Session> Announce<S> {
-	pub(super) fn new(mut publisher: Publisher<S>, namespace: String) -> (Announce<S>, AnnounceRecv<S>) {
+impl Announce {
+	pub(super) fn new(mut publisher: Publisher, namespace: String) -> (Announce, AnnounceRecv) {
 		let info = AnnounceInfo {
 			namespace: namespace.clone(),
 		};
@@ -83,7 +83,7 @@ impl<S: webtransport_generic::Session> Announce<S> {
 		}
 	}
 
-	pub async fn subscribed(&mut self) -> Result<Option<Subscribed<S>>, ServeError> {
+	pub async fn subscribed(&mut self) -> Result<Option<Subscribed>, ServeError> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -103,7 +103,7 @@ impl<S: webtransport_generic::Session> Announce<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Drop for Announce<S> {
+impl Drop for Announce {
 	fn drop(&mut self) {
 		if self.state.lock().closed.is_err() {
 			return;
@@ -115,7 +115,7 @@ impl<S: webtransport_generic::Session> Drop for Announce<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> ops::Deref for Announce<S> {
+impl ops::Deref for Announce {
 	type Target = AnnounceInfo;
 
 	fn deref(&self) -> &Self::Target {
@@ -123,11 +123,11 @@ impl<S: webtransport_generic::Session> ops::Deref for Announce<S> {
 	}
 }
 
-pub(super) struct AnnounceRecv<S: webtransport_generic::Session> {
-	state: State<AnnounceState<S>>,
+pub(super) struct AnnounceRecv {
+	state: State<AnnounceState>,
 }
 
-impl<S: webtransport_generic::Session> AnnounceRecv<S> {
+impl AnnounceRecv {
 	pub fn recv_ok(&mut self) -> Result<(), ServeError> {
 		if let Some(mut state) = self.state.lock_mut() {
 			if state.ok {
@@ -150,7 +150,7 @@ impl<S: webtransport_generic::Session> AnnounceRecv<S> {
 		Ok(())
 	}
 
-	pub fn recv_subscribe(&mut self, subscriber: Subscribed<S>) -> Result<(), ServeError> {
+	pub fn recv_subscribe(&mut self, subscriber: Subscribed) -> Result<(), ServeError> {
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.subscribers.push_back(subscriber);
 

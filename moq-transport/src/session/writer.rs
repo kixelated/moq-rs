@@ -5,13 +5,13 @@ use crate::coding::{Encode, EncodeError};
 use super::SessionError;
 use bytes::Buf;
 
-pub struct Writer<S: webtransport_generic::SendStream> {
-	stream: S,
+pub struct Writer {
+	stream: web_transport::SendStream,
 	buffer: bytes::BytesMut,
 }
 
-impl<S: webtransport_generic::SendStream> Writer<S> {
-	pub fn new(stream: S) -> Self {
+impl Writer {
+	pub fn new(stream: web_transport::SendStream) -> Self {
 		Self {
 			stream,
 			buffer: Default::default(),
@@ -23,10 +23,7 @@ impl<S: webtransport_generic::SendStream> Writer<S> {
 		msg.encode(&mut self.buffer)?;
 
 		while !self.buffer.is_empty() {
-			self.stream
-				.write_buf(&mut self.buffer)
-				.await
-				.map_err(SessionError::from_write)?;
+			self.stream.write_buf(&mut self.buffer).await?;
 		}
 
 		Ok(())
@@ -36,11 +33,7 @@ impl<S: webtransport_generic::SendStream> Writer<S> {
 		let mut cursor = io::Cursor::new(buf);
 
 		while cursor.has_remaining() {
-			let size = self
-				.stream
-				.write_buf(&mut cursor)
-				.await
-				.map_err(SessionError::from_write)?;
+			let size = self.stream.write_buf(&mut cursor).await?;
 			if size == 0 {
 				return Err(EncodeError::More(cursor.remaining()).into());
 			}

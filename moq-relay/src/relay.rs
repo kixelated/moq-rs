@@ -2,7 +2,7 @@ use std::{sync::Arc, time};
 
 use anyhow::Context;
 
-use tokio::task::JoinSet;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{
 	Config, Connection, Locals, LocalsConsumer, LocalsProducer, Remotes, RemotesConsumer, RemotesProducer, Tls,
@@ -20,8 +20,8 @@ impl Relay {
 	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
 		let mut client_config = tls.client.clone();
 		let mut server_config = tls.server.clone();
-		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
-		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+		client_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+		server_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
 
 		// Enable BBR congestion control
 		// TODO validate the implementation
@@ -72,10 +72,10 @@ impl Relay {
 	pub async fn run(self) -> anyhow::Result<()> {
 		log::info!("listening on {}", self.quic.local_addr()?);
 
-		let mut tasks = JoinSet::new();
+		let mut tasks = FuturesUnordered::new();
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
-			tasks.spawn(producer.run());
+			tasks.push(producer.run().boxed_local());
 			consumer
 		});
 
@@ -85,14 +85,14 @@ impl Relay {
 					let conn = res.context("failed to accept QUIC connection")?;
 					let session = Connection::new(self.locals.clone(), remotes.clone());
 
-					tasks.spawn(async move {
+					tasks.push(async move {
 						if let Err(err) = session.run(conn).await {
 							log::warn!("connection terminated: {}", err);
 						}
 						Ok(())
-					});
+					}.boxed_local());
 				},
-				res = tasks.join_next(), if !tasks.is_empty() => res.expect("no tasks").expect("task aborted")?,
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			}
 		}
 	}

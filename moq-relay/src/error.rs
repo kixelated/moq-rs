@@ -18,10 +18,10 @@ pub enum RelayError {
 	Url(#[from] url::ParseError),
 
 	#[error("webtransport client error: {0}")]
-	Client(#[from] webtransport_quinn::ClientError),
+	Client(#[from] web_transport_quinn::ClientError),
 
 	#[error("webtransport server error: {0}")]
-	Server(#[from] webtransport_quinn::ServerError),
+	Server(#[from] web_transport_quinn::ServerError),
 
 	#[error("missing node")]
 	MissingNode,

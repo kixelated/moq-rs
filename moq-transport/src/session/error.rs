@@ -1,19 +1,15 @@
-use std::sync::Arc;
-
-use webtransport_generic::ErrorCode;
-
 use crate::{coding, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
-	#[error("webtransport error: {0}")]
-	WebTransport(Arc<dyn ErrorCode>),
+	#[error("webtransport session: {0}")]
+	Session(#[from] web_transport::SessionError),
 
-	#[error("write error: {0}")]
-	Write(Arc<dyn ErrorCode>),
+	#[error("webtransport write: {0}")]
+	Write(#[from] web_transport::WriteError),
 
-	#[error("read error: {0}")]
-	Read(Arc<dyn ErrorCode>),
+	#[error("webtransport read: {0}")]
+	Read(#[from] web_transport::ReadError),
 
 	#[error("encode error: {0}")]
 	Encode(#[from] coding::EncodeError),
@@ -52,34 +48,12 @@ pub enum SessionError {
 }
 
 impl SessionError {
-	pub(super) fn from_webtransport<E: ErrorCode>(err: E) -> Self {
-		Self::WebTransport(Arc::new(err))
-	}
-
-	pub(super) fn from_read<E: ErrorCode>(err: E) -> Self {
-		Self::Read(Arc::new(err))
-	}
-
-	pub(super) fn from_write<E: ErrorCode>(err: E) -> Self {
-		Self::Write(Arc::new(err))
-	}
-}
-
-/*
-impl<T: webtransport_generic::SessionError> From<T> for SessionError {
-	fn from(err: T) -> Self {
-		Self::WebTransport(Arc::new(err))
-	}
-}
-*/
-
-impl SessionError {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u64 {
 		match self {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
-			Self::WebTransport(_) => 503,
+			Self::Session(_) => 503,
 			Self::Read(_) => 500,
 			Self::Write(_) => 500,
 			Self::Version(..) => 406,

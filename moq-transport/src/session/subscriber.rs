@@ -17,9 +17,9 @@ use super::{Announced, AnnouncedRecv, Reader, Session, SessionError, Subscribe, 
 
 // TODO remove Clone.
 #[derive(Clone)]
-pub struct Subscriber<S: webtransport_generic::Session> {
+pub struct Subscriber {
 	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
-	announced_queue: Queue<Announced<S>>,
+	announced_queue: Queue<Announced>,
 
 	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
 	subscribe_next: Arc<atomic::AtomicU64>,
@@ -27,7 +27,7 @@ pub struct Subscriber<S: webtransport_generic::Session> {
 	outgoing: Queue<Message>,
 }
 
-impl<S: webtransport_generic::Session> Subscriber<S> {
+impl Subscriber {
 	pub(super) fn new(outgoing: Queue<Message>) -> Self {
 		Self {
 			announced: Default::default(),
@@ -38,21 +38,21 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		}
 	}
 
-	pub async fn accept(session: S) -> Result<(Session<S>, Self), SessionError> {
+	pub async fn accept(session: web_transport::Session) -> Result<(Session, Self), SessionError> {
 		let (session, _, subscriber) = Session::accept_role(session, setup::Role::Subscriber).await?;
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn connect(session: S) -> Result<(Session<S>, Self), SessionError> {
+	pub async fn connect(session: web_transport::Session) -> Result<(Session, Self), SessionError> {
 		let (session, _, subscriber) = Session::connect_role(session, setup::Role::Subscriber).await?;
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn announced(&mut self) -> Announced<S> {
+	pub async fn announced(&mut self) -> Announced {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe<S>, ServeError> {
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe, ServeError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let (send, recv) = Subscribe::new(self.clone(), id, track);
@@ -142,7 +142,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		self.announced.lock().unwrap().remove(namespace);
 	}
 
-	pub(super) async fn recv_stream(mut self, stream: S::RecvStream) -> Result<(), SessionError> {
+	pub(super) async fn recv_stream(mut self, stream: web_transport::RecvStream) -> Result<(), SessionError> {
 		let mut reader = Reader::new(stream);
 		let header: data::Header = reader.decode().await?;
 
@@ -160,11 +160,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		res
 	}
 
-	async fn recv_stream_inner(
-		&mut self,
-		reader: Reader<S::RecvStream>,
-		header: data::Header,
-	) -> Result<(), SessionError> {
+	async fn recv_stream_inner(&mut self, reader: Reader, header: data::Header) -> Result<(), SessionError> {
 		let id = header.subscribe_id();
 
 		// This is super silly, but I couldn't figure out a way to avoid the mutex guard across awaits.
@@ -194,7 +190,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		Ok(())
 	}
 
-	async fn recv_track(mut track: serve::StreamWriter, mut reader: Reader<S::RecvStream>) -> Result<(), SessionError> {
+	async fn recv_track(mut track: serve::StreamWriter, mut reader: Reader) -> Result<(), SessionError> {
 		log::trace!("received track: {:?}", track.info);
 
 		let mut prev: Option<serve::StreamGroupWriter> = None;
@@ -224,7 +220,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		Ok(())
 	}
 
-	async fn recv_group(mut group: serve::GroupWriter, mut reader: Reader<S::RecvStream>) -> Result<(), SessionError> {
+	async fn recv_group(mut group: serve::GroupWriter, mut reader: Reader) -> Result<(), SessionError> {
 		log::trace!("received group: {:?}", group.info);
 
 		while !reader.done().await? {
@@ -245,10 +241,7 @@ impl<S: webtransport_generic::Session> Subscriber<S> {
 		Ok(())
 	}
 
-	async fn recv_object(
-		mut object: serve::ObjectWriter,
-		mut reader: Reader<S::RecvStream>,
-	) -> Result<(), SessionError> {
+	async fn recv_object(mut object: serve::ObjectWriter, mut reader: Reader) -> Result<(), SessionError> {
 		log::trace!("received object: {:?}", object.info);
 
 		while let Some(data) = reader.read_chunk(usize::MAX).await? {

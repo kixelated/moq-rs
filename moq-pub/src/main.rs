@@ -8,7 +8,6 @@ use cli::*;
 
 use moq_pub::media::Media;
 use moq_transport::serve;
-use tokio::io::AsyncRead;
 
 // TODO: clap complete
 
@@ -26,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let input = tokio::io::stdin();
 	let (publisher, broadcast) = serve::Broadcast::new(&config.name).produce();
-	let media = Media::new(input, publisher).await?;
+	let mut media = Media::new(input, publisher).await?;
 
 	// Create a list of acceptable root certificates.
 	let mut roots = rustls::RootCertStore::empty();
@@ -65,19 +64,17 @@ async fn main() -> anyhow::Result<()> {
 
 	log::info!("connecting to relay: url={}", config.url);
 
-	match config.url.scheme() {
+	let session = match config.url.scheme() {
 		"https" => {
-			tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()];
+			tls_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec()];
 			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
 
 			let mut endpoint = quinn::Endpoint::client(config.bind)?;
 			endpoint.set_default_client_config(client_config);
 
-			let session = webtransport_quinn::connect(&endpoint, &config.url)
+			web_transport_quinn::connect(&endpoint, &config.url)
 				.await
-				.context("failed to create WebTransport session")?;
-
-			run(session, media, broadcast).await
+				.context("failed to create WebTransport session")?
 		}
 		"moqt" => {
 			tls_config.alpn_protocols = vec![moq_transport::setup::ALPN.to_vec()];
@@ -86,22 +83,24 @@ async fn main() -> anyhow::Result<()> {
 			let mut endpoint = quinn::Endpoint::client(config.bind)?;
 			endpoint.set_default_client_config(client_config);
 
-			let session = quictransport_quinn::connect(&endpoint, &config.url)
-				.await
-				.context("failed to create QUIC Transport session")?;
+			let host = config.url.host().context("invalid DNS name")?.to_string();
+			let port = config.url.port().unwrap_or(443);
 
-			run(session, media, broadcast).await
+			// Look up the DNS entry.
+			let remote = tokio::net::lookup_host((host.clone(), port))
+				.await
+				.context("failed DNS lookup")?
+				.next()
+				.context("no DNS entries")?;
+
+			// Connect to the server using the addr we just resolved.
+			let conn = endpoint.connect(remote, &host)?.await?;
+			conn.into()
 		}
 		_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
-	}
-}
+	};
 
-async fn run<T: webtransport_generic::Session, I: AsyncRead + Send + Unpin>(
-	session: T,
-	mut media: Media<I>,
-	broadcast: serve::BroadcastReader,
-) -> anyhow::Result<()> {
-	let (session, mut publisher) = moq_transport::Publisher::connect(session)
+	let (session, mut publisher) = moq_transport::Publisher::connect(session.into())
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 

@@ -59,19 +59,17 @@ async fn main() -> anyhow::Result<()> {
 
 	log::info!("connecting to server: url={}", config.url);
 
-	match config.url.scheme() {
+	let session = match config.url.scheme() {
 		"https" => {
-			tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
+			tls_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec()]; // this one is important
 			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
 
 			let mut endpoint = quinn::Endpoint::client(config.bind)?;
 			endpoint.set_default_client_config(client_config);
 
-			let session = webtransport_quinn::connect(&endpoint, &config.url)
+			web_transport_quinn::connect(&endpoint, &config.url)
 				.await
-				.context("failed to create WebTransport session")?;
-
-			run(session, config).await
+				.context("failed to create WebTransport session")?
 		}
 		"moqt" => {
 			tls_config.alpn_protocols = vec![moq_transport::setup::ALPN.to_vec()]; // this one is important
@@ -80,19 +78,25 @@ async fn main() -> anyhow::Result<()> {
 			let mut endpoint = quinn::Endpoint::client(config.bind)?;
 			endpoint.set_default_client_config(client_config);
 
-			let session = quictransport_quinn::connect(&endpoint, &config.url)
-				.await
-				.context("failed to create QUIC Transport session")?;
+			let host = config.url.host().context("invalid DNS name")?.to_string();
+			let port = config.url.port().unwrap_or(443);
 
-			run(session, config).await
+			// Look up the DNS entry.
+			let remote = tokio::net::lookup_host((host.clone(), port))
+				.await
+				.context("failed DNS lookup")?
+				.next()
+				.context("no DNS entries")?;
+
+			// Connect to the server using the addr we just resolved.
+			let conn = endpoint.connect(remote, &host)?.await?;
+			conn.into()
 		}
 		_ => anyhow::bail!("unsupported scheme: {}", config.url.scheme()),
-	}
-}
+	};
 
-async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) -> anyhow::Result<()> {
 	if config.publish {
-		let (session, mut publisher) = moq_transport::Publisher::connect(session)
+		let (session, mut publisher) = moq_transport::Publisher::connect(session.into())
 			.await
 			.context("failed to create MoQ Transport session")?;
 
@@ -110,7 +114,7 @@ async fn run<S: webtransport_generic::Session>(session: S, config: cli::Config) 
 			res = publisher.serve(broadcast_sub) => res.context("failed to serve broadcast")?,
 		}
 	} else {
-		let (session, mut subscriber) = moq_transport::Subscriber::connect(session)
+		let (session, mut subscriber) = moq_transport::Subscriber::connect(session.into())
 			.await
 			.context("failed to create MoQ Transport session")?;
 

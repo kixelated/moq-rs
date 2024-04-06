@@ -3,8 +3,6 @@ use std::ops;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
-use webtransport_generic::SendStream;
-
 use crate::coding::Encode;
 use crate::serve::{ServeError, TrackReaderMode};
 use crate::util::State;
@@ -39,8 +37,8 @@ impl Default for SubscribedState {
 	}
 }
 
-pub struct Subscribed<S: webtransport_generic::Session> {
-	publisher: Publisher<S>,
+pub struct Subscribed {
+	publisher: Publisher,
 	state: State<SubscribedState>,
 	msg: message::Subscribe,
 	ok: bool,
@@ -48,8 +46,8 @@ pub struct Subscribed<S: webtransport_generic::Session> {
 	pub info: SubscribeInfo,
 }
 
-impl<S: webtransport_generic::Session> Subscribed<S> {
-	pub(super) fn new(publisher: Publisher<S>, msg: message::Subscribe) -> (Self, SubscribedRecv) {
+impl Subscribed {
+	pub(super) fn new(publisher: Publisher, msg: message::Subscribe) -> (Self, SubscribedRecv) {
 		let (send, recv) = State::init();
 		let info = SubscribeInfo {
 			namespace: msg.track_namespace.clone(),
@@ -127,7 +125,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> ops::Deref for Subscribed<S> {
+impl ops::Deref for Subscribed {
 	type Target = SubscribeInfo;
 
 	fn deref(&self) -> &Self::Target {
@@ -135,7 +133,7 @@ impl<S: webtransport_generic::Session> ops::Deref for Subscribed<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Drop for Subscribed<S> {
+impl Drop for Subscribed {
 	fn drop(&mut self) {
 		let state = self.state.lock();
 		let err = state.closed.as_ref().err().cloned().unwrap_or(ServeError::Done);
@@ -160,12 +158,12 @@ impl<S: webtransport_generic::Session> Drop for Subscribed<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Subscribed<S> {
+impl Subscribed {
 	async fn serve_track(&mut self, mut track: serve::StreamReader) -> Result<(), SessionError> {
 		let mut stream = self.publisher.open_uni().await?;
 
 		// TODO figure out u32 vs u64 priority
-		stream.priority(track.priority as i32);
+		stream.set_priority(track.priority as i32);
 
 		let mut writer = Writer::new(stream);
 
@@ -247,13 +245,13 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 	async fn serve_group(
 		header: data::GroupHeader,
 		mut group: serve::GroupReader,
-		publisher: Publisher<S>,
+		mut publisher: Publisher,
 		state: State<SubscribedState>,
 	) -> Result<(), SessionError> {
 		let mut stream = publisher.open_uni().await?;
 
 		// TODO figure out u32 vs u64 priority
-		stream.priority(group.priority as i32);
+		stream.set_priority(group.priority as i32);
 
 		let mut writer = Writer::new(stream);
 
@@ -327,7 +325,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 	async fn serve_object(
 		header: data::ObjectHeader,
 		mut object: serve::ObjectReader,
-		publisher: Publisher<S>,
+		mut publisher: Publisher,
 		state: State<SubscribedState>,
 	) -> Result<(), SessionError> {
 		state
@@ -338,7 +336,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 		let mut stream = publisher.open_uni().await?;
 
 		// TODO figure out u32 vs u64 priority
-		stream.priority(object.priority as i32);
+		stream.set_priority(object.priority as i32);
 
 		let mut writer = Writer::new(stream);
 
@@ -371,7 +369,7 @@ impl<S: webtransport_generic::Session> Subscribed<S> {
 			let mut buffer = bytes::BytesMut::with_capacity(datagram.payload.len() + 100);
 			datagram.encode(&mut buffer)?;
 
-			self.publisher.send_datagram(buffer.into())?;
+			self.publisher.send_datagram(buffer.into()).await?;
 			log::trace!("sent datagram: {:?}", datagram);
 
 			self.state

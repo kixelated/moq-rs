@@ -48,38 +48,35 @@ impl Connection {
 			server_name,
 		);
 
-		match alpn.as_bytes() {
-			webtransport_quinn::ALPN => self.serve_webtransport(conn).await?,
-			moq_transport::setup::ALPN => self.serve_quic(conn).await?,
+		let session = match alpn.as_bytes() {
+			web_transport_quinn::ALPN => {
+				// Wait for the CONNECT request.
+				let request = web_transport_quinn::accept(conn)
+					.await
+					.context("failed to receive WebTransport request")?;
+
+				// Accept the CONNECT request.
+				request
+					.ok()
+					.await
+					.context("failed to respond to WebTransport request")?
+			}
+			// A bit of a hack to pretend like we're a WebTransport session
+			moq_transport::setup::ALPN => conn.into(),
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
-		}
+		};
 
-		Ok(())
-	}
-
-	async fn serve_webtransport(self, conn: quinn::Connection) -> anyhow::Result<()> {
-		// Wait for the CONNECT request.
-		let request = webtransport_quinn::accept(conn)
-			.await
-			.context("failed to receive WebTransport request")?;
-
-		// Accept the CONNECT request.
-		let session = request
-			.ok()
-			.await
-			.context("failed to respond to WebTransport request")?;
-
-		let (session, publisher, subscriber) = moq_transport::Session::accept(session).await?;
+		let (session, publisher, subscriber) = moq_transport::Session::accept(session.into()).await?;
 
 		let mut tasks = FuturesUnordered::new();
-		tasks.push(session.run().boxed());
+		tasks.push(session.run().boxed_local());
 
 		if let Some(remote) = publisher {
-			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed());
+			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed_local());
 		}
 
 		if let Some(remote) = subscriber {
-			tasks.push(Self::serve_publisher(self.clone(), remote).boxed());
+			tasks.push(Self::serve_publisher(self.clone(), remote).boxed_local());
 		}
 
 		// Return the first error
@@ -88,32 +85,7 @@ impl Connection {
 		Ok(())
 	}
 
-	async fn serve_quic(self, conn: quinn::Connection) -> anyhow::Result<()> {
-		let session: quictransport_quinn::Session = conn.into();
-
-		let (session, publisher, subscriber) = moq_transport::Session::accept(session).await?;
-
-		let mut tasks = FuturesUnordered::new();
-		tasks.push(session.run().boxed());
-
-		if let Some(remote) = publisher {
-			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed());
-		}
-
-		if let Some(remote) = subscriber {
-			tasks.push(Self::serve_publisher(self.clone(), remote).boxed());
-		}
-
-		// Return the first error
-		tasks.select_next_some().await?;
-
-		Ok(())
-	}
-
-	async fn serve_subscriber<S: webtransport_generic::Session>(
-		self,
-		mut remote: Publisher<S>,
-	) -> Result<(), SessionError> {
+	async fn serve_subscriber(self, mut remote: Publisher) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -135,10 +107,7 @@ impl Connection {
 		}
 	}
 
-	async fn serve_subscribe<S: webtransport_generic::Session>(
-		self,
-		subscribe: Subscribed<S>,
-	) -> Result<(), RelayError> {
+	async fn serve_subscribe(self, subscribe: Subscribed) -> Result<(), RelayError> {
 		if let Some(local) = self.locals.1.route(&subscribe.namespace) {
 			log::debug!("using local announce: {:?}", local.info);
 			if let Some(track) = local.subscribe(&subscribe.name)? {
@@ -163,10 +132,7 @@ impl Connection {
 		Err(ServeError::NotFound.into())
 	}
 
-	async fn serve_publisher<S: webtransport_generic::Session>(
-		self,
-		mut remote: Subscriber<S>,
-	) -> Result<(), SessionError> {
+	async fn serve_publisher(self, mut remote: Subscriber) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
@@ -189,11 +155,7 @@ impl Connection {
 		}
 	}
 
-	async fn serve_announce<S: webtransport_generic::Session>(
-		mut self,
-		remote: Subscriber<S>,
-		mut announce: Announced<S>,
-	) -> Result<(), RelayError> {
+	async fn serve_announce(mut self, remote: Subscriber, mut announce: Announced) -> Result<(), RelayError> {
 		let mut publisher = match self.locals.0.announce(&announce.namespace).await {
 			Ok(publisher) => {
 				announce.ok()?;
