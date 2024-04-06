@@ -56,12 +56,10 @@ impl Connection {
 					.context("failed to receive WebTransport request")?;
 
 				// Accept the CONNECT request.
-				let session = request
+				request
 					.ok()
 					.await
-					.context("failed to respond to WebTransport request")?;
-
-				session
+					.context("failed to respond to WebTransport request")?
 			}
 			// A bit of a hack to pretend like we're a WebTransport session
 			moq_transport::setup::ALPN => conn.into(),

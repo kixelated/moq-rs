@@ -72,11 +72,9 @@ async fn main() -> anyhow::Result<()> {
 			let mut endpoint = quinn::Endpoint::client(config.bind)?;
 			endpoint.set_default_client_config(client_config);
 
-			let session = web_transport_quinn::connect(&endpoint, &config.url)
+			web_transport_quinn::connect(&endpoint, &config.url)
 				.await
-				.context("failed to create WebTransport session")?;
-
-			session
+				.context("failed to create WebTransport session")?
 		}
 		"moqt" => {
 			tls_config.alpn_protocols = vec![moq_transport::setup::ALPN.to_vec()];
