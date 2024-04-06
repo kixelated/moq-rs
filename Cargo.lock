@@ -2165,9 +2165,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.10.0"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64143a5d1b6a602ebf635acce1e135bde88619a51ec716b19d301333a9df3570"
+checksum = "dea5c3a39f22c0e88678f588fa4c7cb47607a1b0fe45182d0feb1262d27148ed"
 dependencies = [
  "bytes",
  "thiserror",
@@ -2177,9 +2177,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-proto"
-version = "0.6.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5883f17122024ff9e3eb7dffda673a23838fb26c014c737d286b03fef8d96921"
+checksum = "a8b76c23545207b5ec17a4b533d274dc2587a8c308da6b14eeec06353f6e8ae6"
 dependencies = [
  "bytes",
  "http",
@@ -2189,11 +2189,10 @@ dependencies = [
 
 [[package]]
 name = "web-transport-quinn"
-version = "0.10.0"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f8adfe69dbe5699c5220a72436b75ca11a83ddb72a03dfd97cb18c333129eb3"
+checksum = "cf5eb5142259b46d473e44075bde93336f3ad6054d9909a93baca87dad5a03d4"
 dependencies = [
- "async-trait",
  "bytes",
  "futures",
  "http",
@@ -2208,15 +2207,12 @@ dependencies = [
 
 [[package]]
 name = "web-transport-wasm"
-version = "0.10.0"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2941dc43678d712a16efa2eb175b4f08aac50c4acd5747e5168d6eecd40fca0f"
+checksum = "64be28348e18cb1f44e4c8733dc2bd9520d782be840b2b978724dfd1b1bdefa3"
 dependencies = [
  "bytes",
  "js-sys",
- "pin-project",
- "thiserror",
- "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
