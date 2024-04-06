@@ -23,7 +23,7 @@ impl Writer {
 		msg.encode(&mut self.buffer)?;
 
 		while !self.buffer.is_empty() {
-			self.stream.write(&mut self.buffer).await?;
+			self.stream.write_buf(&mut self.buffer).await?;
 		}
 
 		Ok(())

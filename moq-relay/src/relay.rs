@@ -2,7 +2,7 @@ use std::{sync::Arc, time};
 
 use anyhow::Context;
 
-use tokio::task::JoinSet;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{
 	Config, Connection, Locals, LocalsConsumer, LocalsProducer, Remotes, RemotesConsumer, RemotesProducer, Tls,
@@ -72,10 +72,10 @@ impl Relay {
 	pub async fn run(self) -> anyhow::Result<()> {
 		log::info!("listening on {}", self.quic.local_addr()?);
 
-		let mut tasks = JoinSet::new();
+		let mut tasks = FuturesUnordered::new();
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
-			tasks.spawn_local(producer.run());
+			tasks.push(producer.run().boxed_local());
 			consumer
 		});
 
@@ -85,14 +85,14 @@ impl Relay {
 					let conn = res.context("failed to accept QUIC connection")?;
 					let session = Connection::new(self.locals.clone(), remotes.clone());
 
-					tasks.spawn_local(async move {
+					tasks.push(async move {
 						if let Err(err) = session.run(conn).await {
 							log::warn!("connection terminated: {}", err);
 						}
 						Ok(())
-					});
+					}.boxed_local());
 				},
-				res = tasks.join_next(), if !tasks.is_empty() => res.expect("no tasks").expect("task aborted")?,
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			}
 		}
 	}

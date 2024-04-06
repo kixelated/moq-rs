@@ -17,7 +17,6 @@ moq-api = { path = "../moq-api", version = "0.0.1" }
 
 # QUIC
 quinn = "0.10"
-web-transport = { version = "0.10", path = "../../web-transport-rs/web-transport" }
 web-transport-quinn = { version = "0.10", path = "../../web-transport-rs/web-transport-quinn" }
 url = "2"
 

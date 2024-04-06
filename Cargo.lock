@@ -927,7 +927,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport",
  "web-transport-quinn",
  "webpki",
 ]

@@ -24,25 +24,23 @@ impl Reader {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
 			// Try to decode with the current buffer.
-			let mut remain = match T::decode(&mut cursor) {
+			let required = match T::decode(&mut cursor) {
 				Ok(msg) => {
 					self.buffer.advance(cursor.position() as usize);
 					return Ok(msg);
 				}
-				Err(DecodeError::More(remain)) => remain, // Try again with more data
+				Err(DecodeError::More(required)) => self.buffer.len() + required, // Try again with more data
 				Err(err) => return Err(err.into()),
 			};
 
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {
-				let size = match self.stream.read(&mut self.buffer).await? {
-					Some(size) => size,
-					None => return Err(DecodeError::More(remain).into()),
+				if !self.stream.read_buf(&mut self.buffer).await? {
+					return Err(DecodeError::More(required - self.buffer.len()).into());
 				};
 
-				remain = remain.saturating_sub(size);
-				if remain == 0 {
+				if self.buffer.len() >= required {
 					break;
 				}
 			}
@@ -64,8 +62,6 @@ impl Reader {
 			return Ok(false);
 		}
 
-		let size = self.stream.read(&mut self.buffer).await?;
-
-		Ok(size.is_none())
+		Ok(!self.stream.read_buf(&mut self.buffer).await?)
 	}
 }
