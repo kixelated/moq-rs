@@ -9,8 +9,8 @@ use super::{AnnounceInfo, Subscriber};
 #[derive(Default)]
 struct AnnouncedState {}
 
-pub struct Announced<S: webtransport_generic::Session> {
-	session: Subscriber<S>,
+pub struct Announced {
+	session: Subscriber,
 	state: State<AnnouncedState>,
 
 	pub info: AnnounceInfo,
@@ -19,8 +19,8 @@ pub struct Announced<S: webtransport_generic::Session> {
 	error: Option<ServeError>,
 }
 
-impl<S: webtransport_generic::Session> Announced<S> {
-	pub(super) fn new(session: Subscriber<S>, namespace: String) -> (Announced<S>, AnnouncedRecv) {
+impl Announced {
+	pub(super) fn new(session: Subscriber, namespace: String) -> (Announced, AnnouncedRecv) {
 		let info = AnnounceInfo { namespace };
 
 		let (send, recv) = State::init();
@@ -65,7 +65,7 @@ impl<S: webtransport_generic::Session> Announced<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> ops::Deref for Announced<S> {
+impl ops::Deref for Announced {
 	type Target = AnnounceInfo;
 
 	fn deref(&self) -> &AnnounceInfo {
@@ -73,7 +73,7 @@ impl<S: webtransport_generic::Session> ops::Deref for Announced<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Drop for Announced<S> {
+impl Drop for Announced {
 	fn drop(&mut self) {
 		let err = self.error.clone().unwrap_or(ServeError::Done);
 

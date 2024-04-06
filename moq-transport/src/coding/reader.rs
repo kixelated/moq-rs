@@ -12,7 +12,7 @@ pub struct Reader<S: AsyncRead + Unpin> {
 	buffer: bytes::BytesMut,
 }
 
-impl<S: AsyncRead + Unpin> Reader<S> {
+impl<S: AsyncRead + Unpin> Reader {
 	pub fn new(stream: S) -> Self {
 		Self {
 			stream,

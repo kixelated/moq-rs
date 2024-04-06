@@ -30,16 +30,16 @@ impl Default for SubscribeState {
 
 // Held by the application
 #[must_use = "unsubscribe on drop"]
-pub struct Subscribe<S: webtransport_generic::Session> {
+pub struct Subscribe {
 	state: State<SubscribeState>,
-	subscriber: Subscriber<S>,
+	subscriber: Subscriber,
 	id: u64,
 
 	pub info: SubscribeInfo,
 }
 
-impl<S: webtransport_generic::Session> Subscribe<S> {
-	pub(super) fn new(mut subscriber: Subscriber<S>, id: u64, track: TrackWriter) -> (Subscribe<S>, SubscribeRecv) {
+impl Subscribe {
+	pub(super) fn new(mut subscriber: Subscriber, id: u64, track: TrackWriter) -> (Subscribe, SubscribeRecv) {
 		subscriber.send_message(message::Subscribe {
 			id,
 			track_alias: id,
@@ -90,13 +90,13 @@ impl<S: webtransport_generic::Session> Subscribe<S> {
 	}
 }
 
-impl<S: webtransport_generic::Session> Drop for Subscribe<S> {
+impl Drop for Subscribe {
 	fn drop(&mut self) {
 		self.subscriber.send_message(message::Unsubscribe { id: self.id });
 	}
 }
 
-impl<S: webtransport_generic::Session> ops::Deref for Subscribe<S> {
+impl ops::Deref for Subscribe {
 	type Target = SubscribeInfo;
 
 	fn deref(&self) -> &SubscribeInfo {

@@ -237,11 +237,11 @@ impl RemoteProducer {
 
 	pub async fn run_inner(&mut self) -> Result<(), RelayError> {
 		// TODO reuse QUIC and MoQ sessions
-		let session = webtransport_quinn::connect(&self.quic, &self.url).await?;
-		let (session, mut subscriber) = moq_transport::Subscriber::connect(session).await?;
+		let session = web_transport_quinn::connect(&self.quic, &self.url).await?;
+		let (session, mut subscriber) = moq_transport::Subscriber::connect(session.into()).await?;
 
 		// Run the session
-		let mut session = session.run().boxed();
+		let mut session = session.run().boxed_local();
 		let mut tasks = FuturesUnordered::new();
 
 		let mut done = None;

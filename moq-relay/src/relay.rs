@@ -20,8 +20,8 @@ impl Relay {
 	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
 		let mut client_config = tls.client.clone();
 		let mut server_config = tls.server.clone();
-		client_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
-		server_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+		client_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+		server_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
 
 		// Enable BBR congestion control
 		// TODO validate the implementation
@@ -75,7 +75,7 @@ impl Relay {
 		let mut tasks = JoinSet::new();
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
-			tasks.spawn(producer.run());
+			tasks.spawn_local(producer.run());
 			consumer
 		});
 
@@ -85,7 +85,7 @@ impl Relay {
 					let conn = res.context("failed to accept QUIC connection")?;
 					let session = Connection::new(self.locals.clone(), remotes.clone());
 
-					tasks.spawn(async move {
+					tasks.spawn_local(async move {
 						if let Err(err) = session.run(conn).await {
 							log::warn!("connection terminated: {}", err);
 						}
