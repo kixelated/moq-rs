@@ -2166,6 +2166,8 @@ dependencies = [
 [[package]]
 name = "web-transport"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64143a5d1b6a602ebf635acce1e135bde88619a51ec716b19d301333a9df3570"
 dependencies = [
  "bytes",
  "thiserror",
@@ -2176,6 +2178,8 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5883f17122024ff9e3eb7dffda673a23838fb26c014c737d286b03fef8d96921"
 dependencies = [
  "bytes",
  "http",
@@ -2186,6 +2190,8 @@ dependencies = [
 [[package]]
 name = "web-transport-quinn"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f8adfe69dbe5699c5220a72436b75ca11a83ddb72a03dfd97cb18c333129eb3"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2203,6 +2209,8 @@ dependencies = [
 [[package]]
 name = "web-transport-wasm"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2941dc43678d712a16efa2eb175b4f08aac50c4acd5747e5168d6eecd40fca0f"
 dependencies = [
  "bytes",
  "js-sys",
