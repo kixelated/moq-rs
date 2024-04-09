@@ -36,7 +36,7 @@ impl Reader {
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {
-				if self.buffer.len() > 0 {
+				if !self.buffer.is_empty() {
 					log::debug!(
 						"not enough data to decode, reading more: required={} buffer={:?}",
 						required,
