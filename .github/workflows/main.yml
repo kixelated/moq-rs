@@ -63,6 +63,17 @@ jobs:
           service: ${{env.SERVICE}}
           image: ${{env.REGISTRY}}/${{env.IMAGE}}
 
+  publish:
+    runs-on: ubuntu-latest
+
+    # Only one release at a time and cancel prior releases
+    concurrency:
+      group: release
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
       # Publish any new crate versions
       - uses: katyo/publish-crates@v2
         with:
