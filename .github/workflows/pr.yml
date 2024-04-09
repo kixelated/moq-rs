@@ -26,3 +26,6 @@ jobs:
 
       # Check for unused dependencies
       - uses: bnjbvr/cargo-machete@main
+
+      # Check for semvar violations
+      - uses: obi1kenobi/cargo-semver-checks-action@v2

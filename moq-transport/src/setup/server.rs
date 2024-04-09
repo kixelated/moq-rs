@@ -51,3 +51,30 @@ impl Encode for Server {
 		Ok(())
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::setup::Role;
+	use bytes::BytesMut;
+
+	#[test]
+	fn encode_decode() {
+		let mut buf = BytesMut::new();
+		let client = Server {
+			version: Version::DRAFT_03,
+			role: Role::Both,
+			params: Params::default(),
+		};
+
+		client.encode(&mut buf).unwrap();
+		assert_eq!(
+			buf.to_vec(),
+			vec![0x40, 0x41, 0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]
+		);
+
+		let decoded = Server::decode(&mut buf).unwrap();
+		assert_eq!(decoded.version, client.version);
+		assert_eq!(decoded.role, client.role);
+	}
+}

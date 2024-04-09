@@ -62,3 +62,8 @@ jobs:
         with:
           service: ${{env.SERVICE}}
           image: ${{env.REGISTRY}}/${{env.IMAGE}}
+
+      # Publish any new crate versions
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
