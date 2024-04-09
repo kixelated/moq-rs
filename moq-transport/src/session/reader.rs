@@ -36,6 +36,14 @@ impl Reader {
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {
+				if !self.buffer.is_empty() {
+					log::debug!(
+						"not enough data to decode, reading more: required={} buffer={:?}",
+						required,
+						self.buffer
+					);
+				}
+
 				if !self.stream.read_buf(&mut self.buffer).await? {
 					return Err(DecodeError::More(required - self.buffer.len()).into());
 				};
