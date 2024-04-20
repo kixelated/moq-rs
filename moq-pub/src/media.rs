@@ -1,6 +1,6 @@
 use anyhow::{self, Context};
 use moq_transport::serve::{BroadcastWriter, GroupWriter, GroupsWriter, TrackWriter};
-use mp4::{self, ReadBox};
+use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
 use std::collections::HashMap;
@@ -44,10 +44,11 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 			let name = format!("{}.m4s", id);
 
 			let timescale = track_timescale(&moov, id);
+			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
 			let track = broadcast.create_track(&name)?;
-			let track = Track::new(track, timescale);
+			let track = Track::new(track, handler, timescale);
 			tracks.insert(id, track);
 		}
 
@@ -75,6 +76,21 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 
 					// Process the moof.
 					let fragment = Fragment::new(moof)?;
+
+					if fragment.keyframe {
+						// Gross but thanks to rust we have to do a separate hashmap lookup
+						if self
+							.tracks
+							.get(&fragment.track)
+							.context("failed to find track")?
+							.handler == TrackType::Video
+						{
+							// Start a new group for the keyframe.
+							for track in self.tracks.values_mut() {
+								track.end_group();
+							}
+						}
+					}
 
 					// Get the track for this moof.
 					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
@@ -237,24 +253,26 @@ struct Track {
 
 	// The number of units per second.
 	timescale: u64,
+
+	// The type of track, ex. "vide" or "soun"
+	handler: TrackType,
 }
 
 impl Track {
-	fn new(track: TrackWriter, timescale: u64) -> Self {
+	fn new(track: TrackWriter, handler: TrackType, timescale: u64) -> Self {
 		Self {
 			track: track.groups().unwrap(),
 			current: None,
 			timescale,
+			handler,
 		}
 	}
 
 	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
 		if let Some(current) = self.current.as_mut() {
-			if !fragment.keyframe {
-				// Use the existing segment
-				current.write(raw.into())?;
-				return Ok(());
-			}
+			// Use the existing segment
+			current.write(raw.into())?;
+			return Ok(());
 		}
 
 		// Otherwise make a new segment
@@ -286,6 +304,10 @@ impl Track {
 		segment.write(raw.into())?;
 
 		Ok(())
+	}
+
+	pub fn end_group(&mut self) {
+		self.current = None;
 	}
 }
 
