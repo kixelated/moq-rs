@@ -1,21 +1,23 @@
 //! Low-level message sent over the wire, as defined in the specification.
 //!
+//! TODO Update this
 //! All of these messages are sent over a bidirectional QUIC stream.
 //! This introduces some head-of-line blocking but preserves ordering.
 //! The only exception are OBJECT "messages", which are sent over dedicated QUIC streams.
 //!
 //! Messages sent by the publisher:
 //! - [Announce]
-//! - [AnnounceReset]
+//! - [Unannounce]
 //! - [SubscribeOk]
+//! - [SubscribeError]
 //! - [SubscribeReset]
 //! - [Object]
 //!
 //! Messages sent by the subscriber:
 //! - [Subscribe]
-//! - [SubscribeStop]
+//! - [Unsubscribe]
 //! - [AnnounceOk]
-//! - [AnnounceStop]
+//! - [AnnounceError]
 //!
 //! Example flow:
 //! ```test
@@ -30,32 +32,35 @@
 //!  -> SUBSCRIBE_RESET id=0 code=206 reason="closed by peer"
 //! ```
 mod announce;
+mod announce_cancel;
+mod announce_error;
 mod announce_ok;
-mod announce_reset;
-mod announce_stop;
 mod go_away;
-mod object;
+mod publisher;
 mod subscribe;
+mod subscribe_done;
+mod subscribe_error;
 mod subscribe_ok;
-mod subscribe_reset;
-mod subscribe_stop;
+mod subscriber;
+mod unannounce;
+mod unsubscribe;
 
 pub use announce::*;
+pub use announce_cancel::*;
+pub use announce_error::*;
 pub use announce_ok::*;
-pub use announce_reset::*;
-pub use announce_stop::*;
 pub use go_away::*;
-pub use object::*;
+pub use publisher::*;
 pub use subscribe::*;
+pub use subscribe_done::*;
+pub use subscribe_error::*;
 pub use subscribe_ok::*;
-pub use subscribe_reset::*;
-pub use subscribe_stop::*;
+pub use subscriber::*;
+pub use unannounce::*;
+pub use unsubscribe::*;
 
-use crate::coding::{DecodeError, EncodeError, VarInt};
-
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 use std::fmt;
-
-use crate::coding::{AsyncRead, AsyncWrite};
 
 // Use a macro to generate the message types rather than copy-paste.
 // This implements a decode/encode method that uses the specified type.
@@ -67,32 +72,36 @@ macro_rules! message_types {
 			$($name($name)),*
 		}
 
-		impl Message {
-			pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-				let t = VarInt::decode(r).await?;
+		impl Decode for Message {
+			fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+				let t = u64::decode(r)?;
 
-				match t.into_inner() {
+				match t {
 					$($val => {
-						let msg = $name::decode(r).await?;
+						let msg = $name::decode(r)?;
 						Ok(Self::$name(msg))
 					})*
-					_ => Err(DecodeError::InvalidType(t)),
+					_ => Err(DecodeError::InvalidMessage(t)),
 				}
 			}
+		}
 
-			pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+		impl Encode for Message {
+			fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 				match self {
 					$(Self::$name(ref m) => {
-						VarInt::from_u32($val).encode(w).await?;
-						m.encode(w).await
+						self.id().encode(w)?;
+						m.encode(w)
 					},)*
 				}
 			}
+		}
 
-			pub fn id(&self) -> VarInt {
+		impl Message {
+			pub fn id(&self) -> u64 {
 				match self {
 					$(Self::$name(_) => {
-						VarInt::from_u32($val)
+						$val
 					},)*
 				}
 			}
@@ -127,15 +136,28 @@ macro_rules! message_types {
 message_types! {
 	// NOTE: Object and Setup are in other modules.
 	// Object = 0x0
-	// SetupClient = 0x1
-	// SetupServer = 0x2
+	// ObjectUnbounded = 0x2
+	// SetupClient = 0x40
+	// SetupServer = 0x41
+
+	// SUBSCRIBE family, sent by subscriber
 	Subscribe = 0x3,
+	Unsubscribe = 0xa,
+
+	// SUBSCRIBE family, sent by publisher
 	SubscribeOk = 0x4,
-	SubscribeReset = 0x5,
-	SubscribeStop = 0x15,
+	SubscribeError = 0x5,
+	SubscribeDone = 0xb,
+
+	// ANNOUNCE family, sent by publisher
 	Announce = 0x6,
+	Unannounce = 0x9,
+
+	// ANNOUNCE family, sent by subscriber
 	AnnounceOk = 0x7,
-	AnnounceReset = 0x8,
-	AnnounceStop = 0x18,
+	AnnounceError = 0x8,
+	AnnounceCancel = 0xc,
+
+	// Misc
 	GoAway = 0x10,
 }

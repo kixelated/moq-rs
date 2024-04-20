@@ -1,15 +1,27 @@
+use std::{io, sync};
+
 use super::BoundsExceeded;
 
-use thiserror::Error;
+pub trait Encode: Sized {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError>;
 
-// I'm too lazy to add these trait bounds to every message type.
-// TODO Use trait aliases when they're stable, or add these bounds to every method.
-pub trait AsyncWrite: tokio::io::AsyncWrite + Unpin + Send {}
-impl AsyncWrite for webtransport_quinn::SendStream {}
+	// Helper function to make sure we have enough bytes to encode
+	fn encode_remaining<W: bytes::BufMut>(buf: &mut W, required: usize) -> Result<(), EncodeError> {
+		let needed = required.saturating_sub(buf.remaining_mut());
+		if needed > 0 {
+			Err(EncodeError::More(needed))
+		} else {
+			Ok(())
+		}
+	}
+}
 
 /// An encode error.
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum EncodeError {
+	#[error("short buffer")]
+	More(usize),
+
 	#[error("varint too large")]
 	BoundsExceeded(#[from] BoundsExceeded),
 
@@ -17,5 +29,11 @@ pub enum EncodeError {
 	InvalidValue,
 
 	#[error("i/o error: {0}")]
-	IoError(#[from] std::io::Error),
+	Io(sync::Arc<io::Error>),
+}
+
+impl From<io::Error> for EncodeError {
+	fn from(err: io::Error) -> Self {
+		Self::Io(sync::Arc::new(err))
+	}
 }

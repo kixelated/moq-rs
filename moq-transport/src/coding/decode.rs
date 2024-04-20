@@ -1,28 +1,61 @@
-use super::{BoundsExceeded, VarInt};
-use std::str;
-
+use super::BoundsExceeded;
+use std::{io, string::FromUtf8Error, sync};
 use thiserror::Error;
 
-// I'm too lazy to add these trait bounds to every message type.
-// TODO Use trait aliases when they're stable, or add these bounds to every method.
-pub trait AsyncRead: tokio::io::AsyncRead + Unpin + Send {}
-impl AsyncRead for webtransport_quinn::RecvStream {}
+pub trait Decode: Sized {
+	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError>;
+
+	// Helper function to make sure we have enough bytes to decode
+	fn decode_remaining<B: bytes::Buf>(buf: &mut B, required: usize) -> Result<(), DecodeError> {
+		let needed = required.saturating_sub(buf.remaining());
+		if needed > 0 {
+			Err(DecodeError::More(needed))
+		} else {
+			Ok(())
+		}
+	}
+}
 
 /// A decode error.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum DecodeError {
-	#[error("unexpected end of buffer")]
-	UnexpectedEnd,
+	#[error("fill buffer")]
+	More(usize),
 
 	#[error("invalid string")]
-	InvalidString(#[from] str::Utf8Error),
+	InvalidString(#[from] FromUtf8Error),
 
-	#[error("invalid type: {0:?}")]
-	InvalidType(VarInt),
+	#[error("invalid message: {0:?}")]
+	InvalidMessage(u64),
+
+	#[error("invalid role: {0:?}")]
+	InvalidRole(u64),
+
+	#[error("invalid subscribe location")]
+	InvalidSubscribeLocation,
+
+	#[error("invalid value")]
+	InvalidValue,
 
 	#[error("varint bounds exceeded")]
 	BoundsExceeded(#[from] BoundsExceeded),
 
+	// TODO move these to ParamError
+	#[error("duplicate parameter")]
+	DupliateParameter,
+
+	#[error("missing parameter")]
+	MissingParameter,
+
+	#[error("invalid parameter")]
+	InvalidParameter,
+
 	#[error("io error: {0}")]
-	IoError(#[from] std::io::Error),
+	Io(sync::Arc<io::Error>),
+}
+
+impl From<io::Error> for DecodeError {
+	fn from(err: io::Error) -> Self {
+		Self::Io(sync::Arc::new(err))
+	}
 }

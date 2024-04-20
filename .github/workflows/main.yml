@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE: ${{ github.repository }}
+  IMAGE: kixelated/moq-rs
   SERVICE: api # Restart the API service TODO and relays
 
 jobs:
@@ -42,6 +42,16 @@ jobs:
           tags: ${{env.REGISTRY}}/${{env.IMAGE}}
           platforms: linux/amd64,linux/arm64
 
+      # Make a special image with ffmpeg for moq-pub
+      - uses: depot/build-push-action@v1
+        with:
+          project: r257ctfqm6
+          context: .
+          push: true
+          target: moq-pub
+          tags: ${{env.REGISTRY}}/kixelated/moq-pub
+          platforms: linux/amd64,linux/arm64
+
       # Log in to GCP
       - uses: google-github-actions/auth@v1
         with:
@@ -52,3 +62,9 @@ jobs:
         with:
           service: ${{env.SERVICE}}
           image: ${{env.REGISTRY}}/${{env.IMAGE}}
+
+      # Publish any new crate versions
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          ignore-unpublished-changes: true

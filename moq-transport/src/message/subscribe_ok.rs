@@ -1,26 +1,56 @@
-use crate::coding::{DecodeError, EncodeError, VarInt};
-
-use crate::coding::{AsyncRead, AsyncWrite};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the publisher to accept a Subscribe.
 #[derive(Clone, Debug)]
 pub struct SubscribeOk {
-	// NOTE: No full track name because of this proposal: https://github.com/moq-wg/moq-transport/issues/209
+	/// The ID for this subscription.
+	pub id: u64,
 
-	// The ID for this track.
-	pub id: VarInt,
+	/// The subscription will expire in this many milliseconds.
+	pub expires: Option<u64>,
+
+	/// The latest group and object for the track.
+	pub latest: Option<(u64, u64)>,
 }
 
-impl SubscribeOk {
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = VarInt::decode(r).await?;
-		Ok(Self { id })
+impl Decode for SubscribeOk {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let id = u64::decode(r)?;
+		let expires = match u64::decode(r)? {
+			0 => None,
+			expires => Some(expires),
+		};
+
+		Self::decode_remaining(r, 1)?;
+
+		let latest = match r.get_u8() {
+			0 => None,
+			1 => Some((u64::decode(r)?, u64::decode(r)?)),
+			_ => return Err(DecodeError::InvalidValue),
+		};
+
+		Ok(Self { id, expires, latest })
 	}
 }
 
-impl SubscribeOk {
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w).await?;
+impl Encode for SubscribeOk {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.id.encode(w)?;
+		self.expires.unwrap_or(0).encode(w)?;
+
+		Self::encode_remaining(w, 1)?;
+
+		match self.latest {
+			Some((group, object)) => {
+				w.put_u8(1);
+				group.encode(w)?;
+				object.encode(w)?;
+			}
+			None => {
+				w.put_u8(0);
+			}
+		}
+
 		Ok(())
 	}
 }

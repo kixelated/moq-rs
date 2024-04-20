@@ -3,212 +3,219 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use tokio::task::AbortHandle;
-use webtransport_quinn::{RecvStream, SendStream, Session};
+use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	cache::{broadcast, segment, track, CacheError},
-	message,
-	message::Message,
-	MoqError, VarInt,
+	message::{self, Message},
+	serve::{self, ServeError},
+	setup,
+	util::Queue,
 };
 
-use super::{Control, SessionError};
+use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, SubscribedRecv};
 
-/// Serves broadcasts over the network, automatically handling subscriptions and caching.
-// TODO Clone specific fields when a task actually needs it.
-#[derive(Clone, Debug)]
+// TODO remove Clone.
+#[derive(Clone)]
 pub struct Publisher {
-	// A map of active subscriptions, containing an abort handle to cancel them.
-	subscribes: Arc<Mutex<HashMap<VarInt, AbortHandle>>>,
-	webtransport: Session,
-	control: Control,
-	source: broadcast::Subscriber,
+	webtransport: web_transport::Session,
+
+	announces: Arc<Mutex<HashMap<String, AnnounceRecv>>>,
+	subscribed: Arc<Mutex<HashMap<u64, SubscribedRecv>>>,
+	unknown: Queue<Subscribed>,
+
+	outgoing: Queue<Message>,
 }
 
 impl Publisher {
-	pub(crate) fn new(webtransport: Session, control: (SendStream, RecvStream), source: broadcast::Subscriber) -> Self {
-		let control = Control::new(control.0, control.1);
-
+	pub(crate) fn new(outgoing: Queue<Message>, webtransport: web_transport::Session) -> Self {
 		Self {
 			webtransport,
-			subscribes: Default::default(),
-			control,
-			source,
+			announces: Default::default(),
+			subscribed: Default::default(),
+			unknown: Default::default(),
+			outgoing,
 		}
 	}
 
-	// TODO Serve a broadcast without sending an ANNOUNCE.
-	// fn serve(&mut self, broadcast: broadcast::Subscriber) -> Result<(), SessionError> {
-
-	// TODO Wait until the next subscribe that doesn't route to an ANNOUNCE.
-	// pub async fn subscribed(&mut self) -> Result<track::Producer, SessionError> {
-
-	pub async fn run(mut self) -> Result<(), SessionError> {
-		let res = self.run_inner().await;
-
-		// Terminate all active subscribes on error.
-		self.subscribes
-			.lock()
-			.unwrap()
-			.drain()
-			.for_each(|(_, abort)| abort.abort());
-
-		res
+	pub async fn accept(session: web_transport::Session) -> Result<(Session, Publisher), SessionError> {
+		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
 	}
 
-	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
+	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher), SessionError> {
+		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
+		Ok((session, publisher.unwrap()))
+	}
+
+	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
+		let mut announces = self.announces.lock().unwrap();
+
+		let entry = match announces.entry(namespace.to_string()) {
+			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
+			hash_map::Entry::Vacant(entry) => entry,
+		};
+
+		let (send, recv) = Announce::new(self.clone(), namespace.to_string());
+		entry.insert(recv);
+
+		// Unannounce on close
+		Ok(send)
+	}
+
+	// Helper function to announce and serve a list of tracks.
+	pub async fn serve(&mut self, broadcast: serve::BroadcastReader) -> Result<(), SessionError> {
+		let mut announce = self.announce(&broadcast.namespace)?;
+
+		let mut tasks = FuturesUnordered::new();
+
+		let mut done = None;
+
 		loop {
 			tokio::select! {
-				stream = self.webtransport.accept_uni() => {
-					stream?;
-					return Err(SessionError::RoleViolation(VarInt::ZERO));
-				}
-				// NOTE: this is not cancel safe, but it's fine since the other branchs are fatal.
-				msg = self.control.recv() => {
-					let msg = msg?;
+				subscribe = announce.subscribed(), if done.is_none() => {
+					let subscribe = match subscribe {
+						Ok(Some(subscribe)) => subscribe,
+						Ok(None) => { done = Some(Ok(())); continue },
+						Err(err) => { done = Some(Err(err)); continue },
+					};
 
-					log::info!("message received: {:?}", msg);
-					if let Err(err) = self.recv_message(&msg).await {
-						log::warn!("message error: {:?} {:?}", err, msg);
-					}
+					let broadcast = broadcast.clone();
+
+					tasks.push(async move {
+						let info = subscribe.info.clone();
+
+						match broadcast.get_track(&subscribe.name) {
+							Ok(track) => if let Err(err) = Self::serve_subscribe(subscribe, track).await {
+								log::warn!("failed serving subscribe: {:?}, error: {}", info, err)
+							},
+							Err(err) => {
+								log::warn!("failed getting subscribe: {:?}, error: {}", info, err)
+							},
+						}
+					});
 				},
-				// No more broadcasts are available.
-				err = self.source.closed() => {
-					self.webtransport.close(err.code(), err.reason().as_bytes());
-					return Ok(());
-				},
+				_ = tasks.next(), if !tasks.is_empty() => {},
+				else => return Ok(done.unwrap()?)
 			}
 		}
 	}
 
-	async fn recv_message(&mut self, msg: &Message) -> Result<(), SessionError> {
-		match msg {
-			Message::AnnounceOk(msg) => self.recv_announce_ok(msg).await,
-			Message::AnnounceStop(msg) => self.recv_announce_stop(msg).await,
-			Message::Subscribe(msg) => self.recv_subscribe(msg).await,
-			Message::SubscribeStop(msg) => self.recv_subscribe_stop(msg).await,
-			_ => Err(SessionError::RoleViolation(msg.id())),
-		}
-	}
-
-	async fn recv_announce_ok(&mut self, _msg: &message::AnnounceOk) -> Result<(), SessionError> {
-		// We didn't send an announce.
-		Err(CacheError::NotFound.into())
-	}
-
-	async fn recv_announce_stop(&mut self, _msg: &message::AnnounceStop) -> Result<(), SessionError> {
-		// We didn't send an announce.
-		Err(CacheError::NotFound.into())
-	}
-
-	async fn recv_subscribe(&mut self, msg: &message::Subscribe) -> Result<(), SessionError> {
-		// Assume that the subscribe ID is unique for now.
-		let abort = match self.start_subscribe(msg.clone()) {
-			Ok(abort) => abort,
-			Err(err) => return self.reset_subscribe(msg.id, err).await,
+	pub async fn serve_subscribe(subscribe: Subscribed, track: Option<serve::TrackReader>) -> Result<(), SessionError> {
+		match track {
+			Some(track) => subscribe.serve(track).await?,
+			None => subscribe.close(ServeError::NotFound)?,
 		};
 
-		// Insert the abort handle into the lookup table.
-		match self.subscribes.lock().unwrap().entry(msg.id) {
-			hash_map::Entry::Occupied(_) => return Err(CacheError::Duplicate.into()), // TODO fatal, because we already started the task
-			hash_map::Entry::Vacant(entry) => entry.insert(abort),
+		Ok(())
+	}
+
+	// Returns subscriptions that do not map to an active announce.
+	pub async fn subscribed(&mut self) -> Subscribed {
+		self.unknown.pop().await
+	}
+
+	pub(crate) fn recv_message(&mut self, msg: message::Subscriber) -> Result<(), SessionError> {
+		let res = match msg {
+			message::Subscriber::AnnounceOk(msg) => self.recv_announce_ok(msg),
+			message::Subscriber::AnnounceError(msg) => self.recv_announce_error(msg),
+			message::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
+			message::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
+			message::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
 		};
 
-		self.control.send(message::SubscribeOk { id: msg.id }).await
-	}
-
-	async fn reset_subscribe<E: MoqError>(&mut self, id: VarInt, err: E) -> Result<(), SessionError> {
-		let msg = message::SubscribeReset {
-			id,
-			code: err.code(),
-			reason: err.reason().to_string(),
-		};
-
-		self.control.send(msg).await
-	}
-
-	fn start_subscribe(&mut self, msg: message::Subscribe) -> Result<AbortHandle, SessionError> {
-		// We currently don't use the namespace field in SUBSCRIBE
-		if !msg.namespace.is_empty() {
-			return Err(CacheError::NotFound.into());
-		}
-
-		let mut track = self.source.get_track(&msg.name)?;
-
-		// TODO only clone the fields we need
-		let mut this = self.clone();
-
-		let handle = tokio::spawn(async move {
-			log::info!("serving track: name={}", track.name);
-
-			let res = this.run_subscribe(msg.id, &mut track).await;
-			if let Err(err) = &res {
-				log::warn!("failed to serve track: name={} err={:#?}", track.name, err);
-			}
-
-			// Make sure we send a reset at the end.
-			let err = res.err().unwrap_or(CacheError::Closed.into());
-			this.reset_subscribe(msg.id, err).await.ok();
-
-			// We're all done, so clean up the abort handle.
-			this.subscribes.lock().unwrap().remove(&msg.id);
-		});
-
-		Ok(handle.abort_handle())
-	}
-
-	async fn run_subscribe(&self, id: VarInt, track: &mut track::Subscriber) -> Result<(), SessionError> {
-		// TODO add an Ok method to track::Publisher so we can send SUBSCRIBE_OK
-
-		while let Some(mut segment) = track.next_segment().await? {
-			// TODO only clone the fields we need
-			let this = self.clone();
-
-			tokio::spawn(async move {
-				if let Err(err) = this.run_segment(id, &mut segment).await {
-					log::warn!("failed to serve segment: {:?}", err)
-				}
-			});
+		if let Err(err) = res {
+			log::warn!("failed to process message: {}", err);
 		}
 
 		Ok(())
 	}
 
-	async fn run_segment(&self, id: VarInt, segment: &mut segment::Subscriber) -> Result<(), SessionError> {
-		let object = message::Object {
-			track: id,
-			sequence: segment.sequence,
-			priority: segment.priority,
-			expires: segment.expires,
-		};
-
-		log::trace!("serving object: {:?}", object);
-
-		let mut stream = self.webtransport.open_uni().await?;
-		stream.set_priority(object.priority).ok();
-
-		object
-			.encode(&mut stream)
-			.await
-			.map_err(|e| SessionError::Unknown(e.to_string()))?;
-
-		while let Some(data) = segment.read_chunk().await? {
-			stream.write_chunk(data).await?;
+	fn recv_announce_ok(&mut self, msg: message::AnnounceOk) -> Result<(), SessionError> {
+		if let Some(announce) = self.announces.lock().unwrap().get_mut(&msg.namespace) {
+			announce.recv_ok()?;
 		}
 
 		Ok(())
 	}
 
-	async fn recv_subscribe_stop(&mut self, msg: &message::SubscribeStop) -> Result<(), SessionError> {
-		let abort = self
-			.subscribes
-			.lock()
-			.unwrap()
-			.remove(&msg.id)
-			.ok_or(CacheError::NotFound)?;
-		abort.abort();
+	fn recv_announce_error(&mut self, msg: message::AnnounceError) -> Result<(), SessionError> {
+		if let Some(announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
+			announce.recv_error(ServeError::Closed(msg.code))?;
+		}
 
-		self.reset_subscribe(msg.id, CacheError::Stop).await
+		Ok(())
+	}
+
+	fn recv_announce_cancel(&mut self, msg: message::AnnounceCancel) -> Result<(), SessionError> {
+		if let Some(announce) = self.announces.lock().unwrap().remove(&msg.namespace) {
+			announce.recv_error(ServeError::Cancel)?;
+		}
+
+		Ok(())
+	}
+
+	fn recv_subscribe(&mut self, msg: message::Subscribe) -> Result<(), SessionError> {
+		let namespace = msg.track_namespace.clone();
+
+		let subscribe = {
+			let mut subscribes = self.subscribed.lock().unwrap();
+
+			// Insert the abort handle into the lookup table.
+			let entry = match subscribes.entry(msg.id) {
+				hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
+				hash_map::Entry::Vacant(entry) => entry,
+			};
+
+			let (send, recv) = Subscribed::new(self.clone(), msg);
+			entry.insert(recv);
+
+			send
+		};
+
+		// If we have an announce, route the subscribe to it.
+		// Otherwise, put it in the unknown queue.
+		// TODO Have some way to detect if the application is not reading from the unknown queue.
+		match self.announces.lock().unwrap().get_mut(&namespace) {
+			Some(announce) => announce.recv_subscribe(subscribe)?,
+			None => self.unknown.push(subscribe),
+		};
+
+		Ok(())
+	}
+
+	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
+		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
+			subscribed.recv_unsubscribe()?;
+		}
+
+		Ok(())
+	}
+
+	pub(super) fn send_message<T: Into<message::Publisher> + Into<Message>>(&mut self, msg: T) {
+		let msg = msg.into();
+		match &msg {
+			message::Publisher::SubscribeDone(msg) => self.drop_subscribe(msg.id),
+			message::Publisher::SubscribeError(msg) => self.drop_subscribe(msg.id),
+			message::Publisher::Unannounce(msg) => self.drop_announce(msg.namespace.as_str()),
+			_ => (),
+		};
+
+		self.outgoing.push(msg.into())
+	}
+
+	fn drop_subscribe(&mut self, id: u64) {
+		self.subscribed.lock().unwrap().remove(&id);
+	}
+
+	fn drop_announce(&mut self, namespace: &str) {
+		self.announces.lock().unwrap().remove(namespace);
+	}
+
+	pub(super) async fn open_uni(&mut self) -> Result<web_transport::SendStream, SessionError> {
+		Ok(self.webtransport.open_uni().await?)
+	}
+
+	pub(super) async fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), SessionError> {
+		Ok(self.webtransport.send_datagram(data).await?)
 	}
 }

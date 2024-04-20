@@ -1,9 +1,10 @@
 mod decode;
 mod encode;
+mod params;
 mod string;
 mod varint;
 
 pub use decode::*;
 pub use encode::*;
-pub use string::*;
+pub use params::*;
 pub use varint::*;

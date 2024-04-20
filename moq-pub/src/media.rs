@@ -1,32 +1,25 @@
-use crate::cli::Config;
 use anyhow::{self, Context};
-use moq_transport::cache::{broadcast, segment, track};
-use moq_transport::VarInt;
+use moq_transport::serve::{BroadcastWriter, GroupWriter, GroupsWriter, TrackWriter};
 use mp4::{self, ReadBox};
 use serde_json::json;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
-pub struct Media {
-	// We hold on to publisher so we don't close then while media is still being published.
-	_broadcast: broadcast::Publisher,
-	_catalog: track::Publisher,
-	_init: track::Publisher,
-
+pub struct Media<I> {
 	// Tracks based on their track ID.
 	tracks: HashMap<u32, Track>,
+	input: I,
 }
 
-impl Media {
-	pub async fn new(_config: &Config, mut broadcast: broadcast::Publisher) -> anyhow::Result<Self> {
-		let mut stdin = tokio::io::stdin();
-		let ftyp = read_atom(&mut stdin).await?;
+impl<I: AsyncRead + Send + Unpin> Media<I> {
+	pub async fn new(mut input: I, mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
+		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
-		let moov = read_atom(&mut stdin).await?;
+		let moov = read_atom(&mut input).await?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
 		let mut init = ftyp;
@@ -41,14 +34,8 @@ impl Media {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create_track("0.mp4")?;
-		let mut init_segment = init_track.create_segment(segment::Info {
-			sequence: VarInt::ZERO,
-			priority: i32::MAX,
-			expires: None,
-		})?;
-
-		init_segment.write_chunk(init.into())?;
+		let mut init_track = broadcast.create_track("0.mp4")?.groups()?;
+		init_track.next(0)?.write(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -64,26 +51,20 @@ impl Media {
 			tracks.insert(id, track);
 		}
 
-		let mut catalog = broadcast.create_track(".catalog")?;
+		let catalog = broadcast.create_track(".catalog")?;
 
 		// Create the catalog track
-		Self::serve_catalog(&mut catalog, &init_track.name, &moov)?;
+		Self::serve_catalog(catalog, &init_track.name, &moov)?;
 
-		Ok(Media {
-			_broadcast: broadcast,
-			_catalog: catalog,
-			_init: init_track,
-			tracks,
-		})
+		Ok(Media { tracks, input })
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		let mut stdin = tokio::io::stdin();
 		// The current track name
 		let mut current = None;
 
 		loop {
-			let atom = read_atom(&mut stdin).await?;
+			let atom = read_atom(&mut self.input).await?;
 
 			let mut reader = Cursor::new(&atom);
 			let header = mp4::BoxHeader::read(&mut reader)?;
@@ -121,16 +102,8 @@ impl Media {
 		}
 	}
 
-	fn serve_catalog(
-		track: &mut track::Publisher,
-		init_track_name: &str,
-		moov: &mp4::MoovBox,
-	) -> Result<(), anyhow::Error> {
-		let mut segment = track.create_segment(segment::Info {
-			sequence: VarInt::ZERO,
-			priority: i32::MAX,
-			expires: None,
-		})?;
+	fn serve_catalog(track: TrackWriter, init_track_name: &str, moov: &mp4::MoovBox) -> Result<(), anyhow::Error> {
+		let mut segment = track.groups()?.next(0)?;
 
 		let mut tracks = Vec::new();
 
@@ -211,8 +184,8 @@ impl Media {
 		let catalog_str = serde_json::to_string_pretty(&catalog)?;
 		log::info!("catalog: {}", catalog_str);
 
-		// Add the segment and add the fragment.
-		segment.write_chunk(catalog_str.into())?;
+		// Create a single fragment for the segment.
+		segment.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -257,33 +230,29 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 
 struct Track {
 	// The track we're producing
-	track: track::Publisher,
+	track: GroupsWriter,
 
 	// The current segment
-	segment: Option<segment::Publisher>,
+	current: Option<GroupWriter>,
 
 	// The number of units per second.
 	timescale: u64,
-
-	// The number of segments produced.
-	sequence: u64,
 }
 
 impl Track {
-	fn new(track: track::Publisher, timescale: u64) -> Self {
+	fn new(track: TrackWriter, timescale: u64) -> Self {
 		Self {
-			track,
-			sequence: 0,
-			segment: None,
+			track: track.groups().unwrap(),
+			current: None,
 			timescale,
 		}
 	}
 
 	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
-		if let Some(segment) = self.segment.as_mut() {
+		if let Some(current) = self.current.as_mut() {
 			if !fragment.keyframe {
 				// Use the existing segment
-				segment.write_chunk(raw.into())?;
+				current.write(raw.into())?;
 				return Ok(());
 			}
 		}
@@ -292,35 +261,29 @@ impl Track {
 
 		// Compute the timestamp in milliseconds.
 		// Overflows after 583 million years, so we're fine.
-		let timestamp: i32 = fragment
+		let timestamp: u32 = fragment
 			.timestamp(self.timescale)
 			.as_millis()
 			.try_into()
 			.context("timestamp too large")?;
 
+		let priority = u32::MAX.checked_sub(timestamp).context("priority too large")?.into();
+
 		// Create a new segment.
-		let mut segment = self.track.create_segment(segment::Info {
-			sequence: VarInt::try_from(self.sequence).context("sequence too large")?,
-			priority: timestamp, // newer segments are higher priority
+		let mut segment = self.track.next(priority)?;
 
-			// Delete segments after 10s.
-			expires: Some(time::Duration::from_secs(10)),
-		})?;
-
-		self.sequence += 1;
-
-		// Insert the raw atom into the segment.
-		segment.write_chunk(raw.into())?;
+		// Write the fragment in it's own object.
+		segment.write(raw.into())?;
 
 		// Save for the next iteration
-		self.segment = Some(segment);
+		self.current = Some(segment);
 
 		Ok(())
 	}
 
 	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
-		let segment = self.segment.as_mut().context("missing segment")?;
-		segment.write_chunk(raw.into())?;
+		let segment = self.current.as_mut().context("missing current fragment")?;
+		segment.write(raw.into())?;
 
 		Ok(())
 	}

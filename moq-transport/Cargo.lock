@@ -538,7 +538,7 @@ dependencies = [
  "quinn",
  "thiserror",
  "tokio",
- "webtransport-quinn",
+ "web-transport-quinn",
 ]
 
 [[package]]
@@ -1120,7 +1120,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webtransport-generic"
+name = "web-transport-generic"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df712317d761312996f654739debeb3838eb02c6fd9146d9efdfd08a46674e45"
@@ -1130,7 +1130,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webtransport-proto"
+name = "web-transport-proto"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebeada5037d6302980ae2e0ab8d840e329c1697c612c6c077172de2b7631a276"
@@ -1142,7 +1142,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webtransport-quinn"
+name = "web-transport-quinn"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cceb876dbd00a87b3fd8869d1c315e07c28b0eb54d59b592a07a634f5e2b64e1"
@@ -1156,8 +1156,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "webtransport-generic",
- "webtransport-proto",
+ "web-transport-generic",
+ "web-transport-proto",
 ]
 
 [[package]]

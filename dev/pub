@@ -11,16 +11,17 @@ export RUST_LOG="${RUST_LOG:-debug}"
 HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
+SCHEME="${SCHEME:-https}"
 
 # Generate a random 16 character name by default.
 #NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
 
-# JK use the name "dev" instead
+# JK use the name "bbb" instead, matching the Big Buck Bunny demo.
 # TODO use that random name if the host is not localhost
-NAME="${NAME:-dev}"
+NAME="${NAME:-bbb}"
 
-# Combine the host and name into a URL.
-URL="${URL:-"https://$ADDR/$NAME"}"
+# Combine the host into a URL.
+URL="${URL:-"$SCHEME://$ADDR"}"
 
 # Default to a source video
 INPUT="${INPUT:-dev/source.mp4}"
@@ -37,4 +38,4 @@ ffmpeg -hide_banner -v quiet \
 	-an \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
 	-frag_duration 1 \
-	- | cargo run --bin moq-pub -- "$URL" "$@"
+	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"

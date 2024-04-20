@@ -5,31 +5,31 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transport = { path = "../moq-transport" }
-moq-api = { path = "../moq-api" }
+moq-transport = { path = "../moq-transport", version = "0.4" }
+moq-api = { path = "../moq-api", version = "0.1.0" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.6"
-#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
+web-transport-quinn = "0.1"
 url = "2"
 
 # Crypto
 ring = "0.16"
-rustls = "0.21"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
 rustls-pemfile = "1"
 rustls-native-certs = "0.6"
 webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 
 # Web server to serve the fingerprint
 axum = { version = "0.6", features = ["tokio"] }

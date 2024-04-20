@@ -27,16 +27,16 @@ impl Client {
 		Ok(Some(origin))
 	}
 
-	pub async fn set_origin(&mut self, id: &str, origin: &Origin) -> Result<(), ApiError> {
+	pub async fn set_origin(&self, id: &str, origin: Origin) -> Result<(), ApiError> {
 		let url = self.url.join("origin/")?.join(id)?;
 
-		let resp = self.client.post(url).json(origin).send().await?;
+		let resp = self.client.post(url).json(&origin).send().await?;
 		resp.error_for_status()?;
 
 		Ok(())
 	}
 
-	pub async fn delete_origin(&mut self, id: &str) -> Result<(), ApiError> {
+	pub async fn delete_origin(&self, id: &str) -> Result<(), ApiError> {
 		let url = self.url.join("origin/")?.join(id)?;
 
 		let resp = self.client.delete(url).send().await?;
@@ -45,10 +45,10 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn patch_origin(&mut self, id: &str, origin: &Origin) -> Result<(), ApiError> {
+	pub async fn patch_origin(&self, id: &str, origin: Origin) -> Result<(), ApiError> {
 		let url = self.url.join("origin/")?.join(id)?;
 
-		let resp = self.client.patch(url).json(origin).send().await?;
+		let resp = self.client.patch(url).json(&origin).send().await?;
 		resp.error_for_status()?;
 
 		Ok(())

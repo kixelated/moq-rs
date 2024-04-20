@@ -1,11 +1,11 @@
 [package]
 name = "moq-pub"
 description = "Media over QUIC"
-authors = ["Mike English"]
+authors = ["Mike English", "Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -14,17 +14,17 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transport = { path = "../moq-transport" }
+moq-transport = { path = "../moq-transport", version = "0.4" }
 
 # QUIC
 quinn = "0.10"
-webtransport-quinn = "0.6"
-#webtransport-quinn = { path = "../../webtransport-rs/webtransport-quinn" }
+web-transport-quinn = "0.1"
 url = "2"
 
 # Crypto
-rustls = "0.21"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6"
+rustls-pemfile = "1"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }

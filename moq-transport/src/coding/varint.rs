@@ -5,11 +5,9 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
-use crate::coding::{AsyncRead, AsyncWrite};
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::{DecodeError, EncodeError};
+use super::{Decode, DecodeError, Encode, EncodeError};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value out of range")]
@@ -18,8 +16,8 @@ pub struct BoundsExceeded;
 /// An integer less than 2^62
 ///
 /// Values of this type are suitable for encoding as QUIC variable-length integer.
-// It would be neat if we could express to Rust that the top two bits are available for use as enum
-// discriminants
+/// It would be neat if we could express to Rust that the top two bits are available for use as enum
+/// discriminants
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct VarInt(u64);
 
@@ -83,8 +81,9 @@ impl TryFrom<u64> for VarInt {
 
 	/// Succeeds iff `x` < 2^62
 	fn try_from(x: u64) -> Result<Self, BoundsExceeded> {
-		if x <= Self::MAX.into_inner() {
-			Ok(Self(x))
+		let x = Self(x);
+		if x <= Self::MAX {
+			Ok(x)
 		} else {
 			Err(BoundsExceeded)
 		}
@@ -164,27 +163,32 @@ impl fmt::Display for VarInt {
 	}
 }
 
-impl VarInt {
+impl Decode for VarInt {
 	/// Decode a varint from the given reader.
-	pub async fn decode<R: AsyncRead>(r: &mut R) -> Result<Self, DecodeError> {
-		let mut buf = [0u8; 8];
-		r.read_exact(buf[0..1].as_mut()).await?;
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		Self::decode_remaining(r, 1)?;
 
-		let tag = buf[0] >> 6;
-		buf[0] &= 0b0011_1111;
+		let b = r.get_u8();
+		let tag = b >> 6;
+
+		let mut buf = [0u8; 8];
+		buf[0] = b & 0b0011_1111;
 
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				r.read_exact(buf[1..2].as_mut()).await?;
+				Self::decode_remaining(r, 1)?;
+				r.copy_to_slice(buf[1..2].as_mut());
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				r.read_exact(buf[1..4].as_mut()).await?;
+				Self::decode_remaining(r, 3)?;
+				r.copy_to_slice(buf[1..4].as_mut());
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				r.read_exact(buf[1..8].as_mut()).await?;
+				Self::decode_remaining(r, 7)?;
+				r.copy_to_slice(buf[1..8].as_mut());
 				u64::from_be_bytes(buf)
 			}
 			_ => unreachable!(),
@@ -192,29 +196,56 @@ impl VarInt {
 
 		Ok(Self(x))
 	}
+}
 
+impl Encode for VarInt {
 	/// Encode a varint to the given writer.
-	pub async fn encode<W: AsyncWrite>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let x = self.0;
 		if x < 2u64.pow(6) {
-			w.write_u8(x as u8).await?;
+			Self::encode_remaining(w, 1)?;
+			w.put_u8(x as u8)
 		} else if x < 2u64.pow(14) {
-			w.write_u16(0b01 << 14 | x as u16).await?;
+			Self::encode_remaining(w, 2)?;
+			w.put_u16(0b01 << 14 | x as u16)
 		} else if x < 2u64.pow(30) {
-			w.write_u32(0b10 << 30 | x as u32).await?;
+			Self::encode_remaining(w, 4)?;
+			w.put_u32(0b10 << 30 | x as u32)
 		} else if x < 2u64.pow(62) {
-			w.write_u64(0b11 << 62 | x).await?;
+			Self::encode_remaining(w, 8)?;
+			w.put_u64(0b11 << 62 | x)
 		} else {
-			unreachable!("malformed VarInt");
+			return Err(BoundsExceeded.into());
 		}
 
 		Ok(())
 	}
 }
 
-// This is a fork of quinn::VarInt.
-impl From<quinn::VarInt> for VarInt {
-	fn from(v: quinn::VarInt) -> Self {
-		Self(v.into_inner())
+impl Encode for u64 {
+	/// Encode a varint to the given writer.
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w)
+	}
+}
+
+impl Decode for u64 {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).map(|v| v.into_inner())
+	}
+}
+
+impl Encode for usize {
+	/// Encode a varint to the given writer.
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let var = VarInt::try_from(*self)?;
+		var.encode(w)
+	}
+}
+
+impl Decode for usize {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		VarInt::decode(r).map(|v| v.into_inner() as usize)
 	}
 }
