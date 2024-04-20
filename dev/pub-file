@@ -1,0 +1,90 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Default to a source video
+INPUT="${INPUT:-dev/source.mp4}"
+
+# Output the fragmented MP4 to disk for testing.
+OUTPUT="${OUTPUT:-dev/output.mp4}"
+
+# Run ffmpeg the same as dev/pub, but:
+#   - print any errors/warnings
+#   - only loop twice
+#
+# Note this is artificially slowed down to real-time using the -re flag; you can remove it.
+ffmpeg \
+	-re \
+	-y \
+	-i "$INPUT" \
+	-c copy \
+	-fps_mode passthrough \
+	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
+	-frag_duration 1 \
+	"${OUTPUT}"
+
+# % ffmpeg -f mp4 --ffmpeg -h muxer=mov
+#
+# ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
+# Muxer mov [QuickTime / MOV]:
+#     Common extensions: mov.
+#     Default video codec: h264.
+#     Default audio codec: aac.
+# mov/mp4/tgp/psp/tg2/ipod/ismv/f4v muxer AVOptions:
+#   -movflags          <flags>      E.......... MOV muxer flags (default 0)
+#      rtphint                      E.......... Add RTP hint tracks
+#      empty_moov                   E.......... Make the initial moov atom empty
+#      frag_keyframe                E.......... Fragment at video keyframes
+#      frag_every_frame              E.......... Fragment at every frame
+#      separate_moof                E.......... Write separate moof/mdat atoms for each track
+#      frag_custom                  E.......... Flush fragments on caller requests
+#      isml                         E.......... Create a live smooth streaming feed (for pushing to a publishing point)
+#      faststart                    E.......... Run a second pass to put the index (moov atom) at the beginning of the file
+#      omit_tfhd_offset              E.......... Omit the base data offset in tfhd atoms
+#      disable_chpl                 E.......... Disable Nero chapter atom
+#      default_base_moof              E.......... Set the default-base-is-moof flag in tfhd atoms
+#      dash                         E.......... Write DASH compatible fragmented MP4
+#      cmaf                         E.......... Write CMAF compatible fragmented MP4
+#      frag_discont                 E.......... Signal that the next fragment is discontinuous from earlier ones
+#      delay_moov                   E.......... Delay writing the initial moov until the first fragment is cut, or until the first fragment flush
+#      global_sidx                  E.......... Write a global sidx index at the start of the file
+#      skip_sidx                    E.......... Skip writing of sidx atom
+#      write_colr                   E.......... Write colr atom even if the color info is unspecified (Experimental, may be renamed or changed, do not use from scripts)
+#      prefer_icc                   E.......... If writing colr atom prioritise usage of ICC profile if it exists in stream packet side data
+#      write_gama                   E.......... Write deprecated gama atom
+#      use_metadata_tags              E.......... Use mdta atom for metadata.
+#      skip_trailer                 E.......... Skip writing the mfra/tfra/mfro trailer for fragmented files
+#      negative_cts_offsets              E.......... Use negative CTS offsets (reducing the need for edit lists)
+#   -moov_size         <int>        E.......... maximum moov size so it can be placed at the begin (from 0 to INT_MAX) (default 0)
+#   -rtpflags          <flags>      E.......... RTP muxer flags (default 0)
+#      latm                         E.......... Use MP4A-LATM packetization instead of MPEG4-GENERIC for AAC
+#      rfc2190                      E.......... Use RFC 2190 packetization instead of RFC 4629 for H.263
+#      skip_rtcp                    E.......... Don't send RTCP sender reports
+#      h264_mode0                   E.......... Use mode 0 for H.264 in RTP
+#      send_bye                     E.......... Send RTCP BYE packets when finishing
+#   -skip_iods         <boolean>    E.......... Skip writing iods atom. (default true)
+#   -iods_audio_profile <int>        E.......... iods audio profile atom. (from -1 to 255) (default -1)
+#   -iods_video_profile <int>        E.......... iods video profile atom. (from -1 to 255) (default -1)
+#   -frag_duration     <int>        E.......... Maximum fragment duration (from 0 to INT_MAX) (default 0)
+#   -min_frag_duration <int>        E.......... Minimum fragment duration (from 0 to INT_MAX) (default 0)
+#   -frag_size         <int>        E.......... Maximum fragment size (from 0 to INT_MAX) (default 0)
+#   -ism_lookahead     <int>        E.......... Number of lookahead entries for ISM files (from 0 to 255) (default 0)
+#   -video_track_timescale <int>        E.......... set timescale of all video tracks (from 0 to INT_MAX) (default 0)
+#   -brand             <string>     E.......... Override major brand
+#   -use_editlist      <boolean>    E.......... use edit list (default auto)
+#   -fragment_index    <int>        E.......... Fragment number of the next fragment (from 1 to INT_MAX) (default 1)
+#   -mov_gamma         <float>      E.......... gamma value for gama atom (from 0 to 10) (default 0)
+#   -frag_interleave   <int>        E.......... Interleave samples within fragments (max number of consecutive samples, lower is tighter interleaving, but with more overhead) (from 0 to INT_MAX) (default 0)
+#   -encryption_scheme <string>     E.......... Configures the encryption scheme, allowed values are none, cenc-aes-ctr
+#   -encryption_key    <binary>     E.......... The media encryption key (hex)
+#   -encryption_kid    <binary>     E.......... The media encryption key identifier (hex)
+#   -use_stream_ids_as_track_ids <boolean>    E.......... use stream ids as track ids (default false)
+#   -write_btrt        <boolean>    E.......... force or disable writing btrt (default auto)
+#   -write_tmcd        <boolean>    E.......... force or disable writing tmcd (default auto)
+#   -write_prft        <int>        E.......... Write producer reference time box with specified time source (from 0 to 2) (default 0)
+#      wallclock       1            E..........
+#      pts             2            E..........
+#   -empty_hdlr_name   <boolean>    E.......... write zero-length name string in hdlr atoms within mdia and minf atoms (default false)
+#   -movie_timescale   <int>        E.......... set movie timescale (from 1 to INT_MAX) (default 1000)
