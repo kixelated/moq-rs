@@ -19,6 +19,8 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
+		log::info!("ftyp: {:?}", ftyp);
+
 		let moov = read_atom(&mut input).await?;
 		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 
@@ -32,6 +34,8 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 
 		// Parse the moov box so we can detect the timescales for each track.
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
+
+		log::info!("moov: {:?}", moov);
 
 		// Create the catalog track with a single segment.
 		let mut init_track = broadcast.create_track("0.mp4")?.groups()?;
@@ -94,6 +98,12 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 
 					// Get the track for this moof.
 					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
+
+					log::info!(
+						"frame: {}, time: {:?}",
+						track.handler,
+						fragment.timestamp(track.timescale)
+					);
 
 					// Save the track ID for the next iteration, which must be a mdat.
 					anyhow::ensure!(current.is_none(), "multiple moof atoms");
@@ -213,8 +223,11 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 	let mut buf = [0u8; 8];
 	reader.read_exact(&mut buf).await?;
 
+	log::info!("start: {:?}", buf);
+
 	// Convert the first 4 bytes into the size.
 	let size = u32::from_be_bytes(buf[0..4].try_into()?) as u64;
+	log::info!("size: {}", size);
 
 	let mut raw = buf.to_vec();
 
@@ -238,8 +251,17 @@ async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Ve
 		size => reader.take(size - 8),
 	};
 
+	while (raw.len() as u64) < size {
+		let mut buf = vec![0; 4096];
+		let n = limit.read(&mut buf).await?;
+		log::info!("read: {}", String::from_utf8_lossy(&buf[..n]));
+		raw.extend_from_slice(&buf[..n]);
+	}
+
 	// Append to the vector and return it.
-	let _read_bytes = limit.read_to_end(&mut raw).await?;
+	//limit.read_to_end(&mut raw).await?;
+
+	log::info!("read_to_end");
 
 	Ok(raw)
 }
