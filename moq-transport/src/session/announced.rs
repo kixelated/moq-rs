@@ -1,6 +1,7 @@
 use std::ops;
 
-use crate::{message, serve::ServeError, util::State};
+use crate::watch::State;
+use crate::{message, serve::ServeError};
 
 use super::{AnnounceInfo, Subscriber};
 
@@ -23,7 +24,7 @@ impl Announced {
 	pub(super) fn new(session: Subscriber, namespace: String) -> (Announced, AnnouncedRecv) {
 		let info = AnnounceInfo { namespace };
 
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 		let send = Self {
 			session,
 			info,

@@ -11,7 +11,7 @@
 use std::{cmp, collections::BinaryHeap, ops::Deref, sync::Arc};
 
 use super::{ServeError, Track};
-use crate::util::State;
+use crate::watch::State;
 use bytes::Bytes;
 
 pub struct Objects {
@@ -20,7 +20,7 @@ pub struct Objects {
 
 impl Objects {
 	pub fn produce(self) -> (ObjectsWriter, ObjectsReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 
 		let writer = ObjectsWriter {
 			state: writer,
@@ -114,7 +114,7 @@ impl Deref for ObjectsWriter {
 #[derive(Clone)]
 pub struct ObjectsReader {
 	state: State<ObjectsState>,
-	pub track: Arc<Track>,
+	pub info: Arc<Track>,
 	epoch: usize,
 
 	// The objects ready to be returned
@@ -122,10 +122,10 @@ pub struct ObjectsReader {
 }
 
 impl ObjectsReader {
-	fn new(state: State<ObjectsState>, track: Arc<Track>) -> Self {
+	fn new(state: State<ObjectsState>, info: Arc<Track>) -> Self {
 		Self {
 			state,
-			track,
+			info,
 			epoch: 0,
 			pending: BinaryHeap::new(),
 		}
@@ -133,7 +133,7 @@ impl ObjectsReader {
 
 	pub async fn next(&mut self) -> Result<Option<ObjectReader>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if self.epoch < state.epoch {
 					// Add all of the new objects from the current group to our priority queue.
@@ -154,9 +154,8 @@ impl ObjectsReader {
 					Some(notify) => notify,
 					None => return Ok(None), // No more updates will come
 				}
-			};
-
-			notify.await;
+			}
+			.await;
 		}
 	}
 
@@ -175,7 +174,7 @@ impl Deref for ObjectsReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.track
+		&self.info
 	}
 }
 
@@ -204,7 +203,7 @@ impl Deref for ObjectInfo {
 
 impl ObjectInfo {
 	pub fn produce(self) -> (ObjectWriter, ObjectReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = ObjectWriter::new(writer, info.clone());
@@ -311,7 +310,7 @@ impl ObjectReader {
 	/// Block until the next chunk of bytes is available.
 	pub async fn read(&mut self) -> Result<Option<Bytes>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 
 				if self.index < state.chunks.len() {
@@ -325,9 +324,8 @@ impl ObjectReader {
 					Some(notify) => notify,
 					None => return Ok(None), // No more updates will come
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
 	}
 
@@ -338,14 +336,6 @@ impl ObjectReader {
 		}
 
 		Ok(Bytes::from(chunks.concat()))
-	}
-}
-
-impl Deref for ObjectReader {
-	type Target = ObjectInfo;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }
 
@@ -373,3 +363,11 @@ impl PartialEq for ObjectReader {
 }
 
 impl Eq for ObjectReader {}
+
+impl Deref for ObjectReader {
+	type Target = ObjectInfo;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
+	}
+}

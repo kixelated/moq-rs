@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use crate::util::State;
+use crate::watch::State;
 
 use super::{ServeError, Track};
 
@@ -10,7 +10,7 @@ pub struct Datagrams {
 
 impl Datagrams {
 	pub fn produce(self) -> (DatagramsWriter, DatagramsReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 
 		let writer = DatagramsWriter::new(writer, self.track.clone());
 		let reader = DatagramsReader::new(reader, self.track);
@@ -85,7 +85,7 @@ impl DatagramsReader {
 
 	pub async fn read(&mut self) -> Result<Option<Datagram>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if self.epoch < state.epoch {
 					self.epoch = state.epoch;
@@ -97,9 +97,8 @@ impl DatagramsReader {
 					Some(notify) => notify,
 					None => return Ok(None), // No more updates will come
 				}
-			};
-
-			notify.await;
+			}
+			.await;
 		}
 	}
 

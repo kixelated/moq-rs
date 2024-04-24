@@ -1,21 +1,19 @@
 [package]
-name = "moq-clock"
-description = "CLOCK over QUIC"
+name = "moq-native"
+description = "Media over QUIC - Helper library for native applications"
 authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.4.0"
+version = "0.1.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-moq-native = { path = "../moq-native", version = "0.1" }
 moq-transport = { path = "../moq-transport", version = "0.4" }
+web-transport = "0.1"
 
 # QUIC
 quinn = "0.10"
@@ -23,25 +21,31 @@ web-transport-quinn = "0.1"
 url = "2"
 
 # Crypto
+ring = "0.16"
 rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-native-certs = "0.6"
 rustls-pemfile = "1"
+rustls-native-certs = "0.6"
+webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 
-# CLI, logging, error handling
+# Web server to serve the fingerprint
+axum = { version = "0.6", features = ["tokio"] }
+axum-server = { version = "0.5", features = ["tls-rustls"] }
+hex = "0.4"
+tower-http = { version = "0.4", features = ["cors"] }
+
+# Error handling
+anyhow = { version = "1", features = ["backtrace"] }
+thiserror = "1"
+
+# CLI
 clap = { version = "4", features = ["derive"] }
+
+# Logging
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.9"
-anyhow = { version = "1", features = ["backtrace"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-
-# CLOCK STUFF
-chrono = "0.4"
-
-[build-dependencies]
-clap = { version = "4", features = ["derive"] }
-clap_mangen = "0.2"
-url = "2"

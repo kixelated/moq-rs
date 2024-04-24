@@ -23,7 +23,7 @@ use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::message::Message;
-use crate::util::Queue;
+use crate::watch::Queue;
 use crate::{message, setup};
 
 #[must_use = "run() must be called"]
@@ -46,11 +46,11 @@ impl Session {
 		recver: Reader,
 		role: setup::Role,
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let outgoing = Queue::default();
+		let outgoing = Queue::default().split();
 		let publisher = role
 			.is_publisher()
-			.then(|| Publisher::new(outgoing.clone(), webtransport.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.clone()));
+			.then(|| Publisher::new(outgoing.0.clone(), webtransport.clone()));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.0));
 
 		let session = Self {
 			webtransport,
@@ -58,16 +58,16 @@ impl Session {
 			recver,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
-			outgoing,
+			outgoing: outgoing.1,
 		};
 
 		(session, publisher, subscriber)
 	}
 
-	pub async fn connect(
-		session: web_transport::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		Self::connect_role(session, setup::Role::Both).await
+	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
+		Self::connect_role(session, setup::Role::Both)
+			.await
+			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
 	}
 
 	pub async fn connect_role(
@@ -176,12 +176,13 @@ impl Session {
 		Err(res.expect_err("run terminated with OK"))
 	}
 
-	async fn run_send(mut sender: Writer, outgoing: Queue<message::Message>) -> Result<(), SessionError> {
-		loop {
-			let msg = outgoing.pop().await;
+	async fn run_send(mut sender: Writer, mut outgoing: Queue<message::Message>) -> Result<(), SessionError> {
+		while let Some(msg) = outgoing.pop().await {
 			log::debug!("sending message: {:?}", msg);
 			sender.encode(&msg).await?;
 		}
+
+		Ok(())
 	}
 
 	async fn run_recv(

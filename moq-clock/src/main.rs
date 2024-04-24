@@ -1,14 +1,43 @@
-use std::{fs, io, sync::Arc, time};
+use moq_native::quic;
+use std::net;
+use url::Url;
 
 use anyhow::Context;
 use clap::Parser;
 
-mod cli;
 mod clock;
 
-use moq_transport::serve;
+use moq_transport::{
+	serve,
+	session::{Publisher, Subscriber},
+};
 
-// TODO: clap complete
+#[derive(Parser, Clone)]
+pub struct Cli {
+	/// Listen for UDP packets on the given address.
+	#[arg(long, default_value = "[::]:0")]
+	pub bind: net::SocketAddr,
+
+	/// Connect to the given URL starting with https://
+	#[arg()]
+	pub url: Url,
+
+	/// The TLS configuration.
+	#[command(flatten)]
+	pub tls: moq_native::tls::Cli,
+
+	/// Publish the current time to the relay, otherwise only subscribe.
+	#[arg(long)]
+	pub publish: bool,
+
+	/// The name of the clock track.
+	#[arg(long, default_value = "clock")]
+	pub namespace: String,
+
+	/// The name of the clock track.
+	#[arg(long, default_value = "now")]
+	pub track: String,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,131 +49,48 @@ async fn main() -> anyhow::Result<()> {
 		.finish();
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
-	let config = cli::Config::parse();
+	let config = Cli::parse();
+	let tls = config.tls.load()?;
 
-	// Create a list of acceptable root certificates.
-	let mut roots = rustls::RootCertStore::empty();
-
-	if config.tls_root.is_empty() {
-		// Add the platform's native root certificates.
-		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
-			roots
-				.add(&rustls::Certificate(cert.0))
-				.context("failed to add root cert")?;
-		}
-	} else {
-		// Add the specified root certificates.
-		for root in &config.tls_root {
-			let root = fs::File::open(root).context("failed to open root cert file")?;
-			let mut root = io::BufReader::new(root);
-
-			let root = rustls_pemfile::certs(&mut root).context("failed to read root cert")?;
-			anyhow::ensure!(root.len() == 1, "expected a single root cert");
-			let root = rustls::Certificate(root[0].to_owned());
-
-			roots.add(&root).context("failed to add root cert")?;
-		}
-	}
-
-	let mut tls_config = rustls::ClientConfig::builder()
-		.with_safe_defaults()
-		.with_root_certificates(roots)
-		.with_no_client_auth();
-
-	// Allow disabling TLS verification altogether.
-	if config.tls_disable_verify {
-		let noop = NoCertificateVerification {};
-		tls_config.dangerous().set_certificate_verifier(Arc::new(noop));
-	}
+	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
 	log::info!("connecting to server: url={}", config.url);
 
-	let session = match config.url.scheme() {
-		"https" => {
-			tls_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec()]; // this one is important
-			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
-
-			let mut endpoint = quinn::Endpoint::client(config.bind)?;
-			endpoint.set_default_client_config(client_config);
-
-			web_transport_quinn::connect(&endpoint, &config.url)
-				.await
-				.context("failed to create WebTransport session")?
-		}
-		"moqt" => {
-			tls_config.alpn_protocols = vec![moq_transport::setup::ALPN.to_vec()]; // this one is important
-			let client_config = quinn::ClientConfig::new(Arc::new(tls_config));
-
-			let mut endpoint = quinn::Endpoint::client(config.bind)?;
-			endpoint.set_default_client_config(client_config);
-
-			let host = config.url.host().context("invalid DNS name")?.to_string();
-			let port = config.url.port().unwrap_or(443);
-
-			// Look up the DNS entry.
-			let remote = tokio::net::lookup_host((host.clone(), port))
-				.await
-				.context("failed DNS lookup")?
-				.next()
-				.context("no DNS entries")?;
-
-			// Connect to the server using the addr we just resolved.
-			let conn = endpoint.connect(remote, &host)?.await?;
-			conn.into()
-		}
-		_ => anyhow::bail!("unsupported scheme: {}", config.url.scheme()),
-	};
+	let session = quic.client.connect(&config.url).await?;
 
 	if config.publish {
-		let (session, mut publisher) = moq_transport::Publisher::connect(session.into())
+		let (session, mut publisher) = Publisher::connect(session.into())
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (mut broadcast, broadcast_sub) = serve::Broadcast {
+		let (mut writer, _, reader) = serve::Tracks {
 			namespace: config.namespace.clone(),
 		}
 		.produce();
 
-		let track = broadcast.create_track(&config.track)?;
+		let track = writer.create(&config.track).unwrap();
 		let clock = clock::Publisher::new(track.groups()?);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = publisher.serve(broadcast_sub) => res.context("failed to serve broadcast")?,
+			res = publisher.announce(reader) => res.context("failed to serve tracks")?,
 		}
 	} else {
-		let (session, mut subscriber) = moq_transport::Subscriber::connect(session.into())
+		let (session, mut subscriber) = Subscriber::connect(session.into())
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (prod, sub) = serve::Track::new(&config.namespace, &config.track).produce();
-		let subscribe = subscriber.subscribe(prod).context("failed to subscribe to track")?;
+		let (prod, sub) = serve::Track::new(config.namespace, config.track).produce();
 
 		let clock = clock::Subscriber::new(sub);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = subscribe.closed() => res.context("subscribe closed")?,
+			res = subscriber.subscribe(prod) => res.context("failed to subscribe to track")?,
 		}
 	}
 
 	Ok(())
-}
-
-pub struct NoCertificateVerification {}
-
-impl rustls::client::ServerCertVerifier for NoCertificateVerification {
-	fn verify_server_cert(
-		&self,
-		_end_entity: &rustls::Certificate,
-		_intermediates: &[rustls::Certificate],
-		_server_name: &rustls::ServerName,
-		_scts: &mut dyn Iterator<Item = &[u8]>,
-		_ocsp_response: &[u8],
-		_now: time::SystemTime,
-	) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-		Ok(rustls::client::ServerCertVerified::assertion())
-	}
 }

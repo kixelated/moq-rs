@@ -13,7 +13,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.4" }
-moq-api = { path = "../moq-api", version = "0.1.0" }
+moq-native = { path = "../moq-native", version = "0.1" }
+moq-dir = { path = "../moq-dir", version = "0.1" }
+moq-api = { path = "../moq-api", version = "0.1" }
 
 # QUIC
 quinn = "0.10"

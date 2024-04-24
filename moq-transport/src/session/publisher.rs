@@ -7,10 +7,11 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	message::{self, Message},
-	serve::{self, ServeError},
+	serve::{ServeError, TracksReader},
 	setup,
-	util::Queue,
 };
+
+use crate::watch::Queue;
 
 use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, SubscribedRecv};
 
@@ -47,27 +48,19 @@ impl Publisher {
 		Ok((session, publisher.unwrap()))
 	}
 
-	pub fn announce(&mut self, namespace: &str) -> Result<Announce, SessionError> {
-		let mut announces = self.announces.lock().unwrap();
-
-		let entry = match announces.entry(namespace.to_string()) {
+	/// Announce a namespace and serve tracks using the provided [serve::TracksReader].
+	/// The caller uses [serve::TracksWriter] for static tracks and [serve::TracksRequest] for dynamic tracks.
+	pub async fn announce(&mut self, tracks: TracksReader) -> Result<(), SessionError> {
+		let mut announce = match self.announces.lock().unwrap().entry(tracks.namespace.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
-			hash_map::Entry::Vacant(entry) => entry,
+			hash_map::Entry::Vacant(entry) => {
+				let (send, recv) = Announce::new(self.clone(), tracks.namespace.clone());
+				entry.insert(recv);
+				send
+			}
 		};
 
-		let (send, recv) = Announce::new(self.clone(), namespace.to_string());
-		entry.insert(recv);
-
-		// Unannounce on close
-		Ok(send)
-	}
-
-	// Helper function to announce and serve a list of tracks.
-	pub async fn serve(&mut self, broadcast: serve::BroadcastReader) -> Result<(), SessionError> {
-		let mut announce = self.announce(&broadcast.namespace)?;
-
 		let mut tasks = FuturesUnordered::new();
-
 		let mut done = None;
 
 		loop {
@@ -79,18 +72,12 @@ impl Publisher {
 						Err(err) => { done = Some(Err(err)); continue },
 					};
 
-					let broadcast = broadcast.clone();
+					let tracks = tracks.clone();
 
 					tasks.push(async move {
 						let info = subscribe.info.clone();
-
-						match broadcast.get_track(&subscribe.name) {
-							Ok(track) => if let Err(err) = Self::serve_subscribe(subscribe, track).await {
-								log::warn!("failed serving subscribe: {:?}, error: {}", info, err)
-							},
-							Err(err) => {
-								log::warn!("failed getting subscribe: {:?}, error: {}", info, err)
-							},
+						if let Err(err) = Self::serve_subscribe(subscribe, tracks).await {
+							log::warn!("failed serving subscribe: {:?}, error: {}", info, err)
 						}
 					});
 				},
@@ -100,17 +87,18 @@ impl Publisher {
 		}
 	}
 
-	pub async fn serve_subscribe(subscribe: Subscribed, track: Option<serve::TrackReader>) -> Result<(), SessionError> {
-		match track {
-			Some(track) => subscribe.serve(track).await?,
-			None => subscribe.close(ServeError::NotFound)?,
-		};
+	pub async fn serve_subscribe(subscribe: Subscribed, mut tracks: TracksReader) -> Result<(), SessionError> {
+		if let Some(track) = tracks.subscribe(&subscribe.name) {
+			subscribe.serve(track).await?;
+		} else {
+			subscribe.close(ServeError::NotFound)?;
+		}
 
 		Ok(())
 	}
 
 	// Returns subscriptions that do not map to an active announce.
-	pub async fn subscribed(&mut self) -> Subscribed {
+	pub async fn subscribed(&mut self) -> Option<Subscribed> {
 		self.unknown.pop().await
 	}
 
@@ -173,12 +161,16 @@ impl Publisher {
 		};
 
 		// If we have an announce, route the subscribe to it.
+		if let Some(announce) = self.announces.lock().unwrap().get_mut(&namespace) {
+			return announce.recv_subscribe(subscribe).map_err(Into::into);
+		}
+
 		// Otherwise, put it in the unknown queue.
 		// TODO Have some way to detect if the application is not reading from the unknown queue.
-		match self.announces.lock().unwrap().get_mut(&namespace) {
-			Some(announce) => announce.recv_subscribe(subscribe)?,
-			None => self.unknown.push(subscribe),
-		};
+		if let Err(err) = self.unknown.push(subscribe) {
+			// Default to closing with a not found error I guess.
+			err.close(ServeError::NotFound)?;
+		}
 
 		Ok(())
 	}
@@ -200,7 +192,7 @@ impl Publisher {
 			_ => (),
 		};
 
-		self.outgoing.push(msg.into())
+		self.outgoing.push(msg.into()).ok();
 	}
 
 	fn drop_subscribe(&mut self, id: u64) {

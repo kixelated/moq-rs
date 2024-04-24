@@ -12,7 +12,7 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::State;
+use crate::watch::State;
 
 use super::{
 	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
@@ -29,15 +29,12 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn new(namespace: &str, name: &str) -> Self {
-		Self {
-			namespace: namespace.to_string(),
-			name: name.to_string(),
-		}
+	pub fn new(namespace: String, name: String) -> Self {
+		Self { namespace, name }
 	}
 
 	pub fn produce(self) -> (TrackWriter, TrackReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = TrackWriter::new(writer, info.clone());
@@ -149,9 +146,9 @@ impl TrackReader {
 		Self { state, info }
 	}
 
-	pub async fn mode(self) -> Result<TrackReaderMode, ServeError> {
+	pub async fn mode(&self) -> Result<TrackReaderMode, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if let Some(mode) = &state.mode {
 					return Ok(mode.clone());
@@ -162,9 +159,8 @@ impl TrackReader {
 					Some(notify) => notify,
 					None => return Err(ServeError::Done),
 				}
-			};
-
-			notify.await;
+			}
+			.await;
 		}
 	}
 
@@ -177,7 +173,7 @@ impl TrackReader {
 
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				state.closed.clone()?;
 
@@ -185,9 +181,8 @@ impl TrackReader {
 					Some(notify) => notify,
 					None => return Ok(()),
 				}
-			};
-
-			notify.await
+			}
+			.await;
 		}
 	}
 }

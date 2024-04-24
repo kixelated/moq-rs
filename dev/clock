@@ -11,10 +11,9 @@ export RUST_LOG="${RUST_LOG:-debug}"
 HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
-NAME="${NAME:-clock}"
 SCHEME="${SCHEME:-https}"
 
 # Combine the host and name into a URL.
 URL="${URL:-"$SCHEME://$ADDR"}"
 
-cargo run --bin moq-clock -- "$URL" --namespace "$NAME" "$@"
+cargo run --bin moq-clock -- "$URL" "$@"

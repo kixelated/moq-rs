@@ -1,10 +1,9 @@
 use std::{collections::VecDeque, ops};
 
-use crate::{message, serve::ServeError, Publisher};
+use crate::watch::State;
+use crate::{message, serve::ServeError};
 
-use super::Subscribed;
-
-use crate::util::State;
+use super::{Publisher, Subscribed};
 
 #[derive(Debug, Clone)]
 pub struct AnnounceInfo {
@@ -54,7 +53,7 @@ impl Announce {
 			params: Default::default(),
 		});
 
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 
 		let send = Self {
 			publisher,
@@ -67,9 +66,9 @@ impl Announce {
 	}
 
 	// Run until we get an error
-	pub async fn serve(self) -> Result<(), ServeError> {
+	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				state.closed.clone()?;
 
@@ -77,15 +76,14 @@ impl Announce {
 					Some(notified) => notified,
 					None => return Ok(()),
 				}
-			};
-
-			notify.await
+			}
+			.await;
 		}
 	}
 
 	pub async fn subscribed(&mut self) -> Result<Option<Subscribed>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if !state.subscribers.is_empty() {
 					return Ok(state.into_mut().and_then(|mut state| state.subscribers.pop_front()));
@@ -96,9 +94,27 @@ impl Announce {
 					Some(notified) => notified,
 					None => return Ok(None),
 				}
-			};
+			}
+			.await;
+		}
+	}
 
-			notify.await
+	// Wait until an OK is received
+	pub async fn ok(&self) -> Result<(), ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				if state.ok {
+					return Ok(());
+				}
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(()),
+				}
+			}
+			.await;
 		}
 	}
 }
@@ -110,7 +126,7 @@ impl Drop for Announce {
 		}
 
 		self.publisher.send_message(message::Unannounce {
-			namespace: self.info.namespace.to_string(),
+			namespace: self.namespace.to_string(),
 		});
 	}
 }

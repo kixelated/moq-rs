@@ -1,94 +1,108 @@
-use std::{sync::Arc, time};
+use std::net;
 
 use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
+use moq_native::quic;
+use moq_transport::session::Publisher;
+use url::Url;
 
-use crate::{
-	Config, Connection, Locals, LocalsConsumer, LocalsProducer, Remotes, RemotesConsumer, RemotesProducer, Tls,
-};
+use crate::{Locals, Remotes, RemotesConsumer, RemotesProducer};
+
+pub struct RelayConfig {
+	/// Listen on this address
+	pub bind: net::SocketAddr,
+
+	/// The TLS configuration.
+	pub tls: moq_native::tls::Config,
+
+	/// Forward all announcements to the (optional) URL.
+	pub announce: Option<Url>,
+
+	/// Connect to the HTTP moq-api at this URL.
+	pub api: Option<Url>,
+
+	/// Our hostname which we advertise to other origins.
+	/// We use QUIC, so the certificate must be valid for this address.
+	pub node: Option<Url>,
+}
 
 pub struct Relay {
-	quic: quinn::Endpoint,
-
-	locals: (LocalsProducer, LocalsConsumer),
+	quic: quic::Endpoint,
+	announce: Option<Url>,
+	locals: Locals,
 	remotes: Option<(RemotesProducer, RemotesConsumer)>,
 }
 
 impl Relay {
 	// Create a QUIC endpoint that can be used for both clients and servers.
-	pub async fn new(config: Config, tls: Tls) -> anyhow::Result<Self> {
-		let mut client_config = tls.client.clone();
-		let mut server_config = tls.server.clone();
-		client_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
-		server_config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
-
-		// Enable BBR congestion control
-		// TODO validate the implementation
-		let mut transport_config = quinn::TransportConfig::default();
-		transport_config.max_idle_timeout(Some(time::Duration::from_secs(10).try_into().unwrap()));
-		transport_config.keep_alive_interval(Some(time::Duration::from_secs(4))); // TODO make this smarter
-		transport_config.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
-		transport_config.mtu_discovery_config(None); // Disable MTU discovery
-		let transport_config = Arc::new(transport_config);
-
-		let mut client_config = quinn::ClientConfig::new(Arc::new(client_config));
-		let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_config));
-		server_config.transport_config(transport_config.clone());
-		client_config.transport_config(transport_config);
-
-		// There's a bit more boilerplate to make a generic endpoint.
-		let runtime = quinn::default_runtime().context("no async runtime")?;
-		let endpoint_config = quinn::EndpointConfig::default();
-		let socket = std::net::UdpSocket::bind(config.listen).context("failed to bind UDP socket")?;
-
-		// Create the generic QUIC endpoint.
-		let mut quic = quinn::Endpoint::new(endpoint_config, Some(server_config), socket, runtime)
-			.context("failed to create QUIC endpoint")?;
-		quic.set_default_client_config(client_config);
+	pub fn new(config: RelayConfig) -> anyhow::Result<Self> {
+		let quic = quic::Endpoint::new(quic::Config {
+			bind: config.bind,
+			tls: config.tls,
+		})?;
 
 		let api = config.api.map(|url| {
 			log::info!("using moq-api: url={}", url);
 			moq_api::Client::new(url)
 		});
 
-		let node = config.api_node.map(|node| {
+		let node = config.node.map(|node| {
 			log::info!("advertising origin: url={}", node);
 			node
 		});
 
+		let locals = Locals::new(api, node);
+
 		let remotes = api.clone().map(|api| {
 			Remotes {
 				api,
-				quic: quic.clone(),
+				quic: quic.client.clone(),
 			}
 			.produce()
 		});
-		let locals = Locals { api, node }.produce();
 
-		Ok(Self { quic, locals, remotes })
+		Ok(Self {
+			quic,
+			announce: config.announce,
+			locals,
+			remotes,
+		})
 	}
 
-	pub async fn run(self) -> anyhow::Result<()> {
-		log::info!("listening on {}", self.quic.local_addr()?);
-
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		let mut tasks = FuturesUnordered::new();
+
+		let forward = if let Some(url) = &self.announce {
+			log::info!("forwarding announces to {}", url);
+			let session = self.quic.client.connect(url).await?;
+			let (session, publisher) = Publisher::connect(session).await?;
+			tasks.push(async move { session.run().await.context("forwarding announces failed") }.boxed_local());
+
+			Some(publisher)
+		} else {
+			None
+		};
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
 			tasks.push(producer.run().boxed_local());
 			consumer
 		});
 
+		let mut server = self.quic.server.context("missing TLS certificate")?;
+		log::info!("listening on {}", server.local_addr()?);
+
 		loop {
 			tokio::select! {
-				res = self.quic.accept() => {
+				res = server.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let session = Connection::new(self.locals.clone(), remotes.clone());
+					let session = Session::new(conn, self.locals.clone(), remotes.clone(), forward.clone());
 
 					tasks.push(async move {
-						if let Err(err) = session.run(conn).await {
+						if let Err(err) = session.run().await {
 							log::warn!("connection terminated: {}", err);
 						}
+
 						Ok(())
 					}.boxed_local());
 				},

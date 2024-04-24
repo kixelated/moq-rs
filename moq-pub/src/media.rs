@@ -1,5 +1,5 @@
 use anyhow::{self, Context};
-use moq_transport::serve::{BroadcastWriter, GroupWriter, GroupsWriter, TrackWriter};
+use moq_transport::serve::{GroupWriter, GroupsWriter, TrackWriter, TracksWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
@@ -15,7 +15,7 @@ pub struct Media<I> {
 }
 
 impl<I: AsyncRead + Send + Unpin> Media<I> {
-	pub async fn new(mut input: I, mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
+	pub async fn new(mut input: I, mut broadcast: TracksWriter) -> anyhow::Result<Self> {
 		let ftyp = read_atom(&mut input).await?;
 		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
 
@@ -34,8 +34,8 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
 
 		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create_track("0.mp4")?.groups()?;
-		init_track.next(0)?.write(init.into())?;
+		let mut init_track = broadcast.create("0.mp4").context("broadcast closed")?.groups()?;
+		init_track.append(0)?.write(init.into())?;
 
 		let mut tracks = HashMap::new();
 
@@ -47,12 +47,12 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
-			let track = broadcast.create_track(&name)?;
+			let track = broadcast.create(&name).context("broadcast closed")?;
 			let track = Track::new(track, handler, timescale);
 			tracks.insert(id, track);
 		}
 
-		let catalog = broadcast.create_track(".catalog")?;
+		let catalog = broadcast.create(".catalog").context("broadcast closed")?;
 
 		// Create the catalog track
 		Self::serve_catalog(catalog, &init_track.name, &moov)?;
@@ -119,7 +119,7 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 	}
 
 	fn serve_catalog(track: TrackWriter, init_track_name: &str, moov: &mp4::MoovBox) -> Result<(), anyhow::Error> {
-		let mut segment = track.groups()?.next(0)?;
+		let mut segment = track.groups()?.append(0)?;
 
 		let mut tracks = Vec::new();
 
@@ -288,7 +288,7 @@ impl Track {
 		let priority = u32::MAX.checked_sub(timestamp).context("priority too large")?.into();
 
 		// Create a new segment.
-		let mut segment = self.track.next(priority)?;
+		let mut segment = self.track.append(priority)?;
 
 		// Write the fragment in it's own object.
 		segment.write(raw.into())?;
