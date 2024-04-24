@@ -4,16 +4,16 @@ use moq_transport::{
 	session::{Announced, Publisher, SessionError, Subscribed, Subscriber},
 };
 
-use crate::{error::RelayError, RemotesConsumer};
+use crate::{error::RelayError, Locals, RemotesConsumer};
 
 #[derive(Clone)]
 pub struct Connection {
-	locals: (LocalsProducer, LocalsConsumer),
+	locals: Locals,
 	remotes: Option<RemotesConsumer>,
 }
 
 impl Connection {
-	pub fn new(locals: (LocalsProducer, LocalsConsumer), remotes: Option<RemotesConsumer>) -> Self {
+	pub fn new(locals: Locals, remotes: Option<RemotesConsumer>) -> Self {
 		Self { locals, remotes }
 	}
 
@@ -60,12 +60,12 @@ impl Connection {
 	}
 
 	async fn serve_subscribe(self, subscribe: Subscribed) -> Result<(), RelayError> {
-		if let Some(local) = self.locals.1.route(&subscribe.namespace).await? {
+		if let Some(mut local) = self.locals.route(&subscribe.namespace) {
 			log::debug!("using local announce: {:?}", local.info);
-			if let Some(track) = local.subscribe(subscribe.namespace.clone(), subscribe.name.clone())? {
+			if let Some(track) = local.subscribe(&subscribe.name) {
 				log::info!("serving from local: {:?}", track.info);
 				// NOTE: Depends on drop(track) being called afterwards
-				return Ok(subscribe.serve(track.reader).await?);
+				return Ok(subscribe.serve(track).await?);
 			}
 		}
 
@@ -108,7 +108,7 @@ impl Connection {
 	}
 
 	async fn serve_announce(mut self, remote: Subscriber, mut announce: Announced) -> Result<(), RelayError> {
-		let mut publisher = match self.locals.0.announce(&announce.namespace).await {
+		let mut publisher = match self.locals.announce(announce.namespace).await {
 			Ok(publisher) => {
 				announce.ok()?;
 				publisher

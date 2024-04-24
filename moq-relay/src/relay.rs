@@ -96,7 +96,7 @@ impl Relay {
 			tokio::select! {
 				res = server.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let session = Connection::new(conn, self.locals.clone(), remotes.clone(), forward.clone());
+					let session = Connection::new(self.locals.clone(), remotes.clone());
 
 					tasks.push(async move {
 						if let Err(err) = session.run(conn).await {
