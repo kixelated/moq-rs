@@ -94,7 +94,6 @@ impl ListingWriter {
 pub enum ListingDelta {
 	Add(String),
 	Rem(String),
-	Done,
 }
 
 #[derive(Clone)]
@@ -124,9 +123,9 @@ impl ListingReader {
 		}
 	}
 
-	pub async fn next(&mut self) -> anyhow::Result<ListingDelta> {
+	pub async fn next(&mut self) -> anyhow::Result<Option<ListingDelta>> {
 		if let Some(delta) = self.deltas.pop_front() {
-			return Ok(delta);
+			return Ok(Some(delta));
 		}
 
 		if self.groups.is_none() {
@@ -179,16 +178,17 @@ impl ListingReader {
 						self.current = set;
 
 						if let Some(delta) = self.deltas.pop_front() {
-							return Ok(delta);
+							return Ok(Some(delta));
 						}
 					} else if payload[0] == b'+' {
-						return Ok(ListingDelta::Add(String::from_utf8_lossy(&payload[1..]).to_string()));
+						return Ok(Some(ListingDelta::Add(String::from_utf8_lossy(&payload[1..]).to_string())));
 					} else if payload[0] == b'-' {
-						return Ok(ListingDelta::Rem(String::from_utf8_lossy(&payload[1..]).to_string()));
+						return Ok(Some(ListingDelta::Rem(String::from_utf8_lossy(&payload[1..]).to_string())));
 					} else {
 						anyhow::bail!("invalid delta: {:?}", payload);
 					}
 				}
+				else => return Ok(None),
 			}
 		}
 	}
