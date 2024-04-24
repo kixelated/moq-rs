@@ -84,11 +84,13 @@ async fn main() -> anyhow::Result<()> {
 		let (prod, sub) = serve::Track::new(config.namespace, config.track).produce();
 
 		let clock = clock::Subscriber::new(sub);
+		
+		let subscribe = subscriber.subscribe(prod);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = subscriber.subscribe(prod) => res.context("failed to subscribe to track")?,
+			res = subscribe.closed() => res.context("failed to subscribe to track")?,
 		}
 	}
 

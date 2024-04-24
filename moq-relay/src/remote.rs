@@ -256,13 +256,7 @@ impl RemoteProducer {
 
 					let info = track.info.clone();
 
-					let subscribe = match subscriber.subscribe(track) {
-						Ok(subscribe) => subscribe,
-						Err(err) => {
-							log::warn!("failed subscribing: {:?}, error: {}", info, err);
-							continue
-						}
-					};
+					let subscribe = subscriber.subscribe(track);
 
 					tasks.push(async move {
 						if let Err(err) = subscribe.closed().await {

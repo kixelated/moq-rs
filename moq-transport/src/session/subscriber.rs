@@ -53,13 +53,13 @@ impl Subscriber {
 		self.announced_queue.pop().await
 	}
 
-	pub async fn subscribe(&mut self, track: serve::TrackWriter) -> Result<(), ServeError> {
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Subscribe {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let (send, recv) = Subscribe::new(self.clone(), id, track);
 		self.subscribes.lock().unwrap().insert(id, recv);
 
-		send.closed().await
+		send
 	}
 
 	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) {

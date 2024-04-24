@@ -157,7 +157,7 @@ impl Session {
 						let info = track.clone();
 						log::info!("relaying track: track={:?}", info);
 
-						if let Err(err) = subscriber.subscribe(track).await {
+						if let Err(err) = subscriber.subscribe(track).closed().await {
 							log::warn!("failed serving track: {:?}, error: {}", info, err)
 						}
 
