@@ -31,7 +31,7 @@ pub struct Cli {
 	/// ex. TRACK    namespace=public/ name=meeting/12342/ payload=alice
 	///
 	/// Any announcements that don't match are ignored.
-	#[arg(long, default_value = "/")]
+	#[arg(long, default_value = ".")]
 	pub namespace: String,
 }
 

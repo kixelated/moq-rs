@@ -68,7 +68,7 @@ impl Session {
 	async fn serve_announce(mut self, mut announce: Announced) -> anyhow::Result<()> {
 		announce.ok()?;
 
-		let registration = self.listings.register(&announce.namespace);
+		let registration = self.listings.register(&announce.namespace)?;
 		announce.closed().await?;
 		drop(registration);
 
