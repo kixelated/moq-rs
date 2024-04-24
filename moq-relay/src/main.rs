@@ -6,6 +6,8 @@ mod relay;
 mod remote;
 mod session;
 mod web;
+mod connection;
+mod error;
 
 pub use local::*;
 pub use relay::*;

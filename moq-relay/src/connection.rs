@@ -1,12 +1,10 @@
-use anyhow::Context;
-
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transport::{
 	serve::ServeError,
 	session::{Announced, Publisher, SessionError, Subscribed, Subscriber},
 };
 
-use crate::{LocalsConsumer, LocalsProducer, RelayError, RemotesConsumer};
+use crate::{error::RelayError, RemotesConsumer};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -19,54 +17,8 @@ impl Connection {
 		Self { locals, remotes }
 	}
 
-	pub async fn run(self, mut conn: quinn::Connecting) -> anyhow::Result<()> {
-		let handshake = conn
-			.handshake_data()
-			.await?
-			.downcast::<quinn::crypto::rustls::HandshakeData>()
-			.unwrap();
-
-		let alpn = handshake.protocol.context("missing ALPN")?;
-		let alpn = String::from_utf8_lossy(&alpn);
-		let server_name = handshake.server_name.unwrap_or_default();
-
-		log::debug!(
-			"received QUIC handshake: ip={} alpn={} server={}",
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
-
-		// Wait for the QUIC connection to be established.
-		let conn = conn.await.context("failed to establish QUIC connection")?;
-
-		log::debug!(
-			"established QUIC connection: id={} ip={} alpn={} server={}",
-			conn.stable_id(),
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
-
-		let session = match alpn.as_bytes() {
-			web_transport_quinn::ALPN => {
-				// Wait for the CONNECT request.
-				let request = web_transport_quinn::accept(conn)
-					.await
-					.context("failed to receive WebTransport request")?;
-
-				// Accept the CONNECT request.
-				request
-					.ok()
-					.await
-					.context("failed to respond to WebTransport request")?
-			}
-			// A bit of a hack to pretend like we're a WebTransport session
-			moq_transport::setup::ALPN => conn.into(),
-			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
-		};
-
-		let (session, publisher, subscriber) = moq_transport::Session::accept(session.into()).await?;
+	pub async fn run(self, conn: web_transport_quinn::Session) -> anyhow::Result<()> {
+		let (session, publisher, subscriber) = moq_transport::session::Session::accept(conn.into()).await?;
 
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(session.run().boxed_local());
@@ -90,7 +42,7 @@ impl Connection {
 
 		loop {
 			tokio::select! {
-				subscribe = remote.subscribed() => {
+				Some(subscribe) = remote.subscribed() => {
 					let conn = self.clone();
 
 					tasks.push(async move {
@@ -108,9 +60,9 @@ impl Connection {
 	}
 
 	async fn serve_subscribe(self, subscribe: Subscribed) -> Result<(), RelayError> {
-		if let Some(local) = self.locals.1.route(&subscribe.namespace) {
+		if let Some(local) = self.locals.1.route(&subscribe.namespace).await? {
 			log::debug!("using local announce: {:?}", local.info);
-			if let Some(track) = local.subscribe(&subscribe.name)? {
+			if let Some(track) = local.subscribe(subscribe.namespace.clone(), subscribe.name.clone())? {
 				log::info!("serving from local: {:?}", track.info);
 				// NOTE: Depends on drop(track) being called afterwards
 				return Ok(subscribe.serve(track.reader).await?);
@@ -120,7 +72,7 @@ impl Connection {
 		if let Some(remotes) = &self.remotes {
 			if let Some(remote) = remotes.route(&subscribe.namespace).await? {
 				log::debug!("using remote announce: {:?}", remote.info);
-				if let Some(track) = remote.subscribe(&subscribe.namespace, &subscribe.name)? {
+				if let Some(track) = remote.subscribe(subscribe.namespace.clone(), subscribe.name.clone())? {
 					log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
 
 					// NOTE: Depends on drop(track) being called afterwards
@@ -137,7 +89,7 @@ impl Connection {
 
 		loop {
 			tokio::select! {
-				announce = remote.announced() => {
+				Some(announce) = remote.announced() => {
 					let remote = remote.clone();
 					let conn = self.clone();
 
@@ -193,13 +145,8 @@ impl Connection {
 						let info = track.info.clone();
 						log::info!("relaying track: track={:?}", info);
 
-						let res = match subscriber.subscribe(track) {
-							Ok(subscribe) => subscribe.closed().await,
-							Err(err) => Err(err),
-						};
-
-						if let Err(err) = res {
-							log::warn!("failed serving track: {:?}, error: {}", info, err)
+						if let Err(err) = subscriber.subscribe(track).closed().await {
+							log::warn!("failed serving track: {:?}, error: {}", info, err);
 						}
 					});
 				},

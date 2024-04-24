@@ -7,7 +7,7 @@ use moq_native::quic;
 use moq_transport::session::Publisher;
 use url::Url;
 
-use crate::{Locals, Remotes, RemotesConsumer, RemotesProducer};
+use crate::{connection::Connection, Locals, Remotes, RemotesConsumer, RemotesProducer};
 
 pub struct RelayConfig {
 	/// Listen on this address
@@ -96,10 +96,10 @@ impl Relay {
 			tokio::select! {
 				res = server.accept() => {
 					let conn = res.context("failed to accept QUIC connection")?;
-					let session = Session::new(conn, self.locals.clone(), remotes.clone(), forward.clone());
+					let session = Connection::new(conn, self.locals.clone(), remotes.clone(), forward.clone());
 
 					tasks.push(async move {
-						if let Err(err) = session.run().await {
+						if let Err(err) = session.run(conn).await {
 							log::warn!("connection terminated: {}", err);
 						}
 

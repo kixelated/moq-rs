@@ -6,7 +6,7 @@ use thiserror::Error;
 #[derive(Error, Debug, Clone)]
 pub enum RelayError {
 	#[error("session error: {0}")]
-	Transport(#[from] moq_transport::SessionError),
+	Transport(#[from] moq_transport::session::SessionError),
 
 	#[error("serve error: {0}")]
 	Serve(#[from] ServeError),

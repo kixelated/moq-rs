@@ -14,6 +14,8 @@ use moq_transport::serve::{Track, TrackReader, TrackWriter};
 use moq_transport::watch::State;
 use url::Url;
 
+use crate::error::RelayError;
+
 pub struct Remotes {
 	/// The client we use to fetch/store origin information.
 	pub api: moq_api::Client,
@@ -125,7 +127,7 @@ impl RemotesConsumer {
 		Self { info, state }
 	}
 
-	pub async fn route(&self, namespace: &str) -> anyhow::Result<Option<RemoteConsumer>> {
+	pub async fn route(&self, namespace: &str) -> Result<Option<RemoteConsumer>, RelayError> {
 		// Always fetch the origin instead of using the (potentially invalid) cache.
 		let origin = match self.api.get_origin(namespace).await.map_err(Arc::new)? {
 			None => return Ok(None),
@@ -199,7 +201,6 @@ impl Remote {
 struct RemoteState {
 	tracks: HashMap<(String, String), RemoteTrackWeak>,
 	requested: VecDeque<TrackWriter>,
-	closed: anyhow::Result<()>,
 }
 
 impl Default for RemoteState {
@@ -207,7 +208,6 @@ impl Default for RemoteState {
 		Self {
 			tracks: HashMap::new(),
 			requested: VecDeque::new(),
-			closed: Ok(()),
 		}
 	}
 }
@@ -224,10 +224,6 @@ impl RemoteProducer {
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		if let Err(err) = self.run_inner().await {
-			if let Some(mut state) = self.state.lock_mut() {
-				state.closed = Err(err.clone());
-			}
-
 			return Err(err);
 		}
 
@@ -314,7 +310,7 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, namespace: String, name: String) -> anyhow::Result<Option<RemoteTrackReader>> {
+	pub fn subscribe(&self, namespace: String, name: String) -> Result<Option<RemoteTrackReader>, RelayError> {
 		let key = (namespace.clone(), name.clone());
 		let state = self.state.lock();
 		if let Some(track) = state.tracks.get(&key) {
