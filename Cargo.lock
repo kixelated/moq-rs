@@ -905,7 +905,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport-quinn",
+ "web-transport",
  "webpki",
 ]
 
@@ -989,6 +989,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "web-transport",
  "web-transport-quinn",
  "webpki",
 ]

@@ -19,8 +19,8 @@ use moq_api::{ApiError, Origin};
 #[command(author, version, about, long_about = None)]
 pub struct ServerConfig {
 	/// Listen for HTTP requests on the given address
-	#[arg(long)]
-	pub listen: net::SocketAddr,
+	#[arg(long, default_value = "[::]:80")]
+	pub bind: net::SocketAddr,
 
 	/// Connect to the given redis instance
 	#[arg(long)]
@@ -55,9 +55,9 @@ impl Server {
 			)
 			.with_state(redis);
 
-		log::info!("serving requests: bind={}", self.config.listen);
+		log::info!("serving requests: bind={}", self.config.bind);
 
-		axum::Server::bind(&self.config.listen)
+		axum::Server::bind(&self.config.bind)
 			.serve(app.into_make_service())
 			.await?;
 

@@ -14,9 +14,11 @@ use moq_transport::serve::{Track, TrackReader, TrackWriter};
 use moq_transport::watch::State;
 use url::Url;
 
+use crate::Api;
+
 pub struct Remotes {
 	/// The client we use to fetch/store origin information.
-	pub api: moq_api::Client,
+	pub api: Api,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
 	pub quic: quic::Client,

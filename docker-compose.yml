@@ -1,8 +1,7 @@
 version: "3.8"
 
-x-relay: &x-relay
+x-moq: &x-moq
   build: .
-  entrypoint: ["moq-relay"]
   environment:
     RUST_LOG: ${RUST_LOG:-debug}
   volumes:
@@ -17,26 +16,43 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6400:6379"
+      - "6379"
 
   api:
-    build: .
+    <<: *x-moq
     entrypoint: moq-api
-    command: --bind [::]:4442 --redis redis://redis:6379
+    command: --redis redis://redis:6379
+    ports:
+      - "80"
 
   relay1:
-    <<: *x-relay
-    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --node https://relay1:4443 --dev
+    <<: *x-moq
+    entrypoint: moq-relay
+    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --api http://api --node https://relay1 --announce https://dir
+    depends_on:
+      - api
+      - dir
     ports:
-      - "4443:4443"
-      - "4443:4443/udp"
+      - "4443:443"
+      - "4443:443/udp"
 
   relay2:
-    <<: *x-relay
-    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --node https://relay2:4443 --dev
+    <<: *x-moq
+    entrypoint: moq-relay
+    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --api http://api --node https://relay2 --announce https://dir
+    depends_on:
+      - api
+      - dir
     ports:
-      - "4444:4443"
-      - "4444:4443/udp"
+      - "4444:443"
+      - "4444:443/udp"
+
+  dir:
+    <<: *x-moq
+    entrypoint: moq-dir
+    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key
+    ports:
+      - "443/udp"
 
   install-certs:
     image: golang:latest

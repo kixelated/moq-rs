@@ -7,15 +7,17 @@ use std::net;
 use moq_native::{quic, tls};
 
 mod listing;
+mod listings;
 mod session;
 
 pub use listing::*;
+pub use listings::*;
 pub use session::*;
 
 #[derive(Clone, clap::Parser)]
 pub struct Cli {
 	/// Listen for UDP packets on the given address.
-	#[arg(long, default_value = "[::]:4443")]
+	#[arg(long, default_value = "[::]:443")]
 	pub bind: net::SocketAddr,
 
 	/// The TLS configuration.
@@ -52,6 +54,8 @@ async fn main() -> anyhow::Result<()> {
 	let listings = Listings::new(cli.namespace);
 
 	let mut tasks = FuturesUnordered::new();
+
+	log::info!("listening on {}", quic.local_addr()?);
 
 	loop {
 		tokio::select! {

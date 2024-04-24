@@ -1,93 +1,10 @@
 use anyhow::Context;
 use bytes::BytesMut;
-use std::{
-	collections::{HashMap, HashSet, VecDeque},
-	sync::{Arc, Mutex},
-};
+use std::collections::{HashSet, VecDeque};
 
 use moq_transport::serve::{
-	GroupReader, GroupWriter, GroupsReader, GroupsWriter, ServeError, Track, TrackReader, TrackReaderMode, TrackWriter,
+	GroupReader, GroupWriter, GroupsReader, GroupsWriter, ServeError, TrackReader, TrackReaderMode, TrackWriter,
 };
-
-#[derive(Clone)]
-pub struct Listings {
-	// Our namespace
-	namespace: String,
-
-	// A map of tracks currently being produced.
-	lookup: Arc<Mutex<HashMap<String, (ListingWriter, ListingReader)>>>,
-}
-
-impl Listings {
-	pub fn new(namespace: String) -> Self {
-		Self {
-			namespace,
-			lookup: Default::default(),
-		}
-	}
-
-	// Returns a Registration that removes on drop.
-	pub fn register(&mut self, path: &str) -> Option<Registration> {
-		let (prefix, base) = Self::bucket(path);
-
-		if !prefix.starts_with(&self.namespace) {
-			// Ignore anything that isn't in our namespace.
-			return None;
-		}
-
-		// Remove the namespace prefix from the path.
-		let prefix = &prefix[self.namespace.len()..];
-
-		let mut lookup = self.lookup.lock().unwrap();
-
-		let listing = lookup.entry(prefix.to_string()).or_insert_with(|| {
-			let (writer, reader) = Track::new(self.namespace.clone(), prefix.to_string()).produce();
-			(ListingWriter::new(writer), ListingReader::new(reader))
-		});
-
-		listing.0.insert(base.to_string()).unwrap();
-
-		Some(Registration {
-			listing: self.clone(),
-			prefix: prefix.to_string(),
-			base: base.to_string(),
-		})
-	}
-
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<ListingReader, ServeError> {
-		if namespace == self.namespace {
-			if let Some(listing) = self.lookup.lock().unwrap().get(name) {
-				return Ok(listing.1.clone());
-			}
-		}
-
-		Err(ServeError::NotFound)
-	}
-
-	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), ServeError> {
-		let mut lookup = self.lookup.lock().unwrap();
-
-		let listing = lookup.get_mut(prefix).ok_or(ServeError::NotFound)?;
-		listing.0.remove(base)?;
-
-		if listing.0.is_empty() {
-			lookup.remove(prefix);
-		}
-
-		Ok(())
-	}
-
-	// Returns the prefix for the string.
-	// This is just the content before the last '/', like a directory name.
-	// ex. "/foo/bar/baz" -> ("/foo/bar", "baz")
-	pub fn bucket(path: &str) -> (&str, &str) {
-		// Find the last '/' and return the parts.
-		match path.rfind('/') {
-			Some(index) => (&path[..index + 1], &path[index + 1..]),
-			None => (path, ""),
-		}
-	}
-}
 
 pub struct ListingWriter {
 	track: Option<TrackWriter>,
@@ -279,42 +196,5 @@ impl ListingReader {
 	// If you just want to proxy the track
 	pub fn into_inner(self) -> TrackReader {
 		self.track
-	}
-}
-
-// Used to remove the registration on drop.
-pub struct Registration {
-	listing: Listings,
-	prefix: String,
-	base: String,
-}
-
-impl Drop for Registration {
-	fn drop(&mut self) {
-		self.listing.remove(&self.prefix, &self.base).ok();
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_bucket() {
-		assert!(Listings::bucket("/") == ("/", ""));
-		assert!(Listings::bucket("/foo") == ("/", "foo"));
-		assert!(Listings::bucket("/foo/") == ("/foo/", ""));
-		assert!(Listings::bucket("/foo/bar") == ("/foo/", "bar"));
-		assert!(Listings::bucket("/foo/bar/") == ("/foo/bar/", ""));
-		assert!(Listings::bucket("/foo/bar/baz") == ("/foo/bar/", "baz"));
-		assert!(Listings::bucket("/foo/bar/baz/") == ("/foo/bar/baz/", ""));
-
-		assert!(Listings::bucket("") == ("", ""));
-		assert!(Listings::bucket("foo") == ("", "foo"));
-		assert!(Listings::bucket("foo/") == ("foo/", ""));
-		assert!(Listings::bucket("foo/bar") == ("foo/", "bar"));
-		assert!(Listings::bucket("foo/bar/") == ("foo/bar/", ""));
-		assert!(Listings::bucket("foo/bar/baz") == ("foo/bar/", "baz"));
-		assert!(Listings::bucket("foo/bar/baz/") == ("foo/bar/baz/", ""));
 	}
 }

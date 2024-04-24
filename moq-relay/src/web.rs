@@ -36,7 +36,7 @@ impl Web {
 		Self { app, server }
 	}
 
-	pub async fn serve(self) -> anyhow::Result<()> {
+	pub async fn run(self) -> anyhow::Result<()> {
 		self.server.serve(self.app.into_make_service()).await?;
 		Ok(())
 	}

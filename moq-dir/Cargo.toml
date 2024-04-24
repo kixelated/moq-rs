@@ -17,7 +17,7 @@ moq-transport = { path = "../moq-transport", version = "0.4" }
 
 # QUIC
 quinn = "0.10"
-web-transport-quinn = "0.1"
+web-transport = "0.1"
 url = "2"
 bytes = "1"
 

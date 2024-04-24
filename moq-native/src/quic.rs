@@ -32,7 +32,7 @@ pub struct Endpoint {
 
 pub struct Server {
 	quic: quinn::Endpoint,
-	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport_quinn::Session>>>,
+	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport::Session>>>,
 }
 
 #[derive(Clone)]
@@ -85,7 +85,7 @@ impl Endpoint {
 }
 
 impl Server {
-	pub async fn accept(&mut self) -> Option<web_transport_quinn::Session> {
+	pub async fn accept(&mut self) -> Option<web_transport::Session> {
 		loop {
 			tokio::select! {
 				res = self.quic.accept() => {
@@ -102,7 +102,7 @@ impl Server {
 		}
 	}
 
-	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport_quinn::Session> {
+	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport::Session> {
 		let handshake = conn
 			.handshake_data()
 			.await?
@@ -149,7 +149,7 @@ impl Server {
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
-		Ok(session)
+		Ok(session.into())
 	}
 
 	pub fn local_addr(&self) -> anyhow::Result<net::SocketAddr> {

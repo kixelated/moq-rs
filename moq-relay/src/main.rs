@@ -1,13 +1,19 @@
 use anyhow::Context;
 use clap::Parser;
 
+mod api;
+mod consumer;
 mod local;
+mod producer;
 mod relay;
 mod remote;
 mod session;
 mod web;
 
+pub use api::*;
+pub use consumer::*;
 pub use local::*;
+pub use producer::*;
 pub use relay::*;
 pub use remote::*;
 pub use session::*;
@@ -19,7 +25,7 @@ use url::Url;
 #[derive(Parser, Clone)]
 pub struct Cli {
 	/// Listen on this address
-	#[arg(long, default_value = "[::]:4443")]
+	#[arg(long, default_value = "[::]:443")]
 	pub bind: net::SocketAddr,
 
 	/// The TLS configuration.
@@ -40,11 +46,6 @@ pub struct Cli {
 	/// The provided certificate must be valid for this address.
 	#[arg(long)]
 	pub node: Option<Url>,
-
-	/// Enable development mode.
-	/// Currently, this only listens on HTTPS and serves /fingerprint, for self-signed certificates
-	#[arg(long, action)]
-	pub dev: bool,
 }
 
 #[tokio::main]
@@ -73,17 +74,12 @@ async fn main() -> anyhow::Result<()> {
 		announce: cli.announce,
 	})?;
 
-	// Create the web server if the --dev flag was set.
-	// This is currently only useful in local development so it's not enabled by default.
-	if cli.dev {
-		let web = Web::new(WebConfig { bind: cli.bind, tls });
+	// Create a web server too.
+	// Currently this only contains the certificate fingerprint (for development only).
+	let web = Web::new(WebConfig { bind: cli.bind, tls });
 
-		// Unfortunately we can't use preconditions because Tokio still executes the branch; just ignore the result
-		tokio::select! {
-			res = relay.run() => res.context("failed to run quic server"),
-			res = web.serve() => res.context("failed to run web server"),
-		}
-	} else {
-		relay.run().await.context("failed to run quic server")
+	tokio::select! {
+		res = relay.run() => res.context("failed to run quic server"),
+		res = web.run() => res.context("failed to run web server"),
 	}
 }

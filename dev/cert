@@ -15,4 +15,4 @@ go run filippo.io/mkcert -ecdsa -install
 # Generate a new certificate for localhost
 # This fork of mkcert supports the -days flag.
 # TODO remove the -days flag when Chrome accepts self-signed certs.
-go run filippo.io/mkcert -ecdsa -days 10 -cert-file "$CRT" -key-file "$KEY" localhost 127.0.0.1 ::1 relay1 relay2
+go run filippo.io/mkcert -ecdsa -days 10 -cert-file "$CRT" -key-file "$KEY" localhost 127.0.0.1 ::1
