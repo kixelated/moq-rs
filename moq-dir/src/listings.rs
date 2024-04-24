@@ -54,6 +54,7 @@ impl Listings {
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
+			state.active.insert(prefix.to_string(), listing);
 		}
 
 		log::info!("added listing: {} {}", prefix, base);
