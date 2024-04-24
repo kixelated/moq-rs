@@ -7,7 +7,7 @@ use moq_native::quic;
 use moq_transport::session::Publisher;
 use url::Url;
 
-use crate::{Locals, Remotes, RemotesConsumer, RemotesProducer};
+use crate::{Locals, Remotes, RemotesConsumer, RemotesProducer, Session};
 
 pub struct RelayConfig {
 	/// Listen on this address
@@ -52,9 +52,9 @@ impl Relay {
 			node
 		});
 
-		let locals = Locals::new(api, node);
+		let locals = Locals::new(api.clone(), node);
 
-		let remotes = api.clone().map(|api| {
+		let remotes = api.map(|api| {
 			Remotes {
 				api,
 				quic: quic.client.clone(),
@@ -70,7 +70,7 @@ impl Relay {
 		})
 	}
 
-	pub async fn run(mut self) -> anyhow::Result<()> {
+	pub async fn run(self) -> anyhow::Result<()> {
 		let mut tasks = FuturesUnordered::new();
 
 		let forward = if let Some(url) = &self.announce {

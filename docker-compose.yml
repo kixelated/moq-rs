@@ -6,9 +6,9 @@ x-relay: &x-relay
   environment:
     RUST_LOG: ${RUST_LOG:-debug}
   volumes:
-  - ./dev/localhost.crt:/etc/tls/cert:ro
-  - ./dev/localhost.key:/etc/tls/key:ro
-  - certs:/etc/ssl/certs
+    - ./dev/localhost.crt:/etc/tls/cert:ro
+    - ./dev/localhost.key:/etc/tls/key:ro
+    - certs:/etc/ssl/certs
   depends_on:
     install-certs:
       condition: service_completed_successfully
@@ -17,7 +17,7 @@ services:
   redis:
     image: redis:7
     ports:
-    - "6400:6379"
+      - "6400:6379"
 
   api:
     build: .
@@ -26,17 +26,17 @@ services:
 
   relay1:
     <<: *x-relay
-    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --api-node https://relay1:4443 --dev
+    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --node https://relay1:4443 --dev
     ports:
-    - "4443:4443"
-    - "4443:4443/udp"
+      - "4443:4443"
+      - "4443:4443/udp"
 
   relay2:
     <<: *x-relay
-    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --api-node https://relay2:4443 --dev
+    command: --bind [::]:4443 --tls-cert /etc/tls/cert --tls-key /etc/tls/key --api http://api:4442 --node https://relay2:4443 --dev
     ports:
-    - "4444:4443"
-    - "4444:4443/udp"
+      - "4444:4443"
+      - "4444:4443/udp"
 
   install-certs:
     image: golang:latest
@@ -45,10 +45,10 @@ services:
     environment:
       CAROOT: /work/caroot
     volumes:
-    - ${CAROOT:-.}:/work/caroot
-    - certs:/etc/ssl/certs
-    - ./dev/go.mod:/work/go.mod:ro
-    - ./dev/go.sum:/work/go.sum:ro
+      - ${CAROOT:-.}:/work/caroot
+      - certs:/etc/ssl/certs
+      - ./dev/go.mod:/work/go.mod:ro
+      - ./dev/go.sum:/work/go.sum:ro
 
 volumes:
   certs:

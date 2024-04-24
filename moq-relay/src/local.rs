@@ -93,6 +93,8 @@ impl Registration {
 impl Drop for Registration {
 	fn drop(&mut self) {
 		// TODO this is really lazy
-		tokio::spawn(async move { self.locals.unregister(&self.namespace).await });
+		let mut locals = self.locals.clone();
+		let namespace = self.namespace.clone();
+		tokio::spawn(async move { locals.unregister(&namespace).await });
 	}
 }

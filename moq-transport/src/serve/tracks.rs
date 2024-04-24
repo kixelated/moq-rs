@@ -31,8 +31,8 @@ impl Tracks {
 		let state = State::default().split();
 		let queue = Queue::default().split();
 
-		let writer = TracksWriter::new(state.0, info.clone());
-		let request = TracksRequest::new(queue.0, info.clone());
+		let writer = TracksWriter::new(state.0.clone(), info.clone());
+		let request = TracksRequest::new(state.0, queue.0, info.clone());
 		let reader = TracksReader::new(state.1, queue.1, info);
 
 		(writer, request, reader)
@@ -84,13 +84,16 @@ impl Deref for TracksWriter {
 }
 
 pub struct TracksRequest {
+	#[allow(dead_code)] // Avoid dropping the write side
+	state: State<TracksState>,
 	incoming: Option<Queue<TrackWriter>>,
 	pub info: Arc<Tracks>,
 }
 
 impl TracksRequest {
-	fn new(incoming: Queue<TrackWriter>, info: Arc<Tracks>) -> Self {
+	fn new(state: State<TracksState>, incoming: Queue<TrackWriter>, info: Arc<Tracks>) -> Self {
 		Self {
+			state,
 			incoming: Some(incoming),
 			info,
 		}
@@ -152,7 +155,6 @@ impl TracksReader {
 		.produce();
 
 		if let Err(_) = self.queue.push(track.0) {
-			// No TracksRequest on the other end to receive the track.
 			return None;
 		}
 

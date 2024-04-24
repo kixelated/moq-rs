@@ -76,18 +76,15 @@ impl Session {
 
 	async fn serve_subscribe(self, subscribe: Subscribed) -> Result<(), anyhow::Error> {
 		if let Some(mut local) = self.locals.route(&subscribe.namespace) {
-			log::debug!("using local announce: {:?}", local.namespace);
 			if let Some(track) = local.subscribe(&subscribe.name) {
 				log::info!("serving from local: {:?}", track.info);
 				return Ok(subscribe.serve(track).await?);
 			}
 		}
 
-		/*
 		if let Some(remotes) = &self.remotes {
 			if let Some(remote) = remotes.route(&subscribe.namespace).await? {
-				log::debug!("using remote announce: {:?}", remote.info);
-				if let Some(track) = remote.subscribe(&subscribe.namespace, &subscribe.name)? {
+				if let Some(track) = remote.subscribe(subscribe.namespace.clone(), subscribe.name.clone())? {
 					log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
 
 					// NOTE: Depends on drop(track) being called afterwards
@@ -95,7 +92,6 @@ impl Session {
 				}
 			}
 		}
-		*/
 
 		Err(ServeError::NotFound.into())
 	}
@@ -155,10 +151,10 @@ impl Session {
 
 					tasks.push(async move {
 						let info = track.clone();
-						log::info!("relaying track: track={:?}", info);
+						log::info!("forwarding subscribe: {:?}", info);
 
 						if let Err(err) = subscriber.subscribe(track).await {
-							log::warn!("failed serving track: {:?}, error: {}", info, err)
+							log::warn!("failed forwarding subscribe: {:?}, error: {}", info, err)
 						}
 
 						Ok(())

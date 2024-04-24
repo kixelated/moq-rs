@@ -13,7 +13,8 @@ CERT="${CERT:-dev/localhost.crt}"
 KEY="${KEY:-dev/localhost.key}"
 
 # Default to listening on localhost:4443
-BIND="${BIND:-[::]:4443}"
+PORT="${PORT:-4443}"
+BIND="${BIND:-[::]:$PORT}"
 
 # A list of optional args
 ARGS=""
@@ -29,7 +30,7 @@ if [ -n "${HOST-}" ]; then
 	ARGS="$ARGS --host $HOST"
 fi
 
-echo "Publish URL: https://quic.video/publish/?server=localhost:${PORT}"
+echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$LISTEN" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
