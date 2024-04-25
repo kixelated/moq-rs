@@ -75,7 +75,7 @@ impl Relay {
 		let mut tasks = FuturesUnordered::new();
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
-			tasks.push(producer.run().boxed_local());
+			tasks.push(producer.run().boxed());
 			consumer
 		});
 
@@ -90,7 +90,7 @@ impl Relay {
 							log::warn!("connection terminated: {}", err);
 						}
 						Ok(())
-					}.boxed_local());
+					}.boxed());
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			}

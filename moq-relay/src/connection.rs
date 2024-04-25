@@ -69,14 +69,14 @@ impl Connection {
 		let (session, publisher, subscriber) = moq_transport::Session::accept(session.into()).await?;
 
 		let mut tasks = FuturesUnordered::new();
-		tasks.push(session.run().boxed_local());
+		tasks.push(session.run().boxed());
 
 		if let Some(remote) = publisher {
-			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed_local());
+			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed());
 		}
 
 		if let Some(remote) = subscriber {
-			tasks.push(Self::serve_publisher(self.clone(), remote).boxed_local());
+			tasks.push(Self::serve_publisher(self.clone(), remote).boxed());
 		}
 
 		// Return the first error

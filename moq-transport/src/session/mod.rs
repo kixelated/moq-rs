@@ -19,7 +19,6 @@ pub use subscriber::*;
 use reader::*;
 use writer::*;
 
-use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::message::Message;
@@ -162,18 +161,12 @@ impl Session {
 	}
 
 	pub async fn run(self) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-
-		tasks.push(Self::run_recv(self.recver, self.publisher, self.subscriber.clone()).boxed_local());
-		tasks.push(Self::run_send(self.sender, self.outgoing).boxed_local());
-
-		if let Some(subscriber) = self.subscriber {
-			tasks.push(Self::run_streams(self.webtransport.clone(), subscriber.clone()).boxed_local());
-			tasks.push(Self::run_datagrams(self.webtransport, subscriber).boxed_local());
+		tokio::select! {
+			res = Self::run_recv(self.recver, self.publisher, self.subscriber.clone()) => res,
+			res = Self::run_send(self.sender, self.outgoing) => res,
+			res = Self::run_streams(self.webtransport.clone(), self.subscriber.clone()) => res,
+			res = Self::run_datagrams(self.webtransport, self.subscriber) => res,
 		}
-
-		let res = tasks.select_next_some().await;
-		Err(res.expect_err("run terminated with OK"))
 	}
 
 	async fn run_send(mut sender: Writer, outgoing: Queue<message::Message>) -> Result<(), SessionError> {
@@ -220,14 +213,17 @@ impl Session {
 		}
 	}
 
-	async fn run_streams(mut webtransport: web_transport::Session, subscriber: Subscriber) -> Result<(), SessionError> {
+	async fn run_streams(
+		mut webtransport: web_transport::Session,
+		subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
 					let stream = res?;
-					let subscriber = subscriber.clone();
+					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
 					tasks.push(async move {
 						if let Err(err) = Subscriber::recv_stream(subscriber, stream).await {
@@ -242,11 +238,14 @@ impl Session {
 
 	async fn run_datagrams(
 		mut webtransport: web_transport::Session,
-		mut subscriber: Subscriber,
+		mut subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
 		loop {
 			let datagram = webtransport.recv_datagram().await?;
-			subscriber.recv_datagram(datagram)?;
+			subscriber
+				.as_mut()
+				.ok_or(SessionError::RoleViolation)?
+				.recv_datagram(datagram)?;
 		}
 	}
 }
