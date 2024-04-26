@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::{fs, time};
 use webpki::{DnsNameRef, EndEntityCert};
 
-#[derive(Parser, Clone)]
+#[derive(Parser, Clone, Default)]
 #[group(id = "tls")]
 pub struct Cli {
 	/// Use the certificates at this path, encoded as PEM.

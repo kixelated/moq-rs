@@ -20,6 +20,16 @@ pub struct Cli {
 	pub tls: tls::Cli,
 }
 
+impl Default for Cli {
+	fn default() -> Self {
+		Self {
+			// Client only
+			bind: "[::]:0".parse().unwrap(),
+			tls: Default::default(),
+		}
+	}
+}
+
 pub struct Config {
 	pub bind: net::SocketAddr,
 	pub tls: tls::Config,
@@ -28,18 +38,6 @@ pub struct Config {
 pub struct Endpoint {
 	pub client: Client,
 	pub server: Option<Server>,
-}
-
-pub struct Server {
-	quic: quinn::Endpoint,
-	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport::Session>>>,
-}
-
-#[derive(Clone)]
-pub struct Client {
-	quic: quinn::Endpoint,
-	config: rustls::ClientConfig,
-	transport: Arc<quinn::TransportConfig>,
 }
 
 impl Endpoint {
@@ -82,6 +80,11 @@ impl Endpoint {
 
 		Ok(Self { client, server })
 	}
+}
+
+pub struct Server {
+	quic: quinn::Endpoint,
+	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport::Session>>>,
 }
 
 impl Server {
@@ -155,6 +158,13 @@ impl Server {
 	pub fn local_addr(&self) -> anyhow::Result<net::SocketAddr> {
 		self.quic.local_addr().context("failed to get local address")
 	}
+}
+
+#[derive(Clone)]
+pub struct Client {
+	quic: quinn::Endpoint,
+	config: rustls::ClientConfig,
+	transport: Arc<quinn::TransportConfig>,
 }
 
 impl Client {
