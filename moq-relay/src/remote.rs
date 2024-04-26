@@ -220,7 +220,7 @@ impl RemoteProducer {
 		let (session, subscriber) = moq_transport::session::Subscriber::connect(session.into()).await?;
 
 		// Run the session
-		let mut session = session.run().boxed_local();
+		let mut session = session.run().boxed();
 		let mut tasks = FuturesUnordered::new();
 
 		let mut done = None;

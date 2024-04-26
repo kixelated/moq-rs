@@ -72,7 +72,7 @@ impl Relay {
 		let mut tasks = FuturesUnordered::new();
 
 		let remotes = self.remotes.map(|(producer, consumer)| {
-			tasks.push(async move { producer.run().await.context("remotes producer failed") }.boxed_local());
+			tasks.push(producer.run().boxed());
 			consumer
 		});
 
@@ -97,7 +97,7 @@ impl Relay {
 
 			let forward = session.producer.clone();
 
-			tasks.push(async move { session.run().await.context("forwarding failed") }.boxed_local());
+			tasks.push(async move { session.run().await.context("forwarding failed") }.boxed());
 
 			forward
 		} else {
@@ -137,7 +137,7 @@ impl Relay {
 						}
 
 						Ok(())
-					}.boxed_local());
+					}.boxed());
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			}

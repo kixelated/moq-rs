@@ -19,14 +19,14 @@ impl Session {
 		let (session, publisher, subscriber) = moq_transport::session::Session::accept(session).await?;
 
 		let mut tasks = FuturesUnordered::new();
-		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed_local());
+		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed());
 
 		if let Some(remote) = publisher {
-			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed_local());
+			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed());
 		}
 
 		if let Some(remote) = subscriber {
-			tasks.push(Self::serve_publisher(self.clone(), remote).boxed_local());
+			tasks.push(Self::serve_publisher(self.clone(), remote).boxed());
 		}
 
 		// Return the first error
