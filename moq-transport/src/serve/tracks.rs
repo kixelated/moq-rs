@@ -154,7 +154,7 @@ impl TracksReader {
 		}
 		.produce();
 
-		if let Err(_) = self.queue.push(track.0) {
+		if self.queue.push(track.0).is_err() {
 			return None;
 		}
 

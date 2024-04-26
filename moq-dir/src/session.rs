@@ -15,7 +15,7 @@ impl Session {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let session = self.session.clone().into();
+		let session = self.session.clone();
 		let (session, publisher, subscriber) = moq_transport::session::Session::accept(session).await?;
 
 		let mut tasks = FuturesUnordered::new();

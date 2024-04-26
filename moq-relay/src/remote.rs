@@ -190,19 +190,13 @@ impl Remote {
 	}
 }
 
+#[derive(Default)]
 struct RemoteState {
 	tracks: HashMap<(String, String), RemoteTrackWeak>,
 	requested: VecDeque<TrackWriter>,
 }
 
-impl Default for RemoteState {
-	fn default() -> Self {
-		Self {
-			tracks: HashMap::new(),
-			requested: VecDeque::new(),
-		}
-	}
-}
+
 
 pub struct RemoteProducer {
 	pub info: Arc<Remote>,
@@ -217,7 +211,7 @@ impl RemoteProducer {
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		// TODO reuse QUIC and MoQ sessions
 		let session = self.quic.connect(&self.url).await?;
-		let (session, subscriber) = moq_transport::session::Subscriber::connect(session.into()).await?;
+		let (session, subscriber) = moq_transport::session::Subscriber::connect(session).await?;
 
 		// Run the session
 		let mut session = session.run().boxed();

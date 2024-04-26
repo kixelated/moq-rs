@@ -10,6 +10,12 @@ pub struct Locals {
 	lookup: Arc<Mutex<HashMap<String, TracksReader>>>,
 }
 
+impl Default for Locals {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Locals {
 	pub fn new() -> Self {
 		Self {
