@@ -10,8 +10,9 @@ use crate::{
 	message::{self, Message},
 	serve::{self, ServeError},
 	setup,
-	util::Queue,
 };
+
+use crate::watch::Queue;
 
 use super::{Announced, AnnouncedRecv, Reader, Session, SessionError, Subscribe, SubscribeRecv};
 
@@ -48,17 +49,17 @@ impl Subscriber {
 		Ok((session, subscriber.unwrap()))
 	}
 
-	pub async fn announced(&mut self) -> Announced {
+	pub async fn announced(&mut self) -> Option<Announced> {
 		self.announced_queue.pop().await
 	}
 
-	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe, ServeError> {
+	pub async fn subscribe(&mut self, track: serve::TrackWriter) -> Result<(), ServeError> {
 		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let (send, recv) = Subscribe::new(self.clone(), id, track);
 		self.subscribes.lock().unwrap().insert(id, recv);
 
-		Ok(send)
+		send.closed().await
 	}
 
 	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) {
@@ -71,7 +72,8 @@ impl Subscriber {
 			_ => {}
 		}
 
-		self.outgoing.push(msg.into());
+		// TODO report dropped messages?
+		let _ = self.outgoing.push(msg.into());
 	}
 
 	pub(super) fn recv_message(&mut self, msg: message::Publisher) -> Result<(), SessionError> {
@@ -100,7 +102,11 @@ impl Subscriber {
 		};
 
 		let (announced, recv) = Announced::new(self.clone(), msg.namespace.to_string());
-		self.announced_queue.push(announced);
+		if let Err(announced) = self.announced_queue.push(announced) {
+			announced.close(ServeError::Cancel)?;
+			return Ok(());
+		}
+
 		entry.insert(recv);
 
 		Ok(())

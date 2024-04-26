@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use std::{cmp, ops::Deref, sync::Arc};
 
-use crate::util::State;
+use crate::watch::State;
 
 use super::{ServeError, Track};
 
@@ -20,7 +20,7 @@ pub struct Groups {
 
 impl Groups {
 	pub fn produce(self) -> (GroupsWriter, GroupsReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 
 		let writer = GroupsWriter::new(writer, self.track.clone());
 		let reader = GroupsReader::new(reader, self.track);
@@ -70,7 +70,7 @@ impl GroupsWriter {
 	}
 
 	// Helper to increment the group by one.
-	pub fn next(&mut self, priority: u64) -> Result<GroupWriter, ServeError> {
+	pub fn append(&mut self, priority: u64) -> Result<GroupWriter, ServeError> {
 		self.create(Group {
 			group_id: self.next,
 			priority,
@@ -141,7 +141,7 @@ impl GroupsReader {
 
 	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 
 				if self.epoch != state.epoch {
@@ -154,9 +154,8 @@ impl GroupsReader {
 					Some(notify) => notify,
 					None => return Ok(None),
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
 	}
 
@@ -201,7 +200,7 @@ pub struct GroupInfo {
 
 impl GroupInfo {
 	pub fn produce(self) -> (GroupWriter, GroupReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = GroupWriter::new(writer, info.clone());
@@ -292,6 +291,14 @@ impl GroupWriter {
 		state.closed = Err(err);
 		Ok(())
 	}
+
+	pub fn len(&self) -> usize {
+		self.state.lock().objects.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 impl Deref for GroupWriter {
@@ -340,7 +347,7 @@ impl GroupReader {
 
 	pub async fn next(&mut self) -> Result<Option<GroupObjectReader>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 
 				if self.index < state.objects.len() {
@@ -354,10 +361,21 @@ impl GroupReader {
 					Some(notify) => notify,
 					None => return Ok(None),
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
+	}
+
+	pub fn pos(&self) -> usize {
+		self.index
+	}
+
+	pub fn len(&self) -> usize {
+		self.state.lock().objects.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -382,7 +400,7 @@ pub struct GroupObject {
 
 impl GroupObject {
 	pub fn produce(self) -> (GroupObjectWriter, GroupObjectReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = GroupObjectWriter::new(writer, info.clone());
@@ -514,7 +532,7 @@ impl GroupObjectReader {
 	/// Block until the next chunk of bytes is available.
 	pub async fn read(&mut self) -> Result<Option<Bytes>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 
 				if self.index < state.chunks.len() {
@@ -528,9 +546,8 @@ impl GroupObjectReader {
 					Some(notify) => notify,
 					None => return Ok(None), // No more changes will come
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
 	}
 

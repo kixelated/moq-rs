@@ -3,8 +3,9 @@ use std::ops;
 use crate::{
 	data, message,
 	serve::{self, ServeError, TrackWriter, TrackWriterMode},
-	util::State,
 };
+
+use crate::watch::State;
 
 use super::Subscriber;
 
@@ -56,7 +57,7 @@ impl Subscribe {
 			name: track.name.clone(),
 		};
 
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 
 		let send = Subscribe {
 			state: send,
@@ -75,7 +76,7 @@ impl Subscribe {
 
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				state.closed.clone()?;
 
@@ -83,9 +84,8 @@ impl Subscribe {
 					Some(notify) => notify,
 					None => return Ok(()),
 				}
-			};
-
-			notify.await
+			}
+			.await;
 		}
 	}
 }

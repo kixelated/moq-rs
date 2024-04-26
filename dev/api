@@ -42,4 +42,4 @@ trap cleanup EXIT
 DATABASE="${DATABASE-sqlite::memory:}"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-api -- --listen "$LISTEN" --redis "redis://localhost:$REDIS_PORT" "$@"
+cargo run --bin moq-api -- --bin "$LISTEN" --redis "redis://localhost:$REDIS_PORT" "$@"

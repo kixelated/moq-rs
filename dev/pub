@@ -30,12 +30,12 @@ INPUT="${INPUT:-dev/source.mp4}"
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Run ffmpeg and pipe the output to moq-pub
-# TODO enable audio again once fixed.
+# TODO fix the stuttering issue with audio (try removing -an)
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \
-	-c copy \
 	-an \
+	-c copy \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
 	-frag_duration 1 \
 	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"

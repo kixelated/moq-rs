@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Use debug logging by default
+export RUST_LOG="${RUST_LOG:-debug}"
+
+# Default to a self-signed certificate
+# TODO automatically generate if it doesn't exist.
+CERT="${CERT:-dev/localhost.crt}"
+KEY="${KEY:-dev/localhost.key}"
+
+# Default to listening on localhost:4442
+PORT="${PORT:-4442}"
+BIND="${BIND:-[::]:$PORT}"
+
+# A list of optional args
+ARGS=""
+
+# Run the server and forward any arguments
+cargo run --bin moq-dir -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" $ARGS -- "$@"

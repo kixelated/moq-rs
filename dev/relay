@@ -13,25 +13,24 @@ CERT="${CERT:-dev/localhost.crt}"
 KEY="${KEY:-dev/localhost.key}"
 
 # Default to listening on localhost:4443
-HOST="${HOST:-[::]}"
 PORT="${PORT:-4443}"
-LISTEN="${LISTEN:-$HOST:$PORT}"
+BIND="${BIND:-[::]:$PORT}"
 
 # A list of optional args
 ARGS=""
 
-# Connect to the given URL to get origins.
+# Connect to the given URL to get announcements
 # TODO default to a public instance?
-if [ -n "${API-}" ]; then
-	ARGS="$ARGS --api $API"
+if [ -n "${ANNOUNCE-}" ]; then
+	ARGS="$ARGS --announce $ANNOUNCE"
 fi
 
 # Provide our node URL when registering origins.
-if [ -n "${NODE-}" ]; then
-	ARGS="$ARGS --api-node $NODE"
+if [ -n "${HOST-}" ]; then
+	ARGS="$ARGS --host $HOST"
 fi
 
-echo "Publish URL: https://quic.video/publish/?server=localhost:${PORT}"
+echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --listen "$LISTEN" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"

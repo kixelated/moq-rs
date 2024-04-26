@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use std::{ops::Deref, sync::Arc};
 
-use crate::util::State;
+use crate::watch::State;
 
 use super::{ServeError, Track};
 
@@ -13,7 +13,7 @@ pub struct Stream {
 
 impl Stream {
 	pub fn produce(self) -> (StreamWriter, StreamReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = StreamWriter::new(writer, info.clone());
@@ -83,7 +83,7 @@ impl StreamWriter {
 			group_id,
 		});
 
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 
 		let reader = StreamGroupReader::new(reader, group.clone());
 		let writer = StreamGroupWriter::new(writer, group);
@@ -147,7 +147,7 @@ impl StreamReader {
 	/// Block until the next group is available.
 	pub async fn next(&mut self) -> Result<Option<StreamGroupReader>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if self.epoch != state.epoch {
 					self.epoch = state.epoch;
@@ -160,9 +160,8 @@ impl StreamReader {
 					Some(notify) => notify,
 					None => return Ok(None),
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
 	}
 
@@ -212,13 +211,13 @@ impl Default for StreamGroupState {
 
 pub struct StreamGroupWriter {
 	state: State<StreamGroupState>,
-	pub group: Arc<StreamGroup>,
+	pub info: Arc<StreamGroup>,
 	next: u64,
 }
 
 impl StreamGroupWriter {
-	fn new(state: State<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
-		Self { state, group, next: 0 }
+	fn new(state: State<StreamGroupState>, info: Arc<StreamGroup>) -> Self {
+		Self { state, info, next: 0 }
 	}
 
 	/// Add a new object to the group.
@@ -232,7 +231,7 @@ impl StreamGroupWriter {
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		let (writer, reader) = StreamObject {
-			group: self.group.clone(),
+			group: self.info.clone(),
 			object_id: self.next,
 			size,
 		}
@@ -259,20 +258,20 @@ impl Deref for StreamGroupWriter {
 	type Target = StreamGroup;
 
 	fn deref(&self) -> &Self::Target {
-		&self.group
+		&self.info
 	}
 }
 
 #[derive(Clone)]
 pub struct StreamGroupReader {
-	pub group: Arc<StreamGroup>,
+	pub info: Arc<StreamGroup>,
 	state: State<StreamGroupState>,
 	index: usize,
 }
 
 impl StreamGroupReader {
-	fn new(state: State<StreamGroupState>, group: Arc<StreamGroup>) -> Self {
-		Self { state, group, index: 0 }
+	fn new(state: State<StreamGroupState>, info: Arc<StreamGroup>) -> Self {
+		Self { state, info, index: 0 }
 	}
 
 	pub async fn read_next(&mut self) -> Result<Option<Bytes>, ServeError> {
@@ -285,7 +284,7 @@ impl StreamGroupReader {
 
 	pub async fn next(&mut self) -> Result<Option<StreamObjectReader>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if self.index < state.objects.len() {
 					self.index += 1;
@@ -297,9 +296,8 @@ impl StreamGroupReader {
 					Some(notify) => notify,
 					None => return Ok(None),
 				}
-			};
-
-			notify.await
+			}
+			.await;
 		}
 	}
 
@@ -313,7 +311,7 @@ impl Deref for StreamGroupReader {
 	type Target = StreamGroup;
 
 	fn deref(&self) -> &Self::Target {
-		&self.group
+		&self.info
 	}
 }
 
@@ -331,7 +329,7 @@ pub struct StreamObject {
 
 impl StreamObject {
 	pub fn produce(self) -> (StreamObjectWriter, StreamObjectReader) {
-		let (writer, reader) = State::init();
+		let (writer, reader) = State::default().split();
 		let info = Arc::new(self);
 
 		let writer = StreamObjectWriter::new(writer, info.clone());
@@ -371,7 +369,7 @@ pub struct StreamObjectWriter {
 	state: State<StreamObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<StreamObject>,
+	pub info: Arc<StreamObject>,
 
 	// The amount of promised data that has yet to be written.
 	remain: usize,
@@ -379,11 +377,11 @@ pub struct StreamObjectWriter {
 
 impl StreamObjectWriter {
 	/// Create a new segment with the given info.
-	fn new(state: State<StreamObjectState>, object: Arc<StreamObject>) -> Self {
+	fn new(state: State<StreamObjectState>, info: Arc<StreamObject>) -> Self {
 		Self {
 			state,
-			remain: object.size,
-			object,
+			remain: info.size,
+			info,
 		}
 	}
 
@@ -434,7 +432,7 @@ impl Deref for StreamObjectWriter {
 	type Target = StreamObject;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }
 
@@ -445,7 +443,7 @@ pub struct StreamObjectReader {
 	state: State<StreamObjectState>,
 
 	// Immutable segment state.
-	pub object: Arc<StreamObject>,
+	pub info: Arc<StreamObject>,
 
 	// The number of chunks that we've read.
 	// NOTE: Cloned readers inherit this index, but then run in parallel.
@@ -453,18 +451,14 @@ pub struct StreamObjectReader {
 }
 
 impl StreamObjectReader {
-	fn new(state: State<StreamObjectState>, object: Arc<StreamObject>) -> Self {
-		Self {
-			state,
-			object,
-			index: 0,
-		}
+	fn new(state: State<StreamObjectState>, info: Arc<StreamObject>) -> Self {
+		Self { state, info, index: 0 }
 	}
 
 	/// Block until the next chunk of bytes is available.
 	pub async fn read(&mut self) -> Result<Option<Bytes>, ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 
 				if self.index < state.chunks.len() {
@@ -478,9 +472,8 @@ impl StreamObjectReader {
 					Some(notify) => notify,
 					None => return Ok(None),
 				}
-			};
-
-			notify.await; // Try again when the state changes
+			}
+			.await; // Try again when the state changes
 		}
 	}
 
@@ -498,6 +491,6 @@ impl Deref for StreamObjectReader {
 	type Target = StreamObject;
 
 	fn deref(&self) -> &Self::Target {
-		&self.object
+		&self.info
 	}
 }

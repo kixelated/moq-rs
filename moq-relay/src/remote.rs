@@ -9,23 +9,24 @@ use std::sync::Weak;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use moq_native::quic;
 use moq_transport::serve::{Track, TrackReader, TrackWriter};
-use moq_transport::util::State;
+use moq_transport::watch::State;
 use url::Url;
 
-use crate::RelayError;
+use crate::Api;
 
 pub struct Remotes {
 	/// The client we use to fetch/store origin information.
-	pub api: moq_api::Client,
+	pub api: Api,
 
 	// A QUIC endpoint we'll use to fetch from other origins.
-	pub quic: quinn::Endpoint,
+	pub quic: quic::Client,
 }
 
 impl Remotes {
 	pub fn produce(self) -> (RemotesProducer, RemotesConsumer) {
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 		let info = Arc::new(self);
 
 		let producer = RemotesProducer::new(info.clone(), send);
@@ -53,35 +54,26 @@ impl RemotesProducer {
 		Self { info, state }
 	}
 
-	async fn next(&mut self) -> Result<Option<RemoteProducer>, RelayError> {
+	async fn next(&mut self) -> Option<RemoteProducer> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				if !state.requested.is_empty() {
-					return Ok(state.into_mut().and_then(|mut state| state.requested.pop_front()));
+					return state.into_mut()?.requested.pop_front();
 				}
 
-				match state.modified() {
-					Some(notified) => notified,
-					None => return Ok(None),
-				}
-			};
-
-			notify.await
+				state.modified()?
+			}
+			.await;
 		}
 	}
 
-	pub async fn run(mut self) -> Result<(), RelayError> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				remote = self.next() => {
-					let remote = match remote? {
-						Some(remote) => remote,
-						None => return Ok(()),
-					};
-
+				Some(mut remote) = self.next() => {
 					let url = remote.url.clone();
 
 					tasks.push(async move {
@@ -102,6 +94,7 @@ impl RemotesProducer {
 						state.lookup.remove(&url);
 					}
 				},
+				else => return Ok(()),
 			}
 		}
 	}
@@ -126,9 +119,9 @@ impl RemotesConsumer {
 		Self { info, state }
 	}
 
-	pub async fn route(&self, namespace: &str) -> Result<Option<RemoteConsumer>, RelayError> {
+	pub async fn route(&self, namespace: &str) -> anyhow::Result<Option<RemoteConsumer>> {
 		// Always fetch the origin instead of using the (potentially invalid) cache.
-		let origin = match self.api.get_origin(namespace).await.map_err(Arc::new)? {
+		let origin = match self.api.get_origin(namespace).await? {
 			None => return Ok(None),
 			Some(origin) => origin,
 		};
@@ -187,7 +180,7 @@ impl ops::Deref for Remote {
 impl Remote {
 	/// Create a new broadcast.
 	pub fn produce(self) -> (RemoteProducer, RemoteConsumer) {
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 		let info = Arc::new(self);
 
 		let consumer = RemoteConsumer::new(info.clone(), recv);
@@ -197,20 +190,10 @@ impl Remote {
 	}
 }
 
+#[derive(Default)]
 struct RemoteState {
 	tracks: HashMap<(String, String), RemoteTrackWeak>,
 	requested: VecDeque<TrackWriter>,
-	closed: Result<(), RelayError>,
-}
-
-impl Default for RemoteState {
-	fn default() -> Self {
-		Self {
-			tracks: HashMap::new(),
-			requested: VecDeque::new(),
-			closed: Ok(()),
-		}
-	}
 }
 
 pub struct RemoteProducer {
@@ -223,22 +206,10 @@ impl RemoteProducer {
 		Self { info, state }
 	}
 
-	pub async fn run(mut self) -> Result<(), RelayError> {
-		if let Err(err) = self.run_inner().await {
-			if let Some(mut state) = self.state.lock_mut() {
-				state.closed = Err(err.clone());
-			}
-
-			return Err(err);
-		}
-
-		Ok(())
-	}
-
-	pub async fn run_inner(&mut self) -> Result<(), RelayError> {
+	pub async fn run(&mut self) -> anyhow::Result<()> {
 		// TODO reuse QUIC and MoQ sessions
-		let session = web_transport_quinn::connect(&self.quic, &self.url).await?;
-		let (session, mut subscriber) = moq_transport::Subscriber::connect(session.into()).await?;
+		let session = self.quic.connect(&self.url).await?;
+		let (session, subscriber) = moq_transport::session::Subscriber::connect(session).await?;
 
 		// Run the session
 		let mut session = session.run().boxed();
@@ -256,17 +227,10 @@ impl RemoteProducer {
 					};
 
 					let info = track.info.clone();
-
-					let subscribe = match subscriber.subscribe(track) {
-						Ok(subscribe) => subscribe,
-						Err(err) => {
-							log::warn!("failed subscribing: {:?}, error: {}", info, err);
-							continue
-						}
-					};
+					let mut subscriber = subscriber.clone();
 
 					tasks.push(async move {
-						if let Err(err) = subscribe.closed().await {
+						if let Err(err) = subscriber.subscribe(track).await {
 							log::warn!("failed serving track: {:?}, error: {}", info, err);
 						}
 					});
@@ -282,7 +246,7 @@ impl RemoteProducer {
 	}
 
 	/// Block until the next track requested by a consumer.
-	async fn next(&self) -> Result<Option<TrackWriter>, RelayError> {
+	async fn next(&self) -> anyhow::Result<Option<TrackWriter>> {
 		loop {
 			let notify = {
 				let state = self.state.lock();
@@ -321,8 +285,8 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, namespace: &str, name: &str) -> Result<Option<RemoteTrackReader>, RelayError> {
-		let key = (namespace.to_string(), name.to_string());
+	pub fn subscribe(&self, namespace: String, name: String) -> anyhow::Result<Option<RemoteTrackReader>> {
+		let key = (namespace.clone(), name.clone());
 		let state = self.state.lock();
 		if let Some(track) = state.tracks.get(&key) {
 			if let Some(track) = track.upgrade() {

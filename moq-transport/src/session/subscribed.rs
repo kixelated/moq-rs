@@ -5,10 +5,10 @@ use futures::StreamExt;
 
 use crate::coding::Encode;
 use crate::serve::{ServeError, TrackReaderMode};
-use crate::util::State;
-use crate::{data, message, serve, Publisher};
+use crate::watch::State;
+use crate::{data, message, serve};
 
-use super::{SessionError, SubscribeInfo, Writer};
+use super::{Publisher, SessionError, SubscribeInfo, Writer};
 
 #[derive(Debug)]
 struct SubscribedState {
@@ -48,7 +48,7 @@ pub struct Subscribed {
 
 impl Subscribed {
 	pub(super) fn new(publisher: Publisher, msg: message::Subscribe) -> (Self, SubscribedRecv) {
-		let (send, recv) = State::init();
+		let (send, recv) = State::default().split();
 		let info = SubscribeInfo {
 			namespace: msg.track_namespace.clone(),
 			name: msg.track_name.clone(),
@@ -110,7 +110,7 @@ impl Subscribed {
 
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			let notify = {
+			{
 				let state = self.state.lock();
 				state.closed.clone()?;
 
@@ -118,9 +118,8 @@ impl Subscribed {
 					Some(notify) => notify,
 					None => return Ok(()),
 				}
-			};
-
-			notify.await;
+			}
+			.await;
 		}
 	}
 }
