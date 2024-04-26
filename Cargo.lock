@@ -868,15 +868,10 @@ dependencies = [
  "log",
  "moq-native",
  "moq-transport",
- "quinn",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport-quinn",
 ]
 
 [[package]]
@@ -884,29 +879,17 @@ name = "moq-dir"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum",
- "axum-server",
  "bytes",
  "clap",
  "env_logger",
  "futures",
- "hex",
  "log",
  "moq-native",
  "moq-transport",
- "quinn",
- "ring 0.16.20",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
- "thiserror",
  "tokio",
- "tower-http",
  "tracing",
  "tracing-subscriber",
- "url",
  "web-transport",
- "webpki",
 ]
 
 [[package]]
@@ -914,10 +897,7 @@ name = "moq-native"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum",
- "axum-server",
  "clap",
- "env_logger",
  "futures",
  "hex",
  "log",
@@ -927,11 +907,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
- "thiserror",
  "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
  "url",
  "web-transport",
  "web-transport-quinn",
@@ -949,22 +925,17 @@ dependencies = [
  "moq-native",
  "moq-transport",
  "mp4",
- "quinn",
  "rfc6381-codec",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport-quinn",
 ]
 
 [[package]]
 name = "moq-relay"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -975,28 +946,23 @@ dependencies = [
  "hex",
  "log",
  "moq-api",
- "moq-dir",
  "moq-native",
  "moq-transport",
- "quinn",
  "ring 0.16.20",
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
- "thiserror",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport",
- "web-transport-quinn",
  "webpki",
 ]
 
 [[package]]
 name = "moq-transport"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bytes",

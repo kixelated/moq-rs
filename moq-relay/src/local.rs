@@ -11,9 +11,9 @@ pub struct Locals {
 }
 
 impl Default for Locals {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl Locals {

@@ -118,7 +118,10 @@ async fn set_origin(
 	Ok(())
 }
 
-async fn delete_origin(Path(namespace): Path<String>, State(mut redis): State<ConnectionManager>) -> Result<(), AppError> {
+async fn delete_origin(
+	Path(namespace): Path<String>,
+	State(mut redis): State<ConnectionManager>,
+) -> Result<(), AppError> {
 	let key = origin_key(&namespace);
 	match redis.del(key).await? {
 		0 => Err(AppError::NotFound),

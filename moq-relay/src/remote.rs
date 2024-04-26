@@ -196,8 +196,6 @@ struct RemoteState {
 	requested: VecDeque<TrackWriter>,
 }
 
-
-
 pub struct RemoteProducer {
 	pub info: Arc<Remote>,
 	state: State<RemoteState>,

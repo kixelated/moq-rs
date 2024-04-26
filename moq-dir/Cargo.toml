@@ -13,34 +13,18 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-native = { path = "../moq-native", version = "0.1" }
-moq-transport = { path = "../moq-transport", version = "0.4" }
+moq-transport = { path = "../moq-transport", version = "0.5" }
 
 # QUIC
-quinn = "0.10"
 web-transport = "0.1"
-url = "2"
 bytes = "1"
-
-# Crypto
-ring = "0.16"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-pemfile = "1"
-rustls-native-certs = "0.6"
-webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
-# Web server to serve the fingerprint
-axum = { version = "0.6", features = ["tokio"] }
-axum-server = { version = "0.5", features = ["tls-rustls"] }
-hex = "0.4"
-tower-http = { version = "0.4", features = ["cors"] }
-
 # Error handling
 anyhow = { version = "1", features = ["backtrace"] }
-thiserror = "1"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
