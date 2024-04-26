@@ -98,7 +98,7 @@ impl Listings {
 		// Find the last '/' and return the parts.
 		match path.rfind('.') {
 			Some(index) => (&path[..index + 1], &path[index + 1..]),
-			None => (path, ""),
+			None => ("", path),
 		}
 	}
 }
