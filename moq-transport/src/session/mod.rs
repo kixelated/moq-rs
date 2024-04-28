@@ -19,11 +19,10 @@ pub use subscriber::*;
 use reader::*;
 use writer::*;
 
-use futures::FutureExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::message::Message;
-use crate::util::Queue;
+use crate::watch::Queue;
 use crate::{message, setup};
 
 #[must_use = "run() must be called"]
@@ -46,11 +45,11 @@ impl Session {
 		recver: Reader,
 		role: setup::Role,
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let outgoing = Queue::default();
+		let outgoing = Queue::default().split();
 		let publisher = role
 			.is_publisher()
-			.then(|| Publisher::new(outgoing.clone(), webtransport.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.clone()));
+			.then(|| Publisher::new(outgoing.0.clone(), webtransport.clone()));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(outgoing.0));
 
 		let session = Self {
 			webtransport,
@@ -58,16 +57,16 @@ impl Session {
 			recver,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
-			outgoing,
+			outgoing: outgoing.1,
 		};
 
 		(session, publisher, subscriber)
 	}
 
-	pub async fn connect(
-		session: web_transport::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		Self::connect_role(session, setup::Role::Both).await
+	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
+		Self::connect_role(session, setup::Role::Both)
+			.await
+			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
 	}
 
 	pub async fn connect_role(
@@ -162,26 +161,21 @@ impl Session {
 	}
 
 	pub async fn run(self) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-
-		tasks.push(Self::run_recv(self.recver, self.publisher, self.subscriber.clone()).boxed_local());
-		tasks.push(Self::run_send(self.sender, self.outgoing).boxed_local());
-
-		if let Some(subscriber) = self.subscriber {
-			tasks.push(Self::run_streams(self.webtransport.clone(), subscriber.clone()).boxed_local());
-			tasks.push(Self::run_datagrams(self.webtransport, subscriber).boxed_local());
+		tokio::select! {
+			res = Self::run_recv(self.recver, self.publisher, self.subscriber.clone()) => res,
+			res = Self::run_send(self.sender, self.outgoing) => res,
+			res = Self::run_streams(self.webtransport.clone(), self.subscriber.clone()) => res,
+			res = Self::run_datagrams(self.webtransport, self.subscriber) => res,
 		}
-
-		let res = tasks.select_next_some().await;
-		Err(res.expect_err("run terminated with OK"))
 	}
 
-	async fn run_send(mut sender: Writer, outgoing: Queue<message::Message>) -> Result<(), SessionError> {
-		loop {
-			let msg = outgoing.pop().await;
+	async fn run_send(mut sender: Writer, mut outgoing: Queue<message::Message>) -> Result<(), SessionError> {
+		while let Some(msg) = outgoing.pop().await {
 			log::debug!("sending message: {:?}", msg);
 			sender.encode(&msg).await?;
 		}
+
+		Ok(())
 	}
 
 	async fn run_recv(
@@ -220,14 +214,17 @@ impl Session {
 		}
 	}
 
-	async fn run_streams(mut webtransport: web_transport::Session, subscriber: Subscriber) -> Result<(), SessionError> {
+	async fn run_streams(
+		mut webtransport: web_transport::Session,
+		subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
 					let stream = res?;
-					let subscriber = subscriber.clone();
+					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
 					tasks.push(async move {
 						if let Err(err) = Subscriber::recv_stream(subscriber, stream).await {
@@ -242,11 +239,14 @@ impl Session {
 
 	async fn run_datagrams(
 		mut webtransport: web_transport::Session,
-		mut subscriber: Subscriber,
+		mut subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
 		loop {
 			let datagram = webtransport.recv_datagram().await?;
-			subscriber.recv_datagram(datagram)?;
+			subscriber
+				.as_mut()
+				.ok_or(SessionError::RoleViolation)?
+				.recv_datagram(datagram)?;
 		}
 	}
 }

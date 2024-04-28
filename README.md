@@ -37,7 +37,7 @@ The relays register themselves via the [moq-api](moq-api) endpoints, which is us
 
 Notable arguments:
 
--   `--listen <ADDR>` Listen on this address, default: `[::]:4443`
+-   `--bind <ADDR>` Listen on this address, default: `[::]:4443`
 -   `--tls-cert <CERT>` Use the certificate file at this path
 -   `--tls-key <KEY>` Use the private key at this path
 -   `--dev` Listen via HTTPS as well, serving the `/fingerprint` of the self-signed certificate. (dev only)

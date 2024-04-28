@@ -19,8 +19,8 @@ use moq_api::{ApiError, Origin};
 #[command(author, version, about, long_about = None)]
 pub struct ServerConfig {
 	/// Listen for HTTP requests on the given address
-	#[arg(long)]
-	pub listen: net::SocketAddr,
+	#[arg(long, default_value = "[::]:80")]
+	pub bind: net::SocketAddr,
 
 	/// Connect to the given redis instance
 	#[arg(long)]
@@ -47,7 +47,7 @@ impl Server {
 
 		let app = Router::new()
 			.route(
-				"/origin/:id",
+				"/origin/*namespace",
 				get(get_origin)
 					.post(set_origin)
 					.delete(delete_origin)
@@ -55,9 +55,9 @@ impl Server {
 			)
 			.with_state(redis);
 
-		log::info!("serving requests: bind={}", self.config.listen);
+		log::info!("serving requests: bind={}", self.config.bind);
 
-		axum::Server::bind(&self.config.listen)
+		axum::Server::bind(&self.config.bind)
 			.serve(app.into_make_service())
 			.await?;
 
@@ -66,10 +66,10 @@ impl Server {
 }
 
 async fn get_origin(
-	Path(id): Path<String>,
+	Path(namespace): Path<String>,
 	State(mut redis): State<ConnectionManager>,
 ) -> Result<Json<Origin>, AppError> {
-	let key = origin_key(&id);
+	let key = origin_key(&namespace);
 
 	let payload: Option<String> = redis.get(&key).await?;
 	let payload = payload.ok_or(AppError::NotFound)?;
@@ -80,12 +80,12 @@ async fn get_origin(
 
 async fn set_origin(
 	State(mut redis): State<ConnectionManager>,
-	Path(id): Path<String>,
+	Path(namespace): Path<String>,
 	Json(origin): Json<Origin>,
 ) -> Result<(), AppError> {
 	// TODO validate origin
 
-	let key = origin_key(&id);
+	let key = origin_key(&namespace);
 
 	// Convert the input back to JSON after validating it add adding any fields (TODO)
 	let payload = serde_json::to_string(&origin)?;
@@ -118,8 +118,11 @@ async fn set_origin(
 	Ok(())
 }
 
-async fn delete_origin(Path(id): Path<String>, State(mut redis): State<ConnectionManager>) -> Result<(), AppError> {
-	let key = origin_key(&id);
+async fn delete_origin(
+	Path(namespace): Path<String>,
+	State(mut redis): State<ConnectionManager>,
+) -> Result<(), AppError> {
+	let key = origin_key(&namespace);
 	match redis.del(key).await? {
 		0 => Err(AppError::NotFound),
 		_ => Ok(()),
@@ -128,11 +131,11 @@ async fn delete_origin(Path(id): Path<String>, State(mut redis): State<Connectio
 
 // Update the expiration deadline.
 async fn patch_origin(
-	Path(id): Path<String>,
+	Path(namespace): Path<String>,
 	State(mut redis): State<ConnectionManager>,
 	Json(origin): Json<Origin>,
 ) -> Result<(), AppError> {
-	let key = origin_key(&id);
+	let key = origin_key(&namespace);
 
 	// Make sure the contents haven't changed
 	// TODO make a LUA script to do this all in one operation.
@@ -151,8 +154,8 @@ async fn patch_origin(
 	}
 }
 
-fn origin_key(id: &str) -> String {
-	format!("origin.{}", id)
+fn origin_key(namespace: &str) -> String {
+	format!("origin.{}", namespace)
 }
 
 #[derive(thiserror::Error, Debug)]

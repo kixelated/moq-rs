@@ -5,6 +5,8 @@ members = [
 	"moq-pub",
 	"moq-api",
 	"moq-clock",
+	"moq-dir",
+	"moq-native",
 	"moq-gst",
 ]
 resolver = "2"

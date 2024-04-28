@@ -14,17 +14,11 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transport = { path = "../moq-transport", version = "0.4" }
+moq-native = { path = "../moq-native", version = "0.1" }
+moq-transport = { path = "../moq-transport", version = "0.5" }
 
 # QUIC
-quinn = "0.10"
-web-transport-quinn = "0.1"
 url = "2"
-
-# Crypto
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-native-certs = "0.6"
-rustls-pemfile = "1"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }

@@ -98,13 +98,6 @@ By default, the broadcast name is `dev` but you can overwrite it with the `NAME`
 
 > Watch URL: https://quic.video/watch/dev?server=localhost:4443
 
-If you're debugging encoding issues, you can use this script to dump the file to disk instead, defaulting to
-`dev/output.mp4`.
-
-```bash
-./dev/pub-file
-```
-
 ### moq-api
 
 The following commands runs an API server, listening for HTTP requests on `http://localhost:4442` by default.
@@ -112,18 +105,3 @@ The following commands runs an API server, listening for HTTP requests on `http:
 ```bash
 ./dev/api
 ```
-
-Nodes can now register themselves via the API, which means you can run multiple interconnected relays.
-There's two separate `dev/relay-0` and `dev/relay-1` scripts to test clustering locally:
-
-```bash
-./dev/relay-0
-./dev/relay-1
-```
-
-These listen on `:4443` and `:4444` respectively, inserting themselves into the origin database as `localhost:$PORT`.
-
-There's also a separate `dev/pub-1` script to publish to the `:4444` instance.
-You can use the exisitng `dev/pub` script to publish to the `:4443` instance.
-
-If all goes well, you would be able to publish to one relay and watch from the other.
