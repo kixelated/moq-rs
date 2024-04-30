@@ -20,7 +20,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 log = "0.4"
 
-web-transport = "0.1"
+web-transport = "0.2"
 
 paste = "1"
 futures = "0.3"

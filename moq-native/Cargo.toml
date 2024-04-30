@@ -13,11 +13,11 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
-web-transport = "0.1"
+web-transport = "0.2.1"
 
 # QUIC
 quinn = "0.10"
-web-transport-quinn = "0.1"
+web-transport-quinn = "0.2.1"
 url = "2"
 
 # Crypto
