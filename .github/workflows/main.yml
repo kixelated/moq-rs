@@ -19,7 +19,7 @@ jobs:
 
     # Only one release at a time and cancel prior releases
     concurrency:
-      group: release
+      group: deploy
       cancel-in-progress: true
 
     steps:
@@ -68,7 +68,7 @@ jobs:
 
     # Only one release at a time and cancel prior releases
     concurrency:
-      group: release
+      group: publish
       cancel-in-progress: true
 
     steps:
