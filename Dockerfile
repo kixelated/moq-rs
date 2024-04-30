@@ -13,7 +13,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
-
 # Create a pub image that also contains ffmpeg and a helper script
 FROM debian:bookworm-slim as moq-pub
 
@@ -24,12 +23,11 @@ RUN apt-get update && \
 # Copy the publish script into the image
 COPY ./deploy/publish /usr/local/bin/publish
 
-# Copy over the built binary.
-COPY --from=builder /usr/local/cargo/bin/moq-pub /usr/local/bin
+# Copy over the built binaries.
+COPY --from=builder /usr/local/cargo/bin/moq-* /usr/local/bin
 
 # Use our publish script
 CMD [ "publish" ]
-
 
 # Create an image with just the binaries
 FROM debian:bookworm-slim
