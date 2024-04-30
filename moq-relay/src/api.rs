@@ -69,6 +69,7 @@ impl Drop for Refresh {
 		// TODO this is really lazy
 		let namespace = self.namespace.clone();
 		let client = self.client.clone();
+		log::debug!("removing origin: namespace={}", namespace,);
 		tokio::spawn(async move { client.delete_origin(&namespace).await });
 	}
 }
