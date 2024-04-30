@@ -33,4 +33,4 @@ fi
 echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" $ARGS -- "$@"
