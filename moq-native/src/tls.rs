@@ -12,7 +12,7 @@ use webpki::{DnsNameRef, EndEntityCert};
 
 #[derive(Parser, Clone, Default)]
 #[group(id = "tls")]
-pub struct Cli {
+pub struct Args {
 	/// Use the certificates at this path, encoded as PEM.
 	///
 	/// You can use this option multiple times for multiple certificates.
@@ -48,7 +48,7 @@ pub struct Config {
 	pub fingerprints: Vec<String>,
 }
 
-impl Cli {
+impl Args {
 	pub fn load(&self) -> anyhow::Result<Config> {
 		let mut serve = ServeCerts::default();
 
@@ -108,13 +108,11 @@ impl Cli {
 			None
 		};
 
-		let certs = Config {
+		Ok(Config {
 			server,
 			client,
 			fingerprints,
-		};
-
-		Ok(certs)
+		})
 	}
 }
 

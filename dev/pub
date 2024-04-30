@@ -33,13 +33,9 @@ cargo build -p moq-gst
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
-#export GST_DEBUG=*:5
+export GST_DEBUG=*:5
 
 # Run gstreamer and pipe the output to moq-pub
-#gst-launch-1.0 -v -e multifilesrc location="${INPUT}" loop=true ! qtdemux name=demux \
-#    demux.video_0 ! h264parse ! queue ! identity sync=true ! mp4mux name=mux streamable=true fragment-duration=1 ! moqsink url="$URL" namespace="$NAME" \
-#    demux.audio_0 ! aacparse ! queue ! mux.
-
 gst-launch-1.0 -v -e multifilesrc location="${INPUT}" loop=true ! qtdemux name=demux \
-    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux fragment-duration=1 ! moqsink name=sink url="$URL" namespace="$NAME" \
-    demux.audio_0 ! aacparse ! queue ! isofmp4mux fragment-duration=1 ! sink.
+    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux fragment-duration=1 ! moqsink url="$URL" namespace="$NAME" \
+    demux.audio_0 ! aacparse ! queue ! mux.

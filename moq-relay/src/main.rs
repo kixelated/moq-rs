@@ -30,7 +30,7 @@ pub struct Cli {
 
 	/// The TLS configuration.
 	#[command(flatten)]
-	pub tls: moq_native::tls::Cli,
+	pub tls: moq_native::tls::Args,
 
 	/// Forward all announces to the provided server for authentication/routing.
 	/// If not provided, the relay accepts every unique announce.

@@ -22,7 +22,7 @@ pub struct Cli {
 
 	/// The TLS configuration.
 	#[command(flatten)]
-	pub tls: tls::Cli,
+	pub tls: tls::Args,
 
 	/// Aggregate all announcements received with this namespace prefix.
 	/// The list of announcements that match are available as tracks, ending with /.

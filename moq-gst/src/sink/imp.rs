@@ -1,15 +1,21 @@
+use anyhow::Context;
 use gst::glib;
 use gst::prelude::*;
 use gst::subclass::prelude::*;
 use gst_base::subclass::prelude::*;
 
+use moq_native::quic;
+use moq_transport::serve::{Tracks, TracksWriter};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
+use url::Url;
 
 #[derive(Default)]
 struct Settings {
 	pub url: Option<String>,
 	pub namespace: Option<String>,
+
+	pub writer: Option<TracksWriter>,
 }
 
 #[derive(Default)]
@@ -89,57 +95,19 @@ impl ElementImpl for MoqSink {
 				.field("variant", "iso-fragmented")
 				.build();
 
-			let pad_template = gst::PadTemplate::with_gtype(
-				"sink_%u",
-				gst::PadDirection::Sink,
-				gst::PadPresence::Request,
-				&caps,
-				super::MoqSink::static_type(),
-			)
-			.unwrap();
+			let pad_template =
+				gst::PadTemplate::new("sink", gst::PadDirection::Sink, gst::PadPresence::Always, &caps).unwrap();
 
 			vec![pad_template]
 		});
 		PAD_TEMPLATES.as_ref()
 	}
-
-	fn request_new_pad(
-		&self,
-		templ: &gst::PadTemplate,
-		name: Option<&str>,
-		caps: Option<&gst::Caps>,
-	) -> Option<gst::Pad> {
-		println!("Requesting new pad with name: {:?} and caps: {:?}", name, caps);
-		let pad = self.parent_request_new_pad(templ, name, caps);
-		if let Some(ref pad) = pad {
-			println!("Pad successfully created: {:?}", pad.name());
-		// Additional setup or initialization for the pad can go here
-		} else {
-			println!("Failed to create pad");
-		}
-		pad
-	}
 }
 
 impl BaseSinkImpl for MoqSink {
 	fn start(&self) -> Result<(), gst::ErrorMessage> {
-		let settings = self.settings.lock().unwrap();
-
-		/*
-		let session = web_transport_quinn::connect(client, settings.url.expect("missing url"));
-
-		moq_transport::Publisher::connect(&settings.url)
-			.map_err(|err| gst::error_msg!(gst::CoreError::Failed, ("Failed to connect: {}", err)))?;
-
-		// Example: Initialize a TCP connection
-		let stream = TcpStream::connect(&settings.url)
-			.map_err(|err| gst::error_msg!(gst::CoreError::Failed, ("Failed to connect: {}", err)))?;
-
-		// Store the stream in your struct for later use
-		self.stream.lock().unwrap().replace(stream);
-		*/
-
-		Ok(())
+		self.setup()
+			.map_err(|e| gst::error_msg!(gst::ResourceError::Failed, ["Failed to connect: {}", e]))
 	}
 
 	fn stop(&self) -> Result<(), gst::ErrorMessage> {
@@ -170,5 +138,32 @@ impl BaseSinkImpl for MoqSink {
 		// self.send_over_network(data.as_slice());
 
 		Ok(gst::FlowSuccess::Ok)
+	}
+}
+
+impl MoqSink {
+	fn setup(&self) -> anyhow::Result<()> {
+		let settings = self.settings.lock().unwrap();
+		let namespace = settings.namespace.clone().context("missing namespace")?;
+		let (writer, _, reader) = Tracks::new(namespace).produce();
+		settings.writer.replace(writer);
+
+		let url = settings.url.context("missing url")?.parse().context("invalid URL")?;
+
+		// TODO support TLS certs and other options
+		let config = quic::Args::default().load()?;
+		let client = quic::Endpoint::new(config)?.client;
+
+		tokio::spawn(async move {
+			let session = client.connect(&url).await?;
+			let (session, publisher) = moq_transport::session::Publisher::connect(session).await?;
+
+			tokio::select! {
+				res = publisher.announce(reader) => res?,
+				res = session.run() => res?,
+			};
+		});
+
+		Ok(())
 	}
 }

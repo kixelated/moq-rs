@@ -1073,6 +1073,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-gst"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "gst-plugin-version-helper",
+ "gstreamer",
+ "gstreamer-base",
+ "log",
+ "moq-native",
+ "moq-transport",
+ "mp4",
+ "once_cell",
+ "quinn",
+ "rfc6381-codec",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pemfile",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "web-transport-quinn",
+]
+
+[[package]]
 name = "moq-native"
 version = "0.1.0"
 dependencies = [
@@ -1092,33 +1120,6 @@ dependencies = [
  "web-transport",
  "web-transport-quinn",
  "webpki",
-]
-
-[[package]]
-name = "moq-gst"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "gst-plugin-version-helper",
- "gstreamer",
- "gstreamer-base",
- "log",
- "moq-transport",
- "mp4",
- "once_cell",
- "quinn",
- "rfc6381-codec",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
- "web-transport-quinn",
 ]
 
 [[package]]
