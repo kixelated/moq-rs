@@ -1,7 +1,8 @@
 use std::ops;
 
 use crate::{
-	data, message,
+	data,
+	message::{self, SubscribeLocation, SubscribePair},
 	serve::{self, ServeError, TrackWriter, TrackWriterMode},
 };
 
@@ -47,8 +48,14 @@ impl Subscribe {
 			track_namespace: track.namespace.clone(),
 			track_name: track.name.clone(),
 			// TODO add these to the publisher.
-			start: Default::default(),
-			end: Default::default(),
+			start: SubscribePair {
+				group: SubscribeLocation::Latest(0),
+				object: SubscribeLocation::Absolute(0),
+			},
+			end: SubscribePair {
+				group: SubscribeLocation::None,
+				object: SubscribeLocation::None,
+			},
 			params: Default::default(),
 		});
 

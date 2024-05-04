@@ -16,7 +16,7 @@ moq-native = { path = "../moq-native", version = "0.1" }
 moq-transport = { path = "../moq-transport", version = "0.5" }
 
 # QUIC
-web-transport = "0.1"
+web-transport = "0.2"
 bytes = "1"
 
 # Async stuff
