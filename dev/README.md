@@ -34,16 +34,17 @@ It also hosts a [moq-dir](../moq-dir) instance to serve the current announcement
 Publish some test footage from disk to the localhost relay using [moq-pub](../moq-pub).
 This downloads Big Buck Bunny and publishes a broadcast named `bbb`.
 
-You can either use ffmpeg or gstreamer to publish the video stream.
-Make sure you have either installed on your system.
+Requires:
+
+-   Rust
+-   ffmpeg
 
 ```bash
-# ffmpeg
 ./dev/pub
-
-# gstreamer
- ./dev/gst
 ```
+
+Alternatively, you can use Gstreamer via [moq-gst](https://github.com/kixelated/moq-gst).
+The [run](https://github.com/kixelated/moq-gst/blob/main/run) script does the exact same thing.
 
 ## moq-clock
 

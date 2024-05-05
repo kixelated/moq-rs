@@ -33,7 +33,7 @@ echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Run ffmpeg and pipe the output to moq-pub
 # TODO fix the stuttering issue with audio (try removing -an)
-# In the meantime, we can use gstreamer instead
+# In the meantime, consider using gstreamer instead
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \

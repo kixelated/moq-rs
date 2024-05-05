@@ -9,7 +9,6 @@ This repository contains a few crates:
 
 -   **moq-relay**: Accepting content from publishers and serves it to any subscribers.
 -   **moq-pub**: Publishes fMP4 broadcasts.
--   **moq-gst**: A gstreamer plugin utilizing [moq-pub](moq-pub).
 -   **moq-transport**: An implementation of the underlying MoQ protocol.
 -   **moq-api**: A HTTP API server that stores the origin for each broadcast, backed by redis.
 -   **moq-dir**: Aggregates announcements, used to discover broadcasts.
@@ -56,25 +55,18 @@ A client that publishes a fMP4 stream over MoQ, with a few restrictions.
 -   `frag_keyframe`: A keyframe must be at the start of each keyframe.
 -   `fragment_per_frame`: (optional) Each frame should be a separate fragment to minimize latency.
 
-It comes in two parts, a binary and a library:
+This client can currently be used in conjuction with either ffmpeg or gstreamer.
 
-### Binary
+### ffmpeg
 
-The binary accepts a stream from stdin and publishes it to the given relay.
+moq-pub can be run as a binary, accepting a stream (from ffmpeg via stdin) and publishing it to the given relay.
+See [dev/pub](dev/pub) for the required ffmpeg flags.
 
-This is currently used for piping output from ffmpeg.
-See [this script](dev/pub) for the required flags.
+### gstreamer
 
-Notable arguments:
-
--   `<URL>` connect to the given address, which must start with `https://` for WebTransport.
-
-### Library
-
-The library does the same thing but is more flexible.
-
-This is currently used for a gstreamer plugin.
-See [this script](dev/gst) for an example pipeline.
+moq-pub can also be run as a library, currently used for a [gstreamer plugin](https://github.com/kixelated/moq-gst).
+This is in a separate repository to avoid gstreamer being a hard requirement.
+See [run](https://github.com/kixelated/moq-gst/blob/main/run) for an example pipeline.
 
 ## moq-transport
 
