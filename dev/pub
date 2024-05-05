@@ -4,6 +4,12 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
+# Download the Big Buck Bunny video if it doesn't exist
+if [ ! -f dev/bbb.mp4 ]; then
+	echo "Downloading ya boye Big Buck Bunny..."
+	wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/bbb.mp4
+fi
+
 # Use debug logging by default
 export RUST_LOG="${RUST_LOG:-debug}"
 
@@ -13,24 +19,21 @@ PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
 SCHEME="${SCHEME:-https}"
 
-# Generate a random 16 character name by default.
-#NAME="${NAME:-$(head /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 16)}"
-
-# JK use the name "bbb" instead, matching the Big Buck Bunny demo.
-# TODO use that random name if the host is not localhost
+# Use the name "bbb" for the broadcast.
 NAME="${NAME:-bbb}"
 
 # Combine the host into a URL.
 URL="${URL:-"$SCHEME://$ADDR"}"
 
 # Default to a source video
-INPUT="${INPUT:-dev/source.mp4}"
+INPUT="${INPUT:-dev/bbb.mp4}"
 
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Run ffmpeg and pipe the output to moq-pub
 # TODO fix the stuttering issue with audio (try removing -an)
+# In the meantime, consider using gstreamer instead
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \

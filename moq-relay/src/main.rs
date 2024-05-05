@@ -1,4 +1,3 @@
-use anyhow::Context;
 use clap::Parser;
 
 mod api;
@@ -30,7 +29,7 @@ pub struct Cli {
 
 	/// The TLS configuration.
 	#[command(flatten)]
-	pub tls: moq_native::tls::Cli,
+	pub tls: moq_native::tls::Args,
 
 	/// Forward all announces to the provided server for authentication/routing.
 	/// If not provided, the relay accepts every unique announce.
@@ -46,6 +45,11 @@ pub struct Cli {
 	/// The provided certificate must be valid for this address.
 	#[arg(long)]
 	pub node: Option<Url>,
+
+	/// Enable development mode.
+	/// This hosts a HTTPS web server via TCP to serve the fingerprint of the certificate.
+	#[arg(long)]
+	pub dev: bool,
 }
 
 #[tokio::main]
@@ -74,12 +78,15 @@ async fn main() -> anyhow::Result<()> {
 		announce: cli.announce,
 	})?;
 
-	// Create a web server too.
-	// Currently this only contains the certificate fingerprint (for development only).
-	let web = Web::new(WebConfig { bind: cli.bind, tls });
+	if cli.dev {
+		// Create a web server too.
+		// Currently this only contains the certificate fingerprint (for development only).
+		let web = Web::new(WebConfig { bind: cli.bind, tls });
 
-	tokio::select! {
-		res = relay.run() => res.context("failed to run quic server"),
-		res = web.run() => res.context("failed to run web server"),
+		tokio::spawn(async move {
+			web.run().await.expect("failed to run web server");
+		});
 	}
+
+	relay.run().await
 }

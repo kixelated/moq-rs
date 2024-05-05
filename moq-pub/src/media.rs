@@ -1,4 +1,5 @@
 use anyhow::{self, Context};
+use bytes::{Buf, Bytes};
 use moq_transport::serve::{GroupWriter, GroupsWriter, TrackWriter, TracksWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
@@ -6,127 +7,161 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time;
-use tokio::io::{AsyncRead, AsyncReadExt};
 
-pub struct Media<I> {
+pub struct Media {
 	// Tracks based on their track ID.
 	tracks: HashMap<u32, Track>,
-	input: I,
+
+	// The full broadcast of tracks
+	broadcast: TracksWriter,
+
+	// The init and catalog tracks
+	init: GroupsWriter,
+	catalog: GroupsWriter,
+
+	// The ftyp and moov atoms at the start of the file.
+	ftyp: Option<Bytes>,
+	moov: Option<mp4::MoovBox>,
+
+	// The current track name
+	current: Option<u32>,
 }
 
-impl<I: AsyncRead + Send + Unpin> Media<I> {
-	pub async fn new(mut input: I, mut broadcast: TracksWriter) -> anyhow::Result<Self> {
-		let ftyp = read_atom(&mut input).await?;
-		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
+impl Media {
+	pub fn new(mut broadcast: TracksWriter) -> anyhow::Result<Self> {
+		let catalog = broadcast.create(".catalog").context("broadcast closed")?.groups()?;
+		let init = broadcast.create("0.mp4").context("broadcast closed")?.groups()?;
 
-		let moov = read_atom(&mut input).await?;
-		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
+		Ok(Media {
+			tracks: Default::default(),
+			broadcast,
+			catalog,
+			init,
+			ftyp: None,
+			moov: None,
+			current: None,
+		})
+	}
 
-		let mut init = ftyp;
-		init.extend(&moov);
+	// Parse the input buffer, reading any full atoms we can find.
+	// Keep appending more data and calling parse.
+	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<()> {
+		while self.parse_atom(buf)? {}
+		Ok(())
+	}
 
-		// We're going to parse the moov box.
-		// We have to read the moov box header to correctly advance the cursor for the mp4 crate.
-		let mut moov_reader = Cursor::new(&moov);
-		let moov_header = mp4::BoxHeader::read(&mut moov_reader)?;
+	fn parse_atom<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<bool> {
+		let atom = match next_atom(buf)? {
+			Some(atom) => atom,
+			None => return Ok(false),
+		};
 
-		// Parse the moov box so we can detect the timescales for each track.
-		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
+		let mut reader = Cursor::new(&atom);
+		let header = mp4::BoxHeader::read(&mut reader)?;
 
-		// Create the catalog track with a single segment.
-		let mut init_track = broadcast.create("0.mp4").context("broadcast closed")?.groups()?;
-		init_track.append(0)?.write(init.into())?;
+		match header.name {
+			mp4::BoxType::FtypBox => {
+				if self.ftyp.is_some() {
+					anyhow::bail!("multiple ftyp atoms");
+				}
 
-		let mut tracks = HashMap::new();
+				// Save the ftyp atom for later.
+				self.ftyp = Some(atom)
+			}
+			mp4::BoxType::MoovBox => {
+				if self.moov.is_some() {
+					anyhow::bail!("multiple moov atoms");
+				}
 
+				// Parse the moov box so we can detect the timescales for each track.
+				let moov = mp4::MoovBox::read_box(&mut reader, header.size)?;
+
+				self.setup(&moov, atom)?;
+				self.moov = Some(moov);
+			}
+			mp4::BoxType::MoofBox => {
+				let moof = mp4::MoofBox::read_box(&mut reader, header.size)?;
+
+				// Process the moof.
+				let fragment = Fragment::new(moof)?;
+
+				if fragment.keyframe {
+					// Gross but thanks to rust we have to do a separate hashmap lookup
+					if self
+						.tracks
+						.get(&fragment.track)
+						.context("failed to find track")?
+						.handler == TrackType::Video
+					{
+						// Start a new group for the keyframe.
+						for track in self.tracks.values_mut() {
+							track.end_group();
+						}
+					}
+				}
+
+				// Get the track for this moof.
+				let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
+
+				log::info!(
+					"frame: {}, time: {:?}",
+					track.handler,
+					fragment.timestamp(track.timescale)
+				);
+
+				// Save the track ID for the next iteration, which must be a mdat.
+				anyhow::ensure!(self.current.is_none(), "multiple moof atoms");
+				self.current.replace(fragment.track);
+
+				// Publish the moof header, creating a new segment if it's a keyframe.
+				track.header(atom, fragment).context("failed to publish moof")?;
+			}
+			mp4::BoxType::MdatBox => {
+				// Get the track ID from the previous moof.
+				let track = self.current.take().context("missing moof")?;
+				let track = self.tracks.get_mut(&track).context("failed to find track")?;
+
+				// Publish the mdat atom.
+				track.data(atom).context("failed to publish mdat")?;
+			}
+
+			_ => {
+				// Skip unknown atoms
+			}
+		}
+
+		Ok(true)
+	}
+
+	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
+		// Create a track for each track in the moov
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
 			let name = format!("{}.m4s", id);
 
-			let timescale = track_timescale(&moov, id);
+			let timescale = track_timescale(moov, id);
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
-			let track = broadcast.create(&name).context("broadcast closed")?;
+			let track = self.broadcast.create(&name).context("broadcast closed")?;
 			let track = Track::new(track, handler, timescale);
-			tracks.insert(id, track);
+			self.tracks.insert(id, track);
 		}
 
-		let catalog = broadcast.create(".catalog").context("broadcast closed")?;
+		// Combine the ftyp+moov atoms into a single object.
+		let mut init = self.ftyp.clone().context("missing ftyp")?.to_vec();
+		init.extend_from_slice(&raw);
 
-		// Create the catalog track
-		Self::serve_catalog(catalog, &init_track.name, &moov)?;
-
-		Ok(Media { tracks, input })
-	}
-
-	pub async fn run(&mut self) -> anyhow::Result<()> {
-		// The current track name
-		let mut current = None;
-
-		loop {
-			let atom = read_atom(&mut self.input).await?;
-
-			let mut reader = Cursor::new(&atom);
-			let header = mp4::BoxHeader::read(&mut reader)?;
-
-			match header.name {
-				mp4::BoxType::MoofBox => {
-					let moof = mp4::MoofBox::read_box(&mut reader, header.size).context("failed to read MP4")?;
-
-					// Process the moof.
-					let fragment = Fragment::new(moof)?;
-
-					if fragment.keyframe {
-						// Gross but thanks to rust we have to do a separate hashmap lookup
-						if self
-							.tracks
-							.get(&fragment.track)
-							.context("failed to find track")?
-							.handler == TrackType::Video
-						{
-							// Start a new group for the keyframe.
-							for track in self.tracks.values_mut() {
-								track.end_group();
-							}
-						}
-					}
-
-					// Get the track for this moof.
-					let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
-
-					// Save the track ID for the next iteration, which must be a mdat.
-					anyhow::ensure!(current.is_none(), "multiple moof atoms");
-					current.replace(fragment.track);
-
-					// Publish the moof header, creating a new segment if it's a keyframe.
-					track.header(atom, fragment).context("failed to publish moof")?;
-				}
-				mp4::BoxType::MdatBox => {
-					// Get the track ID from the previous moof.
-					let track = current.take().context("missing moof")?;
-					let track = self.tracks.get_mut(&track).context("failed to find track")?;
-
-					// Publish the mdat atom.
-					track.data(atom).context("failed to publish mdat")?;
-				}
-
-				_ => {
-					// Skip unknown atoms
-				}
-			}
-		}
-	}
-
-	fn serve_catalog(track: TrackWriter, init_track_name: &str, moov: &mp4::MoovBox) -> Result<(), anyhow::Error> {
-		let mut segment = track.groups()?.append(0)?;
+		// Create the catalog track with a single segment.
+		self.init.append(0)?.write(init.into())?;
 
 		let mut tracks = Vec::new();
 
+		// Produce the catalog
 		for trak in &moov.traks {
 			let mut track = json!({
 				"container": "mp4",
-				"init_track": init_track_name,
+				"init_track": "0.mp4",
 				"data_track": format!("{}.m4s", trak.tkhd.track_id),
 			});
 
@@ -201,47 +236,55 @@ impl<I: AsyncRead + Send + Unpin> Media<I> {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		segment.write(catalog_str.into())?;
+		self.catalog.append(0)?.write(catalog_str.into())?;
 
 		Ok(())
 	}
 }
 
-// Read a full MP4 atom into a vector.
-async fn read_atom<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Vec<u8>> {
-	// Read the 8 bytes for the size + type
-	let mut buf = [0u8; 8];
-	reader.read_exact(&mut buf).await?;
+// Find the next full atom in the buffer.
+// TODO return the amount of data still needed in Err?
+fn next_atom<B: Buf>(buf: &mut B) -> anyhow::Result<Option<Bytes>> {
+	let mut peek = Cursor::new(buf.chunk());
+
+	if peek.remaining() < 8 {
+		if buf.remaining() != buf.chunk().len() {
+			// TODO figure out a way to peek at the first 8 bytes
+			anyhow::bail!("TODO: vectored Buf not yet supported");
+		}
+
+		return Ok(None);
+	}
 
 	// Convert the first 4 bytes into the size.
-	let size = u32::from_be_bytes(buf[0..4].try_into()?) as u64;
+	let size = peek.get_u32();
+	let _type = peek.get_u32();
 
-	let mut raw = buf.to_vec();
-
-	let mut limit = match size {
+	let size = match size {
 		// Runs until the end of the file.
-		0 => reader.take(u64::MAX),
+		0 => anyhow::bail!("TODO: unsupported EOF atom"),
 
 		// The next 8 bytes are the extended size to be used instead.
 		1 => {
-			reader.read_exact(&mut buf).await?;
-			let size_large = u64::from_be_bytes(buf);
-			anyhow::ensure!(size_large >= 16, "impossible extended box size: {}", size_large);
-
-			reader.take(size_large - 16)
+			let size_ext = peek.get_u64();
+			anyhow::ensure!(size_ext >= 16, "impossible extended box size: {}", size_ext);
+			size_ext as usize
 		}
 
 		2..=7 => {
 			anyhow::bail!("impossible box size: {}", size)
 		}
 
-		size => reader.take(size - 8),
+		size => size as usize,
 	};
 
-	// Append to the vector and return it.
-	let _read_bytes = limit.read_to_end(&mut raw).await?;
+	if buf.remaining() < size {
+		return Ok(None);
+	}
 
-	Ok(raw)
+	let atom = buf.copy_to_bytes(size);
+
+	Ok(Some(atom))
 }
 
 struct Track {
@@ -268,10 +311,10 @@ impl Track {
 		}
 	}
 
-	pub fn header(&mut self, raw: Vec<u8>, fragment: Fragment) -> anyhow::Result<()> {
+	pub fn header(&mut self, raw: Bytes, fragment: Fragment) -> anyhow::Result<()> {
 		if let Some(current) = self.current.as_mut() {
 			// Use the existing segment
-			current.write(raw.into())?;
+			current.write(raw)?;
 			return Ok(());
 		}
 
@@ -291,7 +334,7 @@ impl Track {
 		let mut segment = self.track.append(priority)?;
 
 		// Write the fragment in it's own object.
-		segment.write(raw.into())?;
+		segment.write(raw)?;
 
 		// Save for the next iteration
 		self.current = Some(segment);
@@ -299,9 +342,9 @@ impl Track {
 		Ok(())
 	}
 
-	pub fn data(&mut self, raw: Vec<u8>) -> anyhow::Result<()> {
+	pub fn data(&mut self, raw: Bytes) -> anyhow::Result<()> {
 		let segment = self.current.as_mut().context("missing current fragment")?;
-		segment.write(raw.into())?;
+		segment.write(raw)?;
 
 		Ok(())
 	}

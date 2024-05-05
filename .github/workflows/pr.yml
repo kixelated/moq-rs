@@ -29,3 +29,9 @@ jobs:
 
       # Check for semvar violations
       - uses: obi1kenobi/cargo-semver-checks-action@v2
+
+      # Used to publish any new crates
+      - uses: katyo/publish-crates@v2
+        with:
+          dry-run: true
+          ignore-unpublished-changes: true

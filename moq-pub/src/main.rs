@@ -1,11 +1,13 @@
+use bytes::BytesMut;
 use std::net;
 use url::Url;
 
 use anyhow::Context;
 use clap::Parser;
+use tokio::io::AsyncReadExt;
 
 use moq_native::quic;
-use moq_pub::media::Media;
+use moq_pub::Media;
 use moq_transport::{serve, session::Publisher};
 
 #[derive(Parser, Clone)]
@@ -34,7 +36,7 @@ pub struct Cli {
 
 	/// The TLS configuration.
 	#[command(flatten)]
-	pub tls: moq_native::tls::Cli,
+	pub tls: moq_native::tls::Args,
 }
 
 #[tokio::main]
@@ -49,9 +51,8 @@ async fn main() -> anyhow::Result<()> {
 
 	let cli = Cli::parse();
 
-	let input = tokio::io::stdin();
 	let (writer, _, reader) = serve::Tracks::new(cli.name).produce();
-	let mut media = Media::new(input, writer).await?;
+	let media = Media::new(writer)?;
 
 	let tls = cli.tls.load()?;
 
@@ -69,9 +70,19 @@ async fn main() -> anyhow::Result<()> {
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
-		res = media.run() => res.context("media error")?,
+		res = run_media(media) => res.context("media error")?,
 		res = publisher.announce(reader) => res.context("publisher error")?,
 	}
 
 	Ok(())
+}
+
+async fn run_media(mut media: Media) -> anyhow::Result<()> {
+	let mut input = tokio::io::stdin();
+	let mut buf = BytesMut::new();
+
+	loop {
+		input.read_buf(&mut buf).await.context("failed to read from stdin")?;
+		media.parse(&mut buf).context("failed to parse media")?;
+	}
 }

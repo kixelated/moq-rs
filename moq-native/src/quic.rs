@@ -11,22 +11,28 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use futures::FutureExt;
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Args {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
 
 	#[command(flatten)]
-	pub tls: tls::Cli,
+	pub tls: tls::Args,
 }
 
-impl Default for Cli {
+impl Default for Args {
 	fn default() -> Self {
 		Self {
-			// Client only
 			bind: "[::]:0".parse().unwrap(),
 			tls: Default::default(),
 		}
+	}
+}
+
+impl Args {
+	pub fn load(&self) -> anyhow::Result<Config> {
+		let tls = self.tls.load()?;
+		Ok(Config { bind: self.bind, tls })
 	}
 }
 
