@@ -139,7 +139,7 @@ impl Media {
 			let id = trak.tkhd.track_id;
 			let name = format!("{}.m4s", id);
 
-			let timescale = track_timescale(&moov, id);
+			let timescale = track_timescale(moov, id);
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
