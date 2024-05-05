@@ -16,10 +16,12 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
 moq-native = { path = "../moq-native", version = "0.1" }
+moq-pub = { path = "../moq-pub", version = "0.5" }
 
 gst = { package = "gstreamer", version = "0.22" }
 gst-base = { package = "gstreamer-base", version = "0.22" }
 once_cell = "1"
+bytes = "1"
 
 # QUIC
 quinn = "0.10"

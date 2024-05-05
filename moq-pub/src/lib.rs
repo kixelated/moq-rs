@@ -1,1 +1,2 @@
-pub mod media;
+mod media;
+pub use media::*;

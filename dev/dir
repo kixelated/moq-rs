@@ -7,8 +7,10 @@ cd "$(dirname "$0")/.."
 # Use debug logging by default
 export RUST_LOG="${RUST_LOG:-debug}"
 
+# Generate a self-signed certificate
+./cert
+
 # Default to a self-signed certificate
-# TODO automatically generate if it doesn't exist.
 CERT="${CERT:-dev/localhost.crt}"
 KEY="${KEY:-dev/localhost.key}"
 

@@ -1077,6 +1077,7 @@ name = "moq-gst"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "clap",
  "env_logger",
  "gst-plugin-version-helper",
@@ -1084,6 +1085,7 @@ dependencies = [
  "gstreamer-base",
  "log",
  "moq-native",
+ "moq-pub",
  "moq-transport",
  "mp4",
  "once_cell",
@@ -1097,7 +1099,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "web-transport-quinn",
+ "web-transport-quinn 0.1.0",
 ]
 
 [[package]]
@@ -1118,15 +1120,16 @@ dependencies = [
  "tokio",
  "url",
  "web-transport",
- "web-transport-quinn",
+ "web-transport-quinn 0.2.1",
  "webpki",
 ]
 
 [[package]]
 name = "moq-pub"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "clap",
  "env_logger",
  "log",
@@ -2511,7 +2514,7 @@ checksum = "5eae5b9dc46b1e7255c3c9b31848f7fab97b10d0445e37548fdd57087bd62b42"
 dependencies = [
  "bytes",
  "thiserror",
- "web-transport-quinn",
+ "web-transport-quinn 0.2.1",
  "web-transport-wasm",
 ]
 
@@ -2525,6 +2528,24 @@ dependencies = [
  "http",
  "thiserror",
  "url",
+]
+
+[[package]]
+name = "web-transport-quinn"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf5eb5142259b46d473e44075bde93336f3ad6054d9909a93baca87dad5a03d4"
+dependencies = [
+ "bytes",
+ "futures",
+ "http",
+ "log",
+ "quinn",
+ "quinn-proto",
+ "thiserror",
+ "tokio",
+ "url",
+ "web-transport-proto",
 ]
 
 [[package]]

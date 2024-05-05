@@ -5,23 +5,36 @@ use gst::subclass::prelude::*;
 use gst_base::subclass::prelude::*;
 
 use moq_native::quic;
-use moq_transport::serve::{Tracks, TracksWriter};
+use moq_transport::serve::Tracks;
+use moq_transport::serve::TracksReader;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use url::Url;
+
+pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+	tokio::runtime::Builder::new_multi_thread()
+		.enable_all()
+		.worker_threads(1)
+		.build()
+		.unwrap()
+});
 
 #[derive(Default)]
 struct Settings {
 	pub url: Option<String>,
 	pub namespace: Option<String>,
+}
 
-	pub writer: Option<TracksWriter>,
+#[derive(Default)]
+struct State {
+	pub media: Option<moq_pub::Media>,
+	pub buffer: bytes::BytesMut,
 }
 
 #[derive(Default)]
 pub struct MoqSink {
 	settings: Mutex<Settings>,
-	//state: Mutex<State>,
+	state: Mutex<State>,
 }
 
 #[glib::object_subclass]
@@ -106,6 +119,7 @@ impl ElementImpl for MoqSink {
 
 impl BaseSinkImpl for MoqSink {
 	fn start(&self) -> Result<(), gst::ErrorMessage> {
+		let _guard = RUNTIME.enter();
 		self.setup()
 			.map_err(|e| gst::error_msg!(gst::ResourceError::Failed, ["Failed to connect: {}", e]))
 	}
@@ -115,27 +129,19 @@ impl BaseSinkImpl for MoqSink {
 	}
 
 	fn render(&self, buffer: &gst::Buffer) -> Result<gst::FlowSuccess, gst::FlowError> {
-		/*
-		let caps = buffer.caps().ok_or(gst::FlowError::Error)?;
-
-		if caps.is_equal(self.mp4_caps()) {
-			// Process MP4 data here
-			println!("Received MP4 buffer");
-		// Additional handling logic
-		} else {
-			return Err(gst::FlowError::NotNegotiated);
-		}
-		*/
-
 		let data = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
 
-		// Here you would typically handle the data, e.g., sending it over the network.
-		// This example simply prints the size of the incoming buffer.
-		println!("Received buffer of size {}", data.size());
+		let mut state = self.state.lock().unwrap();
 
-		// Insert network sending logic here.
-		// For example, if using a TCP socket:
-		// self.send_over_network(data.as_slice());
+		let mut buffer = state.buffer.split_off(0);
+		buffer.extend_from_slice(&data);
+
+		let media = state.media.as_mut().expect("not initialized");
+
+		// TODO avoid full media parsing? gst should be able to provide the necessary info
+		media.parse(&mut buffer).expect("failed to parse");
+
+		state.buffer = buffer;
 
 		Ok(gst::FlowSuccess::Ok)
 	}
@@ -146,23 +152,44 @@ impl MoqSink {
 		let settings = self.settings.lock().unwrap();
 		let namespace = settings.namespace.clone().context("missing namespace")?;
 		let (writer, _, reader) = Tracks::new(namespace).produce();
-		settings.writer.replace(writer);
 
-		let url = settings.url.context("missing url")?.parse().context("invalid URL")?;
+		let mut state = self.state.lock().unwrap();
+		state.media = Some(moq_pub::Media::new(writer)?);
+
+		let url = settings.url.clone().context("missing url")?;
+		let url = url.parse().context("invalid URL")?;
 
 		// TODO support TLS certs and other options
 		let config = quic::Args::default().load()?;
 		let client = quic::Endpoint::new(config)?.client;
 
-		tokio::spawn(async move {
-			let session = client.connect(&url).await?;
-			let (session, publisher) = moq_transport::session::Publisher::connect(session).await?;
+		let session = Session {
+			client,
+			url,
+			tracks: reader,
+		};
 
-			tokio::select! {
-				res = publisher.announce(reader) => res?,
-				res = session.run() => res?,
-			};
-		});
+		tokio::spawn(async move { session.run().await.expect("failed to run session") });
+
+		Ok(())
+	}
+}
+
+struct Session {
+	pub client: quic::Client,
+	pub url: Url,
+	pub tracks: TracksReader,
+}
+
+impl Session {
+	async fn run(self) -> anyhow::Result<()> {
+		let session = self.client.connect(&self.url).await?;
+		let (session, mut publisher) = moq_transport::session::Publisher::connect(session).await?;
+
+		tokio::select! {
+			res = publisher.announce(self.tracks) => res?,
+			res = session.run() => res?,
+		};
 
 		Ok(())
 	}
