@@ -7,7 +7,15 @@ URL=${URL:-"http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Big
 REGION=${REGION:-"server"}
 
 # Download the funny bunny
-wget -nv "${URL}" -O "${NAME}.mp4"
+wget -nv "${URL}" -O "tmp.mp4"
+
+# Properly fragment the file
+ffmpeg -i tmp.mp4 \
+	-c copy \
+	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+	"${NAME}.mp4"
+
+rm tmp.mp4
 
 # ffmpeg
 #   -hide_banner: Hide the banner
@@ -38,5 +46,5 @@ ffmpeg \
 	-preset ultrafast \
 	-tune zerolatency \
     -f mp4 \
-	-movflags empty_moov+frag_every_frame+separate_moof+omit_tfhd_offset \
+	-movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 	- | moq-pub "${ADDR}" --name "${NAME}"

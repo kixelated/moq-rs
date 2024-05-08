@@ -7,7 +7,15 @@ cd "$(dirname "$0")/.."
 # Download the Big Buck Bunny video if it doesn't exist
 if [ ! -f dev/bbb.mp4 ]; then
 	echo "Downloading ya boye Big Buck Bunny..."
-	wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/bbb.mp4
+	wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/tmp.mp4
+
+	echo "Converting to a (properly) fragmented MP4..."
+	ffmpeg -i dev/tmp.mp4 \
+		-c copy \
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		dev/bbb.mp4
+
+	rm dev/tmp.mp4
 fi
 
 # Use debug logging by default
@@ -32,13 +40,9 @@ INPUT="${INPUT:-dev/bbb.mp4}"
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Run ffmpeg and pipe the output to moq-pub
-# TODO fix the stuttering issue with audio (try removing -an)
-# In the meantime, consider using gstreamer instead
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \
-	-an \
 	-c copy \
-	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
-	-frag_duration 1 \
+	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"
