@@ -12,8 +12,8 @@ if [ ! -f dev/bbb.mp4 ]; then
 	echo "Converting to a (properly) fragmented MP4..."
 	ffmpeg -i dev/tmp.mp4 \
 		-c copy \
-		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
-		-frag_duration 1 dev/bbb.mp4
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		dev/bbb.mp4
 
 	rm dev/tmp.mp4
 fi
@@ -44,6 +44,5 @@ ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \
 	-c copy \
-	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer \
-	-frag_duration 1 \
+	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"
