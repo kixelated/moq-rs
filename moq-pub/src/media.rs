@@ -103,12 +103,6 @@ impl Media {
 				// Get the track for this moof.
 				let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
 
-				log::info!(
-					"frame: {}, time: {:?}",
-					track.handler,
-					fragment.timestamp(track.timescale)
-				);
-
 				// Save the track ID for the next iteration, which must be a mdat.
 				anyhow::ensure!(self.current.is_none(), "multiple moof atoms");
 				self.current.replace(fragment.track);
