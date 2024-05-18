@@ -41,9 +41,7 @@ impl Server {
 
 		// Create the redis client.
 		let redis = redis::Client::open(self.config.redis)?;
-		let redis = redis
-			.get_tokio_connection_manager() // TODO get_tokio_connection_manager_with_backoff?
-			.await?;
+		let redis = redis.get_connection_manager().await?;
 
 		let app = Router::new()
 			.route(
