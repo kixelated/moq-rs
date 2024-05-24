@@ -1,6 +1,6 @@
 [workspace]
 members = [
-	"moq-transport",
+	"moq-transfork",
 	"moq-relay",
 	"moq-pub",
 	"moq-api",

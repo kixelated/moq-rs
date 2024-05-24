@@ -1,6 +1,6 @@
 use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
-use moq_transport::serve::{GroupWriter, GroupsWriter, TrackWriter, TracksWriter};
+use moq_transfork::serve::{GroupWriter, TrackWriter, TracksWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
@@ -16,8 +16,8 @@ pub struct Media {
 	broadcast: TracksWriter,
 
 	// The init and catalog tracks
-	init: GroupsWriter,
-	catalog: GroupsWriter,
+	init: TrackWriter,
+	catalog: TrackWriter,
 
 	// The ftyp and moov atoms at the start of the file.
 	ftyp: Option<Bytes>,
@@ -29,8 +29,8 @@ pub struct Media {
 
 impl Media {
 	pub fn new(mut broadcast: TracksWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast.create(".catalog").context("broadcast closed")?.groups()?;
-		let init = broadcast.create("0.mp4").context("broadcast closed")?.groups()?;
+		let catalog = broadcast.create(".catalog").context("broadcast closed")?;
+		let init = broadcast.create("0.mp4").context("broadcast closed")?;
 
 		Ok(Media {
 			tracks: Default::default(),
@@ -283,7 +283,7 @@ fn next_atom<B: Buf>(buf: &mut B) -> anyhow::Result<Option<Bytes>> {
 
 struct Track {
 	// The track we're producing
-	track: GroupsWriter,
+	track: TrackWriter,
 
 	// The current segment
 	current: Option<GroupWriter>,
@@ -298,7 +298,7 @@ struct Track {
 impl Track {
 	fn new(track: TrackWriter, handler: TrackType, timescale: u64) -> Self {
 		Self {
-			track: track.groups().unwrap(),
+			track,
 			current: None,
 			timescale,
 			handler,

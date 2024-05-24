@@ -8,171 +8,11 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{cmp, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use crate::watch::State;
 
 use super::{ServeError, Track};
-
-pub struct Groups {
-	pub track: Arc<Track>,
-}
-
-impl Groups {
-	pub fn produce(self) -> (GroupsWriter, GroupsReader) {
-		let (writer, reader) = State::default().split();
-
-		let writer = GroupsWriter::new(writer, self.track.clone());
-		let reader = GroupsReader::new(reader, self.track);
-
-		(writer, reader)
-	}
-}
-
-impl Deref for Groups {
-	type Target = Track;
-
-	fn deref(&self) -> &Self::Target {
-		&self.track
-	}
-}
-
-// State shared between the writer and reader.
-struct GroupsState {
-	latest: Option<GroupReader>,
-	epoch: u64, // Updated each time latest changes
-	closed: Result<(), ServeError>,
-}
-
-impl Default for GroupsState {
-	fn default() -> Self {
-		Self {
-			latest: None,
-			epoch: 0,
-			closed: Ok(()),
-		}
-	}
-}
-
-pub struct GroupsWriter {
-	pub info: Arc<Track>,
-	state: State<GroupsState>,
-	next: u64, // Not in the state to avoid a lock
-}
-
-impl GroupsWriter {
-	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
-		Self {
-			info: track,
-			state,
-			next: 0,
-		}
-	}
-
-	// Helper to increment the group by one.
-	pub fn append(&mut self, priority: u64) -> Result<GroupWriter, ServeError> {
-		self.create(Group {
-			group_id: self.next,
-			priority,
-		})
-	}
-
-	pub fn create(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
-		let group = GroupInfo {
-			track: self.info.clone(),
-			group_id: group.group_id,
-			priority: group.priority,
-		};
-		let (writer, reader) = group.produce();
-
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-
-		if let Some(latest) = &state.latest {
-			match writer.group_id.cmp(&latest.group_id) {
-				cmp::Ordering::Less => return Ok(writer), // dropped immediately, lul
-				cmp::Ordering::Equal => return Err(ServeError::Duplicate),
-				cmp::Ordering::Greater => state.latest = Some(reader),
-			}
-		} else {
-			state.latest = Some(reader);
-		}
-
-		self.next = state.latest.as_ref().unwrap().group_id + 1;
-		state.epoch += 1;
-
-		Ok(writer)
-	}
-
-	/// Close the segment with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-
-		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
-		state.closed = Err(err);
-
-		Ok(())
-	}
-}
-
-impl Deref for GroupsWriter {
-	type Target = Track;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
-
-#[derive(Clone)]
-pub struct GroupsReader {
-	pub info: Arc<Track>,
-	state: State<GroupsState>,
-	epoch: u64,
-}
-
-impl GroupsReader {
-	fn new(state: State<GroupsState>, track: Arc<Track>) -> Self {
-		Self {
-			info: track,
-			state,
-			epoch: 0,
-		}
-	}
-
-	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
-		loop {
-			{
-				let state = self.state.lock();
-
-				if self.epoch != state.epoch {
-					self.epoch = state.epoch;
-					return Ok(state.latest.clone());
-				}
-
-				state.closed.clone()?;
-				match state.modified() {
-					Some(notify) => notify,
-					None => return Ok(None),
-				}
-			}
-			.await; // Try again when the state changes
-		}
-	}
-
-	// Returns the largest group/sequence
-	pub fn latest(&self) -> Option<(u64, u64)> {
-		let state = self.state.lock();
-		state.latest.as_ref().map(|group| (group.group_id, group.latest()))
-	}
-}
-
-impl Deref for GroupsReader {
-	type Target = Track;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
 
 /// Parameters that can be specified by the user
 #[derive(Debug, Clone, PartialEq)]
@@ -283,7 +123,7 @@ impl GroupWriter {
 	}
 
 	/// Close the stream with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
@@ -471,7 +311,7 @@ impl GroupObjectWriter {
 	}
 
 	/// Close the segment with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		if self.remain != 0 {
 			return Err(ServeError::Size);
 		}

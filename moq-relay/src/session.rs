@@ -1,10 +1,10 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transport::session::SessionError;
+use moq_transfork::session::SessionError;
 
 use crate::{Consumer, Producer};
 
 pub struct Session {
-	pub session: moq_transport::session::Session,
+	pub session: moq_transfork::session::Session,
 	pub producer: Option<Producer>,
 	pub consumer: Option<Consumer>,
 }

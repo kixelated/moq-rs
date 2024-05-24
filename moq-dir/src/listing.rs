@@ -2,13 +2,11 @@ use anyhow::Context;
 use bytes::BytesMut;
 use std::collections::{HashSet, VecDeque};
 
-use moq_transport::serve::{
-	GroupReader, GroupWriter, GroupsReader, GroupsWriter, ServeError, TrackReader, TrackReaderMode, TrackWriter,
-};
+use moq_transfork::serve::{GroupReader, GroupWriter, ServeError, TrackReader, TrackWriter};
 
 pub struct ListingWriter {
 	track: Option<TrackWriter>,
-	groups: Option<GroupsWriter>,
+	groups: Option<TrackWriter>,
 	group: Option<GroupWriter>,
 
 	current: HashSet<String>,
@@ -63,7 +61,7 @@ impl ListingWriter {
 	fn snapshot(&mut self) -> Result<GroupWriter, ServeError> {
 		let mut groups = match self.groups.take() {
 			Some(groups) => groups,
-			None => self.track.take().unwrap().groups()?,
+			None => self.track.take().unwrap(),
 		};
 
 		let priority = self.group.as_ref().map(|g| g.group_id + 1).unwrap_or(0);
@@ -101,7 +99,6 @@ pub struct ListingReader {
 	track: TrackReader,
 
 	// Keep track of the current group.
-	groups: Option<GroupsReader>,
 	group: Option<GroupReader>,
 
 	// The current state of the listing.
@@ -115,7 +112,6 @@ impl ListingReader {
 	pub fn new(track: TrackReader) -> Self {
 		Self {
 			track,
-			groups: None,
 			group: None,
 
 			current: HashSet::new(),
@@ -128,15 +124,8 @@ impl ListingReader {
 			return Ok(Some(delta));
 		}
 
-		if self.groups.is_none() {
-			self.groups = match self.track.mode().await? {
-				TrackReaderMode::Groups(groups) => Some(groups),
-				_ => anyhow::bail!("expected groups mode"),
-			};
-		};
-
 		if self.group.is_none() {
-			self.group = Some(self.groups.as_mut().unwrap().next().await?.context("empty track")?);
+			self.group = Some(self.track.next().await?.context("empty track")?);
 		}
 
 		let mut group_done = false;
@@ -144,7 +133,7 @@ impl ListingReader {
 
 		loop {
 			tokio::select! {
-				next = self.groups.as_mut().unwrap().next(), if !groups_done => {
+				next = self.track.next(), if !groups_done => {
 					if let Some(next) = next? {
 						self.group = Some(next);
 						group_done = false;

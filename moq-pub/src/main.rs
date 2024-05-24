@@ -8,7 +8,7 @@ use tokio::io::AsyncReadExt;
 
 use moq_native::quic;
 use moq_pub::Media;
-use moq_transport::{serve, session::Publisher};
+use moq_transfork::{serve, session::Publisher};
 
 #[derive(Parser, Clone)]
 pub struct Cli {

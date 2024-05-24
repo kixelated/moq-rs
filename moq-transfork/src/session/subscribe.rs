@@ -3,7 +3,7 @@ use std::ops;
 use crate::{
 	data,
 	message::{self, SubscribeLocation, SubscribePair},
-	serve::{self, ServeError, TrackWriter, TrackWriterMode},
+	serve::{self, ServeError, TrackWriter},
 };
 
 use crate::watch::State;
@@ -75,7 +75,7 @@ impl Subscribe {
 
 		let recv = SubscribeRecv {
 			state: recv,
-			writer: Some(track.into()),
+			writer: track,
 		};
 
 		(send, recv)
@@ -113,7 +113,7 @@ impl ops::Deref for Subscribe {
 
 pub(super) struct SubscribeRecv {
 	state: State<SubscribeState>,
-	writer: Option<TrackWriterMode>,
+	writer: TrackWriter,
 }
 
 impl SubscribeRecv {
@@ -131,9 +131,7 @@ impl SubscribeRecv {
 	}
 
 	pub fn error(mut self, err: ServeError) -> Result<(), ServeError> {
-		if let Some(writer) = self.writer.take() {
-			writer.close(err.clone())?;
-		}
+		self.writer.close(err.clone())?;
 
 		let state = self.state.lock();
 		state.closed.clone()?;
@@ -144,74 +142,12 @@ impl SubscribeRecv {
 		Ok(())
 	}
 
-	pub fn track(&mut self, header: data::TrackHeader) -> Result<serve::StreamWriter, ServeError> {
-		let writer = self.writer.take().ok_or(ServeError::Done)?;
-
-		let stream = match writer {
-			TrackWriterMode::Track(init) => init.stream(header.send_order)?,
-			_ => return Err(ServeError::Mode),
-		};
-
-		self.writer = Some(stream.clone().into());
-
-		Ok(stream)
-	}
-
-	pub fn group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
-		let writer = self.writer.take().ok_or(ServeError::Done)?;
-
-		let mut groups = match writer {
-			TrackWriterMode::Track(init) => init.groups()?,
-			TrackWriterMode::Groups(groups) => groups,
-			_ => return Err(ServeError::Mode),
-		};
-
-		let writer = groups.create(serve::Group {
+	pub fn recv_group(&mut self, header: data::GroupHeader) -> Result<serve::GroupWriter, ServeError> {
+		let group = self.writer.create(serve::Group {
 			group_id: header.group_id,
 			priority: header.send_order,
 		})?;
 
-		self.writer = Some(groups.into());
-
-		Ok(writer)
-	}
-
-	pub fn object(&mut self, header: data::ObjectHeader) -> Result<serve::ObjectWriter, ServeError> {
-		let writer = self.writer.take().ok_or(ServeError::Done)?;
-
-		let mut objects = match writer {
-			TrackWriterMode::Track(init) => init.objects()?,
-			TrackWriterMode::Objects(objects) => objects,
-			_ => return Err(ServeError::Mode),
-		};
-
-		let writer = objects.create(serve::Object {
-			group_id: header.group_id,
-			object_id: header.object_id,
-			priority: header.send_order,
-		})?;
-
-		self.writer = Some(objects.into());
-
-		Ok(writer)
-	}
-
-	pub fn datagram(&mut self, datagram: data::Datagram) -> Result<(), ServeError> {
-		let writer = self.writer.take().ok_or(ServeError::Done)?;
-
-		let mut datagrams = match writer {
-			TrackWriterMode::Track(init) => init.datagrams()?,
-			TrackWriterMode::Datagrams(datagrams) => datagrams,
-			_ => return Err(ServeError::Mode),
-		};
-
-		datagrams.write(serve::Datagram {
-			group_id: datagram.group_id,
-			object_id: datagram.object_id,
-			priority: datagram.send_order,
-			payload: datagram.payload,
-		})?;
-
-		Ok(())
+		Ok(group)
 	}
 }

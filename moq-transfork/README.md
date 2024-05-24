@@ -4,7 +4,7 @@
 
 # moq-transport
 
-A Rust implementation of the proposed IETF standard.
+A Rust implementation of (a fork of) the proposed IETF standard.
 
 [Specification](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/)
 [Github](https://github.com/moq-wg/moq-transport)

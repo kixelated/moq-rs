@@ -7,7 +7,7 @@ use clap::Parser;
 
 mod clock;
 
-use moq_transport::{
+use moq_transfork::{
 	serve,
 	session::{Publisher, Subscriber},
 };
@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
 		.produce();
 
 		let track = writer.create(&config.track).unwrap();
-		let clock = clock::Publisher::new(track.groups()?);
+		let clock = clock::Publisher::new(track);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,

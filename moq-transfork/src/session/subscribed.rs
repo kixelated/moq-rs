@@ -3,8 +3,7 @@ use std::ops;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
-use crate::coding::Encode;
-use crate::serve::{ServeError, TrackReaderMode};
+use crate::serve::ServeError;
 use crate::watch::State;
 use crate::{data, message, serve};
 
@@ -89,13 +88,7 @@ impl Subscribed {
 
 		self.ok = true; // So we sent SubscribeDone on drop
 
-		match track.mode().await? {
-			// TODO cancel track/datagrams on closed
-			TrackReaderMode::Stream(stream) => self.serve_track(stream).await,
-			TrackReaderMode::Groups(groups) => self.serve_groups(groups).await,
-			TrackReaderMode::Objects(objects) => self.serve_objects(objects).await,
-			TrackReaderMode::Datagrams(datagrams) => self.serve_datagrams(datagrams).await,
-		}
+		self.serve_groups(track).await
 	}
 
 	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
@@ -158,55 +151,7 @@ impl Drop for Subscribed {
 }
 
 impl Subscribed {
-	async fn serve_track(&mut self, mut track: serve::StreamReader) -> Result<(), SessionError> {
-		let mut stream = self.publisher.open_uni().await?;
-
-		// TODO figure out u32 vs u64 priority
-		stream.set_priority(track.priority as i32);
-
-		let mut writer = Writer::new(stream);
-
-		let header: data::Header = data::TrackHeader {
-			subscribe_id: self.msg.id,
-			track_alias: self.msg.track_alias,
-			send_order: track.priority,
-		}
-		.into();
-
-		writer.encode(&header).await?;
-
-		log::trace!("sent track header: {:?}", header);
-
-		while let Some(mut group) = track.next().await? {
-			while let Some(mut object) = group.next().await? {
-				let header = data::TrackObject {
-					group_id: object.group_id,
-					object_id: object.object_id,
-					size: object.size,
-				};
-
-				self.state
-					.lock_mut()
-					.ok_or(ServeError::Done)?
-					.update_max(object.group_id, object.object_id)?;
-
-				writer.encode(&header).await?;
-
-				log::trace!("sent track object: {:?}", header);
-
-				while let Some(chunk) = object.read().await? {
-					writer.write(&chunk).await?;
-					log::trace!("sent track payload: {:?}", chunk.len());
-				}
-
-				log::trace!("sent track done");
-			}
-		}
-
-		Ok(())
-	}
-
-	async fn serve_groups(&mut self, mut groups: serve::GroupsReader) -> Result<(), SessionError> {
+	async fn serve_groups(&mut self, mut groups: serve::TrackReader) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut done: Option<Result<(), ServeError>> = None;
 
@@ -253,8 +198,6 @@ impl Subscribed {
 		stream.set_priority(group.priority as i32);
 
 		let mut writer = Writer::new(stream);
-
-		let header: data::Header = header.into();
 		writer.encode(&header).await?;
 
 		log::trace!("sent group: {:?}", header);
@@ -280,101 +223,6 @@ impl Subscribed {
 			}
 
 			log::trace!("sent group done");
-		}
-
-		Ok(())
-	}
-
-	pub async fn serve_objects(&mut self, mut objects: serve::ObjectsReader) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-		let mut done = None;
-
-		loop {
-			tokio::select! {
-				res = objects.next(), if done.is_none() => match res {
-					Ok(Some(object)) => {
-						let header = data::ObjectHeader {
-							subscribe_id: self.msg.id,
-							track_alias: self.msg.track_alias,
-							group_id: object.group_id,
-							object_id: object.object_id,
-							send_order: object.priority,
-						};
-
-						let publisher = self.publisher.clone();
-						let state = self.state.clone();
-						let info = object.info.clone();
-
-						tasks.push(async move {
-							if let Err(err) = Self::serve_object(header, object, publisher, state).await {
-								log::warn!("failed to serve object: {:?}, error: {}", info, err);
-							};
-						});
-					},
-					Ok(None) => done = Some(Ok(())),
-					Err(err) => done = Some(Err(err)),
-				},
-				_ = tasks.next(), if !tasks.is_empty() => {},
-				res = self.closed(), if done.is_none() => done = Some(res),
-				else => return Ok(done.unwrap()?),
-			}
-		}
-	}
-
-	async fn serve_object(
-		header: data::ObjectHeader,
-		mut object: serve::ObjectReader,
-		mut publisher: Publisher,
-		state: State<SubscribedState>,
-	) -> Result<(), SessionError> {
-		state
-			.lock_mut()
-			.ok_or(ServeError::Done)?
-			.update_max(object.group_id, object.object_id)?;
-
-		let mut stream = publisher.open_uni().await?;
-
-		// TODO figure out u32 vs u64 priority
-		stream.set_priority(object.priority as i32);
-
-		let mut writer = Writer::new(stream);
-
-		let header: data::Header = header.into();
-		writer.encode(&header).await?;
-
-		log::trace!("sent object: {:?}", header);
-
-		while let Some(chunk) = object.read().await? {
-			writer.write(&chunk).await?;
-			log::trace!("sent object payload: {:?}", chunk.len());
-		}
-
-		log::trace!("sent object done");
-
-		Ok(())
-	}
-
-	async fn serve_datagrams(&mut self, mut datagrams: serve::DatagramsReader) -> Result<(), SessionError> {
-		while let Some(datagram) = datagrams.read().await? {
-			let datagram = data::Datagram {
-				subscribe_id: self.msg.id,
-				track_alias: self.msg.track_alias,
-				group_id: datagram.group_id,
-				object_id: datagram.object_id,
-				send_order: datagram.priority,
-				payload: datagram.payload,
-			};
-
-			let mut buffer = bytes::BytesMut::with_capacity(datagram.payload.len() + 100);
-			datagram.encode(&mut buffer)?;
-
-			self.publisher.send_datagram(buffer.into()).await?;
-			log::trace!("sent datagram: {:?}", datagram);
-
-			self.state
-				.lock_mut()
-				.ok_or(ServeError::Done)?
-				.update_max(datagram.group_id, datagram.object_id)?;
 		}
 
 		Ok(())

@@ -14,12 +14,8 @@
 
 use crate::watch::State;
 
-use super::{
-	Datagrams, DatagramsReader, DatagramsWriter, Groups, GroupsReader, GroupsWriter, Objects, ObjectsReader,
-	ObjectsWriter, ServeError, Stream, StreamReader, StreamWriter,
-};
-use paste::paste;
-use std::{ops::Deref, sync::Arc};
+use super::{Group, GroupInfo, GroupReader, GroupWriter, ServeError};
+use std::{cmp::Ordering, ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,83 +41,78 @@ impl Track {
 }
 
 struct TrackState {
-	mode: Option<TrackReaderMode>,
+	latest: Option<GroupReader>,
+	epoch: u64, // Updated each time latest changes
 	closed: Result<(), ServeError>,
 }
 
 impl Default for TrackState {
 	fn default() -> Self {
 		Self {
-			mode: None,
+			latest: None,
+			epoch: 0,
 			closed: Ok(()),
 		}
 	}
 }
 
-/// Creates new streams for a track.
 pub struct TrackWriter {
-	state: State<TrackState>,
 	pub info: Arc<Track>,
+	state: State<TrackState>,
+	next: u64, // Not in the state to avoid a lock
 }
 
 impl TrackWriter {
-	/// Create a track with the given name.
-	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, info }
+	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
+		Self {
+			info: track,
+			state,
+			next: 0,
+		}
 	}
 
-	pub fn stream(self, priority: u64) -> Result<StreamWriter, ServeError> {
-		let (writer, reader) = Stream {
-			track: self.info.clone(),
+	// Helper to increment the group by one.
+	pub fn append(&mut self, priority: u64) -> Result<GroupWriter, ServeError> {
+		self.create(Group {
+			group_id: self.next,
 			priority,
-		}
-		.produce();
-
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.mode = Some(reader.into());
-		Ok(writer)
+		})
 	}
 
-	pub fn groups(self) -> Result<GroupsWriter, ServeError> {
-		let (writer, reader) = Groups {
+	pub fn create(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
+		let group = GroupInfo {
 			track: self.info.clone(),
-		}
-		.produce();
+			group_id: group.group_id,
+			priority: group.priority,
+		};
+		let (writer, reader) = group.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.mode = Some(reader.into());
+
+		if let Some(latest) = &state.latest {
+			match writer.group_id.cmp(&latest.group_id) {
+				Ordering::Less => return Ok(writer), // dropped immediately, lul
+				Ordering::Equal => return Err(ServeError::Duplicate),
+				Ordering::Greater => state.latest = Some(reader),
+			}
+		} else {
+			state.latest = Some(reader);
+		}
+
+		self.next = state.latest.as_ref().unwrap().group_id + 1;
+		state.epoch += 1;
+
 		Ok(writer)
 	}
 
-	pub fn objects(self) -> Result<ObjectsWriter, ServeError> {
-		let (writer, reader) = Objects {
-			track: self.info.clone(),
-		}
-		.produce();
-
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.mode = Some(reader.into());
-		Ok(writer)
-	}
-
-	pub fn datagrams(self) -> Result<DatagramsWriter, ServeError> {
-		let (writer, reader) = Datagrams {
-			track: self.info.clone(),
-		}
-		.produce();
-
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.mode = Some(reader.into());
-		Ok(writer)
-	}
-
-	/// Close the track with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+	/// Close the segment with an error.
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
 		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
 		state.closed = Err(err);
+
 		Ok(())
 	}
 }
@@ -134,43 +125,43 @@ impl Deref for TrackWriter {
 	}
 }
 
-/// Receives new streams for a track.
 #[derive(Clone)]
 pub struct TrackReader {
-	state: State<TrackState>,
 	pub info: Arc<Track>,
+	state: State<TrackState>,
+	epoch: u64,
 }
 
 impl TrackReader {
 	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, info }
+		Self { info, state, epoch: 0 }
 	}
 
-	pub async fn mode(&self) -> Result<TrackReaderMode, ServeError> {
+	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
 		loop {
 			{
 				let state = self.state.lock();
-				if let Some(mode) = &state.mode {
-					return Ok(mode.clone());
+
+				if self.epoch != state.epoch {
+					self.epoch = state.epoch;
+					return Ok(state.latest.clone());
 				}
 
 				state.closed.clone()?;
 				match state.modified() {
 					Some(notify) => notify,
-					None => return Err(ServeError::Done),
+					None => return Ok(None),
 				}
 			}
-			.await;
+			.await; // Try again when the state changes
 		}
 	}
 
 	// Returns the largest group/sequence
 	pub fn latest(&self) -> Option<(u64, u64)> {
-		// We don't even know the mode yet.
-		// TODO populate from SUBSCRIBE_OK
-		None
+		let state = self.state.lock();
+		state.latest.as_ref().map(|group| (group.group_id, group.latest()))
 	}
-
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			{
@@ -194,56 +185,3 @@ impl Deref for TrackReader {
 		&self.info
 	}
 }
-
-macro_rules! track_readers {
-    {$($name:ident,)*} => {
-		paste! {
-			#[derive(Clone)]
-			pub enum TrackReaderMode {
-				$($name([<$name Reader>])),*
-			}
-
-			$(impl From<[<$name Reader>]> for TrackReaderMode {
-				fn from(reader: [<$name Reader >]) -> Self {
-					Self::$name(reader)
-				}
-			})*
-
-			impl TrackReaderMode {
-				pub fn latest(&self) -> Option<(u64, u64)> {
-					match self {
-						$(Self::$name(reader) => reader.latest(),)*
-					}
-				}
-			}
-		}
-	}
-}
-
-track_readers!(Stream, Groups, Objects, Datagrams,);
-
-macro_rules! track_writers {
-    {$($name:ident,)*} => {
-		paste! {
-			pub enum TrackWriterMode {
-				$($name([<$name Writer>])),*
-			}
-
-			$(impl From<[<$name Writer>]> for TrackWriterMode {
-				fn from(writer: [<$name Writer>]) -> Self {
-					Self::$name(writer)
-				}
-			})*
-
-			impl TrackWriterMode {
-				pub fn close(self, err: ServeError) -> Result<(), ServeError>{
-					match self {
-						$(Self::$name(writer) => writer.close(err),)*
-					}
-				}
-			}
-		}
-	}
-}
-
-track_writers!(Track, Stream, Groups, Objects, Datagrams,);

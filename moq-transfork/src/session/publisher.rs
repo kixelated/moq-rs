@@ -206,8 +206,4 @@ impl Publisher {
 	pub(super) async fn open_uni(&mut self) -> Result<web_transport::SendStream, SessionError> {
 		Ok(self.webtransport.open_uni().await?)
 	}
-
-	pub(super) async fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), SessionError> {
-		Ok(self.webtransport.send_datagram(data).await?)
-	}
 }

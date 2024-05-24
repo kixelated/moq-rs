@@ -867,7 +867,7 @@ dependencies = [
  "env_logger",
  "log",
  "moq-native",
- "moq-transport",
+ "moq-transfork",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -885,7 +885,7 @@ dependencies = [
  "futures",
  "log",
  "moq-native",
- "moq-transport",
+ "moq-transfork",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -901,7 +901,7 @@ dependencies = [
  "futures",
  "hex",
  "log",
- "moq-transport",
+ "moq-transfork",
  "quinn",
  "ring 0.16.20",
  "rustls",
@@ -924,7 +924,7 @@ dependencies = [
  "env_logger",
  "log",
  "moq-native",
- "moq-transport",
+ "moq-transfork",
  "mp4",
  "rfc6381-codec",
  "serde_json",
@@ -948,7 +948,7 @@ dependencies = [
  "log",
  "moq-api",
  "moq-native",
- "moq-transport",
+ "moq-transfork",
  "ring 0.16.20",
  "rustls",
  "rustls-native-certs",
@@ -962,8 +962,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-transport"
-version = "0.5.1"
+name = "moq-transfork"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",

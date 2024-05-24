@@ -84,7 +84,7 @@ impl Relay {
 				.connect(url)
 				.await
 				.context("failed to establish forward connection")?;
-			let (session, publisher, subscriber) = moq_transport::session::Session::connect(session)
+			let (session, publisher, subscriber) = moq_transfork::session::Session::connect(session)
 				.await
 				.context("failed to establish forward session")?;
 
@@ -118,7 +118,7 @@ impl Relay {
 					let api = self.api.clone();
 
 					tasks.push(async move {
-						let (session, publisher, subscriber) = match moq_transport::session::Session::accept(conn).await {
+						let (session, publisher, subscriber) = match moq_transfork::session::Session::accept(conn).await {
 							Ok(session) => session,
 							Err(err) => {
 								log::warn!("failed to accept MoQ session: {}", err);

@@ -110,7 +110,7 @@ impl BroadcastWriter {
 	}
 
 	/// Close the broadcast with an error.
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 

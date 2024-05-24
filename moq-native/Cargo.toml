@@ -12,7 +12,7 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transport = { path = "../moq-transport", version = "0.5" }
+moq-transfork = { path = "../moq-transfork", version = "0.1" }
 web-transport = "0.2"
 
 # QUIC

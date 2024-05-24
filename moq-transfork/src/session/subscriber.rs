@@ -1,11 +1,9 @@
 use std::{
 	collections::{hash_map, HashMap},
-	io,
 	sync::{atomic, Arc, Mutex},
 };
 
 use crate::{
-	coding::Decode,
 	data,
 	message::{self, Message},
 	serve::{self, ServeError},
@@ -150,9 +148,9 @@ impl Subscriber {
 
 	pub(super) async fn recv_stream(mut self, stream: web_transport::RecvStream) -> Result<(), SessionError> {
 		let mut reader = Reader::new(stream);
-		let header: data::Header = reader.decode().await?;
+		let header: data::GroupHeader = reader.decode().await?;
 
-		let id = header.subscribe_id();
+		let id = header.subscribe_id;
 
 		let res = self.recv_stream_inner(reader, header).await;
 		if let Err(SessionError::Serve(err)) = &res {
@@ -166,62 +164,16 @@ impl Subscriber {
 		res
 	}
 
-	async fn recv_stream_inner(&mut self, reader: Reader, header: data::Header) -> Result<(), SessionError> {
-		let id = header.subscribe_id();
-
-		// This is super silly, but I couldn't figure out a way to avoid the mutex guard across awaits.
-		enum Writer {
-			Track(serve::StreamWriter),
-			Group(serve::GroupWriter),
-			Object(serve::ObjectWriter),
-		}
+	async fn recv_stream_inner(&mut self, reader: Reader, header: data::GroupHeader) -> Result<(), SessionError> {
+		let id = header.subscribe_id;
 
 		let writer = {
 			let mut subscribes = self.subscribes.lock().unwrap();
 			let subscribe = subscribes.get_mut(&id).ok_or(ServeError::NotFound)?;
-
-			match header {
-				data::Header::Track(track) => Writer::Track(subscribe.track(track)?),
-				data::Header::Group(group) => Writer::Group(subscribe.group(group)?),
-				data::Header::Object(object) => Writer::Object(subscribe.object(object)?),
-			}
+			subscribe.recv_group(header)?
 		};
 
-		match writer {
-			Writer::Track(track) => Self::recv_track(track, reader).await?,
-			Writer::Group(group) => Self::recv_group(group, reader).await?,
-			Writer::Object(object) => Self::recv_object(object, reader).await?,
-		};
-
-		Ok(())
-	}
-
-	async fn recv_track(mut track: serve::StreamWriter, mut reader: Reader) -> Result<(), SessionError> {
-		log::trace!("received track: {:?}", track.info);
-
-		let mut prev: Option<serve::StreamGroupWriter> = None;
-
-		while !reader.done().await? {
-			let chunk: data::TrackObject = reader.decode().await?;
-
-			let mut group = match prev {
-				Some(group) if group.group_id == chunk.group_id => group,
-				_ => track.create(chunk.group_id)?,
-			};
-
-			let mut object = group.create(chunk.size)?;
-
-			let mut remain = chunk.size;
-			while remain > 0 {
-				let chunk = reader.read_chunk(remain).await?.ok_or(SessionError::WrongSize)?;
-
-				log::trace!("received track payload: {:?}", chunk.len());
-				remain -= chunk.len();
-				object.write(chunk)?;
-			}
-
-			prev = Some(group);
-		}
+		Self::recv_group(writer, reader).await?;
 
 		Ok(())
 	}
@@ -242,28 +194,6 @@ impl Subscriber {
 				remain -= data.len();
 				object.write(data)?;
 			}
-		}
-
-		Ok(())
-	}
-
-	async fn recv_object(mut object: serve::ObjectWriter, mut reader: Reader) -> Result<(), SessionError> {
-		log::trace!("received object: {:?}", object.info);
-
-		while let Some(data) = reader.read_chunk(usize::MAX).await? {
-			log::trace!("received object payload: {:?}", data.len());
-			object.write(data)?;
-		}
-
-		Ok(())
-	}
-
-	pub fn recv_datagram(&mut self, datagram: bytes::Bytes) -> Result<(), SessionError> {
-		let mut cursor = io::Cursor::new(datagram);
-		let datagram = data::Datagram::decode(&mut cursor)?;
-
-		if let Some(subscribe) = self.subscribes.lock().unwrap().get_mut(&datagram.subscribe_id) {
-			subscribe.datagram(datagram)?;
 		}
 
 		Ok(())

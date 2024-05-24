@@ -165,7 +165,6 @@ impl Session {
 			res = Self::run_recv(self.recver, self.publisher, self.subscriber.clone()) => res,
 			res = Self::run_send(self.sender, self.outgoing) => res,
 			res = Self::run_streams(self.webtransport.clone(), self.subscriber.clone()) => res,
-			res = Self::run_datagrams(self.webtransport, self.subscriber) => res,
 		}
 	}
 
@@ -234,19 +233,6 @@ impl Session {
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 			};
-		}
-	}
-
-	async fn run_datagrams(
-		mut webtransport: web_transport::Session,
-		mut subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
-		loop {
-			let datagram = webtransport.recv_datagram().await?;
-			subscriber
-				.as_mut()
-				.ok_or(SessionError::RoleViolation)?
-				.recv_datagram(datagram)?;
 		}
 	}
 }

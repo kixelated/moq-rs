@@ -30,15 +30,12 @@ impl<T> Queue<T> {
 	}
 
 	// Drop the state
-	pub fn close(self) -> Vec<T> {
+	pub fn drain(&mut self) -> Vec<T> {
 		// Drain the queue of any remaining entries
 		let res = match self.state.lock_mut() {
 			Some(mut queue) => queue.drain(..).collect(),
 			_ => Vec::new(),
 		};
-
-		// Prevent any new entries from being added
-		drop(self.state);
 
 		res
 	}

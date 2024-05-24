@@ -58,7 +58,7 @@ impl Endpoint {
 		let transport = Arc::new(transport);
 
 		let server_config = config.tls.server.map(|mut server| {
-			server.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+			server.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transfork::setup::ALPN.to_vec()];
 			let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server));
 			server_config.transport_config(transport.clone());
 			server_config
@@ -154,7 +154,7 @@ impl Server {
 					.context("failed to respond to WebTransport request")?
 			}
 			// A bit of a hack to pretend like we're a WebTransport session
-			moq_transport::setup::ALPN => conn.into(),
+			moq_transfork::setup::ALPN => conn.into(),
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
@@ -180,7 +180,7 @@ impl Client {
 		// TODO support connecting to both ALPNs at the same time
 		config.alpn_protocols = vec![match url.scheme() {
 			"https" => web_transport_quinn::ALPN.to_vec(),
-			"moqt" => moq_transport::setup::ALPN.to_vec(),
+			"moqt" => moq_transfork::setup::ALPN.to_vec(),
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
 		}];
 

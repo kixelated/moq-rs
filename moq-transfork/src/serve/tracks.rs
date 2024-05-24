@@ -86,23 +86,19 @@ impl Deref for TracksWriter {
 pub struct TracksRequest {
 	#[allow(dead_code)] // Avoid dropping the write side
 	state: State<TracksState>,
-	incoming: Option<Queue<TrackWriter>>,
+	incoming: Queue<TrackWriter>,
 	pub info: Arc<Tracks>,
 }
 
 impl TracksRequest {
 	fn new(state: State<TracksState>, incoming: Queue<TrackWriter>, info: Arc<Tracks>) -> Self {
-		Self {
-			state,
-			incoming: Some(incoming),
-			info,
-		}
+		Self { state, incoming, info }
 	}
 
 	/// Wait for a request to create a new track.
 	/// None is returned if all [TracksReader]s have been dropped.
 	pub async fn next(&mut self) -> Option<TrackWriter> {
-		self.incoming.as_mut()?.pop().await
+		self.incoming.pop().await
 	}
 }
 
@@ -117,7 +113,7 @@ impl Deref for TracksRequest {
 impl Drop for TracksRequest {
 	fn drop(&mut self) {
 		// Close any tracks still in the Queue
-		for track in self.incoming.take().unwrap().close() {
+		for mut track in self.incoming.drain() {
 			let _ = track.close(ServeError::NotFound);
 		}
 	}
