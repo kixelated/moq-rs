@@ -197,7 +197,7 @@ impl Client {
 		let addr = tokio::net::lookup_host((host.clone(), port))
 			.await
 			.context("failed DNS lookup")?
-			.filter(|s| own_protocol_ipv4 == s.is_ipv4())
+			.filter(|s| own_protocol_ipv4 == s.ip().to_canonical().is_ipv4())
 			.next()
 			.context("no DNS entries")?;
 
