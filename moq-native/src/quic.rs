@@ -197,9 +197,8 @@ impl Client {
 		let addr = tokio::net::lookup_host((host.clone(), port))
 			.await
 			.context("failed DNS lookup")?
-			.filter(|s| own_protocol_ipv4 == s.ip().to_canonical().is_ipv4())
-			.next()
-			.context("no DNS entries")?;
+			.find(|s| own_protocol_ipv4 == s.ip().to_canonical().is_ipv4())
+			.context("no DNS entries with matching IP version")?;
 
 		let connection = self.quic.connect_with(config, addr, &host)?.await?;
 
