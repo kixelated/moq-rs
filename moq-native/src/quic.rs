@@ -190,12 +190,15 @@ impl Client {
 		let host = url.host().context("invalid DNS name")?.to_string();
 		let port = url.port().unwrap_or(443);
 
+		let local_addr = self.quic.local_addr()?.ip();
+		let own_protocol_ipv4 = local_addr.to_canonical().is_ipv4();
+
 		// Look up the DNS entry.
 		let addr = tokio::net::lookup_host((host.clone(), port))
 			.await
 			.context("failed DNS lookup")?
-			.next()
-			.context("no DNS entries")?;
+			.find(|s| own_protocol_ipv4 == s.ip().to_canonical().is_ipv4())
+			.context("no DNS entries with matching IP version")?;
 
 		let connection = self.quic.connect_with(config, addr, &host)?.await?;
 
