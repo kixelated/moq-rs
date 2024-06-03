@@ -41,4 +41,8 @@ impl Writer {
 
 		Ok(())
 	}
+
+	pub fn reset(&mut self, code: u32) {
+		self.stream.reset(code)
+	}
 }

@@ -119,9 +119,9 @@ impl RemotesConsumer {
 		Self { info, state }
 	}
 
-	pub async fn route(&self, namespace: &str) -> anyhow::Result<Option<RemoteConsumer>> {
+	pub async fn route(&self, broadcast: &str) -> anyhow::Result<Option<RemoteConsumer>> {
 		// Always fetch the origin instead of using the (potentially invalid) cache.
-		let origin = match self.api.get_origin(namespace).await? {
+		let origin = match self.api.get_origin(broadcast).await? {
 			None => return Ok(None),
 			Some(origin) => origin,
 		};
@@ -285,8 +285,8 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, namespace: String, name: String) -> anyhow::Result<Option<RemoteTrackReader>> {
-		let key = (namespace.clone(), name.clone());
+	pub fn subscribe(&self, broadcast: String, name: String) -> anyhow::Result<Option<RemoteTrackReader>> {
+		let key = (broadcast.clone(), name.clone());
 		let state = self.state.lock();
 		if let Some(track) = state.tracks.get(&key) {
 			if let Some(track) = track.upgrade() {
@@ -299,7 +299,7 @@ impl RemoteConsumer {
 			None => return Ok(None),
 		};
 
-		let (writer, reader) = Track::new(namespace, name).produce();
+		let (writer, reader) = Track::new(broadcast, name).produce();
 		let reader = RemoteTrackReader::new(reader, self.state.clone());
 
 		// Insert the track into our Map so we deduplicate future requests.
@@ -328,7 +328,7 @@ impl RemoteTrackReader {
 	fn new(reader: TrackReader, parent: State<RemoteState>) -> Self {
 		let drop = Arc::new(RemoteTrackDrop {
 			parent,
-			key: (reader.namespace.clone(), reader.name.clone()),
+			key: (reader.broadcast.clone(), reader.name.clone()),
 		});
 
 		Self { reader, drop }

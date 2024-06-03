@@ -1,4 +1,4 @@
-use crate::{coding, serve, setup};
+use crate::{coding, message, serve, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum SessionError {
@@ -28,6 +28,9 @@ pub enum SessionError {
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation")]
 	RoleViolation,
+
+	#[error("unexpected stream: {0:?}")]
+	UnexpectedStream(message::StreamBi),
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]
@@ -59,6 +62,7 @@ impl SessionError {
 			Self::Version(..) => 406,
 			Self::Decode(_) => 400,
 			Self::Encode(_) => 500,
+			Self::UnexpectedStream(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
 			Self::Internal => 500,

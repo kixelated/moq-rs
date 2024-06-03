@@ -12,31 +12,64 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::watch::State;
+use crate::util::State;
 
-use super::{Group, GroupInfo, GroupReader, GroupWriter, ServeError};
+use super::{Group, GroupReader, GroupWriter, ServeError};
 use std::{cmp::Ordering, ops::Deref, sync::Arc};
 
 /// Static information about a track.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
-	pub namespace: String,
 	pub name: String,
+	pub order: Option<TrackOrder>,
+	pub priority: Option<u64>,
 }
 
 impl Track {
-	pub fn new(namespace: String, name: String) -> Self {
-		Self { namespace, name }
+	pub fn new(name: &str) -> TrackBuilder {
+		TrackBuilder::new(Self {
+			name: name.to_string(),
+			order: None,
+			priority: None,
+		})
 	}
 
 	pub fn produce(self) -> (TrackWriter, TrackReader) {
-		let (writer, reader) = State::default().split();
+		let state = State::default();
 		let info = Arc::new(self);
 
-		let writer = TrackWriter::new(writer, info.clone());
-		let reader = TrackReader::new(reader, info);
+		let writer = TrackWriter::new(state.split(), info.clone());
+		let reader = TrackReader::new(state, info);
 
 		(writer, reader)
+	}
+}
+
+pub struct TrackBuilder {
+	track: Track,
+}
+
+impl TrackBuilder {
+	fn new(track: Track) -> Self {
+		Self { track }
+	}
+
+	pub fn order(mut self, order: TrackOrder) -> Self {
+		self.track.order = Some(order);
+		self
+	}
+
+	pub fn priority(mut self, priority: u64) -> Self {
+		self.track.priority = Some(priority);
+		self
+	}
+
+	pub fn build(self) -> Track {
+		self.track
+	}
+
+	pub fn produce(self) -> (TrackWriter, TrackReader) {
+		self.build().produce()
 	}
 }
 
@@ -59,39 +92,21 @@ impl Default for TrackState {
 pub struct TrackWriter {
 	pub info: Arc<Track>,
 	state: State<TrackState>,
-	next: u64, // Not in the state to avoid a lock
 }
 
 impl TrackWriter {
 	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
-		Self {
-			info: track,
-			state,
-			next: 0,
-		}
+		Self { info: track, state }
 	}
 
-	// Helper to increment the group by one.
-	pub fn append(&mut self, priority: u64) -> Result<GroupWriter, ServeError> {
-		self.create(Group {
-			group_id: self.next,
-			priority,
-		})
-	}
-
-	pub fn create(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
-		let group = GroupInfo {
-			track: self.info.clone(),
-			group_id: group.group_id,
-			priority: group.priority,
-		};
+	pub fn create_group(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
 		let (writer, reader) = group.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 
 		if let Some(latest) = &state.latest {
-			match writer.group_id.cmp(&latest.group_id) {
-				Ordering::Less => return Ok(writer), // dropped immediately, lul
+			match writer.sequence.cmp(&latest.sequence) {
+				Ordering::Less => return Ok(writer), // TODO dropped immediately, lul
 				Ordering::Equal => return Err(ServeError::Duplicate),
 				Ordering::Greater => state.latest = Some(reader),
 			}
@@ -99,10 +114,21 @@ impl TrackWriter {
 			state.latest = Some(reader);
 		}
 
-		self.next = state.latest.as_ref().unwrap().group_id + 1;
 		state.epoch += 1;
 
 		Ok(writer)
+	}
+
+	// Helper to return the sequence number for the next group.
+	// TODO make an append_group function
+	// TODO also avoid this unnecessary mutex
+	pub fn next_group(&self) -> u64 {
+		let state = self.state.lock();
+		state
+			.latest
+			.as_ref()
+			.map(|group| group.sequence + 1)
+			.unwrap_or_default()
 	}
 
 	/// Close the segment with an error.
@@ -130,14 +156,36 @@ pub struct TrackReader {
 	pub info: Arc<Track>,
 	state: State<TrackState>,
 	epoch: u64,
+
+	pub priority: Option<u64>,
+	pub order: Option<TrackOrder>,
 }
 
 impl TrackReader {
 	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
-		Self { info, state, epoch: 0 }
+		Self {
+			state,
+			epoch: 0,
+			order: info.order,
+			priority: info.priority,
+			info,
+		}
 	}
 
-	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
+	pub fn get_group(&self, sequence: u64) -> Option<GroupReader> {
+		let state = self.state.lock();
+
+		// TODO support more than just the latest group
+		state
+			.latest
+			.as_ref()
+			.filter(|group| group.sequence == sequence)
+			.cloned()
+	}
+
+	// NOTE: This can return groups out of order.
+	// TODO obey order and expires
+	pub async fn next_group(&mut self) -> Result<Option<GroupReader>, ServeError> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -157,11 +205,12 @@ impl TrackReader {
 		}
 	}
 
-	// Returns the largest group/sequence
-	pub fn latest(&self) -> Option<(u64, u64)> {
+	// Returns the largest group
+	pub fn latest(&self) -> Option<u64> {
 		let state = self.state.lock();
-		state.latest.as_ref().map(|group| (group.group_id, group.latest()))
+		state.latest.as_ref().map(|group| group.sequence)
 	}
+
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			{
@@ -184,4 +233,10 @@ impl Deref for TrackReader {
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrackOrder {
+	Ascending,
+	Descending,
 }

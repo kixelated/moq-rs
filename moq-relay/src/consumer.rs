@@ -1,7 +1,7 @@
 use anyhow::Context;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transfork::{
-	serve::Tracks,
+	serve::Broadcast,
 	session::{Announced, SessionError, Subscriber},
 };
 
@@ -51,10 +51,10 @@ impl Consumer {
 	async fn serve(mut self, mut announce: Announced) -> Result<(), anyhow::Error> {
 		let mut tasks = FuturesUnordered::new();
 
-		let (_, mut request, reader) = Tracks::new(announce.namespace.to_string()).produce();
+		let (_, mut request, reader) = Broadcast::new(announce.broadcast.to_string()).produce();
 
 		if let Some(api) = self.api.as_ref() {
-			let mut refresh = api.set_origin(reader.namespace.clone()).await?;
+			let mut refresh = api.set_origin(reader.broadcast.clone()).await?;
 			tasks.push(async move { refresh.run().await.context("failed refreshing origin") }.boxed());
 		}
 

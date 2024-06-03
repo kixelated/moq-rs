@@ -47,6 +47,16 @@ impl Reader {
 		}
 	}
 
+	// Decode optional messages at the end of a stream
+	// The weird order of Option<Result is for tokio::select!
+	pub async fn decode_maybe<T: Decode>(&mut self) -> Option<Result<T, SessionError>> {
+		match self.closed().await {
+			Ok(()) => None,
+			Err(SessionError::Decode(DecodeError::ExpectedData)) => Some(self.decode().await),
+			Err(e) => Some(Err(e)),
+		}
+	}
+
 	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, SessionError> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());
@@ -57,11 +67,18 @@ impl Reader {
 		Ok(self.stream.read_chunk(max).await?)
 	}
 
-	pub async fn done(&mut self) -> Result<bool, SessionError> {
-		if !self.buffer.is_empty() {
-			return Ok(false);
+	pub fn stop(&mut self, code: u32) {
+		self.stream.stop(code)
+	}
+
+	// Wait until the stream is closed, ensuring there are no additional bytes
+	pub async fn closed(&mut self) -> Result<(), SessionError> {
+		if self.buffer.is_empty() {
+			if !self.stream.read_buf(&mut self.buffer).await? {
+				return Ok(());
+			}
 		}
 
-		Ok(!self.stream.read_buf(&mut self.buffer).await?)
+		Err(SessionError::Decode(DecodeError::ExpectedEnd))
 	}
 }

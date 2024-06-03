@@ -1,6 +1,6 @@
 use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
-use moq_transfork::serve::{GroupWriter, TrackWriter, TracksWriter};
+use moq_transfork::serve::{self, BroadcastWriter, GroupWriter, TrackWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
@@ -9,11 +9,11 @@ use std::io::Cursor;
 use std::time;
 
 pub struct Media {
-	// Tracks based on their track ID.
+	// Broadcast based on their track ID.
 	tracks: HashMap<u32, Track>,
 
 	// The full broadcast of tracks
-	broadcast: TracksWriter,
+	broadcast: BroadcastWriter,
 
 	// The init and catalog tracks
 	init: TrackWriter,
@@ -28,9 +28,13 @@ pub struct Media {
 }
 
 impl Media {
-	pub fn new(mut broadcast: TracksWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast.create(".catalog").context("broadcast closed")?;
-		let init = broadcast.create("0.mp4").context("broadcast closed")?;
+	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
+		let catalog = broadcast
+			.create_track(serve::Track::new(".catalog").build())
+			.context("failed to create catalog")?;
+		let init = broadcast
+			.create_track(serve::Track::new("0.mp4").build())
+			.context("failed to create init")?;
 
 		Ok(Media {
 			tracks: Default::default(),
@@ -137,7 +141,8 @@ impl Media {
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create(&name).context("broadcast closed")?;
+			let track = serve::Track::new(&name).build();
+			let track = self.broadcast.create_track(track).context("broadcast closed")?;
 			let track = Track::new(track, handler, timescale);
 			self.tracks.insert(id, track);
 		}

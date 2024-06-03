@@ -1,10 +1,49 @@
 use std::collections::VecDeque;
 
-use super::Watch;
+use super::State;
 
-// TODO replace with mpsc or similar
 pub struct Queue<T> {
-	state: Watch<VecDeque<T>>,
+	state: State<VecDeque<T>>,
+}
+
+impl<T> Queue<T> {
+	pub fn push(&mut self, item: T) -> Result<(), T> {
+		match self.state.lock_mut() {
+			Some(mut state) => state.push_back(item),
+			None => return Err(item),
+		};
+
+		Ok(())
+	}
+
+	pub async fn pop(&mut self) -> Option<T> {
+		loop {
+			{
+				let queue = self.state.lock();
+				if !queue.is_empty() {
+					return queue.into_mut()?.pop_front();
+				}
+				queue.modified()?
+			}
+			.await;
+		}
+	}
+
+	// Drop the state
+	pub fn drain(&mut self) -> Vec<T> {
+		// Drain the queue of any remaining entries
+		let res = match self.state.lock_mut() {
+			Some(mut queue) => queue.drain(..).collect(),
+			_ => Vec::new(),
+		};
+
+		res
+	}
+
+	pub fn split(&self) -> Self {
+		let state = self.state.split();
+		Self { state }
+	}
 }
 
 impl<T> Clone for Queue<T> {
@@ -18,27 +57,7 @@ impl<T> Clone for Queue<T> {
 impl<T> Default for Queue<T> {
 	fn default() -> Self {
 		Self {
-			state: Default::default(),
-		}
-	}
-}
-
-impl<T> Queue<T> {
-	pub fn push(&self, item: T) {
-		self.state.lock_mut().push_back(item);
-	}
-
-	pub async fn pop(&self) -> T {
-		loop {
-			let notify = {
-				let queue = self.state.lock();
-				if !queue.is_empty() {
-					return queue.into_mut().pop_front().unwrap();
-				}
-				queue.changed()
-			};
-
-			notify.await
+			state: State::new(Default::default()),
 		}
 	}
 }

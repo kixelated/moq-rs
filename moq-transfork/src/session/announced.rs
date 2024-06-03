@@ -1,104 +1,80 @@
-use std::ops;
+use crate::serve::ServeError;
+use crate::util::State;
+use crate::{message, serve};
 
-use crate::watch::State;
-use crate::{message, serve::ServeError};
-
-use super::{AnnounceInfo, Subscriber};
+use super::{Control, Reader, SessionError, Subscribe, Subscriber, Writer};
 
 // There's currently no feedback from the peer, so the shared state is empty.
 // If Unannounce contained an error code then we'd be talking.
-#[derive(Default)]
-struct AnnouncedState {}
+struct AnnouncedState {
+	closed: Result<(), ServeError>,
+}
 
+impl Default for AnnouncedState {
+	fn default() -> Self {
+		Self { closed: Ok(()) }
+	}
+}
+
+#[must_use = "unannounce on drop"]
+#[derive(Clone)]
 pub struct Announced {
 	session: Subscriber,
+	msg: message::Announce,
 	state: State<AnnouncedState>,
-
-	pub info: AnnounceInfo,
-
-	ok: bool,
-	error: Option<ServeError>,
 }
 
 impl Announced {
-	pub(super) fn new(session: Subscriber, namespace: String) -> (Announced, AnnouncedRecv) {
-		let info = AnnounceInfo { namespace };
-
-		let (send, recv) = State::default().split();
-		let send = Self {
+	pub(super) fn new(session: Subscriber, msg: message::Announce) -> Self {
+		Self {
 			session,
-			info,
-			ok: false,
-			error: None,
-			state: send,
-		};
-		let recv = AnnouncedRecv { _state: recv };
-
-		(send, recv)
+			msg,
+			state: Default::default(),
+		}
 	}
 
-	// Send an ANNOUNCE_OK
-	pub fn ok(&mut self) -> Result<(), ServeError> {
-		if self.ok {
-			return Err(ServeError::Duplicate);
+	pub(super) fn split(&self) -> Self {
+		Self {
+			session: self.session.clone(),
+			msg: self.msg.clone(),
+			state: self.state.split(),
+		}
+	}
+
+	pub(super) async fn run(self, mut control: Control) -> Result<(), SessionError> {
+		// Wait until either the reader or the session is closed.
+		tokio::select! {
+			res = control.reader.closed() => res,
+			res = self.closed() => res.map_err(Into::into),
 		}
 
-		self.session.send_message(message::AnnounceOk {
-			namespace: self.namespace.clone(),
-		});
+		// TODO reset with the error code
+	}
 
-		self.ok = true;
-
-		Ok(())
+	// Helper function to subscribe to a track.
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe, SessionError> {
+		self.session.subscribe(&self.msg.broadcast, track)
 	}
 
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
-			// Wow this is dumb and yet pretty cool.
-			// Basically loop until the state changes and exit when Recv is dropped.
-			self.state.lock().modified().ok_or(ServeError::Cancel)?.await;
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+				state.modified().ok_or(ServeError::Cancel)?
+			}
+			.await;
 		}
 	}
 
 	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
-		self.error = Some(err);
-		Ok(())
-	}
-}
+		let state = self.state.lock();
+		state.closed.clone()?;
 
-impl ops::Deref for Announced {
-	type Target = AnnounceInfo;
-
-	fn deref(&self) -> &AnnounceInfo {
-		&self.info
-	}
-}
-
-impl Drop for Announced {
-	fn drop(&mut self) {
-		let err = self.error.clone().unwrap_or(ServeError::Done);
-
-		if self.ok {
-			self.session.send_message(message::AnnounceCancel {
-				namespace: self.namespace.clone(),
-			});
-		} else {
-			self.session.send_message(message::AnnounceError {
-				namespace: self.namespace.clone(),
-				code: err.code(),
-				reason: err.to_string(),
-			});
+		if let Some(mut state) = self.state.lock_mut() {
+			state.closed = Err(err);
 		}
-	}
-}
 
-pub(super) struct AnnouncedRecv {
-	_state: State<AnnouncedState>,
-}
-
-impl AnnouncedRecv {
-	pub fn recv_unannounce(self) -> Result<(), ServeError> {
-		// Will cause the state to be dropped
 		Ok(())
 	}
 }

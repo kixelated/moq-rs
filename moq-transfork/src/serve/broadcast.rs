@@ -10,75 +10,39 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{
-	collections::{hash_map, HashMap},
-	ops::Deref,
-	sync::Arc,
-};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use super::{ServeError, Track, TrackReader, TrackWriter};
-use crate::util::State;
+use crate::util::{Queue, State};
 
 /// Static information about a broadcast.
 #[derive(Debug)]
 pub struct Broadcast {
-	pub namespace: String,
+	pub name: String,
 }
 
 impl Broadcast {
-	pub fn new(namespace: &str) -> Self {
-		Self {
-			namespace: namespace.to_owned(),
-		}
+	pub fn new(name: String) -> Self {
+		Self { name }
 	}
 
-	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
-		let (send, recv) = State::init();
+	pub fn produce(self) -> (BroadcastWriter, BroadcastRequest, BroadcastReader) {
 		let info = Arc::new(self);
+		let state = State::default();
+		let state_w = state.split(); // both writers share the state split
+		let queue = Queue::default();
 
-		let writer = BroadcastWriter::new(send, info.clone());
-		let reader = BroadcastReader::new(recv, info);
+		let writer = BroadcastWriter::new(state_w.clone(), info.clone());
+		let request = BroadcastRequest::new(state_w, queue.split(), info.clone());
+		let reader = BroadcastReader::new(state, queue, info);
 
-		(writer, reader)
+		(writer, request, reader)
 	}
 }
 
-/// Dynamic information about the broadcast.
-struct BroadcastState {
+#[derive(Default)]
+pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
-	closed: Result<(), ServeError>,
-}
-
-impl BroadcastState {
-	pub fn get(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
-		match self.tracks.get(name) {
-			Some(track) => Ok(Some(track.clone())),
-			// Return any error if we couldn't find a track.
-			None => self.closed.clone().map(|_| None),
-		}
-	}
-
-	pub fn insert(&mut self, track: TrackReader) -> Result<(), ServeError> {
-		match self.tracks.entry(track.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate),
-			hash_map::Entry::Vacant(v) => v.insert(track),
-		};
-
-		Ok(())
-	}
-
-	pub fn remove(&mut self, name: &str) -> Option<TrackReader> {
-		self.tracks.remove(name)
-	}
-}
-
-impl Default for BroadcastState {
-	fn default() -> Self {
-		Self {
-			tracks: HashMap::new(),
-			closed: Ok(()),
-		}
-	}
 }
 
 /// Publish new tracks for a broadcast by name.
@@ -88,37 +52,23 @@ pub struct BroadcastWriter {
 }
 
 impl BroadcastWriter {
-	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
-		Self { state, info: broadcast }
+	fn new(state: State<BroadcastState>, info: Arc<Broadcast>) -> Self {
+		Self { state, info }
 	}
 
 	/// Create a new track with the given name, inserting it into the broadcast.
-	pub fn create_track(&mut self, track: &str) -> Result<TrackWriter, ServeError> {
-		let (writer, reader) = Track {
-			namespace: self.namespace.clone(),
-			name: track.to_owned(),
-		}
-		.produce();
+	/// None is returned if all [BroadcastReader]s have been dropped.
+	pub fn create_track(&mut self, track: Track) -> Option<TrackWriter> {
+		let (writer, reader) = track.produce();
 
-		self.state.lock_mut().ok_or(ServeError::Cancel)?.insert(reader)?;
+		// NOTE: We overwrite the track if it already exists.
+		self.state.lock_mut()?.tracks.insert(reader.name.clone(), reader);
 
-		Ok(writer)
+		Some(writer)
 	}
 
 	pub fn remove_track(&mut self, track: &str) -> Option<TrackReader> {
-		self.state.lock_mut()?.remove(track)
-	}
-
-	/// Close the broadcast with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-
-		if let Some(mut state) = state.into_mut() {
-			state.closed = Err(err);
-		}
-
-		Ok(())
+		self.state.lock_mut()?.tracks.remove(track)
 	}
 }
 
@@ -130,23 +80,78 @@ impl Deref for BroadcastWriter {
 	}
 }
 
+pub struct BroadcastRequest {
+	#[allow(dead_code)] // Avoid dropping the write side
+	state: State<BroadcastState>,
+	incoming: Queue<TrackWriter>,
+	pub info: Arc<Broadcast>,
+}
+
+impl BroadcastRequest {
+	fn new(state: State<BroadcastState>, incoming: Queue<TrackWriter>, info: Arc<Broadcast>) -> Self {
+		Self { state, incoming, info }
+	}
+
+	/// Wait for a request to create a new track.
+	/// None is returned if all [BroadcastReader]s have been dropped.
+	pub async fn next(&mut self) -> Option<TrackWriter> {
+		self.incoming.pop().await
+	}
+}
+
+impl Deref for BroadcastRequest {
+	type Target = Broadcast;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
+	}
+}
+
+impl Drop for BroadcastRequest {
+	fn drop(&mut self) {
+		// Close any tracks still in the Queue
+		for mut track in self.incoming.drain() {
+			let _ = track.close(ServeError::NotFound);
+		}
+	}
+}
+
 /// Subscribe to a broadcast by requesting tracks.
 ///
 /// This can be cloned to create handles.
 #[derive(Clone)]
 pub struct BroadcastReader {
 	state: State<BroadcastState>,
+	queue: Queue<TrackWriter>,
 	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastReader {
-	fn new(state: State<BroadcastState>, broadcast: Arc<Broadcast>) -> Self {
-		Self { state, info: broadcast }
+	fn new(state: State<BroadcastState>, queue: Queue<TrackWriter>, info: Arc<Broadcast>) -> Self {
+		Self { state, queue, info }
 	}
 
-	/// Get a track from the broadcast by name.
-	pub fn get_track(&self, name: &str) -> Result<Option<TrackReader>, ServeError> {
-		self.state.lock().get(name)
+	/// Get or request a track from the broadcast by name.
+	/// None is returned if [BroadcastWriter] or [BroadcastRequest] cannot fufill the request.
+	pub fn subscribe(&mut self, name: &str) -> Option<TrackReader> {
+		let state = self.state.lock();
+
+		if let Some(reader) = state.tracks.get(name).cloned() {
+			return Some(reader);
+		}
+
+		let mut state = state.into_mut()?;
+		let track = Track::new(name).build();
+		let (writer, reader) = track.produce();
+
+		if self.queue.push(writer).is_err() {
+			return None;
+		}
+
+		// We requested the track sucessfully so we can deduplicate it.
+		state.tracks.insert(reader.name.clone(), reader.clone());
+
+		Some(reader)
 	}
 }
 

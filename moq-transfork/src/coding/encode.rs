@@ -1,6 +1,4 @@
-use std::{io, sync};
-
-use super::BoundsExceeded;
+use std::time;
 
 pub trait Encode: Sized {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError>;
@@ -22,18 +20,58 @@ pub enum EncodeError {
 	#[error("short buffer")]
 	More(usize),
 
-	#[error("varint too large")]
-	BoundsExceeded(#[from] BoundsExceeded),
+	#[error("value too large")]
+	BoundsExceeded,
 
 	#[error("invalid value")]
 	InvalidValue,
-
-	#[error("i/o error: {0}")]
-	Io(sync::Arc<io::Error>),
 }
 
-impl From<io::Error> for EncodeError {
-	fn from(err: io::Error) -> Self {
-		Self::Io(sync::Arc::new(err))
+impl Encode for String {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.as_str().encode(w)
+	}
+}
+
+impl Encode for &str {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.len().encode(w)?;
+		Self::encode_remaining(w, self.len())?;
+		w.put(self.as_bytes());
+		Ok(())
+	}
+}
+
+impl Encode for Option<u64> {
+	/// Encode a varint to the given writer.
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.map(|v| v + 1).unwrap_or(0).encode(w)
+	}
+}
+
+impl Encode for Option<usize> {
+	/// Encode a varint to the given writer.
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.map(|v| v + 1).unwrap_or(0).encode(w)
+	}
+}
+
+impl Encode for time::Duration {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let v: u64 = self.as_millis().try_into().map_err(|_| EncodeError::BoundsExceeded)?;
+		v.encode(w)
+	}
+}
+
+impl Encode for Option<time::Duration> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let v: u64 = match self {
+			None => 0,
+			Some(v) => (v.as_millis() + 1)
+				.try_into()
+				.map_err(|_| EncodeError::BoundsExceeded)?,
+		};
+
+		v.encode(w)
 	}
 }

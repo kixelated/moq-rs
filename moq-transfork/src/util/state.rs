@@ -55,19 +55,13 @@ pub struct State<T> {
 }
 
 impl<T> State<T> {
-	pub fn new(initial: T) -> (Self, Self) {
+	pub fn new(initial: T) -> Self {
 		let state = Arc::new(Mutex::new(StateInner::new(initial)));
 
-		(
-			Self {
-				state: state.clone(),
-				drop: Arc::new(StateDrop { state: state.clone() }),
-			},
-			Self {
-				state: state.clone(),
-				drop: Arc::new(StateDrop { state }),
-			},
-		)
+		Self {
+			state: state.clone(),
+			drop: Arc::new(StateDrop { state }),
+		}
 	}
 
 	pub fn lock(&self) -> StateRef<T> {
@@ -93,6 +87,14 @@ impl<T> State<T> {
 			drop: Arc::downgrade(&self.drop),
 		}
 	}
+
+	pub fn split(&self) -> Self {
+		let state = self.state.clone();
+		Self {
+			state: state.clone(),
+			drop: Arc::new(StateDrop { state }),
+		}
+	}
 }
 
 impl<T> Clone for State<T> {
@@ -104,8 +106,8 @@ impl<T> Clone for State<T> {
 	}
 }
 
-impl<T: Default> State<T> {
-	pub fn init() -> (Self, Self) {
+impl<T: Default> Default for State<T> {
+	fn default() -> Self {
 		Self::new(T::default())
 	}
 }

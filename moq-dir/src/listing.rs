@@ -125,7 +125,7 @@ impl ListingReader {
 		}
 
 		if self.group.is_none() {
-			self.group = Some(self.track.next().await?.context("empty track")?);
+			self.group = Some(self.track.next_group().await?.context("empty track")?);
 		}
 
 		let mut group_done = false;
@@ -133,7 +133,7 @@ impl ListingReader {
 
 		loop {
 			tokio::select! {
-				next = self.track.next(), if !groups_done => {
+				next = self.track.next_group(), if !groups_done => {
 					if let Some(next) = next? {
 						self.group = Some(next);
 						group_done = false;

@@ -1,6 +1,6 @@
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_transfork::{
-	serve::{ServeError, TracksReader},
+	serve::{ServeError, BroadcastReader},
 	session::{Publisher, SessionError, Subscribed},
 };
 
@@ -22,7 +22,7 @@ impl Producer {
 		}
 	}
 
-	pub async fn announce(&mut self, tracks: TracksReader) -> Result<(), SessionError> {
+	pub async fn announce(&mut self, tracks: BroadcastReader) -> Result<(), SessionError> {
 		self.remote.announce(tracks).await
 	}
 
@@ -50,7 +50,7 @@ impl Producer {
 	}
 
 	async fn serve(self, subscribe: Subscribed) -> Result<(), anyhow::Error> {
-		if let Some(mut local) = self.locals.route(&subscribe.namespace) {
+		if let Some(mut local) = self.locals.route(&subscribe.broadcast) {
 			if let Some(track) = local.subscribe(&subscribe.name) {
 				log::info!("serving from local: {:?}", track.info);
 				return Ok(subscribe.serve(track).await?);
@@ -58,8 +58,8 @@ impl Producer {
 		}
 
 		if let Some(remotes) = &self.remotes {
-			if let Some(remote) = remotes.route(&subscribe.namespace).await? {
-				if let Some(track) = remote.subscribe(subscribe.namespace.clone(), subscribe.name.clone())? {
+			if let Some(remote) = remotes.route(&subscribe.broadcast).await? {
+				if let Some(track) = remote.subscribe(subscribe.broadcast.clone(), subscribe.name.clone())? {
 					log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
 
 					// NOTE: Depends on drop(track) being called afterwards

@@ -1,4 +1,4 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::coding::*;
 
 /// Indicates the endpoint is a publisher, subscriber, or both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,25 +26,15 @@ impl Role {
 	}
 
 	/// Returns true if two endpoints are compatible.
-	pub fn is_compatible(&self, other: Role) -> bool {
+	pub fn is_compatible(&self, other: Self) -> bool {
 		self.is_publisher() == other.is_subscriber() && self.is_subscriber() == other.is_publisher()
 	}
 }
 
-impl From<Role> for u64 {
-	fn from(r: Role) -> Self {
-		match r {
-			Role::Publisher => 0x1,
-			Role::Subscriber => 0x2,
-			Role::Both => 0x3,
-		}
-	}
-}
-
-impl TryFrom<u64> for Role {
-	type Error = DecodeError;
-
-	fn try_from(v: u64) -> Result<Self, Self::Error> {
+impl Decode for Role {
+	/// Decode the role.
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let v = u64::decode(r)?;
 		match v {
 			0x1 => Ok(Self::Publisher),
 			0x2 => Ok(Self::Subscriber),
@@ -54,17 +44,14 @@ impl TryFrom<u64> for Role {
 	}
 }
 
-impl Decode for Role {
-	/// Decode the role.
-	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let v = u64::decode(r)?;
-		v.try_into()
-	}
-}
-
 impl Encode for Role {
 	/// Encode the role.
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		u64::from(*self).encode(w)
+		match self {
+			Self::Publisher => 0u64,
+			Self::Subscriber => 1u64,
+			Self::Both => 2u64,
+		}
+		.encode(w)
 	}
 }

@@ -16,7 +16,7 @@ moq-native = { path = "../moq-native", version = "0.2" }
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
 
 # QUIC
-web-transport = "0.2"
+web-transport = { workspace = true }
 bytes = "1"
 
 # Async stuff

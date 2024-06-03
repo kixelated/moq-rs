@@ -31,7 +31,7 @@ pub struct Config {
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "clock")]
-	pub namespace: String,
+	pub broadcast: String,
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "now")]

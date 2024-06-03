@@ -10,6 +10,11 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+# Make it easy to test web-transport changes
+web-transport = { path = "../web-transport-rs/web-transport", version = "0.2.2" }
+web-transport-quinn = { path = "../web-transport-rs/web-transport-quinn", version = "0.2.2" }
+
 # Use debug symbols in production until things are more stable
 [profile.release]
 debug = true

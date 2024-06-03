@@ -8,7 +8,7 @@ use clap::Parser;
 mod clock;
 
 use moq_transfork::{
-	serve,
+	serve::{self, Track},
 	session::{Publisher, Subscriber},
 };
 
@@ -32,7 +32,7 @@ pub struct Cli {
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "clock")]
-	pub namespace: String,
+	pub broadcast: String,
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "now")]
@@ -63,32 +63,35 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (mut writer, _, reader) = serve::Tracks {
-			namespace: config.namespace.clone(),
-		}
-		.produce();
+		let (mut writer, _, reader) = serve::Broadcast::new(config.broadcast).produce();
 
-		let track = writer.create(&config.track).unwrap();
+		let track = Track::new(config.track).build();
+		let track = writer.create_track(track).unwrap();
+
 		let clock = clock::Publisher::new(track);
+		let mut announce = publisher
+			.announce(reader)
+			.await
+			.context("failed to announce broadcast")?;
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = publisher.announce(reader) => res.context("failed to serve tracks")?,
+			res = announce.closed() => res.context("announce closed")?,
 		}
 	} else {
 		let (session, mut subscriber) = Subscriber::connect(session)
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (prod, sub) = serve::Track::new(config.namespace, config.track).produce();
+		let (prod, sub) = Track::new(&config.track).produce();
 
 		let clock = clock::Subscriber::new(sub);
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = subscriber.subscribe(prod) => res.context("failed to subscribe to track")?,
+			res = subscriber.subscribe(&config.broadcast, prod) => res.context("failed to subscribe to track")?,
 		}
 	}
 

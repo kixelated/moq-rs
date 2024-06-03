@@ -1,5 +1,5 @@
 use super::{Role, Versions};
-use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
+use crate::coding::*;
 
 /// Sent by the client to setup the session.
 // NOTE: This is not a message type, but rather the control stream header.
@@ -12,41 +12,41 @@ pub struct Client {
 	/// Indicate if the client is a publisher, a subscriber, or both.
 	pub role: Role,
 
+	pub path: Option<String>,
+
 	/// Unknown parameters.
-	pub params: Params,
+	pub unknown: Params,
 }
 
 impl Decode for Client {
 	/// Decode a client setup message.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let typ = u64::decode(r)?;
-		if typ != 0x40 {
-			return Err(DecodeError::InvalidMessage(typ));
-		}
-
 		let versions = Versions::decode(r)?;
-		let mut params = Params::decode(r)?;
+		let mut unknown = Params::decode(r)?;
 
-		let role = params.get::<Role>(0)?.ok_or(DecodeError::MissingParameter)?;
+		let role = unknown.remove::<Role>(0)?.ok_or(DecodeError::MissingParameter)?;
+		let path = unknown.remove::<String>(1)?;
 
-		// Make sure the PATH parameter isn't used
-		// TODO: This assumes WebTransport support only
-		if params.has(1) {
-			return Err(DecodeError::InvalidParameter);
-		}
-
-		Ok(Self { versions, role, params })
+		Ok(Self {
+			versions,
+			role,
+			path,
+			unknown,
+		})
 	}
 }
 
 impl Encode for Client {
 	/// Encode a server setup message.
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		0x40_u64.encode(w)?;
 		self.versions.encode(w)?;
 
-		let mut params = self.params.clone();
-		params.set(0, self.role)?;
+		let mut params = self.unknown.clone();
+		params.insert(0, self.role)?;
+
+		if let Some(path) = self.path.as_ref() {
+			params.insert(1, path.as_str())?;
+		}
 
 		params.encode(w)?;
 
@@ -56,8 +56,8 @@ impl Encode for Client {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::setup::Version;
+	use crate::coding::*;
+	use crate::setup::*;
 	use bytes::BytesMut;
 
 	#[test]
@@ -66,13 +66,14 @@ mod tests {
 		let client = Client {
 			versions: [Version::DRAFT_03].into(),
 			role: Role::Both,
-			params: Params::default(),
+			path: None,
+			unknown: Default::default(),
 		};
 
 		client.encode(&mut buf).unwrap();
 		assert_eq!(
 			buf.to_vec(),
-			vec![0x40, 0x40, 0x01, 0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]
+			vec![0x01, 0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]
 		);
 
 		let decoded = Client::decode(&mut buf).unwrap();

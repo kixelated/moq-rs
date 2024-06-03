@@ -3,24 +3,24 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::serve::{ServeError, Tracks, TracksReader, TracksWriter};
+use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
 
 use crate::{ListingReader, ListingWriter};
 
 struct State {
-	writer: TracksWriter,
+	writer: BroadcastWriter,
 	active: HashMap<String, ListingWriter>,
 }
 
 #[derive(Clone)]
 pub struct Listings {
 	state: Arc<Mutex<State>>,
-	reader: TracksReader,
+	reader: BroadcastReader,
 }
 
 impl Listings {
-	pub fn new(namespace: String) -> Self {
-		let (writer, _, reader) = Tracks::new(namespace).produce();
+	pub fn new(broadcast: String) -> Self {
+		let (writer, _, reader) = Broadcast::new(broadcast).produce();
 
 		let state = State {
 			writer,
@@ -37,20 +37,20 @@ impl Listings {
 	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, ServeError> {
 		let (prefix, base) = Self::prefix(path);
 
-		if !prefix.starts_with(&self.reader.namespace) {
-			// Ignore anything that isn't in our namespace.
+		if !prefix.starts_with(&self.reader.broadcast) {
+			// Ignore anything that isn't in our broadcast.
 			return Ok(None);
 		}
 
-		// Remove the namespace prefix from the path.
-		let prefix = &prefix[self.reader.namespace.len()..];
+		// Remove the broadcast prefix from the path.
+		let prefix = &prefix[self.reader.broadcast.len()..];
 
 		let mut state = self.state.lock().unwrap();
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
 			log::info!("creating prefix: {}", prefix);
-			let track = state.writer.create(prefix).unwrap();
+			let track = state.writer.create_track(prefix).unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -77,7 +77,7 @@ impl Listings {
 		if listing.is_empty() {
 			log::info!("removed prefix: {}", prefix);
 			state.active.remove(prefix);
-			state.writer.remove(prefix);
+			state.writer.remove_track(prefix);
 		}
 
 		Ok(())
@@ -87,7 +87,7 @@ impl Listings {
 		self.reader.subscribe(name).map(ListingReader::new)
 	}
 
-	pub fn tracks(&self) -> TracksReader {
+	pub fn tracks(&self) -> BroadcastReader {
 		self.reader.clone()
 	}
 

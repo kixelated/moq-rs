@@ -24,15 +24,15 @@ pub struct Cli {
 	#[command(flatten)]
 	pub tls: tls::Args,
 
-	/// Aggregate all announcements received with this namespace prefix.
+	/// Aggregate all announcements received with this broadcast prefix.
 	/// The list of announcements that match are available as tracks, ending with /.
 	///
-	/// ex. ANNOUNCE namespace=public/meeting/12342/alice
-	/// ex. TRACK    namespace=public/ name=meeting/12342/ payload=alice
+	/// ex. ANNOUNCE broadcast=public/meeting/12342/alice
+	/// ex. TRACK    broadcast=public/ name=meeting/12342/ payload=alice
 	///
 	/// Any announcements that don't match are ignored.
 	#[arg(long, default_value = ".")]
-	pub namespace: String,
+	pub broadcast: String,
 }
 
 #[tokio::main]
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 	let mut quic = quic.server.context("missing server certificate")?;
 
-	let listings = Listings::new(cli.namespace);
+	let listings = Listings::new(cli.broadcast);
 
 	let mut tasks = FuturesUnordered::new();
 

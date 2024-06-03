@@ -3,11 +3,11 @@ use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
 
-use moq_transfork::serve::{ServeError, TracksReader};
+use moq_transfork::serve::{ServeError, BroadcastReader};
 
 #[derive(Clone)]
 pub struct Locals {
-	lookup: Arc<Mutex<HashMap<String, TracksReader>>>,
+	lookup: Arc<Mutex<HashMap<String, BroadcastReader>>>,
 }
 
 impl Default for Locals {
@@ -23,33 +23,33 @@ impl Locals {
 		}
 	}
 
-	pub async fn register(&mut self, tracks: TracksReader) -> anyhow::Result<Registration> {
-		let namespace = tracks.namespace.clone();
-		match self.lookup.lock().unwrap().entry(namespace.clone()) {
+	pub async fn register(&mut self, tracks: BroadcastReader) -> anyhow::Result<Registration> {
+		let broadcast = tracks.broadcast.clone();
+		match self.lookup.lock().unwrap().entry(broadcast.clone()) {
 			hash_map::Entry::Vacant(entry) => entry.insert(tracks),
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
 		let registration = Registration {
 			locals: self.clone(),
-			namespace,
+			broadcast,
 		};
 
 		Ok(registration)
 	}
 
-	pub fn route(&self, namespace: &str) -> Option<TracksReader> {
-		self.lookup.lock().unwrap().get(namespace).cloned()
+	pub fn route(&self, broadcast: &str) -> Option<BroadcastReader> {
+		self.lookup.lock().unwrap().get(broadcast).cloned()
 	}
 }
 
 pub struct Registration {
 	locals: Locals,
-	namespace: String,
+	broadcast: String,
 }
 
 impl Drop for Registration {
 	fn drop(&mut self) {
-		self.locals.lookup.lock().unwrap().remove(&self.namespace);
+		self.locals.lookup.lock().unwrap().remove(&self.broadcast);
 	}
 }

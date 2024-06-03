@@ -965,24 +965,12 @@ dependencies = [
 name = "moq-transfork"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytes",
- "clap",
- "env_logger",
  "futures",
  "log",
- "mp4",
  "paste",
- "rfc6381-codec",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
- "serde_json",
  "thiserror",
  "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
  "web-transport",
 ]
 
@@ -2195,9 +2183,7 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eae5b9dc46b1e7255c3c9b31848f7fab97b10d0445e37548fdd57087bd62b42"
+version = "0.2.2"
 dependencies = [
  "bytes",
  "thiserror",
@@ -2208,8 +2194,6 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d533fd9af1d5db6851d074d124ffe2b90b6e2da6889e31b6c6cf24af17d18b94"
 dependencies = [
  "bytes",
  "http",
@@ -2219,9 +2203,7 @@ dependencies = [
 
 [[package]]
 name = "web-transport-quinn"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13032a9abb2cd362ead539944629b1b4d632ae6ddf21f840be86cd1f31596d97"
+version = "0.2.2"
 dependencies = [
  "bytes",
  "futures",
@@ -2237,9 +2219,7 @@ dependencies = [
 
 [[package]]
 name = "web-transport-wasm"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64be28348e18cb1f44e4c8733dc2bd9520d782be840b2b978724dfd1b1bdefa3"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "js-sys",

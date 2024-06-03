@@ -13,11 +13,11 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
-web-transport = "0.2"
 
 # QUIC
 quinn = "0.10"
-web-transport-quinn = "0.2"
+web-transport = { workspace = true }
+web-transport-quinn = { workspace = true }
 url = "2"
 
 # Crypto

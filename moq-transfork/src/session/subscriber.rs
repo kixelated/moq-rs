@@ -1,39 +1,39 @@
 use std::{
-	collections::{hash_map, HashMap},
+	collections::HashMap,
 	sync::{atomic, Arc, Mutex},
 };
 
+use futures::{stream::FuturesUnordered, StreamExt};
+
 use crate::{
-	data,
-	message::{self, Message},
+	message,
 	serve::{self, ServeError},
+	session::Control,
 	setup,
 };
 
-use crate::watch::Queue;
+use crate::util::Queue;
 
-use super::{Announced, AnnouncedRecv, Reader, Session, SessionError, Subscribe, SubscribeRecv};
+use super::{Announced, Reader, Session, SessionError, Subscribe};
 
-// TODO remove Clone.
 #[derive(Clone)]
 pub struct Subscriber {
-	announced: Arc<Mutex<HashMap<String, AnnouncedRecv>>>,
-	announced_queue: Queue<Announced>,
+	webtransport: web_transport::Session,
+	announced: Queue<Announced>,
+	subscribed: Queue<Subscribe>,
 
-	subscribes: Arc<Mutex<HashMap<u64, SubscribeRecv>>>,
-	subscribe_next: Arc<atomic::AtomicU64>,
-
-	outgoing: Queue<Message>,
+	lookup: Arc<Mutex<HashMap<u64, serve::TrackWriter>>>,
+	next_id: Arc<atomic::AtomicU64>,
 }
 
 impl Subscriber {
-	pub(super) fn new(outgoing: Queue<Message>) -> Self {
+	pub(super) fn new(webtransport: web_transport::Session) -> Self {
 		Self {
+			webtransport,
 			announced: Default::default(),
-			announced_queue: Default::default(),
-			subscribes: Default::default(),
-			subscribe_next: Default::default(),
-			outgoing,
+			subscribed: Default::default(),
+			lookup: Default::default(),
+			next_id: Default::default(),
 		}
 	}
 
@@ -48,152 +48,85 @@ impl Subscriber {
 	}
 
 	pub async fn announced(&mut self) -> Option<Announced> {
-		self.announced_queue.pop().await
+		self.announced.pop().await
 	}
 
-	pub async fn subscribe(&mut self, track: serve::TrackWriter) -> Result<(), ServeError> {
-		let id = self.subscribe_next.fetch_add(1, atomic::Ordering::Relaxed);
+	pub fn subscribe(&mut self, broadcast: &str, track: serve::TrackWriter) -> Result<Subscribe, SessionError> {
+		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
-		let (send, recv) = Subscribe::new(self.clone(), id, track);
-		self.subscribes.lock().unwrap().insert(id, recv);
+		let msg = message::Subscribe {
+			id,
+			broadcast: broadcast.to_string(),
+			track: track.name.clone(),
 
-		send.closed().await
-	}
-
-	pub(super) fn send_message<M: Into<message::Subscriber>>(&mut self, msg: M) {
-		let msg = msg.into();
-
-		// Remove our entry on terminal state.
-		match &msg {
-			message::Subscriber::AnnounceCancel(msg) => self.drop_announce(&msg.namespace),
-			message::Subscriber::AnnounceError(msg) => self.drop_announce(&msg.namespace),
-			_ => {}
-		}
-
-		// TODO report dropped messages?
-		let _ = self.outgoing.push(msg.into());
-	}
-
-	pub(super) fn recv_message(&mut self, msg: message::Publisher) -> Result<(), SessionError> {
-		let res = match &msg {
-			message::Publisher::Announce(msg) => self.recv_announce(msg),
-			message::Publisher::Unannounce(msg) => self.recv_unannounce(msg),
-			message::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
-			message::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
-			message::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+			// TODO
+			priority: 0,
+			order: None,
+			expires: None,
+			min: None,
+			max: None,
 		};
 
-		if let Err(SessionError::Serve(err)) = res {
-			log::debug!("failed to process message: {:?} {}", msg, err);
-			return Ok(());
+		self.lookup.lock().unwrap().insert(id, track);
+
+		let subscribe = Subscribe::new(msg);
+		if let Err(_) = self.subscribed.push(subscribe.split()) {
+			return Err(SessionError::Internal);
 		}
 
-		res
+		Ok(subscribe)
 	}
 
-	fn recv_announce(&mut self, msg: &message::Announce) -> Result<(), SessionError> {
-		let mut announces = self.announced.lock().unwrap();
+	pub(super) async fn run(&mut self) -> Result<(), SessionError> {
+		let mut tasks = FuturesUnordered::new();
 
-		let entry = match announces.entry(msg.namespace.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(SessionError::Duplicate),
-			hash_map::Entry::Vacant(entry) => entry,
+		loop {
+			tokio::select! {
+				Some(subscribed) = self.subscribed.pop() => {
+					let mut webtransport = self.webtransport.clone();
+					tasks.push(async move {
+						let control = Control::open(&mut webtransport, message::StreamBi::Subscribe).await?;
+						subscribed.run(control).await
+					});
+				},
+				res = tasks.next(), if !tasks.is_empty() => {
+					match res.unwrap() {
+						Ok(id) => self.lookup.lock().unwrap().remove(&id),
+						Err(err) => return Err(err),
+					};
+				},
+				else => return Ok(()),
+			};
+		}
+	}
+
+	pub(super) async fn run_announce(&mut self, mut control: Control) -> Result<(), SessionError> {
+		let msg: message::Announce = control.reader.decode().await?;
+
+		let announced = Announced::new(self.clone(), msg);
+		let _ = self.announced.push(announced.split());
+
+		announced.run(control).await
+	}
+
+	pub(super) async fn run_group(&mut self, mut reader: Reader) -> Result<(), SessionError> {
+		let header: message::Group = reader.decode().await?;
+
+		let group = serve::Group {
+			sequence: header.sequence,
+			expires: header.expires,
 		};
 
-		let (announced, recv) = Announced::new(self.clone(), msg.namespace.to_string());
-		if let Err(announced) = self.announced_queue.push(announced) {
-			announced.close(ServeError::Cancel)?;
-			return Ok(());
-		}
+		let mut group = self
+			.lookup
+			.lock()
+			.unwrap()
+			.get_mut(&header.subscribe)
+			.ok_or(ServeError::NotFound)?
+			.create_group(group)?;
 
-		entry.insert(recv);
-
-		Ok(())
-	}
-
-	fn recv_unannounce(&mut self, msg: &message::Unannounce) -> Result<(), SessionError> {
-		if let Some(announce) = self.announced.lock().unwrap().remove(&msg.namespace) {
-			announce.recv_unannounce()?;
-		}
-
-		Ok(())
-	}
-
-	fn recv_subscribe_ok(&mut self, msg: &message::SubscribeOk) -> Result<(), SessionError> {
-		if let Some(subscribe) = self.subscribes.lock().unwrap().get_mut(&msg.id) {
-			subscribe.ok()?;
-		}
-
-		Ok(())
-	}
-
-	fn recv_subscribe_error(&mut self, msg: &message::SubscribeError) -> Result<(), SessionError> {
-		if let Some(subscribe) = self.subscribes.lock().unwrap().remove(&msg.id) {
-			subscribe.error(ServeError::Closed(msg.code))?;
-		}
-
-		Ok(())
-	}
-
-	fn recv_subscribe_done(&mut self, msg: &message::SubscribeDone) -> Result<(), SessionError> {
-		if let Some(subscribe) = self.subscribes.lock().unwrap().remove(&msg.id) {
-			subscribe.error(ServeError::Closed(msg.code))?;
-		}
-
-		Ok(())
-	}
-
-	fn drop_announce(&mut self, namespace: &str) {
-		self.announced.lock().unwrap().remove(namespace);
-	}
-
-	pub(super) async fn recv_stream(mut self, stream: web_transport::RecvStream) -> Result<(), SessionError> {
-		let mut reader = Reader::new(stream);
-		let header: data::GroupHeader = reader.decode().await?;
-
-		let id = header.subscribe_id;
-
-		let res = self.recv_stream_inner(reader, header).await;
-		if let Err(SessionError::Serve(err)) = &res {
-			// The writer is closed, so we should teriminate.
-			// TODO it would be nice to do this immediately when the Writer is closed.
-			if let Some(subscribe) = self.subscribes.lock().unwrap().remove(&id) {
-				subscribe.error(err.clone())?;
-			}
-		}
-
-		res
-	}
-
-	async fn recv_stream_inner(&mut self, reader: Reader, header: data::GroupHeader) -> Result<(), SessionError> {
-		let id = header.subscribe_id;
-
-		let writer = {
-			let mut subscribes = self.subscribes.lock().unwrap();
-			let subscribe = subscribes.get_mut(&id).ok_or(ServeError::NotFound)?;
-			subscribe.recv_group(header)?
-		};
-
-		Self::recv_group(writer, reader).await?;
-
-		Ok(())
-	}
-
-	async fn recv_group(mut group: serve::GroupWriter, mut reader: Reader) -> Result<(), SessionError> {
-		log::trace!("received group: {:?}", group.info);
-
-		while !reader.done().await? {
-			let object: data::GroupObject = reader.decode().await?;
-
-			log::trace!("received group object: {:?}", object);
-			let mut remain = object.size;
-			let mut object = group.create(object.size)?;
-
-			while remain > 0 {
-				let data = reader.read_chunk(remain).await?.ok_or(SessionError::WrongSize)?;
-				log::trace!("received group payload: {:?}", data.len());
-				remain -= data.len();
-				object.write(data)?;
-			}
+		while let Some(chunk) = reader.read_chunk(usize::MAX).await? {
+			group.write(chunk)?;
 		}
 
 		Ok(())

@@ -88,7 +88,7 @@ It produces tracks based on the prefix, which are subscribable and can be used t
 For example, if a client announces the broadcast `.public.room.12345.alice`, then `moq-dir` will produce the following track:
 
 ```
-TRACK namespace=. track=public.room.12345.
+TRACK broadcast=. track=public.room.12345.
 OBJECT +alice
 ```
 

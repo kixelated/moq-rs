@@ -1,10 +1,10 @@
-use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::coding::*;
 
 use std::ops::Deref;
 
 /// A version number negotiated during the setup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(pub u64);
+pub struct Version(u64);
 
 impl Version {
 	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html
@@ -48,8 +48,8 @@ impl Encode for Version {
 }
 
 /// A list of versions in arbitrary order.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Versions(Vec<Version>);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub(crate) struct Versions(Vec<Version>);
 
 impl Decode for Versions {
 	/// Decode the version list.

@@ -36,7 +36,7 @@ impl Session {
 	}
 
 	async fn serve_subscriber(self, mut remote: Publisher) -> anyhow::Result<()> {
-		// Announce our namespace and serve any matching subscriptions AUTOMATICALLY
+		// Announce our broadcast and serve any matching subscriptions AUTOMATICALLY
 		remote.announce(self.listings.tracks()).await?;
 
 		Ok(())
@@ -68,7 +68,7 @@ impl Session {
 	async fn serve_announce(mut self, mut announce: Announced) -> anyhow::Result<()> {
 		announce.ok()?;
 
-		match self.listings.register(&announce.namespace) {
+		match self.listings.register(&announce.broadcast) {
 			Ok(_) => announce.closed().await?,
 			Err(err) => {
 				announce.close(err.clone())?;

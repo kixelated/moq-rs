@@ -16,8 +16,8 @@ impl Client {
 		Self { url, client }
 	}
 
-	pub async fn get_origin(&self, namespace: &str) -> Result<Option<Origin>, ApiError> {
-		let url = self.url.join("origin/")?.join(namespace)?;
+	pub async fn get_origin(&self, broadcast: &str) -> Result<Option<Origin>, ApiError> {
+		let url = self.url.join("origin/")?.join(broadcast)?;
 		let resp = self.client.get(url).send().await?;
 		if resp.status() == reqwest::StatusCode::NOT_FOUND {
 			return Ok(None);
@@ -27,8 +27,8 @@ impl Client {
 		Ok(Some(origin))
 	}
 
-	pub async fn set_origin(&self, namespace: &str, origin: Origin) -> Result<(), ApiError> {
-		let url = self.url.join("origin/")?.join(namespace)?;
+	pub async fn set_origin(&self, broadcast: &str, origin: Origin) -> Result<(), ApiError> {
+		let url = self.url.join("origin/")?.join(broadcast)?;
 
 		let resp = self.client.post(url).json(&origin).send().await?;
 		resp.error_for_status()?;
@@ -36,8 +36,8 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn delete_origin(&self, namespace: &str) -> Result<(), ApiError> {
-		let url = self.url.join("origin/")?.join(namespace)?;
+	pub async fn delete_origin(&self, broadcast: &str) -> Result<(), ApiError> {
+		let url = self.url.join("origin/")?.join(broadcast)?;
 
 		let resp = self.client.delete(url).send().await?;
 		resp.error_for_status()?;
@@ -45,8 +45,8 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn patch_origin(&self, namespace: &str, origin: Origin) -> Result<(), ApiError> {
-		let url = self.url.join("origin/")?.join(namespace)?;
+	pub async fn patch_origin(&self, broadcast: &str, origin: Origin) -> Result<(), ApiError> {
+		let url = self.url.join("origin/")?.join(broadcast)?;
 
 		let resp = self.client.patch(url).json(&origin).send().await?;
 		resp.error_for_status()?;

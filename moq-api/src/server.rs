@@ -47,7 +47,7 @@ impl Server {
 
 		let app = Router::new()
 			.route(
-				"/origin/*namespace",
+				"/origin/*broadcast",
 				get(get_origin)
 					.post(set_origin)
 					.delete(delete_origin)
@@ -66,10 +66,10 @@ impl Server {
 }
 
 async fn get_origin(
-	Path(namespace): Path<String>,
+	Path(broadcast): Path<String>,
 	State(mut redis): State<ConnectionManager>,
 ) -> Result<Json<Origin>, AppError> {
-	let key = origin_key(&namespace);
+	let key = origin_key(&broadcast);
 
 	let payload: Option<String> = redis.get(&key).await?;
 	let payload = payload.ok_or(AppError::NotFound)?;
@@ -80,12 +80,12 @@ async fn get_origin(
 
 async fn set_origin(
 	State(mut redis): State<ConnectionManager>,
-	Path(namespace): Path<String>,
+	Path(broadcast): Path<String>,
 	Json(origin): Json<Origin>,
 ) -> Result<(), AppError> {
 	// TODO validate origin
 
-	let key = origin_key(&namespace);
+	let key = origin_key(&broadcast);
 
 	// Convert the input back to JSON after validating it add adding any fields (TODO)
 	let payload = serde_json::to_string(&origin)?;
@@ -119,10 +119,10 @@ async fn set_origin(
 }
 
 async fn delete_origin(
-	Path(namespace): Path<String>,
+	Path(broadcast): Path<String>,
 	State(mut redis): State<ConnectionManager>,
 ) -> Result<(), AppError> {
-	let key = origin_key(&namespace);
+	let key = origin_key(&broadcast);
 	match redis.del(key).await? {
 		0 => Err(AppError::NotFound),
 		_ => Ok(()),
@@ -131,11 +131,11 @@ async fn delete_origin(
 
 // Update the expiration deadline.
 async fn patch_origin(
-	Path(namespace): Path<String>,
+	Path(broadcast): Path<String>,
 	State(mut redis): State<ConnectionManager>,
 	Json(origin): Json<Origin>,
 ) -> Result<(), AppError> {
-	let key = origin_key(&namespace);
+	let key = origin_key(&broadcast);
 
 	// Make sure the contents haven't changed
 	// TODO make a LUA script to do this all in one operation.
@@ -154,8 +154,8 @@ async fn patch_origin(
 	}
 }
 
-fn origin_key(namespace: &str) -> String {
-	format!("origin.{}", namespace)
+fn origin_key(broadcast: &str) -> String {
+	format!("origin.{}", broadcast)
 }
 
 #[derive(thiserror::Error, Debug)]

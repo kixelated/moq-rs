@@ -16,10 +16,7 @@ pub enum ServeError {
 	#[error("duplicate")]
 	Duplicate,
 
-	#[error("multiple stream modes")]
-	Mode,
-
-	#[error("wrong size")]
+	#[error("invalid size")]
 	Size,
 
 	#[error("internal error: {0}")]
@@ -34,7 +31,6 @@ impl ServeError {
 			Self::Closed(code) => *code,
 			Self::NotFound => 404,
 			Self::Duplicate => 409,
-			Self::Mode => 400,
 			Self::Size => 413,
 			Self::Internal(_) => 500,
 		}

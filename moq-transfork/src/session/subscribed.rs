@@ -1,247 +1,104 @@
-use std::ops;
-
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
 use crate::serve::ServeError;
-use crate::watch::State;
-use crate::{data, message, serve};
+use crate::{message, serve};
 
-use super::{Publisher, SessionError, SubscribeInfo, Writer};
+use super::{Control, SessionError, Writer};
 
-#[derive(Debug)]
-struct SubscribedState {
-	max: Option<(u64, u64)>,
-	closed: Result<(), ServeError>,
-}
-
-impl SubscribedState {
-	fn update_max(&mut self, group_id: u64, object_id: u64) -> Result<(), ServeError> {
-		if let Some((max_group, max_object)) = self.max {
-			if group_id >= max_group && object_id >= max_object {
-				self.max = Some((group_id, object_id));
-			}
-		}
-
-		Ok(())
-	}
-}
-
-impl Default for SubscribedState {
-	fn default() -> Self {
-		Self {
-			max: None,
-			closed: Ok(()),
-		}
-	}
-}
-
+#[derive(Clone)]
 pub struct Subscribed {
-	publisher: Publisher,
-	state: State<SubscribedState>,
-	msg: message::Subscribe,
-	ok: bool,
-
-	pub info: SubscribeInfo,
+	session: web_transport::Session,
+	subscribe: message::Subscribe,
+	update: Option<message::SubscribeUpdate>,
+	track: serve::TrackReader,
 }
 
 impl Subscribed {
-	pub(super) fn new(publisher: Publisher, msg: message::Subscribe) -> (Self, SubscribedRecv) {
-		let (send, recv) = State::default().split();
-		let info = SubscribeInfo {
-			namespace: msg.track_namespace.clone(),
-			name: msg.track_name.clone(),
-		};
-
-		let send = Self {
-			publisher,
-			state: send,
-			msg,
-			info,
-			ok: false,
-		};
-
-		// Prevents updates after being closed
-		let recv = SubscribedRecv { state: recv };
-
-		(send, recv)
-	}
-
-	pub async fn serve(mut self, track: serve::TrackReader) -> Result<(), SessionError> {
-		let res = self.serve_inner(track).await;
-		if let Err(err) = &res {
-			self.close(err.clone().into())?;
-		}
-
-		res
-	}
-
-	async fn serve_inner(&mut self, track: serve::TrackReader) -> Result<(), SessionError> {
-		let latest = track.latest();
-		self.state.lock_mut().ok_or(ServeError::Cancel)?.max = latest;
-
-		self.publisher.send_message(message::SubscribeOk {
-			id: self.msg.id,
-			expires: None,
-			latest,
-		});
-
-		self.ok = true; // So we sent SubscribeDone on drop
-
-		self.serve_groups(track).await
-	}
-
-	pub fn close(self, err: ServeError) -> Result<(), ServeError> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-
-		let mut state = state.into_mut().ok_or(ServeError::Done)?;
-		state.closed = Err(err);
-
-		Ok(())
-	}
-
-	pub async fn closed(&self) -> Result<(), ServeError> {
-		loop {
-			{
-				let state = self.state.lock();
-				state.closed.clone()?;
-
-				match state.modified() {
-					Some(notify) => notify,
-					None => return Ok(()),
-				}
-			}
-			.await;
+	pub(super) fn new(
+		session: web_transport::Session,
+		subscribe: message::Subscribe,
+		track: serve::TrackReader,
+	) -> Self {
+		Self {
+			session,
+			subscribe,
+			update: None,
+			track,
 		}
 	}
-}
 
-impl ops::Deref for Subscribed {
-	type Target = SubscribeInfo;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
-
-impl Drop for Subscribed {
-	fn drop(&mut self) {
-		let state = self.state.lock();
-		let err = state.closed.as_ref().err().cloned().unwrap_or(ServeError::Done);
-		let max = state.max;
-		drop(state); // Important to avoid a deadlock
-
-		if self.ok {
-			self.publisher.send_message(message::SubscribeDone {
-				id: self.msg.id,
-				last: max,
-				code: err.code(),
-				reason: err.to_string(),
-			});
-		} else {
-			self.publisher.send_message(message::SubscribeError {
-				id: self.msg.id,
-				alias: 0,
-				code: err.code(),
-				reason: err.to_string(),
-			});
-		};
-	}
-}
-
-impl Subscribed {
-	async fn serve_groups(&mut self, mut groups: serve::TrackReader) -> Result<(), SessionError> {
+	pub async fn run(mut self, mut control: Control) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
-		let mut done: Option<Result<(), ServeError>> = None;
+		let mut fin = false;
 
 		loop {
 			tokio::select! {
-				res = groups.next(), if done.is_none() => match res {
-					Ok(Some(group)) => {
-						let header = data::GroupHeader {
-							subscribe_id: self.msg.id,
-							track_alias: self.msg.track_alias,
-							group_id: group.group_id,
-							send_order: group.priority,
-						};
+				res = self.track.next_group(), if !fin => {
+					let group = match res? {
+						Some(group) => group,
+						None => {
+							fin = true;
+							continue;
+						},
+					};
 
-						let publisher = self.publisher.clone();
-						let state = self.state.clone();
-						let info = group.info.clone();
+					let sequence = group.sequence;
+					let this = self.clone();
 
-						tasks.push(async move {
-							if let Err(err) = Self::serve_group(header, group, publisher, state).await {
-								log::warn!("failed to serve group: {:?}, error: {}", info, err);
-							}
-						});
-					},
-					Ok(None) => done = Some(Ok(())),
-					Err(err) => done = Some(Err(err)),
+					tasks.push(async move {
+						let err = Self::run_group(this, group).await;
+						(sequence, err)
+					});
 				},
-				res = self.closed(), if done.is_none() => done = Some(res),
-				_ = tasks.next(), if !tasks.is_empty() => {},
-				else => return Ok(done.unwrap()?),
+				Some(res) = control.reader.decode_maybe::<message::SubscribeUpdate>() => {
+					let update = res?;
+					self.recv_update(update)?;
+				},
+				res = tasks.next(), if !tasks.is_empty() => {
+					let (sequence, err) = res.unwrap();
+
+					if let Err(_) = err {
+						let msg = message::GroupDrop {
+							sequence,
+							count: 0,
+							code: 1, // TODO err.code()
+						};
+						control.writer.encode(&msg).await?;
+					}
+				},
 			}
 		}
 	}
 
-	async fn serve_group(
-		header: data::GroupHeader,
-		mut group: serve::GroupReader,
-		mut publisher: Publisher,
-		state: State<SubscribedState>,
-	) -> Result<(), SessionError> {
-		let mut stream = publisher.open_uni().await?;
-
-		// TODO figure out u32 vs u64 priority
-		stream.set_priority(group.priority as i32);
+	pub async fn run_group(mut self, mut group: serve::GroupReader) -> Result<(), SessionError> {
+		let stream = self.session.open_uni().await?;
 
 		let mut writer = Writer::new(stream);
-		writer.encode(&header).await?;
 
-		log::trace!("sent group: {:?}", header);
+		let msg = message::Group {
+			subscribe: self.subscribe.id,
+			sequence: group.sequence,
+			expires: group.expires,
+		};
 
-		while let Some(mut object) = group.next().await? {
-			let header = data::GroupObject {
-				object_id: object.object_id,
-				size: object.size,
-			};
+		writer.encode(&msg).await?;
 
-			writer.encode(&header).await?;
+		// TODO abort if the subscription is closed
 
-			state
-				.lock_mut()
-				.ok_or(ServeError::Done)?
-				.update_max(group.group_id, object.object_id)?;
-
-			log::trace!("sent group object: {:?}", header);
-
-			while let Some(chunk) = object.read().await? {
-				writer.write(&chunk).await?;
-				log::trace!("sent group payload: {:?}", chunk.len());
-			}
-
-			log::trace!("sent group done");
+		while let Some(chunk) = group.read().await? {
+			writer.write(&chunk).await?;
 		}
+
+		// TODO block until all bytes have been acknowledged so we can still reset
+		// writer.finish().await?;
 
 		Ok(())
 	}
-}
 
-pub(super) struct SubscribedRecv {
-	state: State<SubscribedState>,
-}
-
-impl SubscribedRecv {
-	pub fn recv_unsubscribe(&mut self) -> Result<(), ServeError> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-
-		if let Some(mut state) = state.into_mut() {
-			state.closed = Err(ServeError::Cancel);
-		}
-
+	fn recv_update(&mut self, update: message::SubscribeUpdate) -> Result<(), ServeError> {
+		todo!("SubscribeUpdate");
+		self.update = Some(update);
 		Ok(())
 	}
 }

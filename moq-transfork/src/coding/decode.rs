@@ -1,5 +1,4 @@
-use super::BoundsExceeded;
-use std::{io, string::FromUtf8Error, sync};
+use std::{string::FromUtf8Error, time};
 use thiserror::Error;
 
 pub trait Decode: Sized {
@@ -37,8 +36,14 @@ pub enum DecodeError {
 	#[error("invalid value")]
 	InvalidValue,
 
-	#[error("varint bounds exceeded")]
-	BoundsExceeded(#[from] BoundsExceeded),
+	#[error("bounds exceeded")]
+	BoundsExceeded,
+
+	#[error("expected end")]
+	ExpectedEnd,
+
+	#[error("expected data")]
+	ExpectedData,
 
 	// TODO move these to ParamError
 	#[error("duplicate parameter")]
@@ -49,13 +54,52 @@ pub enum DecodeError {
 
 	#[error("invalid parameter")]
 	InvalidParameter,
-
-	#[error("io error: {0}")]
-	Io(sync::Arc<io::Error>),
 }
 
-impl From<io::Error> for DecodeError {
-	fn from(err: io::Error) -> Self {
-		Self::Io(sync::Arc::new(err))
+impl Decode for String {
+	/// Decode a string with a varint length prefix.
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let size = usize::decode(r)?;
+		Self::decode_remaining(r, size)?;
+
+		let mut buf = vec![0; size];
+		r.copy_to_slice(&mut buf);
+		let str = String::from_utf8(buf)?;
+
+		Ok(str)
+	}
+}
+
+impl Decode for Option<u64> {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		Ok(match u64::decode(r)? {
+			0 => None,
+			v => Some(v - 1),
+		})
+	}
+}
+
+impl Decode for Option<usize> {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		Ok(match usize::decode(r)? {
+			0 => None,
+			v => Some(v - 1),
+		})
+	}
+}
+
+impl Decode for time::Duration {
+	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
+		let ms = u64::decode(buf)?;
+		Ok(time::Duration::from_millis(ms))
+	}
+}
+
+impl Decode for Option<time::Duration> {
+	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
+		Ok(match u64::decode(buf)? {
+			0 => None,
+			v => Some(time::Duration::from_millis(v - 1)),
+		})
 	}
 }

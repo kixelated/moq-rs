@@ -1,0 +1,26 @@
+use crate::message;
+
+use super::{Reader, SessionError, Writer};
+
+pub struct Control {
+	pub writer: Writer,
+	pub reader: Reader,
+}
+
+impl Control {
+	pub async fn open(session: &mut web_transport::Session, typ: message::StreamBi) -> Result<Self, SessionError> {
+		let (send, recv) = session.open_bi().await?;
+		let mut writer = Writer::new(send);
+		let reader = Reader::new(recv);
+		writer.encode(&typ).await?;
+		Ok(Self { writer, reader })
+	}
+
+	pub async fn accept(session: &mut web_transport::Session) -> Result<(message::StreamBi, Self), SessionError> {
+		let (send, recv) = session.accept_bi().await?;
+		let writer = Writer::new(send);
+		let mut reader = Reader::new(recv);
+		let typ = reader.decode().await?;
+		Ok((typ, Self { writer, reader }))
+	}
+}
