@@ -49,7 +49,7 @@ impl Encode for Version {
 
 /// A list of versions in arbitrary order.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub(crate) struct Versions(Vec<Version>);
+pub struct Versions(Vec<Version>);
 
 impl Decode for Versions {
 	/// Decode the version list.

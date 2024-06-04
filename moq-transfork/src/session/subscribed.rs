@@ -1,3 +1,5 @@
+use std::ops;
+
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
@@ -9,20 +11,16 @@ use super::{Control, SessionError, Writer};
 #[derive(Clone)]
 pub struct Subscribed {
 	session: web_transport::Session,
-	subscribe: message::Subscribe,
+	msg: message::Subscribe,
 	update: Option<message::SubscribeUpdate>,
 	track: serve::TrackReader,
 }
 
 impl Subscribed {
-	pub(super) fn new(
-		session: web_transport::Session,
-		subscribe: message::Subscribe,
-		track: serve::TrackReader,
-	) -> Self {
+	pub(super) fn new(session: web_transport::Session, msg: message::Subscribe, track: serve::TrackReader) -> Self {
 		Self {
 			session,
-			subscribe,
+			msg,
 			update: None,
 			track,
 		}
@@ -77,7 +75,7 @@ impl Subscribed {
 		let mut writer = Writer::new(stream);
 
 		let msg = message::Group {
-			subscribe: self.subscribe.id,
+			subscribe: self.msg.id,
 			sequence: group.sequence,
 			expires: group.expires,
 		};
@@ -100,5 +98,13 @@ impl Subscribed {
 		todo!("SubscribeUpdate");
 		self.update = Some(update);
 		Ok(())
+	}
+}
+
+impl ops::Deref for Subscribed {
+	type Target = message::Subscribe;
+
+	fn deref(&self) -> &Self::Target {
+		&self.msg
 	}
 }

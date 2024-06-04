@@ -1,7 +1,7 @@
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_transfork::{
-	serve::{ServeError, BroadcastReader},
-	session::{Publisher, SessionError, Subscribed},
+	serve::{BroadcastReader, ServeError},
+	session::{Announce, Publisher, SessionError, Subscribed},
 };
 
 use crate::{Locals, RemotesConsumer};
@@ -22,8 +22,8 @@ impl Producer {
 		}
 	}
 
-	pub async fn announce(&mut self, tracks: BroadcastReader) -> Result<(), SessionError> {
-		self.remote.announce(tracks).await
+	pub fn announce(&mut self, tracks: BroadcastReader) -> Result<Announce, SessionError> {
+		self.remote.announce(tracks)
 	}
 
 	pub async fn run(mut self) -> Result<(), SessionError> {

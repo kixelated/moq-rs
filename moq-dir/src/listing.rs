@@ -29,7 +29,7 @@ impl ListingWriter {
 
 		match self.group {
 			// Create a delta if the current group is small enough.
-			Some(ref mut group) if self.current.len() < 2 * group.len() => {
+			Some(ref mut group) if self.current.len() < 2 * group.total() => {
 				let msg = format!("+{}", name);
 				group.write(msg.into())?;
 			}
@@ -47,7 +47,7 @@ impl ListingWriter {
 
 		match self.group {
 			// Create a delta if the current group is small enough.
-			Some(ref mut group) if self.current.len() < 2 * group.len() => {
+			Some(ref mut group) if self.current.len() < 2 * group.total() => {
 				let msg = format!("-{}", name);
 				group.write(msg.into())?;
 			}
@@ -64,8 +64,7 @@ impl ListingWriter {
 			None => self.track.take().unwrap(),
 		};
 
-		let priority = self.group.as_ref().map(|g| g.group_id + 1).unwrap_or(0);
-		let mut group = groups.append(priority)?;
+		let mut group = groups.append_group(Default::default())?;
 
 		let mut msg = BytesMut::new();
 		for name in &self.current {
@@ -141,7 +140,7 @@ impl ListingReader {
 						groups_done = true;
 					}
 				},
-				object = self.group.as_mut().unwrap().read_next(), if !group_done => {
+				object = self.group.as_mut().unwrap().read(), if !group_done => {
 					let payload = match object? {
 						Some(object) => object,
 						None => {
@@ -152,7 +151,7 @@ impl ListingReader {
 
 					if payload.is_empty() {
 						anyhow::bail!("empty payload");
-					} else if self.group.as_mut().unwrap().pos() == 1 {
+					} else if self.group.as_mut().unwrap().current() == 1 {
 						// This is a full snapshot, not a delta
 						let set = HashSet::from_iter(payload.split(|&b| b == b'\n').map(|s| String::from_utf8_lossy(s).to_string()));
 

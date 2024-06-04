@@ -1,3 +1,5 @@
+use std::ops;
+
 use crate::{message, serve::ServeError, util::State};
 
 use super::{Control, SessionError};
@@ -44,12 +46,10 @@ impl Announce {
 
 		tokio::select! {
 			_ = control.reader.decode::<message::AnnounceOk>() => {},
-			err = self.closed() => return Err(err.into()),
+			res = self.closed() => return res.map(|_| self.msg.broadcast).map_err(Into::into),
 		}
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.ok = true;
-
+		self.state.lock_mut().ok_or(ServeError::Cancel)?.ok = true;
 		control.reader.closed().await?;
 
 		Ok(self.msg.broadcast)
@@ -70,17 +70,15 @@ impl Announce {
 	}
 
 	// Run until we get an error
-	pub async fn closed(&mut self) -> ServeError {
+	pub async fn closed(&mut self) -> Result<(), ServeError> {
 		loop {
 			{
 				let state = self.state.lock();
-				if let Err(err) = state.closed.as_ref() {
-					return err.clone();
-				}
+				state.closed.clone()?;
 
 				match state.modified() {
 					Some(notify) => notify,
-					None => return ServeError::Cancel,
+					None => return Ok(()),
 				}
 			}
 			.await;
@@ -95,5 +93,13 @@ impl Announce {
 		state.closed = Err(ServeError::Closed(code.into()));
 
 		Ok(())
+	}
+}
+
+impl ops::Deref for Announce {
+	type Target = message::Announce;
+
+	fn deref(&self) -> &Self::Target {
+		&self.msg
 	}
 }

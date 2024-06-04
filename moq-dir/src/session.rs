@@ -37,7 +37,8 @@ impl Session {
 
 	async fn serve_subscriber(self, mut remote: Publisher) -> anyhow::Result<()> {
 		// Announce our broadcast and serve any matching subscriptions AUTOMATICALLY
-		remote.announce(self.listings.tracks()).await?;
+		let mut announce = remote.announce(self.listings.broadcast())?;
+		announce.closed().await?;
 
 		Ok(())
 	}
@@ -51,7 +52,7 @@ impl Session {
 					let this = self.clone();
 
 					tasks.push(async move {
-						let info = announce.clone();
+						let info = announce.broadcast.clone();
 						log::info!("serving announce: {:?}", info);
 
 						if let Err(err) = this.serve_announce(announce).await {
@@ -68,13 +69,8 @@ impl Session {
 	async fn serve_announce(mut self, mut announce: Announced) -> anyhow::Result<()> {
 		announce.ok()?;
 
-		match self.listings.register(&announce.broadcast) {
-			Ok(_) => announce.closed().await?,
-			Err(err) => {
-				announce.close(err.clone())?;
-				return Err(err.into());
-			}
-		}
+		self.listings.register(&announce.broadcast)?;
+		announce.closed().await?;
 
 		Ok(())
 	}

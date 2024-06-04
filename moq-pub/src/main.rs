@@ -68,10 +68,12 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 
+	let mut announce = publisher.announce(reader).context("failed to announce")?;
+
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
 		res = run_media(media) => res.context("media error")?,
-		res = publisher.announce(reader) => res.context("publisher error")?,
+		res = announce.closed() => res.context("announce closed")?,
 	}
 
 	Ok(())

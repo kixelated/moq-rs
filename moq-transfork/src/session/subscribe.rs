@@ -1,11 +1,11 @@
 use std::ops;
 
 use crate::message;
-use crate::serve::{self, ServeError, TrackWriter};
+use crate::serve::ServeError;
 
 use crate::util::State;
 
-use super::{Control, Reader, SessionError, Subscriber, Writer};
+use super::{Control, SessionError};
 
 struct SubscribeState {
 	// TODO
@@ -41,7 +41,7 @@ impl Subscribe {
 		}
 	}
 
-	pub(super) async fn run(mut self, mut control: Control) -> Result<u64, SessionError> {
+	pub(super) async fn run(self, mut control: Control) -> Result<u64, SessionError> {
 		control.writer.encode(&message::StreamBi::Subscribe).await?;
 		control.writer.encode(&self.msg).await?;
 
@@ -55,5 +55,38 @@ impl Subscribe {
 		// TODO allow the application to update the subscription
 
 		Ok(self.msg.id)
+	}
+
+	pub fn reset(&mut self, code: u32) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
+		state.closed = Err(ServeError::Closed(code as _));
+
+		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
+			}
+			.await;
+		}
+	}
+}
+
+impl ops::Deref for Subscribe {
+	type Target = message::Subscribe;
+
+	fn deref(&self) -> &Self::Target {
+		&self.msg
 	}
 }

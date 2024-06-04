@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
+use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError, Track};
 
 use crate::{ListingReader, ListingWriter};
 
@@ -15,7 +15,7 @@ struct State {
 #[derive(Clone)]
 pub struct Listings {
 	state: Arc<Mutex<State>>,
-	reader: BroadcastReader,
+	broadcast: BroadcastReader,
 }
 
 impl Listings {
@@ -29,7 +29,7 @@ impl Listings {
 
 		Self {
 			state: Arc::new(Mutex::new(state)),
-			reader,
+			broadcast: reader,
 		}
 	}
 
@@ -37,20 +37,21 @@ impl Listings {
 	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, ServeError> {
 		let (prefix, base) = Self::prefix(path);
 
-		if !prefix.starts_with(&self.reader.broadcast) {
+		if !prefix.starts_with(&self.broadcast.name) {
 			// Ignore anything that isn't in our broadcast.
 			return Ok(None);
 		}
 
 		// Remove the broadcast prefix from the path.
-		let prefix = &prefix[self.reader.broadcast.len()..];
+		let prefix = &prefix[self.broadcast.name.len()..];
 
 		let mut state = self.state.lock().unwrap();
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
 			log::info!("creating prefix: {}", prefix);
-			let track = state.writer.create_track(prefix).unwrap();
+			let track = Track::new(prefix).build();
+			let track = state.writer.insert_track(track).unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -84,11 +85,11 @@ impl Listings {
 	}
 
 	pub fn subscribe(&mut self, name: &str) -> Option<ListingReader> {
-		self.reader.subscribe(name).map(ListingReader::new)
+		self.broadcast.subscribe(name).map(ListingReader::new)
 	}
 
-	pub fn tracks(&self) -> BroadcastReader {
-		self.reader.clone()
+	pub fn broadcast(&self) -> BroadcastReader {
+		self.broadcast.clone()
 	}
 
 	// Returns the prefix for the string.

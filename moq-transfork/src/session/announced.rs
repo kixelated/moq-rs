@@ -1,8 +1,10 @@
+use std::ops;
+
 use crate::serve::ServeError;
 use crate::util::State;
 use crate::{message, serve};
 
-use super::{Control, Reader, SessionError, Subscribe, Subscriber, Writer};
+use super::{Control, SessionError, Subscribe, Subscriber};
 
 // There's currently no feedback from the peer, so the shared state is empty.
 // If Unannounce contained an error code then we'd be talking.
@@ -56,25 +58,48 @@ impl Announced {
 		self.session.subscribe(&self.msg.broadcast, track)
 	}
 
+	pub fn ok(&mut self) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		if let Some(mut state) = self.state.lock_mut() {
+			state.closed = Ok(());
+		}
+
+		Ok(())
+	}
+
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			{
 				let state = self.state.lock();
 				state.closed.clone()?;
-				state.modified().ok_or(ServeError::Cancel)?
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
 			}
 			.await;
 		}
 	}
 
-	pub fn close(mut self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, code: u32) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
 		if let Some(mut state) = self.state.lock_mut() {
-			state.closed = Err(err);
+			state.closed = Err(ServeError::Closed(code as _));
 		}
 
 		Ok(())
+	}
+}
+
+impl ops::Deref for Announced {
+	type Target = message::Announce;
+
+	fn deref(&self) -> &Self::Target {
+		&self.msg
 	}
 }

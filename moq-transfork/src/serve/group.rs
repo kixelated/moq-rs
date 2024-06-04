@@ -15,7 +15,7 @@ use crate::util::State;
 use super::{Frame, FrameReader, FrameWriter, ServeError};
 
 /// Parameters that can be specified by the user
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Group {
 	// The sequence number of the group within the track.
 	// NOTE: These may be received out of order
@@ -91,11 +91,14 @@ pub struct GroupWriter {
 
 	// Immutable stream state.
 	pub info: Arc<Group>,
+
+	// Cache the number of frames we've written to avoid a mutex
+	total: usize,
 }
 
 impl GroupWriter {
 	fn new(state: State<GroupState>, info: Arc<Group>) -> Self {
-		Self { state, info }
+		Self { state, info, total: 0 }
 	}
 
 	// Write a frame in one go
@@ -108,6 +111,7 @@ impl GroupWriter {
 		let (writer, reader) = Frame::new(size).produce();
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
 		state.frames.push(reader);
+		self.total += 1;
 		Ok(writer)
 	}
 
@@ -120,6 +124,10 @@ impl GroupWriter {
 		state.closed = Err(err);
 
 		Ok(())
+	}
+
+	pub fn total(&self) -> usize {
+		self.total
 	}
 }
 
@@ -181,6 +189,16 @@ impl GroupReader {
 			}
 			.await; // Try again when the state changes
 		}
+	}
+
+	// Return the current index of the frame in the group
+	pub fn current(&self) -> usize {
+		self.index
+	}
+
+	// Return the current total number of frames in the group
+	pub fn total(&self) -> usize {
+		self.state.lock().frames.len()
 	}
 }
 

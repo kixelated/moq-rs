@@ -66,6 +66,13 @@ impl Publisher {
 		Ok(announce)
 	}
 
+	pub fn subscribed(&mut self, unknown: serve::BroadcastRequest) -> Result<Subscribed, ServeError> {
+		let broadcast = unknown.broadcast.clone();
+		let track = self.get_track(&broadcast, &unknown.track)?;
+
+		Ok(Subscribed::new(self.webtransport.clone(), unknown, track))
+	}
+
 	fn get_track(&self, broadcast: &str, track: &str) -> Result<serve::TrackReader, ServeError> {
 		// Route the subscribe to an announce.
 		self.broadcasts

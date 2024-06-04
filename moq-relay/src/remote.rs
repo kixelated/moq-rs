@@ -230,8 +230,8 @@ impl RemoteProducer {
 					let mut subscriber = subscriber.clone();
 
 					tasks.push(async move {
-						if let Err(err) = subscriber.subscribe(track).await {
-							log::warn!("failed serving track: {:?}, error: {}", info, err);
+						if let Ok(sub) = subscriber.subscribe(broadcast, track) {
+							sub.closed().await?;
 						}
 					});
 				}

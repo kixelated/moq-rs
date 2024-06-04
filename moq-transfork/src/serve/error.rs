@@ -8,7 +8,7 @@ pub enum ServeError {
 	Cancel,
 
 	#[error("closed, code={0}")]
-	Closed(u64),
+	Closed(u32),
 
 	#[error("not found")]
 	NotFound,
@@ -24,7 +24,7 @@ pub enum ServeError {
 }
 
 impl ServeError {
-	pub fn code(&self) -> u64 {
+	pub fn code(&self) -> u32 {
 		match self {
 			Self::Done => 0,
 			Self::Cancel => 1,

@@ -58,7 +58,7 @@ impl BroadcastWriter {
 
 	/// Create a new track with the given name, inserting it into the broadcast.
 	/// None is returned if all [BroadcastReader]s have been dropped.
-	pub fn create_track(&mut self, track: Track) -> Option<TrackWriter> {
+	pub fn insert_track(&mut self, track: Track) -> Option<TrackWriter> {
 		let (writer, reader) = track.produce();
 
 		// NOTE: We overwrite the track if it already exists.

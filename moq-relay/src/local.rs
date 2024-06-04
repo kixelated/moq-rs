@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
 
-use moq_transfork::serve::{ServeError, BroadcastReader};
+use moq_transfork::serve::{BroadcastReader, ServeError};
 
 #[derive(Clone)]
 pub struct Locals {
@@ -23,16 +23,16 @@ impl Locals {
 		}
 	}
 
-	pub async fn register(&mut self, tracks: BroadcastReader) -> anyhow::Result<Registration> {
-		let broadcast = tracks.broadcast.clone();
-		match self.lookup.lock().unwrap().entry(broadcast.clone()) {
-			hash_map::Entry::Vacant(entry) => entry.insert(tracks),
+	pub async fn register(&mut self, broadcast: BroadcastReader) -> anyhow::Result<Registration> {
+		let name = broadcast.name.clone();
+		match self.lookup.lock().unwrap().entry(name.clone()) {
+			hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
 		let registration = Registration {
 			locals: self.clone(),
-			broadcast,
+			broadcast: name,
 		};
 
 		Ok(registration)

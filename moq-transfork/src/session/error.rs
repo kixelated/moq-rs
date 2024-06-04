@@ -52,7 +52,7 @@ pub enum SessionError {
 
 impl SessionError {
 	/// An integer code that is sent over the wire.
-	pub fn code(&self) -> u64 {
+	pub fn code(&self) -> u32 {
 		match self {
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,

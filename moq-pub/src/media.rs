@@ -1,12 +1,11 @@
 use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
-use moq_transfork::serve::{self, BroadcastWriter, GroupWriter, TrackWriter};
+use moq_transfork::serve::{self, BroadcastWriter, Group, GroupWriter, TrackWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::time;
 
 pub struct Media {
 	// Broadcast based on their track ID.
@@ -30,10 +29,10 @@ pub struct Media {
 impl Media {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
 		let catalog = broadcast
-			.create_track(serve::Track::new(".catalog").build())
+			.insert_track(serve::Track::new(".catalog").build())
 			.context("failed to create catalog")?;
 		let init = broadcast
-			.create_track(serve::Track::new("0.mp4").build())
+			.insert_track(serve::Track::new("0.mp4").build())
 			.context("failed to create init")?;
 
 		Ok(Media {
@@ -112,7 +111,7 @@ impl Media {
 				self.current.replace(fragment.track);
 
 				// Publish the moof header, creating a new segment if it's a keyframe.
-				track.header(atom, fragment).context("failed to publish moof")?;
+				track.header(atom).context("failed to publish moof")?;
 			}
 			mp4::BoxType::MdatBox => {
 				// Get the track ID from the previous moof.
@@ -137,13 +136,12 @@ impl Media {
 			let id = trak.tkhd.track_id;
 			let name = format!("{}.m4s", id);
 
-			let timescale = track_timescale(moov, id);
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
 			let track = serve::Track::new(&name).build();
-			let track = self.broadcast.create_track(track).context("broadcast closed")?;
-			let track = Track::new(track, handler, timescale);
+			let track = self.broadcast.insert_track(track).context("broadcast closed")?;
+			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
 		}
 
@@ -152,7 +150,7 @@ impl Media {
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
-		self.init.append(0)?.write(init.into())?;
+		self.init.append_group(Group::default())?.write(init.into())?;
 
 		let mut tracks = Vec::new();
 
@@ -235,7 +233,7 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		self.catalog.append(0)?.write(catalog_str.into())?;
+		self.catalog.append_group(Group::default())?.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -293,24 +291,20 @@ struct Track {
 	// The current segment
 	current: Option<GroupWriter>,
 
-	// The number of units per second.
-	timescale: u64,
-
 	// The type of track, ex. "vide" or "soun"
 	handler: TrackType,
 }
 
 impl Track {
-	fn new(track: TrackWriter, handler: TrackType, timescale: u64) -> Self {
+	fn new(track: TrackWriter, handler: TrackType) -> Self {
 		Self {
 			track,
 			current: None,
-			timescale,
 			handler,
 		}
 	}
 
-	pub fn header(&mut self, raw: Bytes, fragment: Fragment) -> anyhow::Result<()> {
+	pub fn header(&mut self, raw: Bytes) -> anyhow::Result<()> {
 		if let Some(current) = self.current.as_mut() {
 			// Use the existing segment
 			current.write(raw)?;
@@ -318,19 +312,7 @@ impl Track {
 		}
 
 		// Otherwise make a new segment
-
-		// Compute the timestamp in milliseconds.
-		// Overflows after 583 million years, so we're fine.
-		let timestamp: u32 = fragment
-			.timestamp(self.timescale)
-			.as_millis()
-			.try_into()
-			.context("timestamp too large")?;
-
-		let priority = u32::MAX.checked_sub(timestamp).context("priority too large")?.into();
-
-		// Create a new segment.
-		let mut segment = self.track.append(priority)?;
+		let mut segment = self.track.append_group(Group::default())?;
 
 		// Write the fragment in it's own object.
 		segment.write(raw)?;
@@ -357,9 +339,6 @@ struct Fragment {
 	// The track for this fragment.
 	track: u32,
 
-	// The timestamp of the first sample in this fragment, in timescale units.
-	timestamp: u64,
-
 	// True if this fragment is a keyframe.
 	keyframe: bool,
 }
@@ -370,27 +349,11 @@ impl Fragment {
 		anyhow::ensure!(moof.trafs.len() == 1, "multiple tracks per moof atom");
 		let track = moof.trafs[0].tfhd.track_id;
 
-		// Parse the moof to get some timing information to sleep.
-		let timestamp = sample_timestamp(&moof).expect("couldn't find timestamp");
-
 		// Detect if we should start a new segment.
 		let keyframe = sample_keyframe(&moof);
 
-		Ok(Self {
-			track,
-			timestamp,
-			keyframe,
-		})
+		Ok(Self { track, keyframe })
 	}
-
-	// Convert from timescale units to a duration.
-	fn timestamp(&self, timescale: u64) -> time::Duration {
-		time::Duration::from_millis(1000 * self.timestamp / timescale)
-	}
-}
-
-fn sample_timestamp(moof: &mp4::MoofBox) -> Option<u64> {
-	Some(moof.trafs.first()?.tfdt.as_ref()?.base_media_decode_time)
 }
 
 fn sample_keyframe(moof: &mp4::MoofBox) -> bool {
@@ -423,15 +386,4 @@ fn sample_keyframe(moof: &mp4::MoofBox) -> bool {
 	}
 
 	false
-}
-
-// Find the timescale for the given track.
-fn track_timescale(moov: &mp4::MoovBox, track_id: u32) -> u64 {
-	let trak = moov
-		.traks
-		.iter()
-		.find(|trak| trak.tkhd.track_id == track_id)
-		.expect("failed to find trak");
-
-	trak.mdia.mdhd.timescale as u64
 }

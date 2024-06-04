@@ -92,11 +92,14 @@ impl Default for TrackState {
 pub struct TrackWriter {
 	pub info: Arc<Track>,
 	state: State<TrackState>,
+
+	// Cache the next sequence number to use
+	next: u64,
 }
 
 impl TrackWriter {
-	fn new(state: State<TrackState>, track: Arc<Track>) -> Self {
-		Self { info: track, state }
+	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
+		Self { info, state, next: 0 }
 	}
 
 	pub fn create_group(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
@@ -116,19 +119,22 @@ impl TrackWriter {
 
 		state.epoch += 1;
 
+		// Cache the next sequence number
+		self.next = state.latest.as_ref().unwrap().sequence + 1;
+
 		Ok(writer)
 	}
 
+	// Helper to replace the sequence number with the next one.
+	pub fn append_group(&mut self, mut group: Group) -> Result<GroupWriter, ServeError> {
+		group.sequence = self.next_group();
+		self.create_group(group)
+	}
+
 	// Helper to return the sequence number for the next group.
-	// TODO make an append_group function
-	// TODO also avoid this unnecessary mutex
+	// TODO avoid this unnecessary mutex
 	pub fn next_group(&self) -> u64 {
-		let state = self.state.lock();
-		state
-			.latest
-			.as_ref()
-			.map(|group| group.sequence + 1)
-			.unwrap_or_default()
+		self.next
 	}
 
 	/// Close the segment with an error.

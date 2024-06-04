@@ -65,14 +65,11 @@ async fn main() -> anyhow::Result<()> {
 
 		let (mut writer, _, reader) = serve::Broadcast::new(config.broadcast).produce();
 
-		let track = Track::new(config.track).build();
-		let track = writer.create_track(track).unwrap();
+		let track = Track::new(&config.track).build();
+		let track = writer.insert_track(track).unwrap();
 
 		let clock = clock::Publisher::new(track);
-		let mut announce = publisher
-			.announce(reader)
-			.await
-			.context("failed to announce broadcast")?;
+		let mut announce = publisher.announce(reader).context("failed to announce broadcast")?;
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
@@ -87,11 +84,14 @@ async fn main() -> anyhow::Result<()> {
 		let (prod, sub) = Track::new(&config.track).produce();
 
 		let clock = clock::Subscriber::new(sub);
+		let sub = subscriber
+			.subscribe(&config.broadcast, prod)
+			.context("failed to subscribe")?;
 
 		tokio::select! {
 			res = session.run() => res.context("session error")?,
 			res = clock.run() => res.context("clock error")?,
-			res = subscriber.subscribe(&config.broadcast, prod) => res.context("failed to subscribe to track")?,
+			res = sub.closed() => res.context("subscription closed")?,
 		}
 	}
 
