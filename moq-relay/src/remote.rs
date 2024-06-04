@@ -230,7 +230,7 @@ impl RemoteProducer {
 					let mut subscriber = subscriber.clone();
 
 					tasks.push(async move {
-						if let Ok(sub) = subscriber.subscribe(broadcast, track) {
+						if let Ok(sub) = subscriber.subscribe(&broadcast, &track) {
 							sub.closed().await?;
 						}
 					});
@@ -285,8 +285,8 @@ impl RemoteConsumer {
 	}
 
 	/// Request a track from the broadcast.
-	pub fn subscribe(&self, broadcast: String, name: String) -> anyhow::Result<Option<RemoteTrackReader>> {
-		let key = (broadcast.clone(), name.clone());
+	pub fn subscribe(&self, broadcast: &str, name: &str) -> anyhow::Result<Option<RemoteTrackReader>> {
+		let key = (broadcast.to_string(), name.to_string());
 		let state = self.state.lock();
 		if let Some(track) = state.tracks.get(&key) {
 			if let Some(track) = track.upgrade() {
@@ -299,7 +299,7 @@ impl RemoteConsumer {
 			None => return Ok(None),
 		};
 
-		let (writer, reader) = Track::new(broadcast, name).produce();
+		let (writer, reader) = Track::new(name).produce();
 		let reader = RemoteTrackReader::new(reader, self.state.clone());
 
 		// Insert the track into our Map so we deduplicate future requests.

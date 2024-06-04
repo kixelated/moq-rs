@@ -123,7 +123,7 @@ impl Subscriber {
 			.unwrap()
 			.get_mut(&header.subscribe)
 			.ok_or(ServeError::NotFound)?
-			.create_group(group)?;
+			.insert_group(group)?;
 
 		while let Some(chunk) = reader.read_chunk(usize::MAX).await? {
 			group.write(chunk)?;

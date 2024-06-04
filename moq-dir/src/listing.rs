@@ -64,7 +64,7 @@ impl ListingWriter {
 			None => self.track.take().unwrap(),
 		};
 
-		let mut group = groups.append_group(Default::default())?;
+		let mut group = groups.append_group().build()?;
 
 		let mut msg = BytesMut::new();
 		for name in &self.current {

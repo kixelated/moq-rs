@@ -10,10 +10,14 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+	collections::HashMap,
+	ops::{self, Deref},
+	sync::Arc,
+};
 
-use super::{ServeError, Track, TrackReader, TrackWriter};
-use crate::util::{Queue, State};
+use super::{Track, TrackBuilder, TrackReader, TrackWriter};
+use crate::util::State;
 
 /// Static information about a broadcast.
 #[derive(Debug)]
@@ -26,17 +30,14 @@ impl Broadcast {
 		Self { name }
 	}
 
-	pub fn produce(self) -> (BroadcastWriter, BroadcastRequest, BroadcastReader) {
+	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
 		let info = Arc::new(self);
 		let state = State::default();
-		let state_w = state.split(); // both writers share the state split
-		let queue = Queue::default();
 
-		let writer = BroadcastWriter::new(state_w.clone(), info.clone());
-		let request = BroadcastRequest::new(state_w, queue.split(), info.clone());
-		let reader = BroadcastReader::new(state, queue, info);
+		let writer = BroadcastWriter::new(state.split(), info.clone());
+		let reader = BroadcastReader::new(state, info);
 
-		(writer, request, reader)
+		(writer, reader)
 	}
 }
 
@@ -56,7 +57,11 @@ impl BroadcastWriter {
 		Self { state, info }
 	}
 
-	/// Create a new track with the given name, inserting it into the broadcast.
+	pub fn create_track(&mut self, name: &str) -> BroadcastTrackBuilder {
+		BroadcastTrackBuilder::new(self, name)
+	}
+
+	/// Insert a track into the broadcast.
 	/// None is returned if all [BroadcastReader]s have been dropped.
 	pub fn insert_track(&mut self, track: Track) -> Option<TrackWriter> {
 		let (writer, reader) = track.produce();
@@ -80,39 +85,36 @@ impl Deref for BroadcastWriter {
 	}
 }
 
-pub struct BroadcastRequest {
-	#[allow(dead_code)] // Avoid dropping the write side
-	state: State<BroadcastState>,
-	incoming: Queue<TrackWriter>,
-	pub info: Arc<Broadcast>,
+pub struct BroadcastTrackBuilder<'a> {
+	broadcast: &'a mut BroadcastWriter,
+	track: TrackBuilder,
 }
 
-impl BroadcastRequest {
-	fn new(state: State<BroadcastState>, incoming: Queue<TrackWriter>, info: Arc<Broadcast>) -> Self {
-		Self { state, incoming, info }
-	}
-
-	/// Wait for a request to create a new track.
-	/// None is returned if all [BroadcastReader]s have been dropped.
-	pub async fn next(&mut self) -> Option<TrackWriter> {
-		self.incoming.pop().await
-	}
-}
-
-impl Deref for BroadcastRequest {
-	type Target = Broadcast;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
-
-impl Drop for BroadcastRequest {
-	fn drop(&mut self) {
-		// Close any tracks still in the Queue
-		for mut track in self.incoming.drain() {
-			let _ = track.close(ServeError::NotFound);
+impl<'a> BroadcastTrackBuilder<'a> {
+	fn new(broadcast: &'a mut BroadcastWriter, name: &str) -> Self {
+		Self {
+			track: Track::new(&broadcast.name, name),
+			broadcast,
 		}
+	}
+
+	/// None is returned if all [BroadcastReader]s have been dropped.
+	pub fn build(self) -> Option<TrackWriter> {
+		self.broadcast.insert_track(self.track.build())
+	}
+}
+
+impl<'a> ops::Deref for BroadcastTrackBuilder<'a> {
+	type Target = TrackBuilder;
+
+	fn deref(&self) -> &TrackBuilder {
+		&self.track
+	}
+}
+
+impl<'a> ops::DerefMut for BroadcastTrackBuilder<'a> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.track
 	}
 }
 
@@ -122,36 +124,19 @@ impl Drop for BroadcastRequest {
 #[derive(Clone)]
 pub struct BroadcastReader {
 	state: State<BroadcastState>,
-	queue: Queue<TrackWriter>,
 	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastReader {
-	fn new(state: State<BroadcastState>, queue: Queue<TrackWriter>, info: Arc<Broadcast>) -> Self {
-		Self { state, queue, info }
+	fn new(state: State<BroadcastState>, info: Arc<Broadcast>) -> Self {
+		Self { state, info }
 	}
 
 	/// Get or request a track from the broadcast by name.
 	/// None is returned if [BroadcastWriter] or [BroadcastRequest] cannot fufill the request.
-	pub fn subscribe(&mut self, name: &str) -> Option<TrackReader> {
+	pub fn get_track(&mut self, name: &str) -> Option<TrackReader> {
 		let state = self.state.lock();
-
-		if let Some(reader) = state.tracks.get(name).cloned() {
-			return Some(reader);
-		}
-
-		let mut state = state.into_mut()?;
-		let track = Track::new(name).build();
-		let (writer, reader) = track.produce();
-
-		if self.queue.push(writer).is_err() {
-			return None;
-		}
-
-		// We requested the track sucessfully so we can deduplicate it.
-		state.tracks.insert(reader.name.clone(), reader.clone());
-
-		Some(reader)
+		state.tracks.get(name).cloned()
 	}
 }
 

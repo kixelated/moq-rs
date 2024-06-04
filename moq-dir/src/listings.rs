@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError, Track};
+use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
 
 use crate::{ListingReader, ListingWriter};
 
@@ -20,7 +20,7 @@ pub struct Listings {
 
 impl Listings {
 	pub fn new(broadcast: String) -> Self {
-		let (writer, _, reader) = Broadcast::new(broadcast).produce();
+		let (writer, reader) = Broadcast::new(broadcast).produce();
 
 		let state = State {
 			writer,
@@ -50,8 +50,7 @@ impl Listings {
 			listing.insert(base.to_string())?;
 		} else {
 			log::info!("creating prefix: {}", prefix);
-			let track = Track::new(prefix).build();
-			let track = state.writer.insert_track(track).unwrap();
+			let track = state.writer.create_track(prefix).build().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -85,7 +84,7 @@ impl Listings {
 	}
 
 	pub fn subscribe(&mut self, name: &str) -> Option<ListingReader> {
-		self.broadcast.subscribe(name).map(ListingReader::new)
+		self.broadcast.get_track(name).map(ListingReader::new)
 	}
 
 	pub fn broadcast(&self) -> BroadcastReader {

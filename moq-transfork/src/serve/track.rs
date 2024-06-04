@@ -14,20 +14,26 @@
 
 use crate::util::State;
 
-use super::{Group, GroupReader, GroupWriter, ServeError};
-use std::{cmp::Ordering, ops::Deref, sync::Arc};
+use super::{Group, GroupBuilder, GroupReader, GroupWriter, ServeError};
+use std::{
+	cmp::Ordering,
+	ops::{self, Deref},
+	sync::Arc,
+};
 
 /// Static information about a track.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Track {
+	pub broadcast: String,
 	pub name: String,
 	pub order: Option<TrackOrder>,
 	pub priority: Option<u64>,
 }
 
 impl Track {
-	pub fn new(name: &str) -> TrackBuilder {
+	pub fn new(broadcast: &str, name: &str) -> TrackBuilder {
 		TrackBuilder::new(Self {
+			broadcast: broadcast.to_string(),
 			name: name.to_string(),
 			order: None,
 			priority: None,
@@ -50,7 +56,7 @@ pub struct TrackBuilder {
 }
 
 impl TrackBuilder {
-	fn new(track: Track) -> Self {
+	pub fn new(track: Track) -> Self {
 		Self { track }
 	}
 
@@ -102,7 +108,7 @@ impl TrackWriter {
 		Self { info, state, next: 0 }
 	}
 
-	pub fn create_group(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
+	pub fn insert_group(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
 		let (writer, reader) = group.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
@@ -125,14 +131,17 @@ impl TrackWriter {
 		Ok(writer)
 	}
 
-	// Helper to replace the sequence number with the next one.
-	pub fn append_group(&mut self, mut group: Group) -> Result<GroupWriter, ServeError> {
-		group.sequence = self.next_group();
-		self.create_group(group)
+	// Build a new group with the given sequence number.
+	pub fn create_group(&mut self, sequence: u64) -> TrackGroupBuilder {
+		TrackGroupBuilder::new(self, Group::new(sequence))
+	}
+
+	// Build a new group with the next sequence number.
+	pub fn append_group(&mut self) -> TrackGroupBuilder {
+		TrackGroupBuilder::new(self, Group::new(self.next_group()))
 	}
 
 	// Helper to return the sequence number for the next group.
-	// TODO avoid this unnecessary mutex
 	pub fn next_group(&self) -> u64 {
 		self.next
 	}
@@ -154,6 +163,35 @@ impl Deref for TrackWriter {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+pub struct TrackGroupBuilder<'a> {
+	track: &'a mut TrackWriter,
+	group: GroupBuilder,
+}
+
+impl<'a> TrackGroupBuilder<'a> {
+	pub fn new(track: &'a mut TrackWriter, group: GroupBuilder) -> Self {
+		Self { track, group }
+	}
+
+	pub fn build(self) -> Result<GroupWriter, ServeError> {
+		self.track.insert_group(self.group.build())
+	}
+}
+
+impl<'a> ops::Deref for TrackGroupBuilder<'a> {
+	type Target = GroupBuilder;
+
+	fn deref(&self) -> &Self::Target {
+		&self.group
+	}
+}
+
+impl<'a> ops::DerefMut for TrackGroupBuilder<'a> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.group
 	}
 }
 

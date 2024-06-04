@@ -51,7 +51,7 @@ impl Producer {
 
 	async fn serve(self, subscribe: Subscribed) -> Result<(), anyhow::Error> {
 		if let Some(mut local) = self.locals.route(&subscribe.broadcast) {
-			if let Some(track) = local.subscribe(&subscribe.name) {
+			if let Some(track) = local.get_track(&subscribe.name) {
 				log::info!("serving from local: {:?}", track.info);
 				return Ok(subscribe.serve(track).await?);
 			}

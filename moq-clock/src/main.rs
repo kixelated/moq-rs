@@ -63,10 +63,9 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (mut writer, _, reader) = serve::Broadcast::new(config.broadcast).produce();
+		let (mut writer, reader) = serve::Broadcast::new(config.broadcast).produce();
 
-		let track = Track::new(&config.track).build();
-		let track = writer.insert_track(track).unwrap();
+		let track = writer.create_track(&config.track).build().unwrap();
 
 		let clock = clock::Publisher::new(track);
 		let mut announce = publisher.announce(reader).context("failed to announce broadcast")?;
@@ -81,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (prod, sub) = Track::new(&config.track).produce();
+		let (prod, sub) = Track::new(&config.broadcast, &config.track).produce();
 
 		let clock = clock::Subscriber::new(sub);
 		let sub = subscriber

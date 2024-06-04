@@ -15,7 +15,7 @@ use crate::util::State;
 use super::{Frame, FrameReader, FrameWriter, ServeError};
 
 /// Parameters that can be specified by the user
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Group {
 	// The sequence number of the group within the track.
 	// NOTE: These may be received out of order
