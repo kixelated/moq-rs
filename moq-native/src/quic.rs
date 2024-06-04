@@ -57,12 +57,17 @@ impl Endpoint {
 		transport.mtu_discovery_config(None); // Disable MTU discovery
 		let transport = Arc::new(transport);
 
-		let server_config = config.tls.server.map(|mut server| {
-			server.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
-			let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server));
-			server_config.transport_config(transport.clone());
-			server_config
-		});
+		let mut server_config = None;
+
+		if let Some(mut config) = config.tls.server {
+			config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+
+			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
+			let mut config = quinn::ServerConfig::with_crypto(Arc::new(config));
+			config.transport_config(transport.clone());
+
+			server_config = Some(config);
+		}
 
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
@@ -111,7 +116,9 @@ impl Server {
 		}
 	}
 
-	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport::Session> {
+	async fn accept_session(conn: quinn::Incoming) -> anyhow::Result<web_transport::Session> {
+		let mut conn = conn.accept()?;
+
 		let handshake = conn
 			.handshake_data()
 			.await?
@@ -184,6 +191,7 @@ impl Client {
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
 		}];
 
+		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
 		config.transport_config(self.transport.clone());
 
