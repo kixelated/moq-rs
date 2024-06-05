@@ -10,8 +10,10 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use moq_native::quic;
+use moq_transfork::serve::UnknownReader;
 use moq_transfork::serve::{Track, TrackReader, TrackWriter};
-use moq_transfork::watch::State;
+use moq_transfork::util::Queue;
+use moq_transfork::util::State;
 use url::Url;
 
 use crate::Api;
@@ -25,46 +27,26 @@ pub struct Remotes {
 }
 
 impl Remotes {
-	pub fn produce(self) -> (RemotesProducer, RemotesConsumer) {
-		let (send, recv) = State::default().split();
-		let info = Arc::new(self);
-
-		let producer = RemotesProducer::new(info.clone(), send);
-		let consumer = RemotesConsumer::new(info, recv);
-
+	pub fn produce(self) -> (RemoteProducer, RemotesConsumer) {
+		let requests = Queue::default();
+		let producer = RemotesProducer::new(self, requests.split());
+		let consumer = RemotesConsumer::new(requests);
 		(producer, consumer)
 	}
 }
 
-#[derive(Default)]
-struct RemotesState {
-	lookup: HashMap<Url, RemoteConsumer>,
-	requested: VecDeque<RemoteProducer>,
-}
-
-// Clone for convenience, but there should only be one instance of this
-#[derive(Clone)]
 pub struct RemotesProducer {
 	info: Arc<Remotes>,
-	state: State<RemotesState>,
+	queue: Queue<RemoteRequest>,
+	lookup: HashMap<Url, RemoteConsumer>,
 }
 
 impl RemotesProducer {
-	fn new(info: Arc<Remotes>, state: State<RemotesState>) -> Self {
-		Self { info, state }
-	}
-
-	async fn next(&mut self) -> Option<RemoteProducer> {
-		loop {
-			{
-				let state = self.state.lock();
-				if !state.requested.is_empty() {
-					return state.into_mut()?.requested.pop_front();
-				}
-
-				state.modified()?
-			}
-			.await;
+	fn new(info: Remotes, queue: Queue<RemoteRequest>) -> Self {
+		Self {
+			info: Arc::new(info),
+			queue,
+			lookup: HashMap::new(),
 		}
 	}
 
@@ -73,10 +55,9 @@ impl RemotesProducer {
 
 		loop {
 			tokio::select! {
-				Some(mut remote) = self.next() => {
-					let url = remote.url.clone();
-
+				Some(mut request) = self.queue.pop() => {
 					tasks.push(async move {
+						if let Some(self.route(request)
 						let info = remote.info.clone();
 
 						log::warn!("serving remote: {:?}", info);
@@ -100,14 +81,6 @@ impl RemotesProducer {
 	}
 }
 
-impl ops::Deref for RemotesProducer {
-	type Target = Remotes;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
-}
-
 #[derive(Clone)]
 pub struct RemotesConsumer {
 	pub info: Arc<Remotes>,
@@ -119,7 +92,7 @@ impl RemotesConsumer {
 		Self { info, state }
 	}
 
-	pub async fn route(&self, broadcast: &str) -> anyhow::Result<Option<RemoteConsumer>> {
+	pub async fn route(&self, broadcast: &str) -> Option<UnknownReader> {
 		// Always fetch the origin instead of using the (potentially invalid) cache.
 		let origin = match self.api.get_origin(broadcast).await? {
 			None => return Ok(None),
@@ -147,14 +120,6 @@ impl RemotesConsumer {
 		state.lookup.insert(origin.url, reader.clone());
 
 		Ok(Some(reader))
-	}
-}
-
-impl ops::Deref for RemotesConsumer {
-	type Target = Remotes;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }
 
@@ -379,6 +344,40 @@ impl Drop for RemoteTrackDrop {
 	fn drop(&mut self) {
 		if let Some(mut parent) = self.parent.lock_mut() {
 			parent.tracks.remove(&self.key);
+		}
+	}
+}
+
+#[derive(Clone)]
+pub struct RemoteRequest {
+	broadcast: String,
+	state: State<Option<RemoteConsumer>>,
+}
+
+impl RemoteRequest {
+	pub fn new(broadcast: String) -> Self {
+		Self {
+			broadcast,
+			state: State::default(),
+		}
+	}
+
+	pub fn respond(self, remote: RemoteConsumer) {
+		if let Some(mut state) = self.state.lock_mut() {
+			state.replace(remote);
+		}
+	}
+
+	pub async fn response(self) -> Option<RemoteConsumer> {
+		loop {
+			{
+				let state = self.state.lock();
+				if state.is_some() {
+					return state.clone();
+				}
+				state.modified()?
+			}
+			.await
 		}
 	}
 }

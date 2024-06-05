@@ -19,7 +19,7 @@ pub struct Listings {
 }
 
 impl Listings {
-	pub fn new(broadcast: String) -> Self {
+	pub fn new(broadcast: &str) -> Self {
 		let (writer, reader) = Broadcast::new(broadcast).produce();
 
 		let state = State {
@@ -50,7 +50,7 @@ impl Listings {
 			listing.insert(base.to_string())?;
 		} else {
 			log::info!("creating prefix: {}", prefix);
-			let track = state.writer.create_track(prefix).build().unwrap();
+			let track = state.writer.create(prefix).build().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -77,14 +77,14 @@ impl Listings {
 		if listing.is_empty() {
 			log::info!("removed prefix: {}", prefix);
 			state.active.remove(prefix);
-			state.writer.remove_track(prefix);
+			state.writer.remove(prefix);
 		}
 
 		Ok(())
 	}
 
 	pub fn subscribe(&mut self, name: &str) -> Option<ListingReader> {
-		self.broadcast.get_track(name).map(ListingReader::new)
+		self.broadcast.get(name).map(ListingReader::new)
 	}
 
 	pub fn broadcast(&self) -> BroadcastReader {

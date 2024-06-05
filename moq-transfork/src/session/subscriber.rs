@@ -51,24 +51,26 @@ impl Subscriber {
 		self.announced.pop().await
 	}
 
-	pub fn subscribe(&mut self, broadcast: &str, track: serve::TrackWriter) -> Result<Subscribe, SessionError> {
+	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe, SessionError> {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = message::Subscribe {
 			id,
-			broadcast: broadcast.to_string(),
+			broadcast: track.broadcast.to_string(),
 			track: track.name.clone(),
 
 			// TODO
-			priority: 0,
-			order: None,
+			priority: track.priority.unwrap_or(0),
+			order: track.order.map(Into::into),
 			expires: None,
 			min: None,
 			max: None,
 		};
 
+		// Insert into our lookup before we send the message
 		self.lookup.lock().unwrap().insert(id, track);
 
+		// Once we have successfully subscribed, we return a Subscribe object to the application.
 		let subscribe = Subscribe::new(msg);
 		if let Err(_) = self.subscribed.push(subscribe.split()) {
 			return Err(SessionError::Internal);
@@ -85,7 +87,7 @@ impl Subscriber {
 				Some(subscribed) = self.subscribed.pop() => {
 					let mut webtransport = self.webtransport.clone();
 					tasks.push(async move {
-						let control = Control::open(&mut webtransport, message::StreamBi::Subscribe).await?;
+						let control = Control::open(&mut webtransport, message::Control::Subscribe).await?;
 						subscribed.run(control).await
 					});
 				},
@@ -123,7 +125,7 @@ impl Subscriber {
 			.unwrap()
 			.get_mut(&header.subscribe)
 			.ok_or(ServeError::NotFound)?
-			.insert_group(group)?;
+			.insert(group)?;
 
 		while let Some(chunk) = reader.read_chunk(usize::MAX).await? {
 			group.write(chunk)?;

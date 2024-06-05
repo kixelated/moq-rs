@@ -6,7 +6,7 @@ use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_native::quic;
 use url::Url;
 
-use crate::{Api, Consumer, Locals, Producer, Remotes, RemotesConsumer, RemotesProducer, Session};
+use crate::{Api, Consumer, Locals, Origin, Producer, RemotesConsumer, RemotesProducer, Session};
 
 pub struct RelayConfig {
 	/// Listen on this address
@@ -52,7 +52,7 @@ impl Relay {
 		let locals = Locals::new();
 
 		let remotes = api.clone().map(|api| {
-			Remotes {
+			Origin {
 				api,
 				quic: quic.client.clone(),
 			}

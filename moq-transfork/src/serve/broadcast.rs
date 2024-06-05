@@ -16,7 +16,7 @@ use std::{
 	sync::Arc,
 };
 
-use super::{Track, TrackBuilder, TrackReader, TrackWriter};
+use super::{Track, TrackBuilder, TrackReader, TrackWriter, Unknown, UnknownReader, UnknownWriter};
 use crate::util::State;
 
 /// Static information about a broadcast.
@@ -26,8 +26,8 @@ pub struct Broadcast {
 }
 
 impl Broadcast {
-	pub fn new(name: String) -> Self {
-		Self { name }
+	pub fn new(name: &str) -> Self {
+		Self { name: name.to_string() }
 	}
 
 	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
@@ -44,6 +44,7 @@ impl Broadcast {
 #[derive(Default)]
 pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
+	unknown: Option<UnknownReader>,
 }
 
 /// Publish new tracks for a broadcast by name.
@@ -57,13 +58,22 @@ impl BroadcastWriter {
 		Self { state, info }
 	}
 
-	pub fn create_track(&mut self, name: &str) -> BroadcastTrackBuilder {
+	pub fn create(&mut self, name: &str) -> BroadcastTrackBuilder {
 		BroadcastTrackBuilder::new(self, name)
+	}
+
+	/// Optionally route unknown tracks.
+	///
+	/// Returns None if the broadcast is closed.
+	pub fn unknown(&mut self) -> Option<UnknownWriter> {
+		let (writer, reader) = Unknown::produce();
+		self.state.lock_mut()?.unknown = Some(reader);
+		Some(writer)
 	}
 
 	/// Insert a track into the broadcast.
 	/// None is returned if all [BroadcastReader]s have been dropped.
-	pub fn insert_track(&mut self, track: Track) -> Option<TrackWriter> {
+	pub fn insert(&mut self, track: Track) -> Option<TrackWriter> {
 		let (writer, reader) = track.produce();
 
 		// NOTE: We overwrite the track if it already exists.
@@ -72,7 +82,7 @@ impl BroadcastWriter {
 		Some(writer)
 	}
 
-	pub fn remove_track(&mut self, track: &str) -> Option<TrackReader> {
+	pub fn remove(&mut self, track: &str) -> Option<TrackReader> {
 		self.state.lock_mut()?.tracks.remove(track)
 	}
 }
@@ -100,7 +110,7 @@ impl<'a> BroadcastTrackBuilder<'a> {
 
 	/// None is returned if all [BroadcastReader]s have been dropped.
 	pub fn build(self) -> Option<TrackWriter> {
-		self.broadcast.insert_track(self.track.build())
+		self.broadcast.insert(self.track.build())
 	}
 }
 
@@ -132,11 +142,30 @@ impl BroadcastReader {
 		Self { state, info }
 	}
 
-	/// Get or request a track from the broadcast by name.
-	/// None is returned if [BroadcastWriter] or [BroadcastRequest] cannot fufill the request.
-	pub fn get_track(&mut self, name: &str) -> Option<TrackReader> {
+	/// Get a track from the broadcast by name.
+	/// None is returned if [BroadcastWriter] cannot fufill the request.
+	pub fn get(&mut self, name: &str) -> Option<TrackReader> {
 		let state = self.state.lock();
 		state.tracks.get(name).cloned()
+	}
+
+	/// Get or request a track from the broadcast by name.
+	pub async fn request(&mut self, name: &str) -> Option<TrackReader> {
+		let unknown = {
+			let state = self.state.lock();
+			if let Some(track) = state.tracks.get(name).cloned() {
+				return Some(track);
+			}
+
+			state.unknown.clone()
+		};
+
+		if let Some(unknown) = unknown {
+			let track = Track::new(&self.name, name).build();
+			return unknown.request(track).await;
+		}
+
+		None
 	}
 }
 

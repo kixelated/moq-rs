@@ -9,14 +9,19 @@ use super::{Control, SessionError};
 
 struct SubscribeState {
 	// TODO
-	// info: Option<message::Info>,
-	// dropped: Vec<message::GroupDrop>,
+	info: Option<message::Info>,
+	dropped: Vec<message::GroupDrop>,
+
 	closed: Result<(), ServeError>,
 }
 
 impl Default for SubscribeState {
 	fn default() -> Self {
-		Self { closed: Ok(()) }
+		Self {
+			info: None,
+			dropped: Vec::default(),
+			closed: Ok(()),
+		}
 	}
 }
 
@@ -42,19 +47,37 @@ impl Subscribe {
 	}
 
 	pub(super) async fn run(self, mut control: Control) -> Result<u64, SessionError> {
-		control.writer.encode(&message::StreamBi::Subscribe).await?;
 		control.writer.encode(&self.msg).await?;
 
 		let info: message::Info = control.reader.decode().await?;
-		// TODO expose to application
+		self.state.lock_mut().ok_or(ServeError::Cancel)?.info = Some(info);
 
-		while let Some(dropped) = control.reader.decode_maybe::<message::GroupDrop>().await {
+		while let Some(dropped) = control.reader.decode_maybe::<message::GroupDrop>().await? {
 			// TODO expose to application
 		}
 
 		// TODO allow the application to update the subscription
 
 		Ok(self.msg.id)
+	}
+
+	pub async fn info(&self) -> Result<message::Info, ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				if let Some(info) = state.info.clone() {
+					return Ok(info);
+				}
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Err(ServeError::Cancel),
+				}
+			}
+			.await;
+		}
 	}
 
 	pub fn reset(&mut self, code: u32) -> Result<(), ServeError> {

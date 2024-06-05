@@ -67,7 +67,7 @@ impl Session {
 	}
 
 	async fn serve_announce(mut self, mut announce: Announced) -> anyhow::Result<()> {
-		announce.ok()?;
+		announce.ack()?;
 
 		self.listings.register(&announce.broadcast)?;
 		announce.closed().await?;

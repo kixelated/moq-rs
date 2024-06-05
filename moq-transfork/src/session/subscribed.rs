@@ -32,7 +32,7 @@ impl Subscribed {
 
 		loop {
 			tokio::select! {
-				res = self.track.next_group(), if !fin => {
+				res = self.track.next(), if !fin => {
 					let group = match res? {
 						Some(group) => group,
 						None => {
@@ -49,9 +49,11 @@ impl Subscribed {
 						(sequence, err)
 					});
 				},
-				Some(res) = control.reader.decode_maybe::<message::SubscribeUpdate>() => {
-					let update = res?;
-					self.recv_update(update)?;
+				res = control.reader.decode_maybe::<message::SubscribeUpdate>() => {
+					match res? {
+						Some(update) => self.recv_update(update)?,
+						None => return Ok(()),
+					}
 				},
 				res = tasks.next(), if !tasks.is_empty() => {
 					let (sequence, err) = res.unwrap();

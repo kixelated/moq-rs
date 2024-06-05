@@ -30,7 +30,7 @@ pub enum SessionError {
 	RoleViolation,
 
 	#[error("unexpected stream: {0:?}")]
-	UnexpectedStream(message::StreamBi),
+	UnexpectedStream(message::Control),
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]

@@ -1,6 +1,6 @@
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_transfork::{
-	serve::{BroadcastReader, ServeError},
+	serve::{BroadcastReader, ServeError, Track, TrackReader, UnknownRequest},
 	session::{Announce, Publisher, SessionError, Subscribed},
 };
 
@@ -28,46 +28,32 @@ impl Producer {
 
 	pub async fn run(mut self) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
+		let mut unknown = self.remote.unknown().unwrap();
 
 		loop {
 			tokio::select! {
-				Some(subscribe) = self.remote.subscribed() => {
-					let this = self.clone();
-
-					tasks.push(async move {
-						let info = subscribe.clone();
-						log::info!("serving subscribe: {:?}", info);
-
-						if let Err(err) = this.serve(subscribe).await {
-							log::warn!("failed serving subscribe: {:?}, error: {}", info, err)
-						}
-					})
-				},
+				Some(request) = unknown.requested() => tasks.push(async move {
+					if let Some(track) = self.route(&request.track).await {
+						request.respond(track);
+					}
+				}),
 				_= tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(()),
 			};
 		}
 	}
 
-	async fn serve(self, subscribe: Subscribed) -> Result<(), anyhow::Error> {
-		if let Some(mut local) = self.locals.route(&subscribe.broadcast) {
-			if let Some(track) = local.get_track(&subscribe.name) {
-				log::info!("serving from local: {:?}", track.info);
-				return Ok(subscribe.serve(track).await?);
-			}
+	async fn route(&self, track: &Track) -> Option<TrackReader> {
+		if let Some(mut broadcast) = self.locals.route(&track.broadcast) {
+			return broadcast.request(track.clone()).await;
 		}
 
 		if let Some(remotes) = &self.remotes {
-			if let Some(remote) = remotes.route(&subscribe.broadcast).await? {
-				if let Some(track) = remote.subscribe(subscribe.broadcast.clone(), subscribe.name.clone())? {
-					log::info!("serving from remote: {:?} {:?}", remote.info, track.info);
-
-					// NOTE: Depends on drop(track) being called afterwards
-					return Ok(subscribe.serve(track.reader).await?);
-				}
+			if let Some(remote) = remotes.route(&track.broadcast).await {
+				return remote.subscribe(&request.broadcast, &request.track);
 			}
 		}
 
-		Err(ServeError::NotFound.into())
+		None
 	}
 }

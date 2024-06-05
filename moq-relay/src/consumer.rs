@@ -1,7 +1,7 @@
 use anyhow::Context;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transfork::{
-	serve::Broadcast,
+	serve::{Broadcast, Unknown},
 	session::{Announced, SessionError, Subscriber},
 };
 
@@ -34,11 +34,11 @@ impl Consumer {
 					let this = self.clone();
 
 					tasks.push(async move {
-						let info = announce.clone();
-						log::info!("serving announce: {:?}", info);
+						let name = announce.broadcast.clone();
+						log::info!("serving announce: {:?}", name);
 
 						if let Err(err) = this.serve(announce).await {
-							log::warn!("failed serving announce: {:?}, error: {}", info, err)
+							log::warn!("failed serving announce: {:?}, error: {}", name, err)
 						}
 					});
 				},
@@ -51,24 +51,31 @@ impl Consumer {
 	async fn serve(mut self, mut announce: Announced) -> Result<(), anyhow::Error> {
 		let mut tasks = FuturesUnordered::new();
 
-		let (_, mut request, broadcast) = Broadcast::new(announce.broadcast.to_string()).produce();
+		let (mut unknown, reader) = Unknown::produce();
 
 		if let Some(api) = self.api.as_ref() {
-			let mut refresh = api.set_origin(broadcast.name.clone()).await?;
+			let mut refresh = api.set_origin(announce.broadcast.clone()).await?;
 			tasks.push(async move { refresh.run().await.context("failed refreshing origin") }.boxed());
 		}
 
 		// Register the local tracks, unregister on drop
-		let _register = self.locals.register(broadcast.clone()).await?;
+		let _register = self.locals.register(&announce.broadcast, reader)?;
 
-		announce.ok()?;
+		// Acknowledge the announce
+		announce.ack()?;
 
 		if let Some(mut forward) = self.forward {
+			// Make an empty broadcast to forward the announcea
+			// TODO this is a which means subscribe won't return any tracks
+			let broadcast = Broadcast::new(&announce.broadcast);
+
 			tasks.push(
 				async move {
-					log::info!("forwarding announce: {:?}", broadcast.info);
-					let announce = forward.announce(broadcast).context("failed forwarding announce")?;
-					announce.closed().await
+					log::info!("forwarding announce: {:?}", broadcast.name);
+					let (_writer, reader) = broadcast.produce();
+
+					let mut announce = forward.announce(reader).context("failed forwarding announce")?;
+					announce.closed().await.context("failed forwarding announce")
 				}
 				.boxed(),
 			);
@@ -80,14 +87,14 @@ impl Consumer {
 				Err(err) = announce.closed() => return Err(err.into()),
 
 				// Wait for the next subscriber and serve the track.
-				Some(track) = request.next() => {
+				Some(request) = unknown.requested() => {
 					let mut remote = self.remote.clone();
 
 					tasks.push(async move {
-						let info = track.clone();
-						log::info!("forwarding subscribe: {:?}", info);
+						log::info!("forwarding subscribe: {:?}", request.track);
+						let writer = request.produce();
 
-						if let Ok(sub) = remote.subscribe(&announce.name, track) {
+						if let Ok(sub) = remote.subscribe(writer) {
 							sub.closed().await;
 						};
 

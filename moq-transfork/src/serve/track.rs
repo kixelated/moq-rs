@@ -108,7 +108,7 @@ impl TrackWriter {
 		Self { info, state, next: 0 }
 	}
 
-	pub fn insert_group(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
+	pub fn insert(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
 		let (writer, reader) = group.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
@@ -132,18 +132,13 @@ impl TrackWriter {
 	}
 
 	// Build a new group with the given sequence number.
-	pub fn create_group(&mut self, sequence: u64) -> TrackGroupBuilder {
+	pub fn create(&mut self, sequence: u64) -> TrackGroupBuilder {
 		TrackGroupBuilder::new(self, Group::new(sequence))
 	}
 
 	// Build a new group with the next sequence number.
-	pub fn append_group(&mut self) -> TrackGroupBuilder {
-		TrackGroupBuilder::new(self, Group::new(self.next_group()))
-	}
-
-	// Helper to return the sequence number for the next group.
-	pub fn next_group(&self) -> u64 {
-		self.next
+	pub fn append(&mut self) -> TrackGroupBuilder {
+		TrackGroupBuilder::new(self, Group::new(self.next))
 	}
 
 	/// Close the segment with an error.
@@ -177,7 +172,7 @@ impl<'a> TrackGroupBuilder<'a> {
 	}
 
 	pub fn build(self) -> Result<GroupWriter, ServeError> {
-		self.track.insert_group(self.group.build())
+		self.track.insert(self.group.build())
 	}
 }
 
@@ -216,7 +211,7 @@ impl TrackReader {
 		}
 	}
 
-	pub fn get_group(&self, sequence: u64) -> Option<GroupReader> {
+	pub fn get(&self, sequence: u64) -> Option<GroupReader> {
 		let state = self.state.lock();
 
 		// TODO support more than just the latest group
@@ -229,7 +224,7 @@ impl TrackReader {
 
 	// NOTE: This can return groups out of order.
 	// TODO obey order and expires
-	pub async fn next_group(&mut self) -> Result<Option<GroupReader>, ServeError> {
+	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
 		loop {
 			{
 				let state = self.state.lock();

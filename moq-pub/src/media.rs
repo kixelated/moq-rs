@@ -28,8 +28,8 @@ pub struct Media {
 
 impl Media {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast.create_track(".catalog").build().context("broadcast closed")?;
-		let init = broadcast.create_track("0.mp4").build().context("broadcast closed")?;
+		let catalog = broadcast.create(".catalog").build().context("broadcast closed")?;
+		let init = broadcast.create("0.mp4").build().context("broadcast closed")?;
 
 		Ok(Media {
 			tracks: Default::default(),
@@ -135,7 +135,7 @@ impl Media {
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create_track(&name).build().context("broadcast closed")?;
+			let track = self.broadcast.create(&name).build().context("broadcast closed")?;
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
 		}
@@ -145,7 +145,7 @@ impl Media {
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
-		self.init.append_group().build()?.write(init.into())?;
+		self.init.append().build()?.write(init.into())?;
 
 		let mut tracks = Vec::new();
 
@@ -228,7 +228,7 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		self.catalog.append_group().build()?.write(catalog_str.into())?;
+		self.catalog.append().build()?.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -307,7 +307,7 @@ impl Track {
 		}
 
 		// Otherwise make a new segment
-		let mut segment = self.track.append_group().build()?;
+		let mut segment = self.track.append().build()?;
 
 		// Write the fragment in it's own object.
 		segment.write(raw)?;

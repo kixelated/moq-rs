@@ -1,6 +1,8 @@
+use std::ops;
+
 use crate::util::{Queue, State};
 
-use super::TrackReader;
+use super::{ServeError, Track, TrackReader, TrackWriter};
 
 #[derive(Default)]
 pub struct Unknown {}
@@ -40,56 +42,64 @@ impl UnknownReader {
 		Self { queue }
 	}
 
-	pub async fn request(&mut self, broadcast: &str, track: &str) -> Option<TrackReader> {
-		let request = UnknownRequest::new(broadcast, track);
-		if self.queue.push(request.split()).is_err() {
-			return None;
-		}
+	pub async fn request(&self, track: Track) -> Option<TrackReader> {
+		let request = UnknownRequest::new(track);
 
+		self.queue.push(request.split());
 		request.response().await
 	}
 }
 
 pub struct UnknownRequest {
-	pub broadcast: String,
-	pub track: String,
+	pub track: Track,
 	state: State<Option<TrackReader>>,
 }
 
 impl UnknownRequest {
-	fn new(broadcast: &str, track: &str) -> Self {
+	fn new(track: Track) -> Self {
 		Self {
-			broadcast: broadcast.to_string(),
-			track: track.to_string(),
+			track,
 			state: Default::default(),
 		}
 	}
 
-	fn split(&self) -> Self {
+	fn split(&self) -> UnknownRequest {
 		Self {
-			broadcast: self.broadcast.clone(),
-			track: self.track.clone(),
 			state: self.state.split(),
+			track: self.track.clone(),
 		}
 	}
 
-	pub async fn respond(self, reader: TrackReader) {
+	pub fn respond(self, reader: TrackReader) {
 		if let Some(mut state) = self.state.lock_mut() {
 			state.replace(reader);
 		}
 	}
 
+	pub fn produce(self) -> TrackWriter {
+		let (writer, reader) = self.track.clone().produce();
+		self.respond(reader);
+		writer
+	}
+
 	async fn response(&self) -> Option<TrackReader> {
-		{
-			let state = self.state.lock();
-			if state.is_some() {
-				return state.clone();
+		loop {
+			{
+				let state = self.state.lock();
+				if state.is_some() {
+					return state.clone();
+				}
+				state.modified()?
 			}
-
-			state.modified()?
+			.await
 		}
-		.await;
+	}
+}
 
-		self.state.lock().clone()
+impl ops::Deref for UnknownRequest {
+	type Target = Track;
+
+	fn deref(&self) -> &Self::Target {
+		&self.track
 	}
 }

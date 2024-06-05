@@ -8,7 +8,7 @@ pub struct Control {
 }
 
 impl Control {
-	pub async fn open(session: &mut web_transport::Session, typ: message::StreamBi) -> Result<Self, SessionError> {
+	pub async fn open(session: &mut web_transport::Session, typ: message::Control) -> Result<Self, SessionError> {
 		let (send, recv) = session.open_bi().await?;
 		let mut writer = Writer::new(send);
 		let reader = Reader::new(recv);
@@ -16,7 +16,7 @@ impl Control {
 		Ok(Self { writer, reader })
 	}
 
-	pub async fn accept(session: &mut web_transport::Session) -> Result<(message::StreamBi, Self), SessionError> {
+	pub async fn accept(session: &mut web_transport::Session) -> Result<(message::Control, Self), SessionError> {
 		let (send, recv) = session.accept_bi().await?;
 		let writer = Writer::new(send);
 		let mut reader = Reader::new(recv);

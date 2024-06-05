@@ -59,7 +59,7 @@ impl Session {
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut control = Control::open(&mut session, message::StreamBi::Session).await?;
+		let mut control = Control::open(&mut session, message::Control::Session).await?;
 		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
 
 		let client = setup::Client {
@@ -104,7 +104,7 @@ impl Session {
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
 		let (t, mut control) = Control::accept(&mut session).await?;
-		if t != message::StreamBi::Session {
+		if t != message::Control::Session {
 			return Err(SessionError::UnexpectedStream(t));
 		}
 
@@ -205,24 +205,24 @@ impl Session {
 
 					tasks.push(async move {
 						match t {
-							message::StreamBi::Session => Err(SessionError::UnexpectedStream(t)),
-							message::StreamBi::Announce => {
+							message::Control::Session => Err(SessionError::UnexpectedStream(t)),
+							message::Control::Announce => {
 								let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
 								subscriber.run_announce(control).await
 							},
-							message::StreamBi::Subscribe => {
+							message::Control::Subscribe => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
 								publisher.run_subscribe(control).await
 							},
-							message::StreamBi::Datagrams => {
+							message::Control::Datagrams => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
 								publisher.run_datagrams(control).await
 							},
-							message::StreamBi::Fetch => {
+							message::Control::Fetch => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
 								publisher.run_fetch(control).await
 							},
-							message::StreamBi::Info => {
+							message::Control::Info => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
 								publisher.run_info(control).await
 							},

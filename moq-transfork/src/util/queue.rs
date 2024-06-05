@@ -7,7 +7,7 @@ pub struct Queue<T> {
 }
 
 impl<T> Queue<T> {
-	pub fn push(&mut self, item: T) -> Result<(), T> {
+	pub fn push(&self, item: T) -> Result<(), T> {
 		match self.state.lock_mut() {
 			Some(mut state) => state.push_back(item),
 			None => return Err(item),
@@ -16,7 +16,7 @@ impl<T> Queue<T> {
 		Ok(())
 	}
 
-	pub async fn pop(&mut self) -> Option<T> {
+	pub async fn pop(&self) -> Option<T> {
 		loop {
 			{
 				let queue = self.state.lock();
@@ -30,7 +30,7 @@ impl<T> Queue<T> {
 	}
 
 	// Drop the state
-	pub fn drain(&mut self) -> Vec<T> {
+	pub fn drain(&self) -> Vec<T> {
 		// Drain the queue of any remaining entries
 		let res = match self.state.lock_mut() {
 			Some(mut queue) => queue.drain(..).collect(),

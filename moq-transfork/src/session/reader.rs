@@ -49,11 +49,11 @@ impl Reader {
 
 	// Decode optional messages at the end of a stream
 	// The weird order of Option<Result is for tokio::select!
-	pub async fn decode_maybe<T: Decode>(&mut self) -> Option<Result<T, SessionError>> {
-		match self.closed().await {
-			Ok(()) => None,
-			Err(SessionError::Decode(DecodeError::ExpectedData)) => Some(self.decode().await),
-			Err(e) => Some(Err(e)),
+	pub async fn decode_maybe<T: Decode>(&mut self) -> Result<Option<T>, SessionError> {
+		match self.finished().await {
+			Ok(()) => Ok(None),
+			Err(SessionError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
+			Err(e) => Err(e),
 		}
 	}
 
@@ -71,8 +71,8 @@ impl Reader {
 		self.stream.stop(code)
 	}
 
-	// Wait until the stream is closed, ensuring there are no additional bytes
-	pub async fn closed(&mut self) -> Result<(), SessionError> {
+	/// Wait until the stream is closed, ensuring there are no additional bytes
+	pub async fn finished(&mut self) -> Result<(), SessionError> {
 		if self.buffer.is_empty() {
 			if !self.stream.read_buf(&mut self.buffer).await? {
 				return Ok(());
@@ -80,5 +80,11 @@ impl Reader {
 		}
 
 		Err(SessionError::Decode(DecodeError::ExpectedEnd))
+	}
+
+	/// Wait until the stream is closed, ignoring any unread bytes
+	pub async fn closed(&mut self) -> Result<(), SessionError> {
+		while self.stream.read_buf(&mut self.buffer).await? {}
+		Ok(())
 	}
 }

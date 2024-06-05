@@ -1,20 +1,24 @@
 use std::ops;
 
+use crate::message;
 use crate::serve::ServeError;
 use crate::util::State;
-use crate::{message, serve};
 
-use super::{Control, SessionError, Subscribe, Subscriber};
+use super::{Control, SessionError, Subscriber};
 
 // There's currently no feedback from the peer, so the shared state is empty.
 // If Unannounce contained an error code then we'd be talking.
 struct AnnouncedState {
+	ok: bool,
 	closed: Result<(), ServeError>,
 }
 
 impl Default for AnnouncedState {
 	fn default() -> Self {
-		Self { closed: Ok(()) }
+		Self {
+			ok: false,
+			closed: Ok(()),
+		}
 	}
 }
 
@@ -46,6 +50,16 @@ impl Announced {
 	pub(super) async fn run(self, mut control: Control) -> Result<(), SessionError> {
 		// Wait until either the reader or the session is closed.
 		tokio::select! {
+			res = control.reader.closed() => return res,
+			res = self.acked() => res?,
+		};
+
+		// Send the OK message.
+		let msg = message::AnnounceOk {};
+		control.writer.encode(&msg).await?;
+
+		// Wait until the reader is closed.
+		tokio::select! {
 			res = control.reader.closed() => res,
 			res = self.closed() => res.map_err(Into::into),
 		}
@@ -53,22 +67,34 @@ impl Announced {
 		// TODO reset with the error code
 	}
 
-	// Helper function to subscribe to a track.
-	pub fn subscribe(&mut self, track: serve::TrackWriter) -> Result<Subscribe, SessionError> {
-		self.session.subscribe(&self.msg.broadcast, track)
-	}
-
-	pub fn ok(&mut self) -> Result<(), ServeError> {
+	/// Reply OK to the announcement.
+	pub fn ack(&mut self) -> Result<(), ServeError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
-		if let Some(mut state) = self.state.lock_mut() {
-			state.closed = Ok(());
-		}
+		self.state.lock_mut().ok_or(ServeError::Cancel)?.ok = true;
 
 		Ok(())
 	}
 
+	// Wait until we've acknowledged the announcement.
+	async fn acked(&self) -> Result<(), ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				if state.ok {
+					return Ok(());
+				}
+
+				state.modified().ok_or(ServeError::Cancel)?
+			}
+			.await;
+		}
+	}
+
+	/// Wait for the announcement to be closed.
 	pub async fn closed(&self) -> Result<(), ServeError> {
 		loop {
 			{

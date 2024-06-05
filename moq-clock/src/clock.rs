@@ -22,7 +22,7 @@ impl Publisher {
 		loop {
 			let segment = self
 				.track
-				.create_group(sequence as u64)
+				.create(sequence as u64)
 				.build()
 				.context("failed to create minute segment")?;
 
@@ -82,7 +82,7 @@ impl Subscriber {
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		while let Some(mut group) = self.track.next_group().await? {
+		while let Some(mut group) = self.track.next().await? {
 			let base = group
 				.read()
 				.await

@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let cli = Cli::parse();
 
-	let (writer, reader) = serve::Broadcast::new(cli.name).produce();
+	let (writer, reader) = serve::Broadcast::new(&cli.name).produce();
 	let media = Media::new(writer)?;
 
 	let tls = cli.tls.load()?;

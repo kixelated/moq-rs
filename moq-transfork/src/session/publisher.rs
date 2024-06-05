@@ -7,7 +7,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	message,
-	serve::{self, ServeError, TrackReader, Unknown, UnknownReader, UnknownWriter},
+	serve::{self, ServeError, Track, TrackReader, Unknown, UnknownReader, UnknownWriter},
 	setup,
 	util::Queue,
 };
@@ -46,7 +46,8 @@ impl Publisher {
 	}
 
 	/// Announce a broadcast and serve tracks using the provided [serve::BroadcastReader].
-	/// The caller uses [serve::BroadcastWriter] to populate static tracks and [serve::BroadcastRequest] for dynamic tracks.
+	/// The caller uses [serve::BroadcastWriter] to populate static tracks.
+	/// Use [Publisher::unknown] to handle unknown tracks, even for announced broadcasts.
 	pub fn announce(&mut self, broadcast: serve::BroadcastReader) -> Result<Announce, SessionError> {
 		let name = broadcast.name.clone();
 
@@ -88,7 +89,7 @@ impl Publisher {
 				Some(announce) = self.announced.pop() => {
 					let mut webtransport = self.webtransport.clone();
 					tasks.push(async move {
-						let control = Control::open(&mut webtransport, message::StreamBi::Announce).await?;
+						let control = Control::open(&mut webtransport, message::Control::Announce).await?;
 						announce.run(control).await
 					});
 				},
@@ -102,14 +103,14 @@ impl Publisher {
 		}
 	}
 
-	// TODO block until we get a response
-	async fn get_track(&mut self, broadcast: &str, track: &str) -> Option<TrackReader> {
-		if let Some(broadcast) = self.broadcasts.lock().unwrap().get_mut(broadcast) {
-			return broadcast.get_track(track);
+	async fn route(&mut self, track: Track) -> Option<TrackReader> {
+		let broadcast = self.broadcasts.lock().unwrap().get(&track.broadcast).cloned();
+		if let Some(mut broadcast) = broadcast {
+			return broadcast.request(&track.name).await;
 		}
 
 		if let Some(unknown) = self.unknown.as_mut() {
-			return unknown.request(broadcast, track).await;
+			return unknown.request(track).await;
 		}
 
 		None
@@ -118,10 +119,8 @@ impl Publisher {
 	pub(super) async fn run_subscribe(&mut self, mut control: Control) -> Result<(), SessionError> {
 		let subscribe: message::Subscribe = control.reader.decode().await?;
 
-		let mut track = self
-			.get_track(&subscribe.broadcast, &subscribe.track)
-			.await
-			.ok_or(ServeError::NotFound)?;
+		let track = Track::new(&subscribe.broadcast, &subscribe.track).build();
+		let mut track = self.route(track).await.ok_or(ServeError::NotFound)?;
 
 		// TODO this is wrong in the requested case
 		let info = message::Info {
@@ -149,12 +148,9 @@ impl Publisher {
 	pub(super) async fn run_fetch(&mut self, mut control: Control) -> Result<(), SessionError> {
 		let fetch: message::Fetch = control.reader.decode().await?;
 
-		let track = self
-			.get_track(&fetch.broadcast, &fetch.track)
-			.await
-			.ok_or(ServeError::NotFound)?;
-
-		let group = track.get_group(fetch.group).ok_or(ServeError::NotFound)?;
+		let track = Track::new(&fetch.broadcast, &fetch.track).build();
+		let track = self.route(track).await.ok_or(ServeError::NotFound)?;
+		let group = track.get(fetch.group).ok_or(ServeError::NotFound)?;
 
 		unimplemented!("TODO fetch");
 
@@ -173,10 +169,8 @@ impl Publisher {
 	pub(super) async fn run_info(&mut self, mut control: Control) -> Result<(), SessionError> {
 		let info: message::InfoRequest = control.reader.decode().await?;
 
-		let mut track = self
-			.get_track(&info.broadcast, &info.track)
-			.await
-			.ok_or(ServeError::NotFound)?;
+		let track = Track::new(&info.broadcast, &info.track).build();
+		let track = self.route(track).await.ok_or(ServeError::NotFound)?;
 
 		let info = message::Info {
 			latest: track.latest(),
