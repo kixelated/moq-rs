@@ -3,21 +3,22 @@ use std::ops;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
-use crate::serve::ServeError;
-use crate::{message, serve};
+use crate::coding::{Stream, Writer};
+use crate::ServeError;
+use crate::{message, GroupReader, TrackReader};
 
-use super::{Control, SessionError, Writer};
+use super::SessionError;
 
 #[derive(Clone)]
 pub struct Subscribed {
 	session: web_transport::Session,
 	msg: message::Subscribe,
 	update: Option<message::SubscribeUpdate>,
-	track: serve::TrackReader,
+	track: TrackReader,
 }
 
 impl Subscribed {
-	pub(super) fn new(session: web_transport::Session, msg: message::Subscribe, track: serve::TrackReader) -> Self {
+	pub(super) fn new(session: web_transport::Session, msg: message::Subscribe, track: TrackReader) -> Self {
 		Self {
 			session,
 			msg,
@@ -26,7 +27,7 @@ impl Subscribed {
 		}
 	}
 
-	pub async fn run(mut self, mut control: Control) -> Result<(), SessionError> {
+	pub async fn run(mut self, mut control: Stream) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut fin = false;
 
@@ -71,7 +72,7 @@ impl Subscribed {
 		}
 	}
 
-	pub async fn run_group(mut self, mut group: serve::GroupReader) -> Result<(), SessionError> {
+	pub async fn run_group(mut self, mut group: GroupReader) -> Result<(), SessionError> {
 		let stream = self.session.open_uni().await?;
 
 		let mut writer = Writer::new(stream);
@@ -79,7 +80,6 @@ impl Subscribed {
 		let msg = message::Group {
 			subscribe: self.msg.id,
 			sequence: group.sequence,
-			expires: group.expires,
 		};
 
 		writer.encode(&msg).await?;

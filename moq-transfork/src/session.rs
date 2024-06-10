@@ -1,31 +1,12 @@
-mod announce;
-mod announced;
-mod control;
-mod error;
-mod publisher;
-mod reader;
-mod subscribe;
-mod subscribed;
-mod subscriber;
-mod writer;
-
 use std::future;
-
-pub use announce::*;
-pub use announced::*;
-pub use error::*;
-pub use publisher::*;
-pub use subscribe::*;
-pub use subscribed::*;
-pub use subscriber::*;
-
-use control::*;
-use reader::*;
-use writer::*;
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
-use crate::{message, setup};
+use crate::{
+	coding::{self, Reader, Stream},
+	message::{self, Control},
+	serve, setup, Publisher, ServeError, Subscriber, Unknown, UnknownWriter,
+};
 
 #[must_use = "run() must be called"]
 pub struct Session {
@@ -33,17 +14,22 @@ pub struct Session {
 
 	publisher: Option<Publisher>,
 	subscriber: Option<Subscriber>,
+	unknown: Option<UnknownWriter>, // provided to Subscriber
 }
 
 impl Session {
 	fn new(webtransport: web_transport::Session, role: setup::Role) -> (Self, Option<Publisher>, Option<Subscriber>) {
+		let unknown = Unknown::produce();
 		let publisher = role.is_publisher().then(|| Publisher::new(webtransport.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(webtransport.clone()));
+		let subscriber = role
+			.is_subscriber()
+			.then(|| Subscriber::new(webtransport.clone(), unknown.1));
 
 		let session = Self {
 			webtransport,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
+			unknown: Some(unknown.0),
 		};
 
 		(session, publisher, subscriber)
@@ -59,7 +45,7 @@ impl Session {
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut control = Control::open(&mut session, message::Control::Session).await?;
+		let mut setup = Stream::open(&mut session, message::Control::Session).await?;
 		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
 
 		let client = setup::Client {
@@ -70,9 +56,9 @@ impl Session {
 		};
 
 		log::debug!("sending client setup: {:?}", client);
-		control.writer.encode(&client).await?;
+		setup.writer.encode(&client).await?;
 
-		let server: setup::Server = control.reader.decode().await?;
+		let server: setup::Server = setup.reader.decode().await?;
 		log::debug!("received server setup: {:?}", server);
 
 		// Downgrade our role based on the server's role.
@@ -103,7 +89,7 @@ impl Session {
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let (t, mut control) = Control::accept(&mut session).await?;
+		let (t, mut control) = Stream::accept(&mut session).await?;
 		if t != message::Control::Session {
 			return Err(SessionError::UnexpectedStream(t));
 		}
@@ -151,13 +137,13 @@ impl Session {
 			res = Self::run_uni(self.webtransport.clone(), self.subscriber.clone()) => res,
 			res = async move {
 				match self.publisher {
-					Some(mut publisher) => publisher.run().await,
+					Some(publisher) => publisher.run().await,
 					None => future::pending().await,
 				}
 			} => res,
 			res = async move {
 				match self.subscriber {
-					Some(mut subscriber) => subscriber.run().await,
+					Some(subscriber) => subscriber.run(self.unknown.unwrap()).await,
 					None => future::pending().await,
 				}
 			} => res,
@@ -198,7 +184,7 @@ impl Session {
 
 		loop {
 			tokio::select! {
-				res = Control::accept(&mut webtransport) => {
+				res = Stream::accept(&mut webtransport) => {
 					let (t, control) = res?;
 					let publisher = publisher.clone();
 					let subscriber = subscriber.clone();
@@ -231,6 +217,79 @@ impl Session {
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 			};
+		}
+	}
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum SessionError {
+	#[error("webtransport session: {0}")]
+	Session(#[from] web_transport::SessionError),
+
+	#[error("write error: {0}")]
+	Write(#[from] coding::WriteError),
+
+	#[error("read error: {0}")]
+	Read(#[from] coding::ReadError),
+
+	// TODO move to a ConnectError
+	#[error("unsupported versions: client={0:?} server={1:?}")]
+	Version(setup::Versions, setup::Versions),
+
+	// TODO move to a ConnectError
+	#[error("incompatible roles: client={0:?} server={1:?}")]
+	RoleIncompatible(setup::Role, setup::Role),
+
+	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
+	#[error("role violation")]
+	RoleViolation,
+
+	#[error("unexpected stream: {0:?}")]
+	UnexpectedStream(message::Control),
+
+	/// Some VarInt was too large and we were too lazy to handle it
+	#[error("varint bounds exceeded")]
+	BoundsExceeded(#[from] coding::BoundsExceeded),
+
+	/// A duplicate ID was used
+	#[error("duplicate")]
+	Duplicate,
+
+	#[error("internal error")]
+	Internal,
+
+	#[error("serve error: {0}")]
+	Serve(#[from] ServeError),
+
+	#[error("wrong size")]
+	WrongSize,
+}
+
+impl SessionError {
+	/// An integer code that is sent over the wire.
+	pub fn code(&self) -> u32 {
+		match self {
+			Self::RoleIncompatible(..) => 406,
+			Self::RoleViolation => 405,
+			Self::Session(_) => 503,
+			Self::Read(_) => 400,
+			Self::Write(_) => 500,
+			Self::Version(..) => 406,
+			Self::UnexpectedStream(_) => 500,
+			Self::BoundsExceeded(_) => 500,
+			Self::Duplicate => 409,
+			Self::Internal => 500,
+			Self::WrongSize => 400,
+			Self::Serve(err) => err.code(),
+		}
+	}
+}
+
+impl From<SessionError> for ServeError {
+	fn from(err: SessionError) -> Self {
+		match err {
+			SessionError::Serve(err) => err,
+			_ => ServeError::Internal(err.to_string()),
 		}
 	}
 }

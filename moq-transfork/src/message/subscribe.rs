@@ -1,9 +1,6 @@
 use std::time;
 
-use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError},
-	serve,
-};
+use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
 /// Sent by the subscriber to request all future objects for the given track.
 ///
@@ -13,13 +10,12 @@ pub struct Subscribe {
 	pub id: u64,
 	pub broadcast: String,
 	pub track: String,
-
 	pub priority: u64,
 
-	pub order: Option<SubscribeOrder>,
-	pub expires: Option<time::Duration>,
-	pub min: Option<u64>,
-	pub max: Option<u64>,
+	pub group_order: Option<SubscribeOrder>,
+	pub group_expires: Option<time::Duration>,
+	pub group_min: Option<u64>,
+	pub group_max: Option<u64>,
 }
 
 impl Decode for Subscribe {
@@ -40,10 +36,10 @@ impl Decode for Subscribe {
 			broadcast,
 			track,
 			priority,
-			order,
-			expires,
-			min,
-			max,
+			group_order: order,
+			group_expires: expires,
+			group_min: min,
+			group_max: max,
 		})
 	}
 }
@@ -54,10 +50,10 @@ impl Encode for Subscribe {
 		self.broadcast.encode(w)?;
 		self.track.encode(w)?;
 		self.priority.encode(w)?;
-		self.order.encode(w)?;
-		self.expires.encode(w)?;
-		self.min.encode(w)?;
-		self.max.encode(w)?;
+		self.group_order.encode(w)?;
+		self.group_expires.encode(w)?;
+		self.group_min.encode(w)?;
+		self.group_max.encode(w)?;
 
 		Ok(())
 	}
@@ -103,7 +99,7 @@ impl Encode for SubscribeUpdate {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum SubscribeOrder {
 	Ascending,
 	Descending,
@@ -128,23 +124,5 @@ impl Encode for Option<SubscribeOrder> {
 			Some(SubscribeOrder::Descending) => 2,
 		};
 		v.encode(w)
-	}
-}
-
-impl From<serve::TrackOrder> for SubscribeOrder {
-	fn from(value: serve::TrackOrder) -> Self {
-		match value {
-			serve::TrackOrder::Ascending => Self::Ascending,
-			serve::TrackOrder::Descending => Self::Descending,
-		}
-	}
-}
-
-impl From<SubscribeOrder> for serve::TrackOrder {
-	fn from(value: SubscribeOrder) -> Self {
-		match value {
-			SubscribeOrder::Ascending => Self::Ascending,
-			SubscribeOrder::Descending => Self::Descending,
-		}
 	}
 }

@@ -2,7 +2,7 @@ use anyhow::Context;
 use bytes::BytesMut;
 use std::collections::{HashSet, VecDeque};
 
-use moq_transfork::serve::{GroupReader, GroupWriter, ServeError, TrackReader, TrackWriter};
+use moq_transfork::{GroupReader, GroupWriter, ServeError, TrackReader, TrackWriter};
 
 pub struct ListingWriter {
 	track: Option<TrackWriter>,
@@ -64,7 +64,7 @@ impl ListingWriter {
 			None => self.track.take().unwrap(),
 		};
 
-		let mut group = groups.append().build()?;
+		let mut group = groups.append()?;
 
 		let mut msg = BytesMut::new();
 		for name in &self.current {

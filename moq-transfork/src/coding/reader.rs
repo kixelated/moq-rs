@@ -4,11 +4,18 @@ use bytes::{Buf, Bytes, BytesMut};
 
 use crate::coding::{Decode, DecodeError};
 
-use super::SessionError;
-
 pub struct Reader {
 	stream: web_transport::RecvStream,
 	buffer: BytesMut,
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum ReadError {
+	#[error("decode error: {0}")]
+	Decode(#[from] DecodeError),
+
+	#[error("webtransport error: {0}")]
+	Transport(#[from] web_transport::ReadError),
 }
 
 impl Reader {
@@ -19,7 +26,7 @@ impl Reader {
 		}
 	}
 
-	pub async fn decode<T: Decode>(&mut self) -> Result<T, SessionError> {
+	pub async fn decode<T: Decode>(&mut self) -> Result<T, ReadError> {
 		loop {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
@@ -49,15 +56,15 @@ impl Reader {
 
 	// Decode optional messages at the end of a stream
 	// The weird order of Option<Result is for tokio::select!
-	pub async fn decode_maybe<T: Decode>(&mut self) -> Result<Option<T>, SessionError> {
+	pub async fn decode_maybe<T: Decode>(&mut self) -> Result<Option<T>, ReadError> {
 		match self.finished().await {
 			Ok(()) => Ok(None),
-			Err(SessionError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
+			Err(ReadError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
 			Err(e) => Err(e),
 		}
 	}
 
-	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, SessionError> {
+	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, ReadError> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());
 			let data = self.buffer.split_to(size).freeze();
@@ -72,18 +79,18 @@ impl Reader {
 	}
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes
-	pub async fn finished(&mut self) -> Result<(), SessionError> {
+	pub async fn finished(&mut self) -> Result<(), ReadError> {
 		if self.buffer.is_empty() {
 			if !self.stream.read_buf(&mut self.buffer).await? {
 				return Ok(());
 			}
 		}
 
-		Err(SessionError::Decode(DecodeError::ExpectedEnd))
+		Err(DecodeError::ExpectedEnd.into())
 	}
 
 	/// Wait until the stream is closed, ignoring any unread bytes
-	pub async fn closed(&mut self) -> Result<(), SessionError> {
+	pub async fn closed(&mut self) -> Result<(), ReadError> {
 		while self.stream.read_buf(&mut self.buffer).await? {}
 		Ok(())
 	}

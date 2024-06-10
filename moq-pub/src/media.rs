@@ -1,6 +1,6 @@
 use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
-use moq_transfork::serve::{BroadcastWriter, GroupWriter, TrackWriter};
+use moq_transfork::{BroadcastWriter, GroupWriter, TrackWriter};
 use mp4::{self, ReadBox, TrackType};
 use serde_json::json;
 use std::cmp::max;
@@ -145,7 +145,7 @@ impl Media {
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
-		self.init.append().build()?.write(init.into())?;
+		self.init.append()?.write(init.into())?;
 
 		let mut tracks = Vec::new();
 
@@ -228,7 +228,7 @@ impl Media {
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.
-		self.catalog.append().build()?.write(catalog_str.into())?;
+		self.catalog.append()?.write(catalog_str.into())?;
 
 		Ok(())
 	}
@@ -307,7 +307,7 @@ impl Track {
 		}
 
 		// Otherwise make a new segment
-		let mut segment = self.track.append().build()?;
+		let mut segment = self.track.append()?;
 
 		// Write the fragment in it's own object.
 		segment.write(raw)?;

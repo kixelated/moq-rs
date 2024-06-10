@@ -8,9 +8,9 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{ops::Deref, sync::Arc, time};
+use std::{ops::Deref, sync::Arc};
 
-use crate::util::State;
+use crate::{message::SubscribeOrder, util::State};
 
 use super::{Frame, FrameReader, FrameWriter, ServeError};
 
@@ -20,17 +20,11 @@ pub struct Group {
 	// The sequence number of the group within the track.
 	// NOTE: These may be received out of order
 	pub sequence: u64,
-
-	// The amount of time until this group expires, starting after the next group.
-	pub expires: time::Duration,
 }
 
 impl Group {
-	pub fn new(sequence: u64) -> GroupBuilder {
-		GroupBuilder::new(Self {
-			sequence,
-			expires: time::Duration::ZERO,
-		})
+	pub fn new(sequence: u64) -> Group {
+		Self { sequence }
 	}
 
 	pub fn produce(self) -> (GroupWriter, GroupReader) {
@@ -41,29 +35,6 @@ impl Group {
 		let reader = GroupReader::new(state, info);
 
 		(writer, reader)
-	}
-}
-
-pub struct GroupBuilder {
-	group: Group,
-}
-
-impl GroupBuilder {
-	fn new(group: Group) -> Self {
-		Self { group }
-	}
-
-	pub fn expires(mut self, expires: time::Duration) -> Self {
-		self.group.expires = expires;
-		self
-	}
-
-	pub fn build(self) -> Group {
-		self.group
-	}
-
-	pub fn produce(self) -> (GroupWriter, GroupReader) {
-		self.build().produce()
 	}
 }
 
@@ -209,3 +180,5 @@ impl Deref for GroupReader {
 		&self.info
 	}
 }
+
+pub type GroupOrder = SubscribeOrder;

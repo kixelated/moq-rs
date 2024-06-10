@@ -180,8 +180,8 @@ impl Client {
 		// TODO support connecting to both ALPNs at the same time
 		config.alpn_protocols = vec![match url.scheme() {
 			"https" => web_transport_quinn::ALPN.to_vec(),
-			"moqt" => moq_transfork::setup::ALPN.to_vec(),
-			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
+			"moqf" => moq_transfork::setup::ALPN.to_vec(),
+			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
 		}];
 
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
@@ -201,7 +201,7 @@ impl Client {
 
 		let session = match url.scheme() {
 			"https" => web_transport_quinn::connect_with(connection, url).await?,
-			"moqt" => connection.into(),
+			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};
 

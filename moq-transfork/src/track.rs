@@ -12,22 +12,19 @@
 //!
 //! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
 
-use crate::util::State;
+use crate::{util::State, GroupOrder};
 
-use super::{Group, GroupBuilder, GroupReader, GroupWriter, ServeError};
-use std::{
-	cmp::Ordering,
-	ops::{self, Deref},
-	sync::Arc,
-};
+use super::{Group, GroupReader, GroupWriter, ServeError};
+use std::{cmp::Ordering, ops::Deref, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Debug, Clone)]
 pub struct Track {
 	pub broadcast: String,
 	pub name: String,
-	pub order: Option<TrackOrder>,
 	pub priority: Option<u64>,
+	pub group_order: Option<GroupOrder>,
+	pub group_expires: Option<time::Duration>,
 }
 
 impl Track {
@@ -35,8 +32,9 @@ impl Track {
 		TrackBuilder::new(Self {
 			broadcast: broadcast.to_string(),
 			name: name.to_string(),
-			order: None,
 			priority: None,
+			group_order: None,
+			group_expires: None,
 		})
 	}
 
@@ -60,13 +58,18 @@ impl TrackBuilder {
 		Self { track }
 	}
 
-	pub fn order(mut self, order: TrackOrder) -> Self {
-		self.track.order = Some(order);
+	pub fn order(mut self, order: GroupOrder) -> Self {
+		self.track.group_order = Some(order);
 		self
 	}
 
 	pub fn priority(mut self, priority: u64) -> Self {
 		self.track.priority = Some(priority);
+		self
+	}
+
+	pub fn expires(mut self, expires: time::Duration) -> Self {
+		self.track.group_expires = Some(expires);
 		self
 	}
 
@@ -108,7 +111,9 @@ impl TrackWriter {
 		Self { info, state, next: 0 }
 	}
 
-	pub fn insert(&mut self, group: Group) -> Result<GroupWriter, ServeError> {
+	// Build a new group with the given sequence number.
+	pub fn create(&mut self, sequence: u64) -> Result<GroupWriter, ServeError> {
+		let group = Group::new(sequence);
 		let (writer, reader) = group.produce();
 
 		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
@@ -131,14 +136,9 @@ impl TrackWriter {
 		Ok(writer)
 	}
 
-	// Build a new group with the given sequence number.
-	pub fn create(&mut self, sequence: u64) -> TrackGroupBuilder {
-		TrackGroupBuilder::new(self, Group::new(sequence))
-	}
-
 	// Build a new group with the next sequence number.
-	pub fn append(&mut self) -> TrackGroupBuilder {
-		TrackGroupBuilder::new(self, Group::new(self.next))
+	pub fn append(&mut self) -> Result<GroupWriter, ServeError> {
+		self.create(self.next)
 	}
 
 	/// Close the segment with an error.
@@ -161,35 +161,6 @@ impl Deref for TrackWriter {
 	}
 }
 
-pub struct TrackGroupBuilder<'a> {
-	track: &'a mut TrackWriter,
-	group: GroupBuilder,
-}
-
-impl<'a> TrackGroupBuilder<'a> {
-	pub fn new(track: &'a mut TrackWriter, group: GroupBuilder) -> Self {
-		Self { track, group }
-	}
-
-	pub fn build(self) -> Result<GroupWriter, ServeError> {
-		self.track.insert(self.group.build())
-	}
-}
-
-impl<'a> ops::Deref for TrackGroupBuilder<'a> {
-	type Target = GroupBuilder;
-
-	fn deref(&self) -> &Self::Target {
-		&self.group
-	}
-}
-
-impl<'a> ops::DerefMut for TrackGroupBuilder<'a> {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.group
-	}
-}
-
 #[derive(Clone)]
 pub struct TrackReader {
 	pub info: Arc<Track>,
@@ -197,7 +168,7 @@ pub struct TrackReader {
 	epoch: u64,
 
 	pub priority: Option<u64>,
-	pub order: Option<TrackOrder>,
+	pub order: Option<GroupOrder>,
 }
 
 impl TrackReader {
@@ -205,7 +176,7 @@ impl TrackReader {
 		Self {
 			state,
 			epoch: 0,
-			order: info.order,
+			order: info.group_order,
 			priority: info.priority,
 			info,
 		}
@@ -272,10 +243,4 @@ impl Deref for TrackReader {
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TrackOrder {
-	Ascending,
-	Descending,
 }

@@ -6,20 +6,18 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message,
-	serve::{self, ServeError, Track, TrackReader, Unknown, UnknownReader, UnknownWriter},
-	setup,
-	util::Queue,
+	coding::Stream, message, setup, util::Queue, Broadcast, BroadcastReader, BroadcastWriter, ServeError, Track,
+	TrackReader, Unknown, UnknownReader, UnknownWriter,
 };
 
-use super::{Announce, Control, Session, SessionError, Subscribed};
+use super::{Announce, Session, SessionError, Subscribed};
 
 #[derive(Clone)]
 pub struct Publisher {
 	webtransport: web_transport::Session,
 
 	// Used to route incoming subscriptions
-	broadcasts: Arc<Mutex<HashMap<String, serve::BroadcastReader>>>,
+	broadcasts: Arc<Mutex<HashMap<String, BroadcastReader>>>,
 
 	announced: Queue<Announce>,
 	unknown: Option<UnknownReader>,
@@ -45,111 +43,103 @@ impl Publisher {
 		Ok((session, publisher.unwrap()))
 	}
 
-	/// Announce a broadcast and serve tracks using the provided [serve::BroadcastReader].
-	/// The caller uses [serve::BroadcastWriter] to populate static tracks.
-	/// Use [Publisher::unknown] to handle unknown tracks, even for announced broadcasts.
-	pub fn announce(&mut self, broadcast: serve::BroadcastReader) -> Result<Announce, SessionError> {
-		let name = broadcast.name.clone();
-
-		match self.broadcasts.lock().unwrap().entry(name.clone()) {
+	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
+	pub fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
+		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
-			hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
+			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
 		let msg = message::Announce {
-			broadcast: name.clone(),
+			broadcast: broadcast.name.clone(),
 		};
 
-		let announce = Announce::new(msg);
-		if let Err(_) = self.announced.push(announce.split()) {
+		let announce = Announce::new(msg, broadcast);
+		if let Err(_) = self.announced.push(announce) {
 			return Err(SessionError::Internal);
 		}
 
-		Ok(announce)
+		Ok(())
 	}
 
-	/// Creates and returns a handler to deal with unknown tracks.
-	/// This can only be called once, otherwise it returns None.
-	pub fn unknown(&mut self) -> Option<UnknownWriter> {
-		if self.unknown.is_some() {
-			return None;
-		}
-
+	/// Route any unknown subscriptions to the provided [UnknownWriter].
+	///
+	/// If this is not called, any uknonwn subscriptions will be rejected with [ServeError::NotFound].
+	/// This may be called multiple times, but only the last one will be used.
+	pub fn unknown(&mut self) -> UnknownWriter {
 		let (writer, reader) = Unknown::produce();
 		self.unknown = Some(reader);
-
-		Some(writer)
+		writer
 	}
 
-	pub(super) async fn run(&mut self) -> Result<(), SessionError> {
+	pub(super) async fn run(self) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				Some(announce) = self.announced.pop() => {
-					let mut webtransport = self.webtransport.clone();
+				Some(mut announce) = self.announced.pop() => {
+					let this = self.clone();
+
 					tasks.push(async move {
-						let control = Control::open(&mut webtransport, message::Control::Announce).await?;
-						announce.run(control).await
+						let res = announce.run(this.webtransport).await;
+						this.broadcasts.lock().unwrap().remove(&announce.broadcast);
+
+						res
 					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					match res.unwrap() {
-						Ok(broadcast) => self.broadcasts.lock().unwrap().remove(&broadcast),
-						Err(err) => return Err(err),
-					};
-				},
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			}
 		}
 	}
 
-	async fn route(&mut self, track: Track) -> Option<TrackReader> {
+	async fn subscribe(&mut self, track: Track) -> Option<TrackReader> {
 		let broadcast = self.broadcasts.lock().unwrap().get(&track.broadcast).cloned();
 		if let Some(mut broadcast) = broadcast {
-			return broadcast.request(&track.name).await;
+			return broadcast.subscribe(track).await;
 		}
 
 		if let Some(unknown) = self.unknown.as_mut() {
-			return unknown.request(track).await;
+			return unknown.subscribe(track).await;
 		}
 
 		None
 	}
 
-	pub(super) async fn run_subscribe(&mut self, mut control: Control) -> Result<(), SessionError> {
+	pub(super) async fn run_subscribe(&mut self, mut control: Stream) -> Result<(), SessionError> {
 		let subscribe: message::Subscribe = control.reader.decode().await?;
 
 		let track = Track::new(&subscribe.broadcast, &subscribe.track).build();
-		let mut track = self.route(track).await.ok_or(ServeError::NotFound)?;
+		let mut track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
 
 		// TODO this is wrong in the requested case
 		let info = message::Info {
 			latest: track.latest(),
-			default_order: track.order.map(Into::into),
-			default_priority: track.priority,
+			group_expires: track.group_expires,
+			group_order: track.order.map(Into::into),
+			priority: track.priority,
 		};
 		control.writer.encode(&info).await?;
 
 		// Change to our subscribe order and priority before we start reading.
-		track.order = subscribe.order.clone().map(Into::into);
+		track.order = subscribe.group_order.clone().map(Into::into);
 		track.priority = Some(subscribe.priority);
 
 		let subscribed = Subscribed::new(self.webtransport.clone(), subscribe, track);
 		subscribed.run(control).await
 	}
 
-	pub(super) async fn run_datagrams(&mut self, mut control: Control) -> Result<(), SessionError> {
+	pub(super) async fn run_datagrams(&mut self, mut control: Stream) -> Result<(), SessionError> {
 		let subscribe: message::Subscribe = control.reader.decode().await?;
 
 		todo!("datagrams");
 	}
 
 	// TODO close Writer on error
-	pub(super) async fn run_fetch(&mut self, mut control: Control) -> Result<(), SessionError> {
+	pub(super) async fn run_fetch(&mut self, mut control: Stream) -> Result<(), SessionError> {
 		let fetch: message::Fetch = control.reader.decode().await?;
 
 		let track = Track::new(&fetch.broadcast, &fetch.track).build();
-		let track = self.route(track).await.ok_or(ServeError::NotFound)?;
+		let track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
 		let group = track.get(fetch.group).ok_or(ServeError::NotFound)?;
 
 		unimplemented!("TODO fetch");
@@ -166,16 +156,17 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn run_info(&mut self, mut control: Control) -> Result<(), SessionError> {
+	pub(super) async fn run_info(&mut self, mut control: Stream) -> Result<(), SessionError> {
 		let info: message::InfoRequest = control.reader.decode().await?;
 
 		let track = Track::new(&info.broadcast, &info.track).build();
-		let track = self.route(track).await.ok_or(ServeError::NotFound)?;
+		let track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
 
 		let info = message::Info {
 			latest: track.latest(),
-			default_order: track.order.map(Into::into),
-			default_priority: track.priority,
+			priority: track.priority,
+			group_expires: track.group_expires,
+			group_order: track.order.map(Into::into),
 		};
 		control.writer.encode(&info).await?;
 

@@ -3,33 +3,33 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::serve::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
+use moq_transfork::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
 
-use crate::{ListingReader, ListingWriter};
+use crate::ListingWriter;
 
 struct State {
-	writer: BroadcastWriter,
 	active: HashMap<String, ListingWriter>,
+	writer: BroadcastWriter,
 }
 
 #[derive(Clone)]
 pub struct Listings {
 	state: Arc<Mutex<State>>,
-	broadcast: BroadcastReader,
+	reader: BroadcastReader,
 }
 
 impl Listings {
-	pub fn new(broadcast: &str) -> Self {
-		let (writer, reader) = Broadcast::new(broadcast).produce();
+	pub fn new(broadcast: Broadcast) -> Self {
+		let (writer, reader) = broadcast.produce();
 
 		let state = State {
+			active: Default::default(),
 			writer,
-			active: HashMap::new(),
 		};
 
 		Self {
 			state: Arc::new(Mutex::new(state)),
-			broadcast: reader,
+			reader,
 		}
 	}
 
@@ -37,13 +37,13 @@ impl Listings {
 	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, ServeError> {
 		let (prefix, base) = Self::prefix(path);
 
-		if !prefix.starts_with(&self.broadcast.name) {
+		if !prefix.starts_with(&self.reader.name) {
 			// Ignore anything that isn't in our broadcast.
 			return Ok(None);
 		}
 
 		// Remove the broadcast prefix from the path.
-		let prefix = &prefix[self.broadcast.name.len()..];
+		let prefix = &prefix[self.reader.name.len()..];
 
 		let mut state = self.state.lock().unwrap();
 		if let Some(listing) = state.active.get_mut(prefix) {
@@ -83,14 +83,6 @@ impl Listings {
 		Ok(())
 	}
 
-	pub fn subscribe(&mut self, name: &str) -> Option<ListingReader> {
-		self.broadcast.get(name).map(ListingReader::new)
-	}
-
-	pub fn broadcast(&self) -> BroadcastReader {
-		self.broadcast.clone()
-	}
-
 	// Returns the prefix for the string.
 	// This is just the content before the last '/', like a directory name.
 	// ex. "/foo/bar/baz" -> ("/foo/bar", "baz")
@@ -100,6 +92,10 @@ impl Listings {
 			Some(index) => (&path[..index + 1], &path[index + 1..]),
 			None => ("", path),
 		}
+	}
+
+	pub fn broadcast(&self) -> BroadcastReader {
+		self.reader.clone()
 	}
 }
 

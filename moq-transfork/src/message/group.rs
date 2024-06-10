@@ -1,5 +1,3 @@
-use std::time;
-
 use crate::coding::*;
 
 #[derive(Clone, Debug)]
@@ -9,9 +7,6 @@ pub struct Group {
 
 	// The group sequence number
 	pub sequence: u64,
-
-	// When the group expires, relative to the end.
-	pub expires: time::Duration,
 }
 
 impl Decode for Group {
@@ -19,7 +14,6 @@ impl Decode for Group {
 		Ok(Self {
 			subscribe: u64::decode(r)?,
 			sequence: u64::decode(r)?,
-			expires: time::Duration::decode(r)?,
 		})
 	}
 }
@@ -28,7 +22,6 @@ impl Encode for Group {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.subscribe.encode(w)?;
 		self.sequence.encode(w)?;
-		self.expires.encode(w)?;
 
 		Ok(())
 	}

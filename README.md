@@ -10,7 +10,6 @@ This repository contains a few crates:
 -   **moq-relay**: Accepting content from publishers and serves it to any subscribers.
 -   **moq-pub**: Publishes fMP4 broadcasts.
 -   **moq-transport**: An implementation of the underlying MoQ protocol.
--   **moq-api**: A HTTP API server that stores the origin for each broadcast, backed by redis.
 -   **moq-dir**: Aggregates announcements, used to discover broadcasts.
 -   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
 
@@ -35,7 +34,6 @@ For more control, use the [dev helper scripts](dev/README.md).
 
 [moq-relay](moq-relay) is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
 It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
-The relays optionally register themselves via the [moq-api](moq-api) endpoints, which is used to discover other relays and share broadcasts.
 
 Notable arguments:
 

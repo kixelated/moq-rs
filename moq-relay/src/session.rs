@@ -1,16 +1,15 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transfork::session::SessionError;
 
 use crate::{Consumer, Producer};
 
 pub struct Session {
-	pub session: moq_transfork::session::Session,
+	pub session: moq_transfork::Session,
 	pub producer: Option<Producer>,
 	pub consumer: Option<Consumer>,
 }
 
 impl Session {
-	pub async fn run(self) -> Result<(), SessionError> {
+	pub async fn run(self) -> Result<(), moq_transfork::SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(self.session.run().boxed());
 

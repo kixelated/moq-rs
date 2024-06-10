@@ -1,13 +1,15 @@
+use crate::coding::Reader;
+use crate::coding::Writer;
 use crate::message;
 
-use super::{Reader, SessionError, Writer};
+use crate::SessionError;
 
-pub struct Control {
+pub struct Stream {
 	pub writer: Writer,
 	pub reader: Reader,
 }
 
-impl Control {
+impl Stream {
 	pub async fn open(session: &mut web_transport::Session, typ: message::Control) -> Result<Self, SessionError> {
 		let (send, recv) = session.open_bi().await?;
 		let mut writer = Writer::new(send);

@@ -1,383 +1,210 @@
-use std::collections::HashMap;
+use std::{
+	collections::{HashMap, HashSet},
+	ops,
+	sync::{Arc, Mutex},
+};
 
-use std::collections::VecDeque;
-use std::fmt;
-use std::ops;
-use std::sync::Arc;
-use std::sync::Weak;
-
-use futures::stream::FuturesUnordered;
-use futures::FutureExt;
-use futures::StreamExt;
-use moq_native::quic;
-use moq_transfork::serve::UnknownReader;
-use moq_transfork::serve::{Track, TrackReader, TrackWriter};
-use moq_transfork::util::Queue;
-use moq_transfork::util::State;
+use anyhow::Context;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use url::Url;
 
-use crate::Api;
+use moq_dir::{ListingDelta, ListingReader};
+use moq_native::quic;
+use moq_transfork::{util::State, Subscribe, Subscriber, Track, TrackWriter};
 
+// TODO split into halves
+#[derive(Clone)]
 pub struct Remotes {
-	/// The client we use to fetch/store origin information.
-	pub api: Api,
-
-	// A QUIC endpoint we'll use to fetch from other origins.
-	pub quic: quic::Client,
+	root: moq_transfork::Subscriber,
+	client: quic::Client,
+	myself: Option<String>,
+	remotes: Arc<Mutex<HashMap<String, RemoteConsumer>>>,
 }
 
 impl Remotes {
-	pub fn produce(self) -> (RemoteProducer, RemotesConsumer) {
-		let requests = Queue::default();
-		let producer = RemotesProducer::new(self, requests.split());
-		let consumer = RemotesConsumer::new(requests);
-		(producer, consumer)
-	}
-}
-
-pub struct RemotesProducer {
-	info: Arc<Remotes>,
-	queue: Queue<RemoteRequest>,
-	lookup: HashMap<Url, RemoteConsumer>,
-}
-
-impl RemotesProducer {
-	fn new(info: Remotes, queue: Queue<RemoteRequest>) -> Self {
+	pub fn new(root: moq_transfork::Subscriber, client: quic::Client, myself: Option<String>) -> Self {
 		Self {
-			info: Arc::new(info),
-			queue,
-			lookup: HashMap::new(),
+			root,
+			client,
+			myself,
+			remotes: Default::default(),
 		}
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
+		let (writer, reader) = Track::new(".", "origins.").produce();
+		let subscribe = self.root.subscribe(writer);
+		let mut origins = ListingReader::new(reader);
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				Some(mut request) = self.queue.pop() => {
-					tasks.push(async move {
-						if let Some(self.route(request)
-						let info = remote.info.clone();
+				update = origins.next() => {
+					match update? {
+						Some(ListingDelta::Add(host)) => {
+							if Some(&host) == self.myself.as_ref() {
+								continue
+							}
 
-						log::warn!("serving remote: {:?}", info);
-						if let Err(err) = remote.run().await {
-							log::warn!("failed serving remote: {:?}, error: {}", info, err);
+							let (producer, consumer) = Origin::new(&host).produce();
+
+							if let Some(existing) = self.remotes.lock().unwrap().insert(host.clone(), consumer) {
+								anyhow::bail!("added duplicate origin: {}", existing.host);
+							}
+
+							let this = self.clone();
+
+							tasks.push(async move {
+								if let Err(err) = producer.run(this.client).await {
+									log::warn!("failed running origin: {}, error: {}", host, err)
+								}
+
+								this.remotes.lock().unwrap().remove(&host);
+							});
+						},
+						Some(ListingDelta::Rem(host)) => {
+							if Some(&host) == self.myself.as_ref() {
+								continue
+							}
+
+							self.remotes.lock().unwrap().remove(&host);
 						}
-
-						url
-					});
-				}
-				res = tasks.next(), if !tasks.is_empty() => {
-					let url = res.unwrap();
-
-					if let Some(mut state) = self.state.lock_mut() {
-						state.lookup.remove(&url);
+						None => anyhow::bail!("no origins found"),
 					}
 				},
-				else => return Ok(()),
+				res = subscribe.closed() => return res.map_err(Into::into),
+				_ = tasks.next(), if !tasks.is_empty() => {},
 			}
 		}
 	}
-}
 
-#[derive(Clone)]
-pub struct RemotesConsumer {
-	pub info: Arc<Remotes>,
-	state: State<RemotesState>,
-}
+	pub fn route(&self, broadcast: &str) -> Option<RemoteConsumer> {
+		let active = self.remotes.lock().unwrap();
 
-impl RemotesConsumer {
-	fn new(info: Arc<Remotes>, state: State<RemotesState>) -> Self {
-		Self { info, state }
-	}
-
-	pub async fn route(&self, broadcast: &str) -> Option<UnknownReader> {
-		// Always fetch the origin instead of using the (potentially invalid) cache.
-		let origin = match self.api.get_origin(broadcast).await? {
-			None => return Ok(None),
-			Some(origin) => origin,
-		};
-
-		let state = self.state.lock();
-		if let Some(remote) = state.lookup.get(&origin.url).cloned() {
-			return Ok(Some(remote));
+		for origin in active.values() {
+			if origin.contains(broadcast) {
+				return Some(origin.clone());
+			}
 		}
 
-		let mut state = match state.into_mut() {
-			Some(state) => state,
-			None => return Ok(None),
-		};
-
-		let remote = Remote {
-			url: origin.url.clone(),
-			remotes: self.info.clone(),
-		};
-
-		let (writer, reader) = remote.produce();
-		state.requested.push_back(writer);
-
-		state.lookup.insert(origin.url, reader.clone());
-
-		Ok(Some(reader))
+		None
 	}
 }
 
-pub struct Remote {
-	pub remotes: Arc<Remotes>,
-	pub url: Url,
+pub struct Origin {
+	host: String,
 }
 
-impl fmt::Debug for Remote {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Remote").field("url", &self.url.to_string()).finish()
+impl Origin {
+	fn new(host: &str) -> Self {
+		Self { host: host.to_string() }
 	}
-}
 
-impl ops::Deref for Remote {
-	type Target = Remotes;
-
-	fn deref(&self) -> &Self::Target {
-		&self.remotes
-	}
-}
-
-impl Remote {
-	/// Create a new broadcast.
-	pub fn produce(self) -> (RemoteProducer, RemoteConsumer) {
-		let (send, recv) = State::default().split();
+	fn produce(self) -> (RemoteProducer, RemoteConsumer) {
 		let info = Arc::new(self);
+		let state = State::default();
 
-		let consumer = RemoteConsumer::new(info.clone(), recv);
-		let producer = RemoteProducer::new(info, send);
-
-		(producer, consumer)
+		(
+			RemoteProducer::new(info.clone(), state.split()),
+			RemoteConsumer::new(info, state),
+		)
 	}
 }
 
 #[derive(Default)]
 struct RemoteState {
-	tracks: HashMap<(String, String), RemoteTrackWeak>,
-	requested: VecDeque<TrackWriter>,
-}
-
-pub struct RemoteProducer {
-	pub info: Arc<Remote>,
-	state: State<RemoteState>,
-}
-
-impl RemoteProducer {
-	fn new(info: Arc<Remote>, state: State<RemoteState>) -> Self {
-		Self { info, state }
-	}
-
-	pub async fn run(&mut self) -> anyhow::Result<()> {
-		// TODO reuse QUIC and MoQ sessions
-		let session = self.quic.connect(&self.url).await?;
-		let (session, subscriber) = moq_transfork::session::Subscriber::connect(session).await?;
-
-		// Run the session
-		let mut session = session.run().boxed();
-		let mut tasks = FuturesUnordered::new();
-
-		let mut done = None;
-
-		loop {
-			tokio::select! {
-				track = self.next(), if done.is_none() => {
-					let track = match track {
-						Ok(Some(track)) => track,
-						Ok(None) => { done = Some(Ok(())); continue },
-						Err(err) => { done = Some(Err(err)); continue },
-					};
-
-					let info = track.info.clone();
-					let mut subscriber = subscriber.clone();
-
-					tasks.push(async move {
-						if let Ok(sub) = subscriber.subscribe(&broadcast, &track) {
-							sub.closed().await?;
-						}
-					});
-				}
-				_ = tasks.next(), if !tasks.is_empty() => {},
-
-				// Keep running the session
-				res = &mut session, if !tasks.is_empty() || done.is_none() => return Ok(res?),
-
-				else => return done.unwrap(),
-			}
-		}
-	}
-
-	/// Block until the next track requested by a consumer.
-	async fn next(&self) -> anyhow::Result<Option<TrackWriter>> {
-		loop {
-			let notify = {
-				let state = self.state.lock();
-				if !state.requested.is_empty() {
-					return Ok(state.into_mut().and_then(|mut state| state.requested.pop_front()));
-				}
-
-				match state.modified() {
-					Some(notified) => notified,
-					None => return Ok(None),
-				}
-			};
-
-			notify.await
-		}
-	}
-}
-
-impl ops::Deref for RemoteProducer {
-	type Target = Remote;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
-	}
+	broadcasts: HashSet<String>,
+	subscriber: Option<Subscriber>, // None when connecting
 }
 
 #[derive(Clone)]
 pub struct RemoteConsumer {
-	pub info: Arc<Remote>,
+	info: Arc<Origin>,
 	state: State<RemoteState>,
 }
 
 impl RemoteConsumer {
-	fn new(info: Arc<Remote>, state: State<RemoteState>) -> Self {
+	fn new(info: Arc<Origin>, state: State<RemoteState>) -> Self {
 		Self { info, state }
 	}
 
-	/// Request a track from the broadcast.
-	pub fn subscribe(&self, broadcast: &str, name: &str) -> anyhow::Result<Option<RemoteTrackReader>> {
-		let key = (broadcast.to_string(), name.to_string());
-		let state = self.state.lock();
-		if let Some(track) = state.tracks.get(&key) {
-			if let Some(track) = track.upgrade() {
-				return Ok(Some(track));
-			}
-		}
+	pub fn contains(&self, broadcast: &str) -> bool {
+		self.state.lock().broadcasts.contains(broadcast)
+	}
 
-		let mut state = match state.into_mut() {
-			Some(state) => state,
-			None => return Ok(None),
-		};
-
-		let (writer, reader) = Track::new(name).produce();
-		let reader = RemoteTrackReader::new(reader, self.state.clone());
-
-		// Insert the track into our Map so we deduplicate future requests.
-		state.tracks.insert(key, reader.downgrade());
-		state.requested.push_back(writer);
-
-		Ok(Some(reader))
+	pub fn subscribe(&self, track: TrackWriter) -> Option<Subscribe> {
+		let mut subscriber = self.state.lock().subscriber.clone()?;
+		Some(subscriber.subscribe(track))
 	}
 }
 
 impl ops::Deref for RemoteConsumer {
-	type Target = Remote;
+	type Target = Origin;
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
 	}
 }
 
-#[derive(Clone)]
-pub struct RemoteTrackReader {
-	pub reader: TrackReader,
-	drop: Arc<RemoteTrackDrop>,
+pub struct RemoteProducer {
+	info: Arc<Origin>,
+	state: State<RemoteState>,
 }
 
-impl RemoteTrackReader {
-	fn new(reader: TrackReader, parent: State<RemoteState>) -> Self {
-		let drop = Arc::new(RemoteTrackDrop {
-			parent,
-			key: (reader.broadcast.clone(), reader.name.clone()),
-		});
-
-		Self { reader, drop }
+impl RemoteProducer {
+	fn new(info: Arc<Origin>, state: State<RemoteState>) -> Self {
+		Self { info, state }
 	}
 
-	fn downgrade(&self) -> RemoteTrackWeak {
-		RemoteTrackWeak {
-			reader: self.reader.clone(),
-			drop: Arc::downgrade(&self.drop),
+	async fn run(mut self, client: quic::Client) -> anyhow::Result<()> {
+		// Create a URL with the protocol moqf://
+		let url = Url::parse(&format!("moqf://{}", self.host))?;
+		let session = client.connect(&url).await.context("failed connecting to origin")?;
+		let (session, mut subscriber) = Subscriber::connect(session).await?;
+		let mut run = session.run().boxed();
+
+		let broadcast = format!(".origin.{}", self.host);
+		let (writer, reader) = Track::new(&broadcast, "broadcasts").produce();
+		let subscribe = subscriber.subscribe(writer);
+		let mut broadcasts = ListingReader::new(reader);
+
+		self.state.lock_mut().context("origin closed")?.subscriber = Some(subscriber);
+
+		loop {
+			tokio::select! {
+				update = broadcasts.next() => {
+					let update = update?.context("no broadcasts found")?;
+					self.handle(update)?;
+				},
+				err = subscribe.closed() => return err.map_err(Into::into),
+				err = &mut run => return err.map_err(Into::into),
+			}
 		}
 	}
+
+	fn handle(&mut self, update: ListingDelta) -> anyhow::Result<()> {
+		let mut state = self.state.lock_mut().context("origin closed")?;
+		match update {
+			ListingDelta::Add(broadcast) => {
+				if !state.broadcasts.insert(broadcast.clone()) {
+					anyhow::bail!("duplicate broadcast: {}", broadcast)
+				}
+			}
+			ListingDelta::Rem(broadcast) => {
+				if !state.broadcasts.remove(&broadcast) {
+					anyhow::bail!("missing broadcast: {}", broadcast)
+				}
+			}
+		}
+
+		Ok(())
+	}
 }
 
-impl ops::Deref for RemoteTrackReader {
-	type Target = TrackReader;
+impl ops::Deref for RemoteProducer {
+	type Target = Origin;
 
 	fn deref(&self) -> &Self::Target {
-		&self.reader
-	}
-}
-
-impl ops::DerefMut for RemoteTrackReader {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.reader
-	}
-}
-
-struct RemoteTrackWeak {
-	reader: TrackReader,
-	drop: Weak<RemoteTrackDrop>,
-}
-
-impl RemoteTrackWeak {
-	fn upgrade(&self) -> Option<RemoteTrackReader> {
-		Some(RemoteTrackReader {
-			reader: self.reader.clone(),
-			drop: self.drop.upgrade()?,
-		})
-	}
-}
-
-struct RemoteTrackDrop {
-	parent: State<RemoteState>,
-	key: (String, String),
-}
-
-impl Drop for RemoteTrackDrop {
-	fn drop(&mut self) {
-		if let Some(mut parent) = self.parent.lock_mut() {
-			parent.tracks.remove(&self.key);
-		}
-	}
-}
-
-#[derive(Clone)]
-pub struct RemoteRequest {
-	broadcast: String,
-	state: State<Option<RemoteConsumer>>,
-}
-
-impl RemoteRequest {
-	pub fn new(broadcast: String) -> Self {
-		Self {
-			broadcast,
-			state: State::default(),
-		}
-	}
-
-	pub fn respond(self, remote: RemoteConsumer) {
-		if let Some(mut state) = self.state.lock_mut() {
-			state.replace(remote);
-		}
-	}
-
-	pub async fn response(self) -> Option<RemoteConsumer> {
-		loop {
-			{
-				let state = self.state.lock();
-				if state.is_some() {
-					return state.clone();
-				}
-				state.modified()?
-			}
-			.await
-		}
+		&self.info
 	}
 }

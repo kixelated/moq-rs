@@ -1,20 +1,20 @@
 use clap::Parser;
 
-mod api;
 mod consumer;
 mod local;
+//mod origin;
 mod producer;
 mod relay;
-mod remote;
+//mod remote;
 mod session;
 mod web;
 
-pub use api::*;
 pub use consumer::*;
 pub use local::*;
+//pub use origin::*;
 pub use producer::*;
 pub use relay::*;
-pub use remote::*;
+//pub use remote::*;
 pub use session::*;
 pub use web::*;
 
@@ -36,15 +36,10 @@ pub struct Cli {
 	#[arg(long)]
 	pub announce: Option<Url>,
 
-	/// The URL of the moq-api server in order to run a cluster.
-	/// Must be used in conjunction with --node to advertise the origin
-	#[arg(long)]
-	pub api: Option<Url>,
-
 	/// The hostname that we advertise to other origins.
 	/// The provided certificate must be valid for this address.
 	#[arg(long)]
-	pub node: Option<Url>,
+	pub node: Option<String>,
 
 	/// Enable development mode.
 	/// This hosts a HTTPS web server via TCP to serve the fingerprint of the certificate.
@@ -73,10 +68,9 @@ async fn main() -> anyhow::Result<()> {
 	let relay = Relay::new(RelayConfig {
 		tls: tls.clone(),
 		bind: cli.bind,
-		node: cli.node,
-		api: cli.api,
+		host: cli.node,
 		announce: cli.announce,
-	})?;
+	});
 
 	if cli.dev {
 		// Create a web server too.

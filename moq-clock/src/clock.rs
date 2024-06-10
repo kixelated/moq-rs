@@ -1,5 +1,5 @@
 use anyhow::Context;
-use moq_transfork::serve::{GroupWriter, TrackReader, TrackWriter};
+use moq_transfork::{GroupWriter, TrackReader, TrackWriter};
 
 use chrono::prelude::*;
 
@@ -23,7 +23,6 @@ impl Publisher {
 			let segment = self
 				.track
 				.create(sequence as u64)
-				.build()
 				.context("failed to create minute segment")?;
 
 			sequence += 1;

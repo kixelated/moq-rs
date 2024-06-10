@@ -1,5 +1,5 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transfork::session::{Announced, Publisher, Subscriber};
+use moq_transfork::{BroadcastReader, Subscriber};
 
 use crate::Listings;
 
@@ -16,13 +16,13 @@ impl Session {
 
 	pub async fn run(self) -> anyhow::Result<()> {
 		let session = self.session.clone();
-		let (session, publisher, subscriber) = moq_transfork::session::Session::accept(session).await?;
+		let (session, publisher, subscriber) = moq_transfork::Session::accept(session).await?;
 
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed());
 
-		if let Some(remote) = publisher {
-			tasks.push(Self::serve_subscriber(self.clone(), remote).boxed());
+		if let Some(mut remote) = publisher {
+			remote.announce(self.listings.broadcast())?;
 		}
 
 		if let Some(remote) = subscriber {
@@ -31,14 +31,6 @@ impl Session {
 
 		// Return the first error
 		tasks.select_next_some().await?;
-
-		Ok(())
-	}
-
-	async fn serve_subscriber(self, mut remote: Publisher) -> anyhow::Result<()> {
-		// Announce our broadcast and serve any matching subscriptions AUTOMATICALLY
-		let mut announce = remote.announce(self.listings.broadcast())?;
-		announce.closed().await?;
 
 		Ok(())
 	}
@@ -52,7 +44,7 @@ impl Session {
 					let this = self.clone();
 
 					tasks.push(async move {
-						let info = announce.broadcast.clone();
+						let info = announce.name.clone();
 						log::info!("serving announce: {:?}", info);
 
 						if let Err(err) = this.serve_announce(announce).await {
@@ -66,10 +58,8 @@ impl Session {
 		}
 	}
 
-	async fn serve_announce(mut self, mut announce: Announced) -> anyhow::Result<()> {
-		announce.ack()?;
-
-		self.listings.register(&announce.broadcast)?;
+	async fn serve_announce(mut self, announce: BroadcastReader) -> anyhow::Result<()> {
+		self.listings.register(&announce.name)?;
 		announce.closed().await?;
 
 		Ok(())

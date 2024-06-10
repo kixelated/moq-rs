@@ -16,8 +16,8 @@ use std::{
 	sync::Arc,
 };
 
-use super::{Track, TrackBuilder, TrackReader, TrackWriter, Unknown, UnknownReader, UnknownWriter};
-use crate::util::State;
+use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
+use crate::{util::State, ServeError};
 
 /// Static information about a broadcast.
 #[derive(Debug)]
@@ -41,10 +41,20 @@ impl Broadcast {
 	}
 }
 
-#[derive(Default)]
 pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
 	unknown: Option<UnknownReader>,
+	closed: Result<(), ServeError>,
+}
+
+impl Default for BroadcastState {
+	fn default() -> Self {
+		Self {
+			tracks: HashMap::new(),
+			unknown: None,
+			closed: Ok(()),
+		}
+	}
 }
 
 /// Publish new tracks for a broadcast by name.
@@ -62,13 +72,11 @@ impl BroadcastWriter {
 		BroadcastTrackBuilder::new(self, name)
 	}
 
-	/// Optionally route unknown tracks.
-	///
-	/// Returns None if the broadcast is closed.
-	pub fn unknown(&mut self) -> Option<UnknownWriter> {
-		let (writer, reader) = Unknown::produce();
-		self.state.lock_mut()?.unknown = Some(reader);
-		Some(writer)
+	/// Optionally route unknown tracks to the provided [UnknownReader].
+	pub fn unknown(&mut self, reader: UnknownReader) {
+		if let Some(mut state) = self.state.lock_mut() {
+			state.unknown = Some(reader);
+		}
 	}
 
 	/// Insert a track into the broadcast.
@@ -84,6 +92,32 @@ impl BroadcastWriter {
 
 	pub fn remove(&mut self, track: &str) -> Option<TrackReader> {
 		self.state.lock_mut()?.tracks.remove(track)
+	}
+
+	pub fn close(&mut self, code: u32) -> Result<(), ServeError> {
+		let state = self.state.lock();
+		state.closed.clone()?;
+
+		if let Some(mut state) = state.into_mut() {
+			state.closed = Err(ServeError::Closed(code));
+		}
+
+		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
+			}
+			.await
+		}
 	}
 }
 
@@ -143,29 +177,35 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
+	///
 	/// None is returned if [BroadcastWriter] cannot fufill the request.
-	pub fn get(&mut self, name: &str) -> Option<TrackReader> {
-		let state = self.state.lock();
-		state.tracks.get(name).cloned()
-	}
-
-	/// Get or request a track from the broadcast by name.
-	pub async fn request(&mut self, name: &str) -> Option<TrackReader> {
+	pub async fn subscribe(&mut self, track: Track) -> Option<TrackReader> {
 		let unknown = {
 			let state = self.state.lock();
-			if let Some(track) = state.tracks.get(name).cloned() {
+			if let Some(track) = state.tracks.get(&track.name).cloned() {
 				return Some(track);
 			}
 
-			state.unknown.clone()
+			state.unknown.clone()?
 		};
 
-		if let Some(unknown) = unknown {
-			let track = Track::new(&self.name, name).build();
-			return unknown.request(track).await;
-		}
+		// TODO cache to deduplicate?
+		unknown.subscribe(track).await
+	}
 
-		None
+	pub async fn closed(&self) -> Result<(), ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
+
+				match state.modified() {
+					Some(notify) => notify,
+					None => return Ok(()),
+				}
+			}
+			.await
+		}
 	}
 }
 

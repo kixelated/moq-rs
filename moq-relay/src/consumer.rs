@@ -1,28 +1,18 @@
-use anyhow::Context;
-use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transfork::{
-	serve::{Broadcast, Unknown},
-	session::{Announced, SessionError, Subscriber},
-};
+use futures::{stream::FuturesUnordered, StreamExt};
+use moq_transfork::{BroadcastReader, SessionError, Subscriber};
 
-use crate::{Api, Locals, Producer};
+use crate::Locals;
 
 #[derive(Clone)]
 pub struct Consumer {
 	remote: Subscriber,
 	locals: Locals,
-	api: Option<Api>,
-	forward: Option<Producer>, // Forward all announcements to this subscriber
+	//forward: Option<Producer>, // Forward all announcements to this subscriber
 }
 
 impl Consumer {
-	pub fn new(remote: Subscriber, locals: Locals, api: Option<Api>, forward: Option<Producer>) -> Self {
-		Self {
-			remote,
-			locals,
-			api,
-			forward,
-		}
+	pub fn new(remote: Subscriber, locals: Locals) -> Self {
+		Self { remote, locals }
 	}
 
 	pub async fn run(mut self) -> Result<(), SessionError> {
@@ -30,15 +20,15 @@ impl Consumer {
 
 		loop {
 			tokio::select! {
-				Some(announce) = self.remote.announced() => {
+				Some(broadcast) = self.remote.announced() => {
 					let this = self.clone();
 
 					tasks.push(async move {
-						let name = announce.broadcast.clone();
-						log::info!("serving announce: {:?}", name);
+						let name = broadcast.name.clone();
+						log::info!("serving broadcast: {:?}", name);
 
-						if let Err(err) = this.serve(announce).await {
-							log::warn!("failed serving announce: {:?}, error: {}", name, err)
+						if let Err(err) = this.serve(broadcast).await {
+							log::warn!("failed serving broadcast: {:?}, error: {}", name, err)
 						}
 					});
 				},
@@ -48,22 +38,16 @@ impl Consumer {
 		}
 	}
 
-	async fn serve(mut self, mut announce: Announced) -> Result<(), anyhow::Error> {
-		let mut tasks = FuturesUnordered::new();
-
-		let (mut unknown, reader) = Unknown::produce();
-
-		if let Some(api) = self.api.as_ref() {
-			let mut refresh = api.set_origin(announce.broadcast.clone()).await?;
-			tasks.push(async move { refresh.run().await.context("failed refreshing origin") }.boxed());
-		}
+	async fn serve(mut self, broadcast: BroadcastReader) -> Result<(), anyhow::Error> {
+		//let mut tasks = FuturesUnordered::new();
 
 		// Register the local tracks, unregister on drop
-		let _register = self.locals.register(&announce.broadcast, reader)?;
+		let _register = self.locals.announce(broadcast.clone());
 
-		// Acknowledge the announce
-		announce.ack()?;
+		broadcast.closed().await?;
+		Ok(())
 
+		/*
 		if let Some(mut forward) = self.forward {
 			// Make an empty broadcast to forward the announcea
 			// TODO this is a which means subscribe won't return any tracks
@@ -84,7 +68,7 @@ impl Consumer {
 		loop {
 			tokio::select! {
 				// If the announce is closed, return the error
-				Err(err) = announce.closed() => return Err(err.into()),
+				Err(err) = broadcast.closed() => return Err(err.into()),
 
 				// Wait for the next subscriber and serve the track.
 				Some(request) = unknown.requested() => {
@@ -94,16 +78,14 @@ impl Consumer {
 						log::info!("forwarding subscribe: {:?}", request.track);
 						let writer = request.produce();
 
-						if let Ok(sub) = remote.subscribe(writer) {
-							sub.closed().await;
-						};
-
-						Ok(())
+						let sub = remote.subscribe(writer);
+						sub.closed().await
 					}.boxed());
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 				else => return Ok(()),
 			}
 		}
+		*/
 	}
 }

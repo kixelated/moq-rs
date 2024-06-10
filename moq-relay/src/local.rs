@@ -3,36 +3,36 @@ use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
 
-use moq_transfork::serve::ServeError;
-use moq_transfork::serve::UnknownReader;
+use moq_transfork::BroadcastReader;
+use moq_transfork::ServeError;
 
 #[derive(Clone)]
 pub struct Locals {
-	lookup: Arc<Mutex<HashMap<String, UnknownReader>>>,
-}
-
-impl Default for Locals {
-	fn default() -> Self {
-		Self::new()
-	}
+	broadcasts: Arc<Mutex<HashMap<String, BroadcastReader>>>,
+	//root: Option<moq_transfork::Publisher>,
+	//host: Option<String>,
 }
 
 impl Locals {
-	pub fn new() -> Self {
+	pub fn new(/*root: Option<Publisher>, host: Option<String>*/) -> Self {
 		Self {
-			lookup: Default::default(),
+			broadcasts: Default::default(),
+			//root,
+			//host,
 		}
 	}
 
-	pub fn register(&mut self, broadcast: &str, tracks: UnknownReader) -> anyhow::Result<Registration> {
-		let name = broadcast.to_string();
+	//pub fn run(mut self) -> anyhow::Result<()> {}
 
-		match self.lookup.lock().unwrap().entry(name.clone()) {
-			hash_map::Entry::Vacant(entry) => entry.insert(tracks),
+	pub fn announce(&mut self, broadcast: BroadcastReader) -> anyhow::Result<LocalRegistration> {
+		let name = broadcast.name.clone();
+
+		match self.broadcasts.lock().unwrap().entry(name.clone()) {
+			hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
 			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
 		};
 
-		let registration = Registration {
+		let registration = LocalRegistration {
 			locals: self.clone(),
 			broadcast: name,
 		};
@@ -40,18 +40,18 @@ impl Locals {
 		Ok(registration)
 	}
 
-	pub fn route(&self, broadcast: &str) -> Option<UnknownReader> {
-		self.lookup.lock().unwrap().get(broadcast).cloned()
+	pub fn route(&self, broadcast: &str) -> Option<BroadcastReader> {
+		self.broadcasts.lock().unwrap().get(broadcast).cloned()
 	}
 }
 
-pub struct Registration {
+pub struct LocalRegistration {
 	locals: Locals,
 	broadcast: String,
 }
 
-impl Drop for Registration {
+impl Drop for LocalRegistration {
 	fn drop(&mut self) {
-		self.locals.lookup.lock().unwrap().remove(&self.broadcast);
+		self.locals.broadcasts.lock().unwrap().remove(&self.broadcast);
 	}
 }

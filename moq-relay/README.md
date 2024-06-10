@@ -10,7 +10,7 @@ We currently do a dumb string comparison, so capatilization matters as do slashe
 
 For example: `CONNECT https://relay.quic.video/BigBuckBunny`
 
-The MoqTransport handshake includes a `role` parameter, which must be `publisher` or `subscriber`.
+The MoqTransfork handshake includes a `role` parameter, which must be `publisher` or `subscriber`.
 The specification allows a `both` role but you'll get an error.
 
 You can have one publisher and any number of subscribers connected to the same path.

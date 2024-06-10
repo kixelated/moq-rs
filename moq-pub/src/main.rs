@@ -8,7 +8,7 @@ use tokio::io::AsyncReadExt;
 
 use moq_native::quic;
 use moq_pub::Media;
-use moq_transfork::{serve, session::Publisher};
+use moq_transfork::{Broadcast, Publisher};
 
 #[derive(Parser, Clone)]
 pub struct Cli {
@@ -51,9 +51,6 @@ async fn main() -> anyhow::Result<()> {
 
 	let cli = Cli::parse();
 
-	let (writer, reader) = serve::Broadcast::new(&cli.name).produce();
-	let media = Media::new(writer)?;
-
 	let tls = cli.tls.load()?;
 
 	let quic = quic::Endpoint::new(moq_native::quic::Config {
@@ -68,12 +65,13 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 
-	let mut announce = publisher.announce(reader).context("failed to announce")?;
+	let (writer, reader) = Broadcast::new(&cli.name).produce();
+	publisher.announce(reader).context("failed to announce")?;
+	let media = Media::new(writer)?;
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
 		res = run_media(media) => res.context("media error")?,
-		res = announce.closed() => res.context("announce closed")?,
 	}
 
 	Ok(())

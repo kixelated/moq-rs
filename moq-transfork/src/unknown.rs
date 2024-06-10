@@ -1,8 +1,11 @@
 use std::ops;
 
-use crate::util::{Queue, State};
+use crate::{
+	util::{Queue, State},
+	TrackWriter,
+};
 
-use super::{ServeError, Track, TrackReader, TrackWriter};
+use super::{Track, TrackReader};
 
 #[derive(Default)]
 pub struct Unknown {}
@@ -42,53 +45,57 @@ impl UnknownReader {
 		Self { queue }
 	}
 
-	pub async fn request(&self, track: Track) -> Option<TrackReader> {
+	pub async fn subscribe(&self, track: Track) -> Option<TrackReader> {
 		let request = UnknownRequest::new(track);
+		if self.queue.push(request.split()).is_err() {
+			return None;
+		}
 
-		self.queue.push(request.split());
 		request.response().await
 	}
 }
 
 pub struct UnknownRequest {
 	pub track: Track,
-	state: State<Option<TrackReader>>,
+	reply: State<Option<TrackReader>>,
 }
 
 impl UnknownRequest {
 	fn new(track: Track) -> Self {
 		Self {
 			track,
-			state: Default::default(),
+			reply: State::default(),
 		}
 	}
 
-	fn split(&self) -> UnknownRequest {
+	fn split(&self) -> Self {
 		Self {
-			state: self.state.split(),
 			track: self.track.clone(),
+			reply: self.reply.split(),
 		}
 	}
 
-	pub fn respond(self, reader: TrackReader) {
-		if let Some(mut state) = self.state.lock_mut() {
-			state.replace(reader);
+	pub fn respond(self, track: TrackReader) {
+		if let Some(mut state) = self.reply.lock_mut() {
+			state.replace(track);
 		}
 	}
 
 	pub fn produce(self) -> TrackWriter {
+		// TODO avoid this clone
 		let (writer, reader) = self.track.clone().produce();
 		self.respond(reader);
 		writer
 	}
 
-	async fn response(&self) -> Option<TrackReader> {
+	pub async fn response(self) -> Option<TrackReader> {
 		loop {
 			{
-				let state = self.state.lock();
-				if state.is_some() {
-					return state.clone();
+				let state = self.reply.lock();
+				if let Some(track) = state.clone() {
+					return Some(track);
 				}
+
 				state.modified()?
 			}
 			.await

@@ -2,8 +2,16 @@ use std::io;
 
 use crate::coding::{Encode, EncodeError};
 
-use super::SessionError;
 use bytes::Buf;
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum WriteError {
+	#[error("encode error: {0}")]
+	Encode(#[from] EncodeError),
+
+	#[error("webtransport error: {0}")]
+	Transport(#[from] web_transport::WriteError),
+}
 
 pub struct Writer {
 	stream: web_transport::SendStream,
@@ -18,7 +26,7 @@ impl Writer {
 		}
 	}
 
-	pub async fn encode<T: Encode>(&mut self, msg: &T) -> Result<(), SessionError> {
+	pub async fn encode<T: Encode>(&mut self, msg: &T) -> Result<(), WriteError> {
 		self.buffer.clear();
 		msg.encode(&mut self.buffer)?;
 
@@ -29,7 +37,7 @@ impl Writer {
 		Ok(())
 	}
 
-	pub async fn write(&mut self, buf: &[u8]) -> Result<(), SessionError> {
+	pub async fn write(&mut self, buf: &[u8]) -> Result<(), WriteError> {
 		let mut cursor = io::Cursor::new(buf);
 
 		while cursor.has_remaining() {
