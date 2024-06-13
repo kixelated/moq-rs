@@ -80,10 +80,8 @@ impl Reader {
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes
 	pub async fn finished(&mut self) -> Result<(), ReadError> {
-		if self.buffer.is_empty() {
-			if !self.stream.read_buf(&mut self.buffer).await? {
-				return Ok(());
-			}
+		if self.buffer.is_empty() && !self.stream.read_buf(&mut self.buffer).await? {
+			return Ok(());
 		}
 
 		Err(DecodeError::ExpectedEnd.into())

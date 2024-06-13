@@ -6,8 +6,8 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	coding::Stream, message, setup, util::Queue, Broadcast, BroadcastReader, BroadcastWriter, ServeError, Track,
-	TrackReader, Unknown, UnknownReader, UnknownWriter,
+	coding::Stream, message, setup, util::Queue, BroadcastReader, ServeError, Track, TrackReader, Unknown,
+	UnknownReader, UnknownWriter,
 };
 
 use super::{Announce, Session, SessionError, Subscribed};
@@ -121,7 +121,7 @@ impl Publisher {
 		control.writer.encode(&info).await?;
 
 		// Change to our subscribe order and priority before we start reading.
-		track.order = subscribe.group_order.clone().map(Into::into);
+		track.order = subscribe.group_order.map(Into::into);
 		track.priority = Some(subscribe.priority);
 
 		let subscribed = Subscribed::new(self.webtransport.clone(), subscribe, track);

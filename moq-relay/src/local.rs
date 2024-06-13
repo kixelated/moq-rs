@@ -13,6 +13,12 @@ pub struct Locals {
 	//host: Option<String>,
 }
 
+impl Default for Locals {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Locals {
 	pub fn new(/*root: Option<Publisher>, host: Option<String>*/) -> Self {
 		Self {

@@ -4,8 +4,8 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	coding::{self, Reader, Stream},
-	message::{self, Control},
-	serve, setup, Publisher, ServeError, Subscriber, Unknown, UnknownWriter,
+	message::{self},
+	setup, Publisher, ServeError, Subscriber, Unknown, UnknownWriter,
 };
 
 #[must_use = "run() must be called"]
@@ -46,7 +46,7 @@ impl Session {
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
 		let mut setup = Stream::open(&mut session, message::Control::Session).await?;
-		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
+		let versions: setup::Versions = [setup::Version::FORK_00].into();
 
 		let client = setup::Client {
 			role,
@@ -97,11 +97,8 @@ impl Session {
 		let client: setup::Client = control.reader.decode().await?;
 		log::debug!("received client SETUP: {:?}", client);
 
-		if !client.versions.contains(&setup::Version::DRAFT_03) {
-			return Err(SessionError::Version(
-				client.versions,
-				[setup::Version::DRAFT_03].into(),
-			));
+		if !client.versions.contains(&setup::Version::FORK_00) {
+			return Err(SessionError::Version(client.versions, [setup::Version::FORK_00].into()));
 		}
 
 		// Downgrade our role based on the client's role.
@@ -121,7 +118,7 @@ impl Session {
 
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_03,
+			version: setup::Version::FORK_00,
 			unknown: Default::default(),
 		};
 

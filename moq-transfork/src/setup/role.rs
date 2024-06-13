@@ -36,9 +36,9 @@ impl Decode for Role {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let v = u64::decode(r)?;
 		match v {
-			0x1 => Ok(Self::Publisher),
-			0x2 => Ok(Self::Subscriber),
-			0x3 => Ok(Self::Both),
+			1u64 => Ok(Self::Publisher),
+			2u64 => Ok(Self::Subscriber),
+			3u64 => Ok(Self::Both),
 			_ => Err(DecodeError::InvalidRole(v)),
 		}
 	}
@@ -48,9 +48,9 @@ impl Encode for Role {
 	/// Encode the role.
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		match self {
-			Self::Publisher => 0u64,
-			Self::Subscriber => 1u64,
-			Self::Both => 2u64,
+			Self::Publisher => 1u64,
+			Self::Subscriber => 2u64,
+			Self::Both => 3u64,
 		}
 		.encode(w)
 	}

@@ -128,7 +128,7 @@ impl FrameReader {
 
 	// Return all of the chunks concatenated together.
 	pub async fn read_all(&mut self) -> Result<Bytes, ServeError> {
-		let first = self.read().await?.unwrap_or_else(|| Bytes::new());
+		let first = self.read().await?.unwrap_or_else(Bytes::new);
 		if first.len() == self.size {
 			// If there's one chunk, return it without allocating.
 			return Ok(first);
