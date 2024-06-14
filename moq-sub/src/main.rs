@@ -1,10 +1,10 @@
-use std::{fs, io, net, path, sync::Arc, time};
+use std::{net, time};
 
 use anyhow::Context;
 use clap::Parser;
-use moq_transport::cache::broadcast;
 use url::Url;
 
+use moq_native::quic;
 use moq_sub::media::Media;
 
 #[tokio::main]
@@ -19,64 +19,19 @@ async fn main() -> anyhow::Result<()> {
 
 	let config = Config::parse();
 
-	let (publisher, subscriber) = broadcast::new("");
 	let out = tokio::io::stdout();
-	let mut media = Media::new(subscriber, out).await?;
 
-	// Create a list of acceptable root certificates.
-	let mut roots = rustls::RootCertStore::empty();
+	let tls = config.tls.load()?;
 
-	if config.tls_root.is_empty() {
-		// Add the platform's native root certificates.
-		for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
-			roots
-				.add(&rustls::Certificate(cert.0))
-				.context("failed to add root cert")?;
-		}
-	} else {
-		// Add the specified root certificates.
-		for root in &config.tls_root {
-			let root = fs::File::open(root).context("failed to open root cert file")?;
-			let mut root = io::BufReader::new(root);
+	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
-			let root = rustls_pemfile::certs(&mut root).context("failed to read root cert")?;
-			anyhow::ensure!(root.len() == 1, "expected a single root cert");
-			let root = rustls::Certificate(root[0].to_owned());
+	let session = quic.client.connect(&config.url).await?;
 
-			roots.add(&root).context("failed to add root cert")?;
-		}
-	}
-
-	let mut tls_config = rustls::ClientConfig::builder()
-		.with_safe_defaults()
-		.with_root_certificates(roots)
-		.with_no_client_auth();
-
-	// Allow disabling TLS verification altogether.
-	if config.tls_disable_verify {
-		let noop = NoCertificateVerification {};
-		tls_config.dangerous().set_certificate_verifier(Arc::new(noop));
-	}
-
-	tls_config.alpn_protocols = vec![webtransport_quinn::ALPN.to_vec()]; // this one is important
-
-	let arc_tls_config = std::sync::Arc::new(tls_config);
-	let quinn_client_config = quinn::ClientConfig::new(arc_tls_config);
-
-	let mut endpoint = quinn::Endpoint::client(config.bind)?;
-	endpoint.set_default_client_config(quinn_client_config);
-
-	log::info!("connecting to relay: url={}", config.url);
-
-	let session = webtransport_quinn::connect(&endpoint, &config.url)
-		.await
-		.context("failed to create WebTransport session")?;
-	log::trace!("WebTransport session established");
-
-	let session = moq_transport::session::Client::subscriber(session, publisher)
+	let (session, subscriber) = moq_transport::session::Subscriber::connect(session)
 		.await
 		.context("failed to create MoQ Transport session")?;
-	log::trace!("MoQ transport session established");
+
+	let mut media = Media::new(subscriber, out).await?;
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
@@ -102,7 +57,7 @@ impl rustls::client::ServerCertVerifier for NoCertificateVerification {
 	}
 }
 
-#[derive(Parser, Clone, Debug)]
+#[derive(Parser, Clone)]
 pub struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
@@ -112,18 +67,9 @@ pub struct Config {
 	#[arg(value_parser = moq_url)]
 	pub url: Url,
 
-	/// Use the TLS root CA at this path, encoded as PEM.
-	///
-	/// This value can be provided multiple times for multiple roots.
-	/// If this is empty, system roots will be used instead
-	#[arg(long)]
-	pub tls_root: Vec<path::PathBuf>,
-
-	/// Danger: Disable TLS certificate verification.
-	///
-	/// Fine for local development, but should be used in caution in production.
-	#[arg(long)]
-	pub tls_disable_verify: bool,
+	/// The TLS configuration.
+	#[command(flatten)]
+	pub tls: moq_native::tls::Args,
 }
 
 fn moq_url(s: &str) -> Result<Url, String> {

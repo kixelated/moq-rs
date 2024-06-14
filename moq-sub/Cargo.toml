@@ -15,6 +15,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport" }
+moq-native = { path = "../moq-native" }
 
 # QUIC
 quinn = "0.10"

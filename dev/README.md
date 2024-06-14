@@ -43,9 +43,6 @@ Requires:
 ./dev/pub
 ```
 
-By default, the audio track is excluded, because the web player does not yet support audio playback. 
-To include audio, set the `AUDIO=1` env var.
-
 Alternatively, you can use Gstreamer via [moq-gst](https://github.com/kixelated/moq-gst).
 The [run](https://github.com/kixelated/moq-gst/blob/main/run) script does the exact same thing.
 

@@ -1260,6 +1260,7 @@ dependencies = [
  "clap_mangen",
  "env_logger",
  "log",
+ "moq-native",
  "moq-transport",
  "mp4",
  "quinn",

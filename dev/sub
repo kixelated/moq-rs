@@ -12,8 +12,8 @@ HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
 
-# Use the broadcast name "dev" by default
-NAME="${NAME:-dev}"
+# Use the broadcast name "bbb" by default
+NAME="${NAME:-bbb}"
 
 # Combine the host and name into a URL.
 URL="${URL:-"https://$ADDR/$NAME"}"

@@ -36,12 +36,6 @@ URL="${URL:-"$SCHEME://$ADDR"}"
 # Default to a source video
 INPUT="${INPUT:-dev/bbb.mp4}"
 
-# Only inlcude audio track if AUDIO=1 is set
-# TODO enable audio by default again once fixed.
-if [[ ! -v AUDIO ]]; then
-	NO_AUDIO=1
-fi
-
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
@@ -49,6 +43,6 @@ echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \
-	-c copy ${NO_AUDIO:+-an} \
+	-c copy -an \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"
