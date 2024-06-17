@@ -595,9 +595,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.3.2"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "443144c8cdadd93ebf52ddb4056d257f5b52c04d3c804e657d19eb73fc33668b"
+checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
 name = "hex"
@@ -962,6 +962,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-sub"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_mangen",
+ "env_logger",
+ "log",
+ "moq-native",
+ "moq-transport",
+ "mp4",
+ "rustls",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "moq-transport"
 version = "0.5.2"
 dependencies = [
@@ -1092,7 +1111,7 @@ version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4161fcb6d602d4d2081af7c3a45852d875a03dd337a6bfdd6e06407b61342a43"
 dependencies = [
- "hermit-abi 0.3.2",
+ "hermit-abi 0.3.9",
  "libc",
 ]
 
