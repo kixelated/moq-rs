@@ -14,8 +14,8 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transport = { path = "../moq-transport" }
-moq-native = { path = "../moq-native" }
+moq-transport = { path = "../moq-transport", version = "0.5" }
+moq-native = { path = "../moq-native", version = "0.2" }
 url = "2"
 
 # Crypto
