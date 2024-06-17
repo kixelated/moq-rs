@@ -6,12 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.2](https://github.com/kixelated/moq-rs/compare/moq-pub-v0.5.1...moq-pub-v0.5.2) - 2024-06-17
+## [0.5.1](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.5.0...moq-relay-v0.5.1) - 2024-06-17
 
 ### Other
 - update Cargo.lock dependencies
-
-## [0.5.1](https://github.com/kixelated/moq-rs/compare/moq-pub-v0.5.0...moq-pub-v0.5.1) - 2024-06-03
-
-### Other
-- Fix audio in the BBB demo. ([#164](https://github.com/kixelated/moq-rs/pull/164))
