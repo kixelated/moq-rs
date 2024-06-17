@@ -171,3 +171,18 @@ message_types! {
 	// Misc
 	GoAway = 0x10,
 }
+
+/// Track Status Codes
+/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-04.html#name-track_status
+pub enum TrackStatusCode {
+	// 0x00: The track is in progress, and subsequent fields contain the highest group and object ID for that track.
+	InProgress = 0x00,
+	// 0x01: The track does not exist. Subsequent fields MUST be zero, and any other value is a malformed message.
+	DoesNotExist = 0x01,
+	// 0x02: The track has not yet begun. Subsequent fields MUST be zero. Any other value is a malformed message.
+	NotYetBegun = 0x02,
+	// 0x03: The track has finished, so there is no "live edge." Subsequent fields contain the highest Group and object ID known.
+	Finished = 0x03,
+	// 0x04: The sender is a relay that cannot obtain the current track status from upstream. Subsequent fields contain the largest group and object ID known.
+	Relay = 0x04,
+}

@@ -1,5 +1,38 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError, Params};
 
+/// Filter Types
+/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-04.html#name-filter-types
+#[derive(Clone, Debug, PartialEq)]
+pub enum FilterType {
+	LatestGroup = 0x1,
+	LatestObject = 0x2,
+	AbsoluteStart = 0x3,
+	AbsoluteRange = 0x4,
+}
+
+impl Encode for FilterType {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		match self {
+			Self::LatestGroup => (0x1_u64).encode(w),
+			Self::LatestObject => (0x2_u64).encode(w),
+			Self::AbsoluteStart => (0x3_u64).encode(w),
+			Self::AbsoluteRange => (0x4_u64).encode(w),
+		}
+	}
+}
+
+impl Decode for FilterType {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		match u64::decode(r)? {
+			0x01 => Ok(Self::LatestGroup),
+			0x02 => Ok(Self::LatestObject),
+			0x03 => Ok(Self::AbsoluteStart),
+			0x04 => Ok(Self::AbsoluteRange),
+			_ => Err(DecodeError::InvalidFilterType),
+		}
+	}
+}
+
 /// Sent by the subscriber to request all future objects for the given track.
 ///
 /// Objects will use the provided ID instead of the full track name, to save bytes.
@@ -13,9 +46,12 @@ pub struct Subscribe {
 	pub track_namespace: String,
 	pub track_name: String,
 
-	/// The start/end group/object.
-	pub start: SubscribePair,
-	pub end: SubscribePair,
+	/// Filter type
+	pub filter_type: FilterType,
+
+	/// The start/end group/object. (TODO: Make optional)
+	pub start: Option<SubscribePair>, // TODO: Make optional
+	pub end: Option<SubscribePair>, // TODO: Make optional
 
 	/// Optional parameters
 	pub params: Params,
@@ -28,18 +64,20 @@ impl Decode for Subscribe {
 		let track_namespace = String::decode(r)?;
 		let track_name = String::decode(r)?;
 
-		let start = SubscribePair::decode(r)?;
-		let end = SubscribePair::decode(r)?;
+		let filter_type = FilterType::decode(r)?;
 
-		// You can't have a start object without a start group.
-		if start.group == SubscribeLocation::None && start.object != SubscribeLocation::None {
-			return Err(DecodeError::InvalidSubscribeLocation);
-		}
+		let start = Some(SubscribePair::decode(r)?);
+		let end = Some(SubscribePair::decode(r)?);
 
-		// You can't have an end object without an end group.
-		if end.group == SubscribeLocation::None && end.object != SubscribeLocation::None {
-			return Err(DecodeError::InvalidSubscribeLocation);
-		}
+		// // You can't have a start object without a start group.
+		// if start.group == SubscribeLocation::None && start.object != SubscribeLocation::None {
+		// 	return Err(DecodeError::InvalidSubscribeLocation);
+		// }
+
+		// // You can't have an end object without an end group.
+		// if end.group == SubscribeLocation::None && end.object != SubscribeLocation::None {
+		// 	return Err(DecodeError::InvalidSubscribeLocation);
+		// }
 
 		// NOTE: There's some more location restrictions in the draft, but they're enforced at a higher level.
 
@@ -50,6 +88,7 @@ impl Decode for Subscribe {
 			track_alias,
 			track_namespace,
 			track_name,
+			filter_type,
 			start,
 			end,
 			params,
@@ -64,8 +103,19 @@ impl Encode for Subscribe {
 		self.track_namespace.encode(w)?;
 		self.track_name.encode(w)?;
 
-		self.start.encode(w)?;
-		self.end.encode(w)?;
+		self.filter_type.encode(w)?;
+
+		if self.filter_type == FilterType::AbsoluteStart || self.filter_type == FilterType::AbsoluteRange {
+			if self.start.is_none() || self.end.is_none() {
+				return Err(EncodeError::MissingField);
+			}
+			if let Some(start) = &self.start {
+				start.encode(w)?;
+			}
+			if let Some(end) = &self.end {
+				end.encode(w)?;
+			}
+		}
 
 		self.params.encode(w)?;
 
