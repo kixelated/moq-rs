@@ -6,6 +6,7 @@ use url::Url;
 
 use moq_native::quic;
 use moq_sub::media::Media;
+use moq_transport::serve::Tracks;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -31,7 +32,10 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create MoQ Transport session")?;
 
-	let mut media = Media::new(subscriber, out).await?;
+	// Associate empty set of Tracks with provided namespace
+	let tracks = Tracks::new(config.name);
+
+	let mut media = Media::new(subscriber, tracks, out).await?;
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
@@ -66,6 +70,10 @@ pub struct Config {
 	/// Connect to the given URL starting with https://
 	#[arg(value_parser = moq_url)]
 	pub url: Url,
+
+	/// The name of the broadcast
+	#[arg(long)]
+	pub name: String,
 
 	/// The TLS configuration.
 	#[command(flatten)]
