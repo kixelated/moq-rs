@@ -34,6 +34,9 @@ pub enum DecodeError {
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,
 
+	#[error("invalid filter type")]
+	InvalidFilterType,
+
 	#[error("invalid value")]
 	InvalidValue,
 
