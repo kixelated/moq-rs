@@ -42,6 +42,7 @@ mod subscribe_done;
 mod subscribe_error;
 mod subscribe_ok;
 mod subscriber;
+mod track_status_request;
 mod unannounce;
 mod unsubscribe;
 
@@ -56,6 +57,7 @@ pub use subscribe_done::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
 pub use subscriber::*;
+pub use track_status_request::*;
 pub use unannounce::*;
 pub use unsubscribe::*;
 
@@ -157,6 +159,9 @@ message_types! {
 	AnnounceOk = 0x7,
 	AnnounceError = 0x8,
 	AnnounceCancel = 0xc,
+
+	// TRACK_STATUS_REQUEST, sent by subscriber
+	TrackStatusRequest = 0xd,
 
 	// Misc
 	GoAway = 0x10,
