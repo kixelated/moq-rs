@@ -65,7 +65,7 @@ impl<O: AsyncWrite + Send + Unpin + 'static> Media<O> {
 			anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
 			let mut moov_reader = Cursor::new(&moov);
 			let moov_header = mp4::BoxHeader::read(&mut moov_reader)?;
-			
+
 			mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?
 		};
 
