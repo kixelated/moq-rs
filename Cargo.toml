@@ -3,6 +3,7 @@ members = [
 	"moq-transfork",
 	"moq-relay",
 	"moq-pub",
+	"moq-sub",
 	"moq-clock",
 	"moq-dir",
 	"moq-native",

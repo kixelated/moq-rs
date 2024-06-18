@@ -541,9 +541,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.3.2"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "443144c8cdadd93ebf52ddb4056d257f5b52c04d3c804e657d19eb73fc33668b"
+checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
 name = "hex"
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "moq-dir"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "moq-pub"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -848,6 +848,26 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "webpki",
+]
+
+[[package]]
+name = "moq-sub"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "env_logger",
+ "futures",
+ "log",
+ "moq-native",
+ "moq-transfork",
+ "mp4",
+ "rustls",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -951,7 +971,7 @@ version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4161fcb6d602d4d2081af7c3a45852d875a03dd337a6bfdd6e06407b61342a43"
 dependencies = [
- "hermit-abi 0.3.2",
+ "hermit-abi 0.3.9",
  "libc",
 ]
 

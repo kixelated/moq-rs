@@ -29,6 +29,8 @@ jobs:
 
       # Check for semvar violations
       - uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          exclude: moq-sub
 
       # Used to publish any new crates
       - uses: katyo/publish-crates@v2
