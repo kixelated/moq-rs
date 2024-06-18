@@ -66,18 +66,41 @@ impl Decode for Subscribe {
 
 		let filter_type = FilterType::decode(r)?;
 
-		let start = Some(SubscribePair::decode(r)?);
-		let end = Some(SubscribePair::decode(r)?);
+		let start: Option<SubscribePair>;
+		let end: Option<SubscribePair>;
+		match filter_type {
+			FilterType::AbsoluteStart => {
+				if r.remaining() < 2 {
+					return Err(DecodeError::MissingField);
+				}
+				start = Some(SubscribePair::decode(r)?);
+				end = None;
+			}
+			FilterType::AbsoluteRange => {
+				if r.remaining() < 4 {
+					return Err(DecodeError::MissingField);
+				}
+				start = Some(SubscribePair::decode(r)?);
+				end = Some(SubscribePair::decode(r)?);
+			}
+			_ => {
+				start = None;
+				end = None;
+			}
+		}
 
-		// // You can't have a start object without a start group.
-		// if start.group == SubscribeLocation::None && start.object != SubscribeLocation::None {
-		// 	return Err(DecodeError::InvalidSubscribeLocation);
-		// }
-
-		// // You can't have an end object without an end group.
-		// if end.group == SubscribeLocation::None && end.object != SubscribeLocation::None {
-		// 	return Err(DecodeError::InvalidSubscribeLocation);
-		// }
+		if let Some(s) = &start {
+			// You can't have a start object without a start group.
+			if s.group == SubscribeLocation::None && s.object != SubscribeLocation::None {
+				return Err(DecodeError::InvalidSubscribeLocation);
+			}
+		}
+		if let Some(e) = &end {
+			// You can't have an end object without an end group.
+			if e.group == SubscribeLocation::None && e.object != SubscribeLocation::None {
+				return Err(DecodeError::InvalidSubscribeLocation);
+			}
+		}
 
 		// NOTE: There's some more location restrictions in the draft, but they're enforced at a higher level.
 
