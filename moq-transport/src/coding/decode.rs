@@ -37,6 +37,9 @@ pub enum DecodeError {
 	#[error("invalid filter type")]
 	InvalidFilterType,
 
+	#[error("missing field")]
+	MissingField,
+
 	#[error("invalid value")]
 	InvalidValue,
 
