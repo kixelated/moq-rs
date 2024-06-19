@@ -1,11 +1,11 @@
 [package]
 name = "moq-transport"
 description = "Media over QUIC"
-authors = ["Luke Curley"]
+authors = ["Luke Curley", "Mike English"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
