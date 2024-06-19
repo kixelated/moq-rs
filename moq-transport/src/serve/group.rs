@@ -10,8 +10,8 @@
 use bytes::Bytes;
 use std::{cmp, ops::Deref, sync::Arc};
 
-use crate::watch::State;
 use crate::data::ObjectStatus;
+use crate::watch::State;
 
 use super::{ServeError, Track};
 
