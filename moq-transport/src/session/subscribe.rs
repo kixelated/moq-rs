@@ -210,6 +210,7 @@ impl SubscribeRecv {
 			group_id: datagram.group_id,
 			object_id: datagram.object_id,
 			priority: datagram.send_order,
+			status: datagram.object_status,
 			payload: datagram.payload,
 		})?;
 

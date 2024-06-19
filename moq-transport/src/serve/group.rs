@@ -11,6 +11,7 @@ use bytes::Bytes;
 use std::{cmp, ops::Deref, sync::Arc};
 
 use crate::watch::State;
+use crate::data::ObjectStatus;
 
 use super::{ServeError, Track};
 
@@ -270,6 +271,7 @@ impl GroupWriter {
 		let (writer, reader) = GroupObject {
 			group: self.info.clone(),
 			object_id: self.next,
+			status: ObjectStatus::Object,
 			size,
 		}
 		.produce();
@@ -396,6 +398,9 @@ pub struct GroupObject {
 
 	// The size of the object.
 	pub size: usize,
+
+	// Object status
+	pub status: ObjectStatus,
 }
 
 impl GroupObject {
