@@ -263,6 +263,7 @@ impl Subscribed {
 			let header = data::GroupObject {
 				object_id: object.object_id,
 				size: object.size,
+				status: object.status,
 			};
 
 			writer.encode(&header).await?;
@@ -299,7 +300,7 @@ impl Subscribed {
 							group_id: object.group_id,
 							object_id: object.object_id,
 							send_order: object.priority,
-							object_status: object.object_status,
+							object_status: object.status,
 
 						};
 
@@ -364,6 +365,7 @@ impl Subscribed {
 				group_id: datagram.group_id,
 				object_id: datagram.object_id,
 				send_order: datagram.priority,
+				object_status: datagram.status,
 				payload: datagram.payload,
 			};
 

@@ -73,7 +73,7 @@ impl ObjectsWriter {
 			group_id: object.group_id,
 			object_id: object.object_id,
 			priority: object.priority,
-			object_status: ObjectStatus::Object,
+			status: ObjectStatus::Object,
 		};
 
 		let (writer, reader) = object.produce();
@@ -196,7 +196,7 @@ pub struct ObjectInfo {
 	pub priority: u64,
 
 	// The object status
-	pub object_status: ObjectStatus,
+	pub status: ObjectStatus,
 }
 
 impl Deref for ObjectInfo {

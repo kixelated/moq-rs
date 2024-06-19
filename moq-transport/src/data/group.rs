@@ -1,4 +1,5 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
+use crate::data::ObjectStatus;
 
 #[derive(Clone, Debug)]
 pub struct GroupHeader {
@@ -41,14 +42,20 @@ impl Encode for GroupHeader {
 pub struct GroupObject {
 	pub object_id: u64,
 	pub size: usize,
+	pub status: ObjectStatus,
 }
 
 impl Decode for GroupObject {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let object_id = u64::decode(r)?;
 		let size = usize::decode(r)?;
+		let status = ObjectStatus::decode(r)?;
 
-		Ok(Self { object_id, size })
+		Ok(Self {
+			object_id,
+			size,
+			status,
+		})
 	}
 }
 
@@ -56,6 +63,7 @@ impl Encode for GroupObject {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.object_id.encode(w)?;
 		self.size.encode(w)?;
+		self.status.encode(w)?;
 
 		Ok(())
 	}

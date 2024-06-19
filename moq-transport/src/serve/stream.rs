@@ -2,6 +2,7 @@ use bytes::Bytes;
 use std::{ops::Deref, sync::Arc};
 
 use crate::watch::State;
+use crate::data::ObjectStatus;
 
 use super::{ServeError, Track};
 
@@ -233,6 +234,7 @@ impl StreamGroupWriter {
 		let (writer, reader) = StreamObject {
 			group: self.info.clone(),
 			object_id: self.next,
+			status: ObjectStatus::Object,
 			size,
 		}
 		.produce();
@@ -325,6 +327,9 @@ pub struct StreamObject {
 
 	// The size of the object.
 	pub size: usize,
+
+	// Object status
+	pub status: ObjectStatus,
 }
 
 impl StreamObject {
