@@ -1,25 +1,41 @@
 use std::future;
 
+use crate::{coding, message, model, setup};
 use futures::{stream::FuturesUnordered, StreamExt};
 
-use crate::{
-	coding::{self, Reader, Stream},
-	message::{self},
-	setup, Publisher, ServeError, Subscriber, Unknown, UnknownWriter,
-};
+mod announce;
+mod announced;
+mod error;
+mod publisher;
+mod subscribe;
+mod subscribed;
+mod subscriber;
+
+pub use error::*;
+pub use publisher::*;
+pub use subscriber::*;
+
+use announce::*;
+use announced::*;
+use subscribe::*;
+use subscribed::*;
 
 #[must_use = "run() must be called"]
 pub struct Session {
 	webtransport: web_transport::Session,
-
+	setup: coding::Stream,
 	publisher: Option<Publisher>,
 	subscriber: Option<Subscriber>,
-	unknown: Option<UnknownWriter>, // provided to Subscriber
+	unknown: Option<model::UnknownWriter>, // provided to Subscriber
 }
 
 impl Session {
-	fn new(webtransport: web_transport::Session, role: setup::Role) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let unknown = Unknown::produce();
+	fn new(
+		webtransport: web_transport::Session,
+		role: setup::Role,
+		control: coding::Stream,
+	) -> (Self, Option<Publisher>, Option<Subscriber>) {
+		let unknown = model::Unknown::produce();
 		let publisher = role.is_publisher().then(|| Publisher::new(webtransport.clone()));
 		let subscriber = role
 			.is_subscriber()
@@ -27,6 +43,7 @@ impl Session {
 
 		let session = Self {
 			webtransport,
+			setup: control,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
 			unknown: Some(unknown.0),
@@ -45,7 +62,21 @@ impl Session {
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut setup = Stream::open(&mut session, message::Control::Session).await?;
+		let mut control = coding::Stream::open(&mut session, message::Control::Session).await?;
+
+		let role = match Self::connect_setup(&mut control, role).await {
+			Ok(role) => role,
+			Err(err) => {
+				control.writer.reset(err.code());
+				return Err(err);
+			}
+		};
+
+		let session = Session::new(session, role, control);
+		Ok(session)
+	}
+
+	async fn connect_setup(setup: &mut coding::Stream, role: setup::Role) -> Result<setup::Role, SessionError> {
 		let versions: setup::Versions = [setup::Version::FORK_00].into();
 
 		let client = setup::Client {
@@ -76,7 +107,7 @@ impl Session {
 			},
 		};
 
-		Ok(Session::new(session, role))
+		Ok(role)
 	}
 
 	pub async fn accept(
@@ -89,11 +120,20 @@ impl Session {
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let (t, mut control) = Stream::accept(&mut session).await?;
+		let (t, mut control) = coding::Stream::accept(&mut session).await?;
 		if t != message::Control::Session {
 			return Err(SessionError::UnexpectedStream(t));
 		}
 
+		let role = Self::accept_setup(&mut control, role).await;
+		if let Err(err) = role.as_ref() {
+			control.writer.reset(err.code());
+		}
+
+		Ok(Session::new(session, role?, control))
+	}
+
+	async fn accept_setup(control: &mut coding::Stream, role: setup::Role) -> Result<setup::Role, SessionError> {
 		let client: setup::Client = control.reader.decode().await?;
 		log::debug!("received client SETUP: {:?}", client);
 
@@ -125,11 +165,12 @@ impl Session {
 		log::debug!("sending server SETUP: {:?}", server);
 		control.writer.encode(&server).await?;
 
-		Ok(Session::new(session, role))
+		Ok(role)
 	}
 
-	pub async fn run(self) -> Result<(), SessionError> {
-		tokio::select! {
+	pub async fn run(mut self) -> Result<(), SessionError> {
+		let res = tokio::select! {
+			res = Self::run_control(&mut self.setup) => res,
 			res = Self::run_bi(self.webtransport.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
 			res = Self::run_uni(self.webtransport.clone(), self.subscriber.clone()) => res,
 			res = async move {
@@ -144,7 +185,22 @@ impl Session {
 					None => future::pending().await,
 				}
 			} => res,
+		};
+
+		if let Err(err) = &res {
+			log::error!("session error: {}", err);
+			self.setup.writer.reset(err.code());
 		}
+
+		res
+	}
+
+	async fn run_control(mut control: &mut coding::Stream) -> Result<(), SessionError> {
+		while let Some(info) = control.reader.decode_maybe::<setup::Info>().await? {
+			// TODO use info
+		}
+
+		Ok(())
 	}
 
 	async fn run_uni(
@@ -156,18 +212,31 @@ impl Session {
 		loop {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
-					let mut reader = Reader::new(res?);
+					let mut reader = coding::Reader::new(res?);
 					let mut subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
 					tasks.push(async move {
-						match reader.decode().await? {
-							message::StreamUni::Group =>  {
-								subscriber.run_group(reader).await
+						let t = reader.decode().await?;
+						let res = match t {
+							message::StreamUni::Group => {
+								subscriber.run_group(&mut reader).await
 							},
+						};
+
+						if let Err(SessionError::Closed(closed)) = res.as_ref() {
+							reader.stop(closed.code());
+							log::warn!("closed data stream: type={:?} err={}", t, closed);
+							Ok(())
+						} else {
+							res
 						}
 					});
 				},
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				res = tasks.next(), if !tasks.is_empty() => {
+					if let Err(err) = res.unwrap() {
+						log::warn!("failed to accept data stream: err={}", err);
+					}
+				}
 			};
 		}
 	}
@@ -181,112 +250,47 @@ impl Session {
 
 		loop {
 			tokio::select! {
-				res = Stream::accept(&mut webtransport) => {
-					let (t, control) = res?;
+				res = coding::Stream::accept(&mut webtransport) => {
+					let (t, mut control) = res?;
 					let publisher = publisher.clone();
 					let subscriber = subscriber.clone();
 
 					tasks.push(async move {
-						match t {
+						let res = match t {
 							message::Control::Session => Err(SessionError::UnexpectedStream(t)),
 							message::Control::Announce => {
 								let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
-								subscriber.run_announce(control).await
+								subscriber.run_announce(&mut control).await
 							},
 							message::Control::Subscribe => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.run_subscribe(control).await
+								publisher.run_subscribe(&mut control).await
 							},
 							message::Control::Datagrams => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.run_datagrams(control).await
+								publisher.run_datagrams(&mut control).await
 							},
 							message::Control::Fetch => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.run_fetch(control).await
+								publisher.run_fetch(&mut control).await
 							},
 							message::Control::Info => {
 								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.run_info(control).await
+								publisher.run_info(&mut control).await
 							},
+						};
+
+						if let Err(SessionError::Closed(closed)) = res.as_ref() {
+							control.writer.reset(closed.code());
+							log::warn!("closed control stream: type={:?} err={}", t, closed);
+							Ok(())
+						} else {
+							res
 						}
 					});
 				},
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?
 			};
-		}
-	}
-}
-
-#[derive(thiserror::Error, Debug, Clone)]
-pub enum SessionError {
-	#[error("webtransport session: {0}")]
-	Session(#[from] web_transport::SessionError),
-
-	#[error("write error: {0}")]
-	Write(#[from] coding::WriteError),
-
-	#[error("read error: {0}")]
-	Read(#[from] coding::ReadError),
-
-	// TODO move to a ConnectError
-	#[error("unsupported versions: client={0:?} server={1:?}")]
-	Version(setup::Versions, setup::Versions),
-
-	// TODO move to a ConnectError
-	#[error("incompatible roles: client={0:?} server={1:?}")]
-	RoleIncompatible(setup::Role, setup::Role),
-
-	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
-	#[error("role violation")]
-	RoleViolation,
-
-	#[error("unexpected stream: {0:?}")]
-	UnexpectedStream(message::Control),
-
-	/// Some VarInt was too large and we were too lazy to handle it
-	#[error("varint bounds exceeded")]
-	BoundsExceeded(#[from] coding::BoundsExceeded),
-
-	/// A duplicate ID was used
-	#[error("duplicate")]
-	Duplicate,
-
-	#[error("internal error")]
-	Internal,
-
-	#[error("serve error: {0}")]
-	Serve(#[from] ServeError),
-
-	#[error("wrong size")]
-	WrongSize,
-}
-
-impl SessionError {
-	/// An integer code that is sent over the wire.
-	pub fn code(&self) -> u32 {
-		match self {
-			Self::RoleIncompatible(..) => 406,
-			Self::RoleViolation => 405,
-			Self::Session(_) => 503,
-			Self::Read(_) => 400,
-			Self::Write(_) => 500,
-			Self::Version(..) => 406,
-			Self::UnexpectedStream(_) => 500,
-			Self::BoundsExceeded(_) => 500,
-			Self::Duplicate => 409,
-			Self::Internal => 500,
-			Self::WrongSize => 400,
-			Self::Serve(err) => err.code(),
-		}
-	}
-}
-
-impl From<SessionError> for ServeError {
-	fn from(err: SessionError) -> Self {
-		match err {
-			SessionError::Serve(err) => err,
-			_ => ServeError::Internal(err.to_string()),
 		}
 	}
 }

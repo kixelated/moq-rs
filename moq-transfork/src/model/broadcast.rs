@@ -17,10 +17,10 @@ use std::{
 };
 
 use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
-use crate::{util::State, ServeError};
+use crate::{util::State, Closed};
 
 /// Static information about a broadcast.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Broadcast {
 	pub name: String,
 }
@@ -44,7 +44,7 @@ impl Broadcast {
 pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
 	unknown: Option<UnknownReader>,
-	closed: Result<(), ServeError>,
+	closed: Result<(), Closed>,
 }
 
 impl Default for BroadcastState {
@@ -73,39 +73,38 @@ impl BroadcastWriter {
 	}
 
 	/// Optionally route unknown tracks to the provided [UnknownReader].
-	pub fn unknown(&mut self, reader: UnknownReader) {
-		if let Some(mut state) = self.state.lock_mut() {
-			state.unknown = Some(reader);
-		}
+	pub fn unknown(&mut self, reader: UnknownReader) -> Result<(), Closed> {
+		self.state.lock_mut().ok_or(Closed::Cancel)?.unknown = Some(reader);
+		Ok(())
 	}
 
 	/// Insert a track into the broadcast.
-	/// None is returned if all [BroadcastReader]s have been dropped.
-	pub fn insert(&mut self, track: Track) -> Option<TrackWriter> {
+	pub fn insert(&mut self, track: Track) -> Result<TrackWriter, Closed> {
 		let (writer, reader) = track.produce();
 
 		// NOTE: We overwrite the track if it already exists.
-		self.state.lock_mut()?.tracks.insert(reader.name.clone(), reader);
+		self.state
+			.lock_mut()
+			.ok_or(Closed::Cancel)?
+			.tracks
+			.insert(reader.name.clone(), reader);
 
-		Some(writer)
+		Ok(writer)
 	}
 
 	pub fn remove(&mut self, track: &str) -> Option<TrackReader> {
 		self.state.lock_mut()?.tracks.remove(track)
 	}
 
-	pub fn close(&mut self, code: u32) -> Result<(), ServeError> {
+	pub fn close(&mut self, code: u32) -> Result<(), Closed> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-
-		if let Some(mut state) = state.into_mut() {
-			state.closed = Err(ServeError::Closed(code));
-		}
+		state.into_mut().ok_or(Closed::Cancel)?.closed = Err(Closed::App(code));
 
 		Ok(())
 	}
 
-	pub async fn closed(&self) -> Result<(), ServeError> {
+	pub async fn closed(&self) -> Result<(), Closed> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -142,8 +141,7 @@ impl<'a> BroadcastTrackBuilder<'a> {
 		}
 	}
 
-	/// None is returned if all [BroadcastReader]s have been dropped.
-	pub fn build(self) -> Option<TrackWriter> {
+	pub fn build(self) -> Result<TrackWriter, Closed> {
 		self.broadcast.insert(self.track.build())
 	}
 }
@@ -193,7 +191,7 @@ impl BroadcastReader {
 		unknown.subscribe(track).await
 	}
 
-	pub async fn closed(&self) -> Result<(), ServeError> {
+	pub async fn closed(&self) -> Result<(), Closed> {
 		loop {
 			{
 				let state = self.state.lock();

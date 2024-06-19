@@ -10,11 +10,11 @@
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Reader] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [ServeError::Closed] when all writers or readers are dropped.
+//! The track is closed with [Closed::Closed] when all writers or readers are dropped.
 
-use crate::{util::State, GroupOrder};
+use super::{Group, GroupReader, GroupWriter};
+use crate::{util::State, Closed, GroupOrder};
 
-use super::{Group, GroupReader, GroupWriter, ServeError};
 use std::{cmp::Ordering, ops::Deref, sync::Arc, time};
 
 /// Static information about a track.
@@ -85,7 +85,7 @@ impl TrackBuilder {
 struct TrackState {
 	latest: Option<GroupReader>,
 	epoch: u64, // Updated each time latest changes
-	closed: Result<(), ServeError>,
+	closed: Result<(), Closed>,
 }
 
 impl Default for TrackState {
@@ -112,16 +112,16 @@ impl TrackWriter {
 	}
 
 	// Build a new group with the given sequence number.
-	pub fn create(&mut self, sequence: u64) -> Result<GroupWriter, ServeError> {
+	pub fn create(&mut self, sequence: u64) -> Result<GroupWriter, Closed> {
 		let group = Group::new(sequence);
 		let (writer, reader) = group.produce();
 
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
+		let mut state = self.state.lock_mut().ok_or(Closed::Cancel)?;
 
 		if let Some(latest) = &state.latest {
 			match writer.sequence.cmp(&latest.sequence) {
 				Ordering::Less => return Ok(writer), // TODO dropped immediately, lul
-				Ordering::Equal => return Err(ServeError::Duplicate),
+				Ordering::Equal => return Err(Closed::Duplicate),
 				Ordering::Greater => state.latest = Some(reader),
 			}
 		} else {
@@ -137,16 +137,16 @@ impl TrackWriter {
 	}
 
 	// Build a new group with the next sequence number.
-	pub fn append(&mut self) -> Result<GroupWriter, ServeError> {
+	pub fn append(&mut self) -> Result<GroupWriter, Closed> {
 		self.create(self.next)
 	}
 
 	/// Close the segment with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, err: Closed) -> Result<(), Closed> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
-		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
+		let mut state = state.into_mut().ok_or(Closed::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -195,7 +195,7 @@ impl TrackReader {
 
 	// NOTE: This can return groups out of order.
 	// TODO obey order and expires
-	pub async fn next(&mut self) -> Result<Option<GroupReader>, ServeError> {
+	pub async fn next(&mut self) -> Result<Option<GroupReader>, Closed> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -221,7 +221,7 @@ impl TrackReader {
 		state.latest.as_ref().map(|group| group.sequence)
 	}
 
-	pub async fn closed(&self) -> Result<(), ServeError> {
+	pub async fn closed(&self) -> Result<(), Closed> {
 		loop {
 			{
 				let state = self.state.lock();

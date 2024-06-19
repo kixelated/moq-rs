@@ -2,7 +2,7 @@ use anyhow::Context;
 use bytes::BytesMut;
 use std::collections::{HashSet, VecDeque};
 
-use moq_transfork::{GroupReader, GroupWriter, ServeError, TrackReader, TrackWriter};
+use moq_transfork::{Closed, GroupReader, GroupWriter, TrackReader, TrackWriter};
 
 pub struct ListingWriter {
 	track: Option<TrackWriter>,
@@ -22,9 +22,9 @@ impl ListingWriter {
 		}
 	}
 
-	pub fn insert(&mut self, name: String) -> Result<(), ServeError> {
+	pub fn insert(&mut self, name: String) -> Result<(), Closed> {
 		if !self.current.insert(name.clone()) {
-			return Err(ServeError::Duplicate);
+			return Err(Closed::Duplicate);
 		}
 
 		match self.group {
@@ -40,9 +40,9 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, name: &str) -> Result<(), ServeError> {
+	pub fn remove(&mut self, name: &str) -> Result<(), Closed> {
 		if !self.current.remove(name) {
-			return Err(ServeError::NotFound);
+			return Err(Closed::NotFound);
 		}
 
 		match self.group {
@@ -58,7 +58,7 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	fn snapshot(&mut self) -> Result<GroupWriter, ServeError> {
+	fn snapshot(&mut self) -> Result<GroupWriter, Closed> {
 		let mut groups = match self.groups.take() {
 			Some(groups) => groups,
 			None => self.track.take().unwrap(),

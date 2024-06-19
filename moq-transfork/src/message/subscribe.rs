@@ -9,8 +9,9 @@ use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 pub struct Subscribe {
 	pub id: u64,
 	pub broadcast: String,
+
 	pub track: String,
-	pub priority: u64,
+	pub track_priority: u64,
 
 	pub group_order: Option<SubscribeOrder>,
 	pub group_expires: Option<time::Duration>,
@@ -35,7 +36,7 @@ impl Decode for Subscribe {
 			id,
 			broadcast,
 			track,
-			priority,
+			track_priority: priority,
 			group_order: order,
 			group_expires: expires,
 			group_min: min,
@@ -49,7 +50,7 @@ impl Encode for Subscribe {
 		self.id.encode(w)?;
 		self.broadcast.encode(w)?;
 		self.track.encode(w)?;
-		self.priority.encode(w)?;
+		self.track_priority.encode(w)?;
 		self.group_order.encode(w)?;
 		self.group_expires.encode(w)?;
 		self.group_min.encode(w)?;

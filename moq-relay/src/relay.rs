@@ -80,7 +80,6 @@ impl Relay {
 
 					tasks.push(async move {
 						let (session, publisher, subscriber) = moq_transfork::Session::accept(conn).await?;
-
 						let session = Session {
 							session,
 							producer: publisher.map(|publisher| Producer::new(publisher, locals.clone())),

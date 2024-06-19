@@ -7,8 +7,8 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	coding::{Reader, Stream},
-	message, setup, Broadcast, BroadcastReader, ServeError, Track, TrackReader, TrackWriter, UnknownReader,
-	UnknownWriter,
+	message, setup, Broadcast, BroadcastReader, BroadcastWriter, Closed, Track, TrackReader, TrackWriter,
+	UnknownReader, UnknownWriter,
 };
 
 use crate::util::Queue;
@@ -54,17 +54,24 @@ impl Subscriber {
 		self.announced.pop().await
 	}
 
-	// TODO this should be async and block until Info is returned
+	// Manually route a broadcast to this subscriber.
+	pub fn route(&mut self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
+		let (mut writer, reader) = broadcast.produce();
+		writer.unknown(self.unknown.clone())?;
+		Ok(reader)
+	}
+
 	pub fn subscribe(&mut self, track: Track) -> TrackReader {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = message::Subscribe {
 			id,
 			broadcast: track.broadcast.to_string(),
+
 			track: track.name.clone(),
+			track_priority: track.priority.unwrap_or(0),
 
 			// TODO
-			priority: track.priority.unwrap_or(0),
 			group_order: track.group_order.map(Into::into),
 			group_expires: None,
 			group_min: None,
@@ -104,10 +111,10 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn run_announce(&mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub(super) async fn run_announce(&mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let msg: message::Announce = control.reader.decode().await?;
 		let (mut writer, reader) = Broadcast::new(&msg.broadcast).produce();
-		writer.unknown(self.unknown.clone());
+		writer.unknown(self.unknown.clone())?;
 
 		let announced = Announced::new(writer);
 		let _ = self.announced.push(reader);
@@ -115,7 +122,7 @@ impl Subscriber {
 		announced.run(control).await
 	}
 
-	pub(super) async fn run_group(&mut self, mut reader: Reader) -> Result<(), SessionError> {
+	pub(super) async fn run_group(&mut self, reader: &mut Reader) -> Result<(), SessionError> {
 		let header: message::Group = reader.decode().await?;
 
 		let mut group = self
@@ -123,7 +130,7 @@ impl Subscriber {
 			.lock()
 			.unwrap()
 			.get_mut(&header.subscribe)
-			.ok_or(ServeError::NotFound)?
+			.ok_or(Closed::NotFound)?
 			.create(header.sequence)?;
 
 		while let Some(chunk) = reader.read_chunk(usize::MAX).await? {

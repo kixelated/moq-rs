@@ -10,10 +10,13 @@ pub struct Session {
 
 impl Session {
 	pub async fn run(self) -> Result<(), moq_transfork::SessionError> {
+		log::info!("running session");
+
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(self.session.run().boxed());
 
 		if let Some(producer) = self.producer {
+			log::info!("running publisher");
 			tasks.push(producer.run().boxed());
 		}
 

@@ -6,8 +6,8 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	coding::Stream, message, setup, util::Queue, BroadcastReader, ServeError, Track, TrackReader, Unknown,
-	UnknownReader, UnknownWriter,
+	coding::Stream, message, setup, util::Queue, BroadcastReader, Closed, Track, TrackReader, Unknown, UnknownReader,
+	UnknownWriter,
 };
 
 use super::{Announce, Session, SessionError, Subscribed};
@@ -46,13 +46,15 @@ impl Publisher {
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
 	pub fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
 		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
+			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
 		let msg = message::Announce {
 			broadcast: broadcast.name.clone(),
 		};
+
+		log::info!("announced: broadcast={}", broadcast.name);
 
 		let announce = Announce::new(msg, broadcast);
 		if let Err(_) = self.announced.push(announce) {
@@ -95,21 +97,31 @@ impl Publisher {
 	async fn subscribe(&mut self, track: Track) -> Option<TrackReader> {
 		let broadcast = self.broadcasts.lock().unwrap().get(&track.broadcast).cloned();
 		if let Some(mut broadcast) = broadcast {
+			log::info!("found announcement: {:?}", broadcast.info);
 			return broadcast.subscribe(track).await;
 		}
 
 		if let Some(unknown) = self.unknown.as_mut() {
+			log::info!("found unnknown");
 			return unknown.subscribe(track).await;
 		}
+
+		log::info!("did not find unknown");
 
 		None
 	}
 
-	pub(super) async fn run_subscribe(&mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub(super) async fn run_subscribe(&mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let subscribe: message::Subscribe = control.reader.decode().await?;
 
+		log::info!(
+			"received subscription: broadcast={} track={}",
+			subscribe.broadcast,
+			subscribe.track,
+		);
+
 		let track = Track::new(&subscribe.broadcast, &subscribe.track).build();
-		let mut track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
+		let mut track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
 
 		// TODO this is wrong in the requested case
 		let info = message::Info {
@@ -122,25 +134,33 @@ impl Publisher {
 
 		// Change to our subscribe order and priority before we start reading.
 		track.order = subscribe.group_order.map(Into::into);
-		track.priority = Some(subscribe.priority);
+		track.priority = Some(subscribe.track_priority);
 
 		let subscribed = Subscribed::new(self.webtransport.clone(), subscribe, track);
 		subscribed.run(control).await
 	}
 
-	pub(super) async fn run_datagrams(&mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub(super) async fn run_datagrams(&mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let subscribe: message::Subscribe = control.reader.decode().await?;
+
+		log::info!(
+			"received datagram subscription: broadcast={} track={}",
+			subscribe.broadcast,
+			subscribe.track,
+		);
 
 		todo!("datagrams");
 	}
 
 	// TODO close Writer on error
-	pub(super) async fn run_fetch(&mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub(super) async fn run_fetch(&mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let fetch: message::Fetch = control.reader.decode().await?;
 
+		log::info!("received fetch: broadcast={} track={}", fetch.broadcast, fetch.track,);
+
 		let track = Track::new(&fetch.broadcast, &fetch.track).build();
-		let track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
-		let group = track.get(fetch.group).ok_or(ServeError::NotFound)?;
+		let track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
+		let group = track.get(fetch.group).ok_or(Closed::NotFound)?;
 
 		unimplemented!("TODO fetch");
 
@@ -156,11 +176,17 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn run_info(&mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub(super) async fn run_info(&mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let info: message::InfoRequest = control.reader.decode().await?;
 
+		log::info!(
+			"received info request: broadcast={} track={}",
+			info.broadcast,
+			info.track,
+		);
+
 		let track = Track::new(&info.broadcast, &info.track).build();
-		let track = self.subscribe(track).await.ok_or(ServeError::NotFound)?;
+		let track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
 
 		let info = message::Info {
 			latest: track.latest(),

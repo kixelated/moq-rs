@@ -4,7 +4,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
 use crate::coding::{Stream, Writer};
-use crate::ServeError;
+use crate::Closed;
 use crate::{message, GroupReader, TrackReader};
 
 use super::SessionError;
@@ -27,7 +27,7 @@ impl Subscribed {
 		}
 	}
 
-	pub async fn run(mut self, mut control: Stream) -> Result<(), SessionError> {
+	pub async fn run(mut self, control: &mut Stream) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut fin = false;
 
@@ -96,7 +96,7 @@ impl Subscribed {
 		Ok(())
 	}
 
-	fn recv_update(&mut self, update: message::SubscribeUpdate) -> Result<(), ServeError> {
+	fn recv_update(&mut self, update: message::SubscribeUpdate) -> Result<(), Closed> {
 		todo!("SubscribeUpdate");
 		self.update = Some(update);
 		Ok(())

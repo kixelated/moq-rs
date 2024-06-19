@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use moq_transfork::BroadcastReader;
-use moq_transfork::ServeError;
+use moq_transfork::Closed;
 
 #[derive(Clone)]
 pub struct Locals {
@@ -35,7 +35,7 @@ impl Locals {
 
 		match self.broadcasts.lock().unwrap().entry(name.clone()) {
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast),
-			hash_map::Entry::Occupied(_) => return Err(ServeError::Duplicate.into()),
+			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
 		};
 
 		let registration = LocalRegistration {
@@ -47,6 +47,7 @@ impl Locals {
 	}
 
 	pub fn route(&self, broadcast: &str) -> Option<BroadcastReader> {
+		log::info!("routing broadcast: {:?}", broadcast);
 		self.broadcasts.lock().unwrap().get(broadcast).cloned()
 	}
 }

@@ -12,7 +12,7 @@ impl Announced {
 		Self { broadcast }
 	}
 
-	pub async fn run(self, mut stream: Stream) -> Result<(), SessionError> {
+	pub async fn run(self, stream: &mut Stream) -> Result<(), SessionError> {
 		// Wait until either the reader or the session is closed.
 		tokio::select! {
 			res = stream.reader.closed() => res?,

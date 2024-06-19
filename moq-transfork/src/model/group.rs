@@ -12,7 +12,7 @@ use std::{ops::Deref, sync::Arc};
 
 use crate::{message::SubscribeOrder, util::State};
 
-use super::{Frame, FrameReader, FrameWriter, ServeError};
+use super::{Closed, Frame, FrameReader, FrameWriter};
 
 /// Parameters that can be specified by the user
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +43,7 @@ struct GroupState {
 	frames: Vec<FrameReader>,
 
 	// Set when the writer or all readers are dropped.
-	closed: Result<(), ServeError>,
+	closed: Result<(), Closed>,
 }
 
 impl Default for GroupState {
@@ -73,27 +73,25 @@ impl GroupWriter {
 	}
 
 	// Write a frame in one go
-	pub fn write(&mut self, frame: bytes::Bytes) -> Result<(), ServeError> {
+	pub fn write(&mut self, frame: bytes::Bytes) -> Result<(), Closed> {
 		self.write_chunks(frame.len())?.write(frame)
 	}
 
 	// Create a frame with an upfront size
-	pub fn write_chunks(&mut self, size: usize) -> Result<FrameWriter, ServeError> {
+	pub fn write_chunks(&mut self, size: usize) -> Result<FrameWriter, Closed> {
 		let (writer, reader) = Frame::new(size).produce();
-		let mut state = self.state.lock_mut().ok_or(ServeError::Cancel)?;
-		state.frames.push(reader);
+
+		self.state.lock_mut().ok_or(Closed::Cancel)?.frames.push(reader);
 		self.total += 1;
+
 		Ok(writer)
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: ServeError) -> Result<(), ServeError> {
+	pub fn close(&mut self, err: Closed) -> Result<(), Closed> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-
-		let mut state = state.into_mut().ok_or(ServeError::Cancel)?;
-		state.closed = Err(err);
-
+		state.into_mut().ok_or(Closed::Cancel)?.closed = Err(err);
 		Ok(())
 	}
 
@@ -134,7 +132,7 @@ impl GroupReader {
 	}
 
 	// Read the next frame.
-	pub async fn read(&mut self) -> Result<Option<Bytes>, ServeError> {
+	pub async fn read(&mut self) -> Result<Option<Bytes>, Closed> {
 		Ok(match self.read_chunks().await? {
 			Some(mut reader) => Some(reader.read_all().await?),
 			None => None,
@@ -142,7 +140,7 @@ impl GroupReader {
 	}
 
 	// Return a reader for the next frame.
-	pub async fn read_chunks(&mut self) -> Result<Option<FrameReader>, ServeError> {
+	pub async fn read_chunks(&mut self) -> Result<Option<FrameReader>, Closed> {
 		loop {
 			{
 				let state = self.state.lock();

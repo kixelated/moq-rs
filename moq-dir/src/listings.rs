@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::{Broadcast, BroadcastReader, BroadcastWriter, ServeError};
+use moq_transfork::{Broadcast, BroadcastReader, BroadcastWriter, Closed};
 
 use crate::ListingWriter;
 
@@ -34,7 +34,7 @@ impl Listings {
 	}
 
 	// Returns a Registration that removes on drop.
-	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, ServeError> {
+	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, Closed> {
 		let (prefix, base) = Self::prefix(path);
 
 		if !prefix.starts_with(&self.reader.name) {
@@ -66,10 +66,10 @@ impl Listings {
 		}))
 	}
 
-	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), ServeError> {
+	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), Closed> {
 		let mut state = self.state.lock().unwrap();
 
-		let listing = state.active.get_mut(prefix).ok_or(ServeError::NotFound)?;
+		let listing = state.active.get_mut(prefix).ok_or(Closed::NotFound)?;
 		listing.remove(base)?;
 
 		log::info!("removed listing: {} {}", prefix, base);

@@ -75,7 +75,8 @@ impl Media {
 					})
 					.build();
 
-				let track = MediaTrack::new(subscriber.subscribe(track));
+				let track = subscriber.subscribe(track);
+				let track = MediaTrack::new(track);
 				tasks.push(track.next().boxed());
 			}
 		}
