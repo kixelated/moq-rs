@@ -61,7 +61,30 @@ impl Subscriber {
 		Ok(reader)
 	}
 
-	pub fn subscribe(&mut self, track: Track) -> TrackReader {
+	pub async fn subscribe(&mut self, track: Track) -> Result<TrackReader, SessionError> {
+		let mut control = Stream::open(&mut self.webtransport, message::Control::Subscribe).await?;
+
+		let (id, reader) = match self.subscribe_start(track, &mut control).await {
+			Ok(v) => v,
+			Err(err) => {
+				control.writer.reset(err.code());
+				return Err(err);
+			}
+		};
+
+		let subscribe = Subscribe::new(id, control, reader.clone());
+		if self.subscribe.push(subscribe).is_err() {
+			return Err(SessionError::Internal);
+		}
+
+		Ok(reader)
+	}
+
+	async fn subscribe_start(
+		&mut self,
+		track: Track,
+		control: &mut Stream,
+	) -> Result<(u64, TrackReader), SessionError> {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 		let msg = message::Subscribe {
@@ -69,43 +92,55 @@ impl Subscriber {
 			broadcast: track.broadcast.to_string(),
 
 			track: track.name.clone(),
-			track_priority: track.priority.unwrap_or(0),
+			priority: track.priority,
+
+			group_order: track.group_order,
+			group_expires: track.group_expires,
 
 			// TODO
-			group_order: track.group_order.map(Into::into),
-			group_expires: None,
 			group_min: None,
 			group_max: None,
 		};
 
+		control.writer.encode(&msg).await?;
+
+		// TODO use the response to update the track
+		let info: message::Info = control.reader.decode().await?;
+
 		let (writer, reader) = track.produce();
-		let subscribe = Subscribe::new(msg, reader.clone());
-
 		self.lookup.lock().unwrap().insert(id, writer);
-		let _ = self.subscribe.push(subscribe);
 
-		reader
+		Ok((id, reader))
 	}
 
-	pub(super) async fn run(mut self, mut unknown: UnknownWriter) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
+	pub(super) async fn run(self, mut unknown: UnknownWriter) -> Result<(), SessionError> {
+		let mut subscribes = FuturesUnordered::new();
+		let mut unknowns = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				Some(mut subscribe) = self.subscribe.pop() => {
-					let this = self.clone();
-					tasks.push(async move {
-						// TODO error handling
-						let res = subscribe.run(this.webtransport).await;
-						this.lookup.lock().unwrap().remove(&subscribe.id);
-						res
-					});
-				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
+				Some(mut subscribe) = self.subscribe.pop() => subscribes.push(async move {
+					subscribe.run().await;
+					subscribe.id
+				}),
+				res = subscribes.next(), if !subscribes.is_empty() => {
+					let id = res.unwrap();
+					self.lookup.lock().unwrap().remove(&id);
+				}
 				Some(unknown) = unknown.requested() => {
-					let track = self.subscribe(unknown.track.clone());
-					unknown.respond(track);
+					let mut this = self.clone();
+
+					unknowns.push(async move {
+						match this.subscribe(unknown.track.clone()).await {
+							Ok(track) => unknown.respond(track),
+							Err(SessionError::Closed(err)) => unknown.close(err),
+							Err(err) => return Err(err),
+						};
+
+						Ok(())
+					})
 				},
+				res = unknowns.next(), if !unknowns.is_empty() => res.unwrap()?,
 				else => return Ok(()),
 			};
 		}
@@ -130,7 +165,7 @@ impl Subscriber {
 			.lock()
 			.unwrap()
 			.get_mut(&header.subscribe)
-			.ok_or(Closed::NotFound)?
+			.ok_or(Closed::UnknownSubscribe)?
 			.create(header.sequence)?;
 
 		while let Some(chunk) = reader.read_chunk(usize::MAX).await? {

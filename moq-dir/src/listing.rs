@@ -42,7 +42,8 @@ impl ListingWriter {
 
 	pub fn remove(&mut self, name: &str) -> Result<(), Closed> {
 		if !self.current.remove(name) {
-			return Err(Closed::NotFound);
+			// TODO this is a wrong error message.
+			return Err(Closed::UnknownGroup);
 		}
 
 		match self.group {

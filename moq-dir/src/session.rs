@@ -22,7 +22,7 @@ impl Session {
 		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed());
 
 		if let Some(mut remote) = publisher {
-			remote.announce(self.listings.broadcast())?;
+			remote.announce(self.listings.broadcast()).await?;
 		}
 
 		if let Some(remote) = subscriber {

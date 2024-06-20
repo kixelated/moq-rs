@@ -1,44 +1,33 @@
-use std::ops;
-
-use crate::{coding::Stream, message, BroadcastReader};
+use crate::{
+	coding::{self},
+	BroadcastReader,
+};
 
 use super::SessionError;
 
 pub struct Announce {
-	msg: message::Announce,
-	broadcast: BroadcastReader,
+	pub broadcast: String,
+	reader: BroadcastReader,
+	stream: coding::Stream,
 }
 
 impl Announce {
-	pub fn new(msg: message::Announce, broadcast: BroadcastReader) -> Self {
-		Self { msg, broadcast }
+	pub fn new(reader: BroadcastReader, stream: coding::Stream) -> Self {
+		Self {
+			broadcast: reader.name.clone(),
+			reader,
+			stream,
+		}
 	}
 
-	pub async fn run(&mut self, session: web_transport::Session) -> Result<(), SessionError> {
-		tokio::select! {
-			res = self.run_inner(session) => res?,
-			res = self.broadcast.closed() => res?,
+	pub async fn run(&mut self) {
+		let res = tokio::select! {
+			res = self.stream.reader.closed() => res.map_err(SessionError::from),
+			res = self.reader.closed() => res.map_err(SessionError::from),
 		};
 
-		Ok(())
-	}
-
-	pub async fn run_inner(&self, mut session: web_transport::Session) -> Result<(), SessionError> {
-		let mut stream = Stream::open(&mut session, message::Control::Announce).await?;
-
-		// TODO handle errors
-		stream.writer.encode(&self.msg).await?;
-		let _ = stream.reader.decode::<message::AnnounceOk>().await;
-		stream.reader.closed().await?;
-
-		Ok(())
-	}
-}
-
-impl ops::Deref for Announce {
-	type Target = message::Announce;
-
-	fn deref(&self) -> &Self::Target {
-		&self.msg
+		if let Err(err) = res {
+			self.stream.writer.reset(err.code());
+		}
 	}
 }

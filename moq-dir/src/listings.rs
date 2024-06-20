@@ -50,7 +50,7 @@ impl Listings {
 			listing.insert(base.to_string())?;
 		} else {
 			log::info!("creating prefix: {}", prefix);
-			let track = state.writer.create(prefix).build().unwrap();
+			let track = state.writer.create(prefix, 0).build().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -69,7 +69,8 @@ impl Listings {
 	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), Closed> {
 		let mut state = self.state.lock().unwrap();
 
-		let listing = state.active.get_mut(prefix).ok_or(Closed::NotFound)?;
+		// TODO this is the wrong error message.
+		let listing = state.active.get_mut(prefix).ok_or(Closed::UnknownTrack)?;
 		listing.remove(base)?;
 
 		log::info!("removed listing: {} {}", prefix, base);

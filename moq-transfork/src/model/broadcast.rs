@@ -68,8 +68,8 @@ impl BroadcastWriter {
 		Self { state, info }
 	}
 
-	pub fn create(&mut self, name: &str) -> BroadcastTrackBuilder {
-		BroadcastTrackBuilder::new(self, name)
+	pub fn create(&mut self, name: &str, priority: u64) -> BroadcastTrackBuilder {
+		BroadcastTrackBuilder::new(self, name, priority)
 	}
 
 	/// Optionally route unknown tracks to the provided [UnknownReader].
@@ -134,9 +134,9 @@ pub struct BroadcastTrackBuilder<'a> {
 }
 
 impl<'a> BroadcastTrackBuilder<'a> {
-	fn new(broadcast: &'a mut BroadcastWriter, name: &str) -> Self {
+	fn new(broadcast: &'a mut BroadcastWriter, name: &str, priority: u64) -> Self {
 		Self {
-			track: Track::new(&broadcast.name, name),
+			track: Track::new(&broadcast.name, name, priority),
 			broadcast,
 		}
 	}
@@ -175,16 +175,14 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	///
-	/// None is returned if [BroadcastWriter] cannot fufill the request.
-	pub async fn subscribe(&mut self, track: Track) -> Option<TrackReader> {
+	pub async fn subscribe(&mut self, track: Track) -> Result<TrackReader, Closed> {
 		let unknown = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {
-				return Some(track);
+				return Ok(track);
 			}
 
-			state.unknown.clone()?
+			state.unknown.clone().ok_or(Closed::UnknownTrack)?
 		};
 
 		// TODO cache to deduplicate?

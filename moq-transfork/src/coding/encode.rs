@@ -27,6 +27,13 @@ pub enum EncodeError {
 	InvalidValue,
 }
 
+impl Encode for u8 {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		w.put_u8(*self);
+		Ok(())
+	}
+}
+
 impl Encode for String {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.as_str().encode(w)

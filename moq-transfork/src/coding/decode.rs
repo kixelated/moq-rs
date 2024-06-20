@@ -56,6 +56,15 @@ pub enum DecodeError {
 	InvalidParameter,
 }
 
+impl Decode for u8 {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		match r.has_remaining() {
+			true => Ok(r.get_u8()),
+			false => Err(DecodeError::More(1)),
+		}
+	}
+}
+
 impl Decode for String {
 	/// Decode a string with a varint length prefix.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {

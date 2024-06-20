@@ -19,8 +19,8 @@ pub struct Media {
 impl Media {
 	// TODO TODO use the catalog to discover tracks, not the init segment
 	pub async fn load(mut subscriber: Subscriber, broadcast: Broadcast) -> anyhow::Result<Self> {
-		let init = Track::new(&broadcast.name, "0.mp4").priority(0).build();
-		let mut init = subscriber.subscribe(init);
+		let init = Track::new(&broadcast.name, "0.mp4", 0).build();
+		let mut init = subscriber.subscribe(init).await?;
 
 		let init = init
 			.next()
@@ -67,15 +67,15 @@ impl Media {
 				let track_type =
 					mp4::TrackType::try_from(&trak.mdia.hdlr.handler_type).context("unnknown track type")?;
 
-				let track = Track::new(&broadcast.name, &name)
-					.priority(match track_type {
-						mp4::TrackType::Video => 3,
-						mp4::TrackType::Audio => 2,
-						mp4::TrackType::Subtitle => 1,
-					})
-					.build();
+				let priority = match track_type {
+					mp4::TrackType::Video => 3,
+					mp4::TrackType::Audio => 2,
+					mp4::TrackType::Subtitle => 1,
+				};
 
-				let track = subscriber.subscribe(track);
+				let track = Track::new(&broadcast.name, &name, priority).build();
+
+				let track = subscriber.subscribe(track).await?;
 				let track = MediaTrack::new(track);
 				tasks.push(track.next().boxed());
 			}

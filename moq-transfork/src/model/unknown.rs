@@ -2,7 +2,7 @@ use std::ops;
 
 use crate::{
 	util::{Queue, State},
-	TrackWriter,
+	Closed, TrackWriter,
 };
 
 use super::{Track, TrackReader};
@@ -45,10 +45,10 @@ impl UnknownReader {
 		Self { queue }
 	}
 
-	pub async fn subscribe(&self, track: Track) -> Option<TrackReader> {
+	pub async fn subscribe(&self, track: Track) -> Result<TrackReader, Closed> {
 		let request = UnknownRequest::new(track);
 		if self.queue.push(request.split()).is_err() {
-			return None;
+			return Err(Closed::Cancel);
 		}
 
 		request.response().await
@@ -57,7 +57,7 @@ impl UnknownReader {
 
 pub struct UnknownRequest {
 	pub track: Track,
-	reply: State<Option<TrackReader>>,
+	reply: State<Option<Result<TrackReader, Closed>>>,
 }
 
 impl UnknownRequest {
@@ -77,7 +77,7 @@ impl UnknownRequest {
 
 	pub fn respond(self, track: TrackReader) {
 		if let Some(mut state) = self.reply.lock_mut() {
-			state.replace(track);
+			state.replace(Ok(track));
 		}
 	}
 
@@ -88,15 +88,22 @@ impl UnknownRequest {
 		writer
 	}
 
-	pub async fn response(self) -> Option<TrackReader> {
+	pub fn close(self, error: Closed) {
+		if let Some(mut state) = self.reply.lock_mut() {
+			state.replace(Err(error));
+		}
+	}
+
+	pub async fn response(self) -> Result<TrackReader, Closed> {
 		loop {
 			{
 				let state = self.reply.lock();
-				if let Some(track) = state.clone() {
-					return Some(track);
+				if let Some(res) = state.clone() {
+					return res;
 				}
 
-				state.modified()?
+				// TODO This error might be wrong, depending on the context
+				state.modified().ok_or(Closed::UnknownBroadcast)?
 			}
 			.await
 		}

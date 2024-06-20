@@ -1,50 +1,37 @@
-use std::ops;
-
-use crate::coding::Stream;
-use crate::message;
-use crate::TrackReader;
+use crate::{coding, message, model};
 
 use super::SessionError;
 
 pub struct Subscribe {
-	msg: message::Subscribe,
-	track: TrackReader,
+	pub id: u64,
+	stream: coding::Stream,
+	track: model::TrackReader,
 }
 
 impl Subscribe {
-	pub(super) fn new(msg: message::Subscribe, track: TrackReader) -> Self {
-		Self { msg, track }
+	pub(super) fn new(id: u64, stream: coding::Stream, track: model::TrackReader) -> Self {
+		Self { id, stream, track }
 	}
 
-	pub async fn run(&mut self, session: web_transport::Session) -> Result<(), SessionError> {
-		tokio::select! {
-			res = self.track.closed() => res?,
-			res = self.run_inner(session) => res?,
-		};
-
-		Ok(())
-	}
-
-	pub async fn run_inner(&self, mut session: web_transport::Session) -> Result<(), SessionError> {
-		let mut control = Stream::open(&mut session, message::Control::Subscribe).await?;
-		control.writer.encode(&self.msg).await?;
-
-		let info: message::Info = control.reader.decode().await?;
-
-		while let Some(dropped) = control.reader.decode_maybe::<message::GroupDrop>().await? {
-			// TODO expose to application
+	// TODO allow the application to update the subscription
+	pub async fn run(&mut self) {
+		let res = self.run_inner().await;
+		if let Err(err) = &res {
+			self.stream.writer.reset(err.code());
 		}
-
-		// TODO allow the application to update the subscription
-
-		Ok(())
 	}
-}
 
-impl ops::Deref for Subscribe {
-	type Target = message::Subscribe;
-
-	fn deref(&self) -> &Self::Target {
-		&self.msg
+	async fn run_inner(&mut self) -> Result<(), SessionError> {
+		loop {
+			tokio::select! {
+				res = self.stream.reader.decode_maybe::<message::GroupDrop>() => {
+					// TODO expose updates to application
+					if res?.is_none() {
+						return Ok(())
+					}
+				},
+				res = self.track.closed() => res?,
+			};
+		}
 	}
 }

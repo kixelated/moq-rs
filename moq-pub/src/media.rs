@@ -28,8 +28,8 @@ pub struct Media {
 
 impl Media {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast.create(".catalog").build().context("broadcast closed")?;
-		let init = broadcast.create("0.mp4").build().context("broadcast closed")?;
+		let catalog = broadcast.create(".catalog", 0).build().context("broadcast closed")?;
+		let init = broadcast.create("0.mp4", 1).build().context("broadcast closed")?;
 
 		Ok(Media {
 			tracks: Default::default(),
@@ -134,8 +134,19 @@ impl Media {
 
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
+			// Change the track priority based on the media type
+			let priority = match handler {
+				TrackType::Video => 4,
+				TrackType::Audio => 3,
+				TrackType::Subtitle => 2,
+			};
+
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create(&name).build().context("broadcast closed")?;
+			let track = self
+				.broadcast
+				.create(&name, priority)
+				.build()
+				.context("broadcast closed")?;
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
 		}

@@ -66,8 +66,9 @@ async fn main() -> anyhow::Result<()> {
 		.context("failed to create MoQ Transport publisher")?;
 
 	let (writer, reader) = Broadcast::new(&cli.name).produce();
-	publisher.announce(reader).context("failed to announce")?;
 	let media = Media::new(writer)?;
+
+	publisher.announce(reader).await.context("failed to announce")?;
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,

@@ -13,7 +13,8 @@
 //! The track is closed with [Closed::Closed] when all writers or readers are dropped.
 
 use super::{Group, GroupReader, GroupWriter};
-use crate::{util::State, Closed, GroupOrder};
+pub use crate::message::GroupOrder;
+use crate::{util::State, Closed};
 
 use std::{cmp::Ordering, ops::Deref, sync::Arc, time};
 
@@ -22,18 +23,18 @@ use std::{cmp::Ordering, ops::Deref, sync::Arc, time};
 pub struct Track {
 	pub broadcast: String,
 	pub name: String,
-	pub priority: Option<u64>,
-	pub group_order: Option<GroupOrder>,
+	pub priority: u64,
+	pub group_order: GroupOrder,
 	pub group_expires: Option<time::Duration>,
 }
 
 impl Track {
-	pub fn new(broadcast: &str, name: &str) -> TrackBuilder {
+	pub fn new(broadcast: &str, name: &str, priority: u64) -> TrackBuilder {
 		TrackBuilder::new(Self {
 			broadcast: broadcast.to_string(),
 			name: name.to_string(),
-			priority: None,
-			group_order: None,
+			priority,
+			group_order: GroupOrder::Descending,
 			group_expires: None,
 		})
 	}
@@ -58,17 +59,12 @@ impl TrackBuilder {
 		Self { track }
 	}
 
-	pub fn order(mut self, order: GroupOrder) -> Self {
-		self.track.group_order = Some(order);
+	pub fn group_order(mut self, order: GroupOrder) -> Self {
+		self.track.group_order = order;
 		self
 	}
 
-	pub fn priority(mut self, priority: u64) -> Self {
-		self.track.priority = Some(priority);
-		self
-	}
-
-	pub fn expires(mut self, expires: time::Duration) -> Self {
+	pub fn group_expires(mut self, expires: time::Duration) -> Self {
 		self.track.group_expires = Some(expires);
 		self
 	}
@@ -166,31 +162,25 @@ pub struct TrackReader {
 	pub info: Arc<Track>,
 	state: State<TrackState>,
 	epoch: u64,
-
-	pub priority: Option<u64>,
-	pub order: Option<GroupOrder>,
 }
 
 impl TrackReader {
 	fn new(state: State<TrackState>, info: Arc<Track>) -> Self {
-		Self {
-			state,
-			epoch: 0,
-			order: info.group_order,
-			priority: info.priority,
-			info,
-		}
+		Self { state, epoch: 0, info }
 	}
 
-	pub fn get(&self, sequence: u64) -> Option<GroupReader> {
+	pub fn get(&self, sequence: u64) -> Result<GroupReader, Closed> {
 		let state = self.state.lock();
 
 		// TODO support more than just the latest group
-		state
-			.latest
-			.as_ref()
-			.filter(|group| group.sequence == sequence)
-			.cloned()
+		if let Some(latest) = &state.latest {
+			if latest.sequence == sequence {
+				return Ok(latest.clone());
+			}
+		}
+
+		state.closed.clone()?;
+		Err(Closed::UnknownGroup)
 	}
 
 	// NOTE: This can return groups out of order.
@@ -216,9 +206,9 @@ impl TrackReader {
 	}
 
 	// Returns the largest group
-	pub fn latest(&self) -> Option<u64> {
+	pub fn latest(&self) -> u64 {
 		let state = self.state.lock();
-		state.latest.as_ref().map(|group| group.sequence)
+		state.latest.as_ref().map(|group| group.sequence).unwrap_or_default()
 	}
 
 	pub async fn closed(&self) -> Result<(), Closed> {

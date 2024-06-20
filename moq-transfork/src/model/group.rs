@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use std::{ops::Deref, sync::Arc};
 
-use crate::{message::SubscribeOrder, util::State};
+use crate::util::State;
 
 use super::{Closed, Frame, FrameReader, FrameWriter};
 
@@ -178,5 +178,3 @@ impl Deref for GroupReader {
 		&self.info
 	}
 }
-
-pub type GroupOrder = SubscribeOrder;

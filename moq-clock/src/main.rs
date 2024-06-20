@@ -61,9 +61,12 @@ async fn main() -> anyhow::Result<()> {
 			.context("failed to create MoQ Transport session")?;
 
 		let (mut writer, reader) = Broadcast::new(&config.broadcast).produce();
-		publisher.announce(reader).context("failed to announce broadcast")?;
+		publisher
+			.announce(reader)
+			.await
+			.context("failed to announce broadcast")?;
 
-		let track = writer.create(&config.track).build().unwrap();
+		let track = writer.create(&config.track, 0).build()?;
 		let clock = clock::Publisher::new(track);
 
 		tokio::select! {
@@ -75,9 +78,9 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let track = Track::new(&config.broadcast, &config.track).build();
+		let track = Track::new(&config.broadcast, &config.track, 0).build();
 
-		let reader = subscriber.subscribe(track);
+		let reader = subscriber.subscribe(track).await?;
 		let clock = clock::Subscriber::new(reader);
 
 		tokio::select! {

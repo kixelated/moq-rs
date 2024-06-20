@@ -11,9 +11,9 @@ pub struct Subscribe {
 	pub broadcast: String,
 
 	pub track: String,
-	pub track_priority: u64,
+	pub priority: u64,
 
-	pub group_order: Option<SubscribeOrder>,
+	pub group_order: GroupOrder,
 	pub group_expires: Option<time::Duration>,
 	pub group_min: Option<u64>,
 	pub group_max: Option<u64>,
@@ -24,23 +24,23 @@ impl Decode for Subscribe {
 		let id = u64::decode(r)?;
 		let broadcast = String::decode(r)?;
 		let track = String::decode(r)?;
-
 		let priority = u64::decode(r)?;
-		let order = Option::<SubscribeOrder>::decode(r)?;
-		let expires = Option::<time::Duration>::decode(r)?;
 
-		let min = Option::<u64>::decode(r)?;
-		let max = Option::<u64>::decode(r)?;
+		let group_order = GroupOrder::decode(r)?;
+		let group_expires = Option::<time::Duration>::decode(r)?;
+		let group_min = Option::<u64>::decode(r)?;
+		let group_max = Option::<u64>::decode(r)?;
 
 		Ok(Self {
 			id,
 			broadcast,
 			track,
-			track_priority: priority,
-			group_order: order,
-			group_expires: expires,
-			group_min: min,
-			group_max: max,
+			priority,
+
+			group_order,
+			group_expires,
+			group_min,
+			group_max,
 		})
 	}
 }
@@ -50,7 +50,8 @@ impl Encode for Subscribe {
 		self.id.encode(w)?;
 		self.broadcast.encode(w)?;
 		self.track.encode(w)?;
-		self.track_priority.encode(w)?;
+		self.priority.encode(w)?;
+
 		self.group_order.encode(w)?;
 		self.group_expires.encode(w)?;
 		self.group_min.encode(w)?;
@@ -63,27 +64,27 @@ impl Encode for Subscribe {
 #[derive(Clone, Debug)]
 pub struct SubscribeUpdate {
 	pub priority: u64,
-	pub order: Option<SubscribeOrder>,
-	pub expires: Option<u64>,
-	pub min: Option<u64>,
-	pub max: Option<u64>,
+
+	pub group_order: GroupOrder,
+	pub group_expires: Option<time::Duration>,
+	pub group_min: Option<u64>,
+	pub group_max: Option<u64>,
 }
 
 impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let priority = u64::decode(r)?;
-		let order = Option::<SubscribeOrder>::decode(r)?;
-		let expires = Option::<u64>::decode(r)?;
-
-		let min = Option::<u64>::decode(r)?;
-		let max = Option::<u64>::decode(r)?;
+		let group_order = GroupOrder::decode(r)?;
+		let group_expires = Option::<time::Duration>::decode(r)?;
+		let group_min = Option::<u64>::decode(r)?;
+		let group_max = Option::<u64>::decode(r)?;
 
 		Ok(Self {
 			priority,
-			order,
-			expires,
-			min,
-			max,
+			group_order,
+			group_expires,
+			group_min,
+			group_max,
 		})
 	}
 }
@@ -91,38 +92,35 @@ impl Decode for SubscribeUpdate {
 impl Encode for SubscribeUpdate {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.priority.encode(w)?;
-		self.order.encode(w)?;
-		self.expires.encode(w)?;
-		self.min.encode(w)?;
-		self.max.encode(w)?;
+		self.group_order.encode(w)?;
+		self.group_min.encode(w)?;
+		self.group_max.encode(w)?;
 
 		Ok(())
 	}
 }
 
 #[derive(Clone, Debug, Copy)]
-pub enum SubscribeOrder {
+pub enum GroupOrder {
 	Ascending,
 	Descending,
 }
 
-impl Decode for Option<SubscribeOrder> {
+impl Decode for GroupOrder {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		match u64::decode(r)? {
-			0 => Ok(None),
-			1 => Ok(Some(SubscribeOrder::Ascending)),
-			2 => Ok(Some(SubscribeOrder::Descending)),
+			0 => Ok(GroupOrder::Ascending),
+			1 => Ok(GroupOrder::Descending),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
 }
 
-impl Encode for Option<SubscribeOrder> {
+impl Encode for GroupOrder {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let v: u64 = match self {
-			None => 0,
-			Some(SubscribeOrder::Ascending) => 1,
-			Some(SubscribeOrder::Descending) => 2,
+			GroupOrder::Ascending => 0,
+			GroupOrder::Descending => 1,
 		};
 		v.encode(w)
 	}

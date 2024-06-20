@@ -44,22 +44,34 @@ impl Publisher {
 	}
 
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
-	pub fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
+	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
 		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
+		let mut stream = Stream::open(&mut self.webtransport, message::Control::Announce).await?;
+		if let Err(err) = self.announce_start(&mut stream, &broadcast).await {
+			stream.writer.reset(err.code());
+		}
+
+		let announce = Announce::new(broadcast, stream);
+		if self.announced.push(announce).is_err() {
+			return Err(SessionError::Internal);
+		}
+
+		Ok(())
+	}
+
+	async fn announce_start(&mut self, stream: &mut Stream, broadcast: &BroadcastReader) -> Result<(), SessionError> {
+		log::info!("announcing: broadcast={}", broadcast.name);
+
 		let msg = message::Announce {
 			broadcast: broadcast.name.clone(),
 		};
 
-		log::info!("announced: broadcast={}", broadcast.name);
-
-		let announce = Announce::new(msg, broadcast);
-		if let Err(_) = self.announced.push(announce) {
-			return Err(SessionError::Internal);
-		}
+		stream.writer.encode(&msg).await?;
+		let _ = stream.reader.decode::<message::AnnounceOk>().await;
 
 		Ok(())
 	}
@@ -80,21 +92,20 @@ impl Publisher {
 		loop {
 			tokio::select! {
 				Some(mut announce) = self.announced.pop() => {
-					let this = self.clone();
-
 					tasks.push(async move {
-						let res = announce.run(this.webtransport).await;
-						this.broadcasts.lock().unwrap().remove(&announce.broadcast);
-
-						res
+						announce.run().await;
+						announce
 					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
+				res = tasks.next(), if !tasks.is_empty() => {
+					let announce = res.unwrap();
+					self.broadcasts.lock().unwrap().remove(&announce.broadcast);
+				},
 			}
 		}
 	}
 
-	async fn subscribe(&mut self, track: Track) -> Option<TrackReader> {
+	async fn subscribe(&mut self, track: Track) -> Result<TrackReader, Closed> {
 		let broadcast = self.broadcasts.lock().unwrap().get(&track.broadcast).cloned();
 		if let Some(mut broadcast) = broadcast {
 			log::info!("found announcement: {:?}", broadcast.info);
@@ -108,7 +119,7 @@ impl Publisher {
 
 		log::info!("did not find unknown");
 
-		None
+		Err(Closed::UnknownBroadcast)
 	}
 
 	pub(super) async fn run_subscribe(&mut self, control: &mut Stream) -> Result<(), SessionError> {
@@ -120,21 +131,16 @@ impl Publisher {
 			subscribe.track,
 		);
 
-		let track = Track::new(&subscribe.broadcast, &subscribe.track).build();
-		let mut track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
+		let track = Track::new(&subscribe.broadcast, &subscribe.track, subscribe.priority).build();
+		let track = self.subscribe(track).await?;
 
-		// TODO this is wrong in the requested case
 		let info = message::Info {
-			latest: track.latest(),
+			group_latest: track.latest(),
 			group_expires: track.group_expires,
-			group_order: track.order.map(Into::into),
-			priority: track.priority,
+			group_order: track.group_order,
+			track_priority: track.priority,
 		};
 		control.writer.encode(&info).await?;
-
-		// Change to our subscribe order and priority before we start reading.
-		track.order = subscribe.group_order.map(Into::into);
-		track.priority = Some(subscribe.track_priority);
 
 		let subscribed = Subscribed::new(self.webtransport.clone(), subscribe, track);
 		subscribed.run(control).await
@@ -158,9 +164,9 @@ impl Publisher {
 
 		log::info!("received fetch: broadcast={} track={}", fetch.broadcast, fetch.track,);
 
-		let track = Track::new(&fetch.broadcast, &fetch.track).build();
-		let track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
-		let group = track.get(fetch.group).ok_or(Closed::NotFound)?;
+		let track = Track::new(&fetch.broadcast, &fetch.track, fetch.priority).build();
+		let track = self.subscribe(track).await?;
+		let group = track.get(fetch.group)?;
 
 		unimplemented!("TODO fetch");
 
@@ -185,14 +191,14 @@ impl Publisher {
 			info.track,
 		);
 
-		let track = Track::new(&info.broadcast, &info.track).build();
-		let track = self.subscribe(track).await.ok_or(Closed::NotFound)?;
+		let track = Track::new(&info.broadcast, &info.track, 0).build();
+		let track = self.subscribe(track).await?;
 
 		let info = message::Info {
-			latest: track.latest(),
-			priority: track.priority,
+			group_latest: track.latest(),
+			track_priority: track.priority,
 			group_expires: track.group_expires,
-			group_order: track.order.map(Into::into),
+			group_order: track.group_order,
 		};
 		control.writer.encode(&info).await?;
 

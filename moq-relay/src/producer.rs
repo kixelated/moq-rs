@@ -1,5 +1,5 @@
 use futures::{stream::FuturesUnordered, StreamExt};
-use moq_transfork::{Publisher, SessionError, Track, TrackReader};
+use moq_transfork::{Closed, Publisher, SessionError, Track, TrackReader};
 
 use crate::Locals;
 
@@ -32,8 +32,9 @@ impl Producer {
 					log::info!("got unknown request");
 					let this = self.clone();
 					tasks.push(async move {
-						if let Some(track) = this.route(&request.track).await {
-							request.respond(track);
+						match this.route(&request.track).await {
+							Ok(track) => request.respond(track),
+							Err(err) => request.close(err),
 						}
 					})
 			},
@@ -43,7 +44,7 @@ impl Producer {
 		}
 	}
 
-	async fn route(&self, track: &Track) -> Option<TrackReader> {
+	async fn route(&self, track: &Track) -> Result<TrackReader, Closed> {
 		log::info!("routing track: {:?}", track);
 
 		if let Some(mut broadcast) = self.locals.route(&track.broadcast) {
@@ -62,6 +63,6 @@ impl Producer {
 		}
 		*/
 
-		None
+		Err(Closed::UnknownBroadcast)
 	}
 }
