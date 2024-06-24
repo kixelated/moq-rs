@@ -22,10 +22,10 @@ impl Encode for Fetch {
 
 impl Decode for Fetch {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let broadcast = String::decode(r)?;
-		let track = String::decode(r)?;
-		let priority = u64::decode(r)?;
-		let group = u64::decode(r)?;
+		let broadcast = String::decode_more(r, 4)?;
+		let track = String::decode_more(r, 3)?;
+		let priority = u64::decode_more(r, 2)?;
+		let group = u64::decode_more(r, 1)?;
 		let offset = usize::decode(r)?;
 
 		Ok(Self {

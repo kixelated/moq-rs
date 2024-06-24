@@ -21,14 +21,14 @@ pub struct Subscribe {
 
 impl Decode for Subscribe {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode(r)?;
-		let broadcast = String::decode(r)?;
-		let track = String::decode(r)?;
-		let priority = u64::decode(r)?;
+		let id = u64::decode_more(r, 6)?;
+		let broadcast = String::decode_more(r, 5)?;
+		let track = String::decode_more(r, 4)?;
+		let priority = u64::decode_more(r, 4)?;
 
-		let group_order = GroupOrder::decode(r)?;
-		let group_expires = Option::<time::Duration>::decode(r)?;
-		let group_min = Option::<u64>::decode(r)?;
+		let group_order = GroupOrder::decode_more(r, 3)?;
+		let group_expires = Option::<time::Duration>::decode_more(r, 2)?;
+		let group_min = Option::<u64>::decode_more(r, 1)?;
 		let group_max = Option::<u64>::decode(r)?;
 
 		Ok(Self {
@@ -73,10 +73,10 @@ pub struct SubscribeUpdate {
 
 impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let priority = u64::decode(r)?;
-		let group_order = GroupOrder::decode(r)?;
-		let group_expires = Option::<time::Duration>::decode(r)?;
-		let group_min = Option::<u64>::decode(r)?;
+		let priority = u64::decode_more(r, 4)?;
+		let group_order = GroupOrder::decode_more(r, 3)?;
+		let group_expires = Option::<time::Duration>::decode_more(r, 2)?;
+		let group_min = Option::<u64>::decode_more(r, 1)?;
 		let group_max = Option::<u64>::decode(r)?;
 
 		Ok(Self {

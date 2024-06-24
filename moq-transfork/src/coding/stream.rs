@@ -1,7 +1,5 @@
-use crate::coding::Reader;
-use crate::coding::Writer;
+use crate::coding::{Reader, Writer};
 use crate::message;
-
 use crate::SessionError;
 
 pub struct Stream {

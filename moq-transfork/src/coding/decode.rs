@@ -1,12 +1,18 @@
-use std::{string::FromUtf8Error, time};
+use std::{cmp, string::FromUtf8Error, time};
 use thiserror::Error;
 
 pub trait Decode: Sized {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError>;
 
-	// Helper function to make sure we have enough bytes to decode
-	fn decode_remaining<B: bytes::Buf>(buf: &mut B, required: usize) -> Result<(), DecodeError> {
-		let needed = required.saturating_sub(buf.remaining());
+	// Helper function to require a additional number of bytes and then decode.
+	fn decode_more<B: bytes::Buf>(buf: &mut B, remain: usize) -> Result<Self, DecodeError> {
+		Self::decode_cap(buf, remain)?;
+		Self::decode(buf)
+	}
+
+	// Helper function to return an error if the buffer does not have enough data
+	fn decode_cap<B: bytes::Buf>(buf: &mut B, remain: usize) -> Result<(), DecodeError> {
+		let needed = remain.saturating_sub(buf.remaining());
 		if needed > 0 {
 			Err(DecodeError::More(needed))
 		} else {
@@ -68,14 +74,24 @@ impl Decode for u8 {
 impl Decode for String {
 	/// Decode a string with a varint length prefix.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let size = usize::decode(r)?;
-		Self::decode_remaining(r, size)?;
-
-		let mut buf = vec![0; size];
-		r.copy_to_slice(&mut buf);
-		let str = String::from_utf8(buf)?;
+		let v = Vec::<u8>::decode(r)?;
+		let str = String::from_utf8(v)?;
 
 		Ok(str)
+	}
+}
+
+impl Decode for Vec<u8> {
+	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
+		let size = usize::decode(buf)?;
+		Self::decode_cap(buf, size)?;
+
+		// Don't allocate the entire requested size to avoid a possible attack
+		// Instead, we allocate up to 1024 and keep appending as we read further.
+		let mut v = vec![0; cmp::min(1024, size)];
+		buf.copy_to_slice(&mut v);
+
+		Ok(v)
 	}
 }
 

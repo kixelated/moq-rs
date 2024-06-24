@@ -24,9 +24,9 @@ impl Encode for Info {
 
 impl Decode for Info {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let track_priority = u64::decode(r)?;
-		let group_order = GroupOrder::decode(r)?;
-		let group_expires = Option::<time::Duration>::decode(r)?;
+		let track_priority = u64::decode_more(r, 3)?;
+		let group_order = GroupOrder::decode_more(r, 2)?;
+		let group_expires = Option::<time::Duration>::decode_more(r, 1)?;
 		let group_latest = u64::decode(r)?;
 
 		Ok(Self {
@@ -54,7 +54,7 @@ impl Encode for InfoRequest {
 
 impl Decode for InfoRequest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let broadcast = String::decode(r)?;
+		let broadcast = String::decode_more(r, 1)?;
 		let track = String::decode(r)?;
 
 		Ok(Self { broadcast, track })

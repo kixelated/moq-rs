@@ -4,8 +4,8 @@ pub trait Encode: Sized {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError>;
 
 	// Helper function to make sure we have enough bytes to encode
-	fn encode_remaining<W: bytes::BufMut>(buf: &mut W, required: usize) -> Result<(), EncodeError> {
-		let needed = required.saturating_sub(buf.remaining_mut());
+	fn encode_more<W: bytes::BufMut>(buf: &mut W, remain: usize) -> Result<(), EncodeError> {
+		let needed = remain.saturating_sub(buf.remaining_mut());
 		if needed > 0 {
 			Err(EncodeError::More(needed))
 		} else {
@@ -43,8 +43,17 @@ impl Encode for String {
 impl Encode for &str {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.len().encode(w)?;
-		Self::encode_remaining(w, self.len())?;
+		Self::encode_more(w, self.len())?;
 		w.put(self.as_bytes());
+		Ok(())
+	}
+}
+
+impl Encode for Vec<u8> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		self.len().encode(w)?;
+		Self::encode_more(w, self.len())?;
+		w.put_slice(self);
 		Ok(())
 	}
 }

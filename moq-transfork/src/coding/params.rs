@@ -18,15 +18,8 @@ impl Decode for Params {
 				return Err(DecodeError::DupliateParameter);
 			}
 
-			let size = usize::decode(&mut r)?;
-			Self::decode_remaining(r, size)?;
-
-			// Don't allocate the entire requested size to avoid a possible attack
-			// Instead, we allocate up to 1024 and keep appending as we read further.
-			let mut buf = vec![0; size];
-			r.copy_to_slice(&mut buf);
-
-			params.insert(kind, buf);
+			let data = Vec::<u8>::decode(&mut r)?;
+			params.insert(kind, data);
 		}
 
 		Ok(Params(params))
@@ -39,9 +32,7 @@ impl Encode for Params {
 
 		for (kind, value) in self.0.iter() {
 			kind.encode(w)?;
-			value.len().encode(w)?;
-			Self::encode_remaining(w, value.len())?;
-			w.put_slice(value);
+			value.encode(w)?;
 		}
 
 		Ok(())

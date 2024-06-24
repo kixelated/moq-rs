@@ -1,7 +1,4 @@
-use crate::{
-	coding::{self},
-	BroadcastReader,
-};
+use crate::{coding, BroadcastReader};
 
 use super::SessionError;
 
