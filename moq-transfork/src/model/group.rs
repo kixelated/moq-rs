@@ -8,7 +8,7 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops, sync::Arc};
 
 use crate::util::State;
 
@@ -100,7 +100,7 @@ impl GroupWriter {
 	}
 }
 
-impl Deref for GroupWriter {
+impl ops::Deref for GroupWriter {
 	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {
@@ -171,7 +171,7 @@ impl GroupReader {
 	}
 }
 
-impl Deref for GroupReader {
+impl ops::Deref for GroupReader {
 	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {

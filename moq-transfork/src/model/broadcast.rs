@@ -10,11 +10,7 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{
-	collections::HashMap,
-	ops::{self, Deref},
-	sync::Arc,
-};
+use std::{collections::HashMap, fmt, ops, sync::Arc};
 
 use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
 use crate::{util::State, Closed};
@@ -120,7 +116,7 @@ impl BroadcastWriter {
 	}
 }
 
-impl Deref for BroadcastWriter {
+impl ops::Deref for BroadcastWriter {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {
@@ -205,7 +201,7 @@ impl BroadcastReader {
 	}
 }
 
-impl Deref for BroadcastReader {
+impl ops::Deref for BroadcastReader {
 	type Target = Broadcast;
 
 	fn deref(&self) -> &Self::Target {

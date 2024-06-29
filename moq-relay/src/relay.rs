@@ -45,7 +45,7 @@ impl Relay {
 
 		/*
 		let root = if let Some(url) = self.config.announce {
-			log::info!("forwarding announces to {}", url);
+			tracing::info!("forwarding announces to {}", url);
 			let conn = quic
 				.client
 				.connect(&url)
@@ -67,7 +67,7 @@ impl Relay {
 		// let remotes = Remotes::new();
 
 		let mut server = quic.server.context("missing TLS certificate")?;
-		log::info!("listening on {}", server.local_addr()?);
+		tracing::info!("listening on {}", server.local_addr()?);
 
 		loop {
 			tokio::select! {
@@ -91,7 +91,7 @@ impl Relay {
 				},
 				res = tasks.next(), if !tasks.is_empty() => {
 					if let Err(err) = res.unwrap() {
-						log::warn!("failed to run MoQ session: {}", err);
+						tracing::warn!("failed to run MoQ session: {}", err);
 					}
 				},
 			}

@@ -38,6 +38,7 @@ impl Decode for Info {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct InfoRequest {
 	pub broadcast: String,
 	pub track: String,

@@ -25,10 +25,10 @@ impl Consumer {
 
 					tasks.push(async move {
 						let name = broadcast.name.clone();
-						log::info!("serving broadcast: {:?}", name);
+						tracing::info!("serving broadcast: {:?}", name);
 
 						if let Err(err) = this.serve(broadcast).await {
-							log::warn!("failed serving broadcast: {:?}, error: {}", name, err)
+							tracing::warn!("failed serving broadcast: {:?}, error: {}", name, err)
 						}
 					});
 				},
@@ -55,7 +55,7 @@ impl Consumer {
 
 			tasks.push(
 				async move {
-					log::info!("forwarding announce: {:?}", broadcast.name);
+					tracing::info!("forwarding announce: {:?}", broadcast.name);
 					let (_writer, reader) = broadcast.produce();
 
 					let mut announce = forward.announce(reader).context("failed forwarding announce")?;
@@ -75,7 +75,7 @@ impl Consumer {
 					let mut remote = self.remote.clone();
 
 					tasks.push(async move {
-						log::info!("forwarding subscribe: {:?}", request.track);
+						tracing::info!("forwarding subscribe: {:?}", request.track);
 						let writer = request.produce();
 
 						let sub = remote.subscribe(writer);

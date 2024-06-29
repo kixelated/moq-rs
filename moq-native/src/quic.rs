@@ -104,7 +104,7 @@ impl Server {
 				res = self.accept.next(), if !self.accept.is_empty() => {
 					match res.unwrap() {
 						Ok(session) => return Some(session),
-						Err(err) => log::warn!("failed to accept QUIC connection: {}", err),
+						Err(err) => tracing::warn!("failed to accept QUIC connection: {}", err),
 					}
 				}
 			}
@@ -122,7 +122,7 @@ impl Server {
 		let alpn = String::from_utf8_lossy(&alpn);
 		let server_name = handshake.server_name.unwrap_or_default();
 
-		log::debug!(
+		tracing::debug!(
 			"received QUIC handshake: ip={} alpn={} server={}",
 			conn.remote_address(),
 			alpn,
@@ -132,7 +132,7 @@ impl Server {
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
-		log::debug!(
+		tracing::debug!(
 			"established QUIC connection: id={} ip={} alpn={} server={}",
 			conn.stable_id(),
 			conn.remote_address(),

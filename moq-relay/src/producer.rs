@@ -21,7 +21,7 @@ impl Producer {
 	*/
 
 	pub async fn run(mut self) -> Result<(), SessionError> {
-		log::info!("running producer");
+		tracing::info!("running producer");
 
 		let mut tasks = FuturesUnordered::new();
 		let mut unknown = self.remote.unknown();
@@ -29,7 +29,7 @@ impl Producer {
 		loop {
 			tokio::select! {
 				Some(request) = unknown.requested() => {
-					log::info!("got unknown request");
+					tracing::info!("got unknown request");
 					let this = self.clone();
 					tasks.push(async move {
 						match this.route(&request.track).await {
@@ -45,14 +45,14 @@ impl Producer {
 	}
 
 	async fn route(&self, track: &Track) -> Result<TrackReader, Closed> {
-		log::info!("routing track: {:?}", track);
+		tracing::info!("routing track: {:?}", track);
 
 		if let Some(mut broadcast) = self.locals.route(&track.broadcast) {
-			log::info!("found: {:?}", broadcast.info);
+			tracing::info!("found: {:?}", broadcast.info);
 			return broadcast.subscribe(track.clone()).await;
 		}
 
-		log::info!("did not find");
+		tracing::info!("did not find");
 
 		/*
 

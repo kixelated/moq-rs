@@ -2,8 +2,6 @@ use super::{Role, Versions};
 use crate::coding::*;
 
 /// Sent by the client to setup the session.
-// NOTE: This is not a message type, but rather the control stream header.
-// Proposal: https://github.com/moq-wg/moq-transport/issues/138
 #[derive(Debug)]
 pub struct Client {
 	/// The list of supported versions in preferred order.
@@ -56,12 +54,12 @@ impl Encode for Client {
 
 #[cfg(test)]
 mod tests {
-	use crate::coding::*;
-	use crate::setup::*;
+	use super::*;
+	use crate::setup::Version;
 	use bytes::BytesMut;
 
 	#[test]
-	fn encode_decode() {
+	fn client_coding() {
 		let mut buf = BytesMut::new();
 		let client = Client {
 			versions: [Version::DRAFT_03].into(),

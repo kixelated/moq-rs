@@ -92,4 +92,8 @@ impl Reader {
 		while self.stream.read_buf(&mut self.buffer).await? {}
 		Ok(())
 	}
+
+	pub fn id(&self) -> u64 {
+		self.stream.id()
+	}
 }

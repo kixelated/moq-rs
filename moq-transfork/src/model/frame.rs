@@ -1,6 +1,6 @@
 use crate::util::State;
 use bytes::{Bytes, BytesMut};
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops, sync::Arc};
 
 use super::Closed;
 
@@ -73,7 +73,7 @@ impl FrameWriter {
 	}
 }
 
-impl Deref for FrameWriter {
+impl ops::Deref for FrameWriter {
 	type Target = Frame;
 
 	fn deref(&self) -> &Self::Target {
@@ -144,7 +144,7 @@ impl FrameReader {
 	}
 }
 
-impl Deref for FrameReader {
+impl ops::Deref for FrameReader {
 	type Target = Frame;
 
 	fn deref(&self) -> &Self::Target {

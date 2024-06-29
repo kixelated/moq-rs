@@ -49,12 +49,11 @@ impl Encode for Server {
 
 #[cfg(test)]
 mod tests {
-	use crate::coding::*;
-	use crate::setup::*;
+	use super::*;
 	use bytes::BytesMut;
 
 	#[test]
-	fn encode_decode() {
+	fn server_coding() {
 		let mut buf = BytesMut::new();
 		let client = Server {
 			version: Version::DRAFT_03,

@@ -1,4 +1,4 @@
-use std::ops;
+use std::{fmt, ops};
 
 use crate::{
 	util::{Queue, State},

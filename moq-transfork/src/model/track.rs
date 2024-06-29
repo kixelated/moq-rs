@@ -16,7 +16,7 @@ use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
 use crate::{util::State, Closed};
 
-use std::{cmp::Ordering, ops::Deref, sync::Arc, time};
+use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Debug, Clone)]
@@ -149,7 +149,7 @@ impl TrackWriter {
 	}
 }
 
-impl Deref for TrackWriter {
+impl ops::Deref for TrackWriter {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
@@ -227,7 +227,7 @@ impl TrackReader {
 	}
 }
 
-impl Deref for TrackReader {
+impl ops::Deref for TrackReader {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {

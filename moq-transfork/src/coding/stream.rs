@@ -23,4 +23,13 @@ impl Stream {
 		let typ = reader.decode().await?;
 		Ok((typ, Self { writer, reader }))
 	}
+
+	pub fn close(&mut self, code: u32) {
+		self.writer.reset(code);
+		self.reader.stop(code);
+	}
+
+	pub fn id(&self) -> u64 {
+		self.writer.id()
+	}
 }

@@ -1,5 +1,6 @@
 use crate::coding::*;
 
+#[derive(Clone, Debug)]
 pub struct Info {
 	pub bitrate: Option<u64>,
 }

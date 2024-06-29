@@ -9,5 +9,3 @@ pub use info::*;
 pub use role::*;
 pub use server::*;
 pub use version::*;
-
-pub const ALPN: &[u8] = b"moqf-00";

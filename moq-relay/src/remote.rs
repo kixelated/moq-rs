@@ -56,7 +56,7 @@ impl Remotes {
 
 							tasks.push(async move {
 								if let Err(err) = producer.run(this.client).await {
-									log::warn!("failed running origin: {}, error: {}", host, err)
+									tracing::warn!("failed running origin: {}, error: {}", host, err)
 								}
 
 								this.remotes.lock().unwrap().remove(&host);

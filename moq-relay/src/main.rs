@@ -49,13 +49,7 @@ pub struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	env_logger::init();
-
-	// Disable tracing so we don't get a bunch of Quinn spam.
-	let tracer = tracing_subscriber::FmtSubscriber::builder()
-		.with_max_level(tracing::Level::WARN)
-		.finish();
-	tracing::subscriber::set_global_default(tracer).unwrap();
+	moq_native::log::init();
 
 	let cli = Cli::parse();
 	let tls = cli.tls.load()?;

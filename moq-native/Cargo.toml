@@ -39,4 +39,5 @@ anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
 
 # Logging
-log = { version = "0.4", features = ["std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

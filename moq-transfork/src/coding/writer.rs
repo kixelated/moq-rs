@@ -53,4 +53,8 @@ impl Writer {
 	pub fn reset(&mut self, code: u32) {
 		self.stream.reset(code)
 	}
+
+	pub fn id(&self) -> u64 {
+		self.stream.id()
+	}
 }

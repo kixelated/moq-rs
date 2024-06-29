@@ -1,9 +1,11 @@
 use crate::coding::*;
 
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
+
+pub const ALPN: &[u8] = b"moqf-00";
 
 /// A version number negotiated during the setup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version(u64);
 
 impl Version {
@@ -50,8 +52,14 @@ impl Encode for Version {
 	}
 }
 
+impl fmt::Debug for Version {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.0.fmt(f)
+	}
+}
+
 /// A list of versions in arbitrary order.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Versions(Vec<Version>);
 
 impl Decode for Versions {
@@ -99,5 +107,11 @@ impl From<Vec<Version>> for Versions {
 impl<const N: usize> From<[Version; N]> for Versions {
 	fn from(vs: [Version; N]) -> Self {
 		Self(vs.to_vec())
+	}
+}
+
+impl fmt::Debug for Versions {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_list().entries(self.0.iter()).finish()
 	}
 }

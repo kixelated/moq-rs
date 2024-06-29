@@ -27,6 +27,33 @@ impl Encode for Group {
 	}
 }
 
+#[derive(Clone, Debug, Copy)]
+pub enum GroupOrder {
+	Ascending,
+	Descending,
+}
+
+impl Decode for GroupOrder {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		match u64::decode(r)? {
+			0 => Ok(Self::Ascending),
+			1 => Ok(Self::Descending),
+			_ => Err(DecodeError::InvalidValue),
+		}
+	}
+}
+
+impl Encode for GroupOrder {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		let v: u64 = match self {
+			Self::Ascending => 0,
+			Self::Descending => 1,
+		};
+		v.encode(w)
+	}
+}
+
+#[derive(Clone, Debug)]
 pub struct GroupDrop {
 	pub sequence: u64,
 	pub count: u64,

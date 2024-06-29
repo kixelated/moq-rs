@@ -1,5 +1,6 @@
 use crate::coding::*;
 
+#[derive(Clone, Debug)]
 pub struct Fetch {
 	pub broadcast: String,
 	pub track: String,

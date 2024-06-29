@@ -235,11 +235,11 @@ impl Media {
 			"tracks": tracks
 		});
 
-		let catalog_str = serde_json::to_string_pretty(&catalog)?;
-		log::info!("catalog: {}", catalog_str);
+		tracing::info!(?catalog);
+		let catalog = serde_json::to_string(&catalog)?;
 
 		// Create a single fragment for the segment.
-		self.catalog.append()?.write(catalog_str.into())?;
+		self.catalog.append()?.write(catalog.into())?;
 
 		Ok(())
 	}

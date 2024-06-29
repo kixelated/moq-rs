@@ -27,7 +27,7 @@ impl Subscribed {
 		}
 	}
 
-	pub async fn run(mut self, control: &mut Stream) -> Result<(), SessionError> {
+	pub async fn run(mut self, stream: &mut Stream) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 		let mut fin = false;
 
@@ -50,7 +50,7 @@ impl Subscribed {
 						(sequence, err)
 					});
 				},
-				res = control.reader.decode_maybe::<message::SubscribeUpdate>() => {
+				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => {
 					match res? {
 						Some(update) => self.recv_update(update)?,
 						None => return Ok(()),
@@ -65,7 +65,7 @@ impl Subscribed {
 							count: 0,
 							code: 1, // TODO err.code()
 						};
-						control.writer.encode(&msg).await?;
+						stream.writer.encode(&msg).await?;
 					}
 				},
 			}
