@@ -40,6 +40,9 @@ pub enum DecodeError {
 	#[error("invalid object status")]
 	InvalidObjectStatus,
 
+	#[error("invalid track status code")]
+	InvalidTrackStatusCode,
+
 	#[error("missing field")]
 	MissingField,
 

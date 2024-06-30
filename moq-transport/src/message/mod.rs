@@ -176,6 +176,7 @@ message_types! {
 
 /// Track Status Codes
 /// https://www.ietf.org/archive/id/draft-ietf-moq-transport-04.html#name-track_status
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum TrackStatusCode {
 	// 0x00: The track is in progress, and subsequent fields contain the highest group and object ID for that track.
 	InProgress = 0x00,
@@ -187,4 +188,29 @@ pub enum TrackStatusCode {
 	Finished = 0x03,
 	// 0x04: The sender is a relay that cannot obtain the current track status from upstream. Subsequent fields contain the largest group and object ID known.
 	Relay = 0x04,
+}
+
+impl Decode for TrackStatusCode {
+	fn decode<B: bytes::Buf>(r: &mut B) -> Result<Self, DecodeError> {
+		match u64::decode(r)? {
+			0x00 => Ok(Self::InProgress),
+			0x01 => Ok(Self::DoesNotExist),
+			0x02 => Ok(Self::NotYetBegun),
+			0x03 => Ok(Self::Finished),
+			0x04 => Ok(Self::Relay),
+			_ => Err(DecodeError::InvalidTrackStatusCode),
+		}
+	}
+}
+
+impl Encode for TrackStatusCode {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		match self {
+			Self::InProgress => (0x00_u64).encode(w),
+			Self::DoesNotExist => (0x01_u64).encode(w),
+			Self::NotYetBegun => (0x02_u64).encode(w),
+			Self::Finished => (0x03_u64).encode(w),
+			Self::Relay => (0x04_u64).encode(w),
+		}
+	}
 }

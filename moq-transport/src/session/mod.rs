@@ -7,6 +7,7 @@ mod subscribe;
 mod subscribed;
 mod subscriber;
 mod writer;
+mod track_status_requested;
 
 pub use announce::*;
 pub use announced::*;
@@ -15,6 +16,7 @@ pub use publisher::*;
 pub use subscribe::*;
 pub use subscribed::*;
 pub use subscriber::*;
+pub use track_status_requested::*;
 
 use reader::*;
 use writer::*;
