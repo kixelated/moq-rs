@@ -1,5 +1,13 @@
 use crate::coding::{Decode, DecodeError, Encode, EncodeError};
 
+// enum TrackStatusCode {
+// 	InProgress = 0x00,
+// 	DoesNotExist = 0x01,
+// 	NotYetBegun = 0x02,
+// 	Finished = 0x03,
+// 	Relay = 0x04,
+// }
+
 #[derive(Clone, Debug)]
 pub struct TrackStatus {
 	/// Track Namespace
