@@ -1,11 +1,11 @@
 use crate::coding::*;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum StreamUni {
+pub enum Data {
 	Group,
 }
 
-impl Decode for StreamUni {
+impl Decode for Data {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let t = u64::decode(r)?;
 		match t {
@@ -15,7 +15,7 @@ impl Decode for StreamUni {
 	}
 }
 
-impl Encode for StreamUni {
+impl Encode for Data {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let v: u64 = match self {
 			Self::Group => 0,

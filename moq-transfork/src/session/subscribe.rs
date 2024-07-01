@@ -1,30 +1,37 @@
-use crate::{coding, message, model};
+use std::fmt;
+
+use crate::{
+	coding::{self, Stream},
+	message, model,
+};
 
 use super::SessionError;
 
 pub struct Subscribe {
 	pub id: u64,
-	stream: coding::Stream,
 	track: model::TrackReader,
+	stream: coding::Stream,
 }
 
 impl Subscribe {
-	pub(super) fn new(id: u64, stream: coding::Stream, track: model::TrackReader) -> Self {
-		Self { id, stream, track }
-	}
+	pub async fn open(
+		session: &mut web_transport::Session,
+		id: u64,
+		track: model::TrackReader,
+	) -> Result<Self, SessionError> {
+		let stream = Stream::open(session, message::Control::Subscribe).await?;
+		let mut this = Self { id, track, stream };
 
-	#[tracing::instrument("subscribe", skip(self), fields(stream = &self.stream.id()))]
-	pub async fn start(&mut self) -> Result<(), SessionError> {
-		let res = self.start_inner().await;
-		if let Err(err) = &res {
-			tracing::warn!(?err);
-			self.stream.close(err.code());
+		if let Err(err) = this.open_inner().await {
+			this.stream.writer.reset(err.code());
+			return Err(err);
 		}
 
-		res
+		Ok(this)
 	}
 
-	async fn start_inner(&mut self) -> Result<(), SessionError> {
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=self.track.broadcast, track=self.track.name, stream = self.stream.id))]
+	async fn open_inner(&mut self) -> Result<(), SessionError> {
 		let request = message::Subscribe {
 			id: self.id,
 			broadcast: self.track.broadcast.to_string(),
@@ -51,17 +58,14 @@ impl Subscribe {
 		Ok(())
 	}
 
-	// TODO allow the application to update the subscription
-	#[tracing::instrument("subscribe", skip(self), fields(stream = &self.stream.id()))]
-	pub async fn run(&mut self) {
-		let res = self.run_inner().await;
-		if let Err(err) = &res {
-			tracing::warn!(?err);
-			self.stream.close(err.code());
+	pub async fn run(mut self) {
+		if let Err(err) = self.run_inner().await {
+			self.stream.writer.reset(err.code());
 		}
 	}
 
-	async fn run_inner(&mut self) -> Result<(), SessionError> {
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=self.track.broadcast, track=self.track.name, stream = self.stream.id))]
+	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
 		loop {
 			tokio::select! {
 				res = self.stream.reader.decode_maybe::<message::GroupDrop>() => {

@@ -21,8 +21,6 @@ impl Producer {
 	*/
 
 	pub async fn run(mut self) -> Result<(), SessionError> {
-		tracing::info!("running producer");
-
 		let mut tasks = FuturesUnordered::new();
 		let mut unknown = self.remote.unknown();
 
@@ -45,14 +43,9 @@ impl Producer {
 	}
 
 	async fn route(&self, track: &Track) -> Result<TrackReader, Closed> {
-		tracing::info!("routing track: {:?}", track);
-
 		if let Some(mut broadcast) = self.locals.route(&track.broadcast) {
-			tracing::info!("found: {:?}", broadcast.info);
 			return broadcast.subscribe(track.clone()).await;
 		}
-
-		tracing::info!("did not find");
 
 		/*
 

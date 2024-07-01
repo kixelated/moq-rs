@@ -2,7 +2,6 @@ use super::{Role, Version};
 use crate::coding::*;
 
 /// Sent by the server in response to a client setup.
-#[derive(Debug)]
 pub struct Server {
 	/// The list of supported versions in preferred order.
 	pub version: Version,

@@ -1,8 +1,6 @@
-use std::io;
+use std::{fmt, ops};
 
 use crate::coding::{Encode, EncodeError};
-
-use bytes::Buf;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum WriteError {
@@ -38,23 +36,19 @@ impl Writer {
 	}
 
 	pub async fn write(&mut self, buf: &[u8]) -> Result<(), WriteError> {
-		let mut cursor = io::Cursor::new(buf);
-
-		while cursor.has_remaining() {
-			let size = self.stream.write_buf(&mut cursor).await?;
-			if size == 0 {
-				return Err(EncodeError::More(cursor.remaining()).into());
-			}
-		}
-
+		self.stream.write(buf).await?; // convert the error type
 		Ok(())
 	}
 
 	pub fn reset(&mut self, code: u32) {
-		self.stream.reset(code)
+		self.stream.reset(code);
 	}
+}
 
-	pub fn id(&self) -> u64 {
-		self.stream.id()
+impl ops::Deref for Writer {
+	type Target = web_transport::StreamInfo;
+
+	fn deref(&self) -> &Self::Target {
+		&self.stream.info
 	}
 }

@@ -1,4 +1,4 @@
-use std::{cmp, io};
+use std::{cmp, fmt, io, ops};
 
 use bytes::{Buf, Bytes, BytesMut};
 
@@ -74,10 +74,6 @@ impl Reader {
 		Ok(self.stream.read_chunk(max).await?)
 	}
 
-	pub fn stop(&mut self, code: u32) {
-		self.stream.stop(code)
-	}
-
 	/// Wait until the stream is closed, ensuring there are no additional bytes
 	pub async fn finished(&mut self) -> Result<(), ReadError> {
 		if self.buffer.is_empty() && !self.stream.read_buf(&mut self.buffer).await? {
@@ -93,7 +89,15 @@ impl Reader {
 		Ok(())
 	}
 
-	pub fn id(&self) -> u64 {
-		self.stream.id()
+	pub fn stop(&mut self, code: u32) {
+		self.stream.stop(code);
+	}
+}
+
+impl ops::Deref for Reader {
+	type Target = web_transport::StreamInfo;
+
+	fn deref(&self) -> &Self::Target {
+		&self.stream.info
 	}
 }

@@ -16,7 +16,7 @@ use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
 use crate::{util::State, Closed};
 
 /// Static information about a broadcast.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Broadcast {
 	pub name: String,
 }

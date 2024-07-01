@@ -151,12 +151,6 @@ impl TryFrom<VarInt> for u8 {
 	}
 }
 
-impl fmt::Debug for VarInt {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.0.fmt(f)
-	}
-}
-
 impl fmt::Display for VarInt {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)

@@ -4,7 +4,7 @@ use std::{fmt, ops, sync::Arc};
 
 use super::Closed;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Frame {
 	pub size: usize,
 }

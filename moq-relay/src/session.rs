@@ -1,3 +1,5 @@
+use std::fmt;
+
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{Consumer, Producer};
@@ -10,13 +12,10 @@ pub struct Session {
 
 impl Session {
 	pub async fn run(self) -> Result<(), moq_transfork::SessionError> {
-		tracing::info!("running session");
-
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(self.session.run().boxed());
 
 		if let Some(producer) = self.producer {
-			tracing::info!("running publisher");
 			tasks.push(producer.run().boxed());
 		}
 

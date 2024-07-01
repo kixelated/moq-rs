@@ -1,14 +1,15 @@
 use std::future;
 
-use crate::{coding, message, model, setup};
+use crate::{
+	coding::{self},
+	message, model, setup,
+};
 use futures::{stream::FuturesUnordered, StreamExt};
 
 mod announce;
-mod announced;
 mod error;
 mod publisher;
 mod subscribe;
-mod subscribed;
 mod subscriber;
 
 pub use error::*;
@@ -16,9 +17,7 @@ pub use publisher::*;
 pub use subscriber::*;
 
 use announce::*;
-use announced::*;
 use subscribe::*;
-use subscribed::*;
 
 #[must_use = "run() must be called"]
 pub struct Session {
@@ -58,7 +57,7 @@ impl Session {
 			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
 	}
 
-	#[tracing::instrument("connect", fields(session=session.id(), role=?role))]
+	#[tracing::instrument("connect", skip_all, err, fields(session = session.id))]
 	pub async fn connect_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
@@ -68,7 +67,6 @@ impl Session {
 		let role = match Self::connect_setup(&mut stream, role).await {
 			Ok(role) => role,
 			Err(err) => {
-				tracing::error!(?err);
 				stream.writer.reset(err.code());
 				return Err(err);
 			}
@@ -86,11 +84,11 @@ impl Session {
 			unknown: Default::default(),
 		};
 
-		tracing::info!(?role, version = ?setup::Version::FORK_00, "sending");
+		tracing::info!(client_role = ?role, client_version = ?setup::Version::FORK_00);
 		setup.writer.encode(&request).await?;
 
 		let response: setup::Server = setup.reader.decode().await?;
-		tracing::info!(?role, version = ?response.version, "received");
+		tracing::info!(server_role = ?response.role, server_version = ?response.version);
 
 		// Downgrade our role based on the server's role.
 		let role = match response.role {
@@ -116,7 +114,7 @@ impl Session {
 		Self::accept_role(session, setup::Role::Both).await
 	}
 
-	#[tracing::instrument("accept", fields(session=session.id(), role=?role))]
+	#[tracing::instrument("accept", skip_all, err, fields(session = session.id))]
 	pub async fn accept_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
@@ -126,19 +124,20 @@ impl Session {
 			return Err(SessionError::UnexpectedStream(t));
 		}
 
-		let role = Self::accept_setup(&mut control, role).await;
-		if let Err(err) = role.as_ref() {
-			tracing::error!(?err);
-			control.writer.reset(err.code());
-			// NOTE: returned down below via ?
-		}
+		let role = match Self::accept_setup(&mut control, role).await {
+			Ok(role) => role,
+			Err(err) => {
+				control.writer.reset(err.code());
+				return Err(err);
+			}
+		};
 
-		Ok(Session::new(session, role?, control))
+		Ok(Session::new(session, role, control))
 	}
 
 	async fn accept_setup(control: &mut coding::Stream, role: setup::Role) -> Result<setup::Role, SessionError> {
 		let request: setup::Client = control.reader.decode().await?;
-		tracing::info!(role = ?request.role, versions = ?request.versions, "recv");
+		tracing::info!(client_role = ?request.role, client_versions = ?request.versions);
 
 		if !request.versions.contains(&setup::Version::FORK_00) {
 			return Err(SessionError::Version(
@@ -168,15 +167,16 @@ impl Session {
 			unknown: Default::default(),
 		};
 
-		tracing::info!(?role, version = ?response.version, "send");
+		tracing::info!(server_role = ?role, server_version = ?response.version);
 		control.writer.encode(&response).await?;
 
 		Ok(role)
 	}
 
+	#[tracing::instrument("session", skip_all, err, fields(id = self.webtransport.id))]
 	pub async fn run(mut self) -> Result<(), SessionError> {
 		let res = tokio::select! {
-			res = Self::run_control(&mut self.setup) => res,
+			res = Self::run_update(&mut self.setup) => res,
 			res = Self::run_bi(self.webtransport.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
 			res = Self::run_uni(self.webtransport.clone(), self.subscriber.clone()) => res,
 			res = async move {
@@ -201,8 +201,8 @@ impl Session {
 		res
 	}
 
-	#[tracing::instrument("run session", fields(stream = stream.id()))]
-	async fn run_control(stream: &mut coding::Stream) -> Result<(), SessionError> {
+	#[tracing::instrument("update", skip_all, err, fields(stream = stream.id))]
+	async fn run_update(stream: &mut coding::Stream) -> Result<(), SessionError> {
 		while let Some(info) = stream.reader.decode_maybe::<setup::Info>().await? {
 			// TODO use info
 			tracing::info!(?info);
@@ -220,18 +220,10 @@ impl Session {
 		loop {
 			tokio::select! {
 				res = webtransport.accept_uni() => {
-					let mut reader = coding::Reader::new(res?);
-					let mut subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
+					let stream = coding::Reader::new(res?);
+					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
-					tasks.push(async move {
-						match reader.decode().await? {
-							message::StreamUni::Group => {
-								subscriber.recv_group(reader).await
-							},
-						};
-
-						Ok::<(), SessionError>(())
-					});
+					tasks.push(Self::run_data(stream, subscriber));
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			};
@@ -252,34 +244,51 @@ impl Session {
 					let publisher = publisher.clone();
 					let subscriber = subscriber.clone();
 
-					tasks.push(async move {
-						Ok(match t {
-							message::Control::Session => return Err(SessionError::UnexpectedStream(t)),
-							message::Control::Announce => {
-								let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
-								subscriber.recv_announce(stream).await;
-							},
-							message::Control::Subscribe => {
-								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.recv_subscribe(stream).await;
-							},
-							message::Control::Datagrams => {
-								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.recv_datagrams(stream).await;
-							},
-							message::Control::Fetch => {
-								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.recv_fetch(stream).await;
-							},
-							message::Control::Info => {
-								let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-								publisher.recv_info(stream).await;
-							},
-						})
-					});
+					tasks.push(Self::run_control(stream, t, publisher, subscriber));
 				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?
+				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			};
 		}
+	}
+
+	async fn run_data(mut stream: coding::Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
+		match stream.decode::<message::Data>().await? {
+			message::Data::Group => subscriber.recv_group(stream).await,
+		}
+
+		Ok(())
+	}
+
+	async fn run_control(
+		stream: coding::Stream,
+		kind: message::Control,
+		publisher: Option<Publisher>,
+		subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
+		match kind {
+			message::Control::Session => return Err(SessionError::UnexpectedStream(kind)),
+			message::Control::Announce => {
+				let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
+				subscriber.recv_announce(stream).await
+			}
+			message::Control::Subscribe => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_subscribe(stream).await
+			}
+			message::Control::Datagrams => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_datagrams(stream).await
+			}
+			message::Control::Fetch => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_fetch(stream).await
+			}
+			message::Control::Info => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_info(stream).await
+			}
+		};
+
+		Ok(())
 	}
 }

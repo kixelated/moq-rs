@@ -2,7 +2,6 @@ use super::{Role, Versions};
 use crate::coding::*;
 
 /// Sent by the client to setup the session.
-#[derive(Debug)]
 pub struct Client {
 	/// The list of supported versions in preferred order.
 	pub versions: Versions,

@@ -19,9 +19,9 @@ use crate::{util::State, Closed};
 use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
 
 /// Static information about a track.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Track {
-	pub broadcast: String,
+	pub broadcast: String, // TODO remove
 	pub name: String,
 	pub priority: u64,
 	pub group_order: GroupOrder,
