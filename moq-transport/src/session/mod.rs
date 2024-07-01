@@ -7,6 +7,7 @@ mod subscribe;
 mod subscribed;
 mod subscriber;
 mod writer;
+mod track_status_requested;
 
 pub use announce::*;
 pub use announced::*;
@@ -15,6 +16,7 @@ pub use publisher::*;
 pub use subscribe::*;
 pub use subscribed::*;
 pub use subscriber::*;
+pub use track_status_requested::*;
 
 use reader::*;
 use writer::*;
@@ -77,7 +79,7 @@ impl Session {
 		let mut sender = Writer::new(control.0);
 		let mut recver = Reader::new(control.1);
 
-		let versions: setup::Versions = [setup::Version::DRAFT_03].into();
+		let versions: setup::Versions = [setup::Version::DRAFT_04].into();
 
 		let client = setup::Client {
 			role,
@@ -126,10 +128,10 @@ impl Session {
 		let client: setup::Client = recver.decode().await?;
 		log::debug!("received client SETUP: {:?}", client);
 
-		if !client.versions.contains(&setup::Version::DRAFT_03) {
+		if !client.versions.contains(&setup::Version::DRAFT_04) {
 			return Err(SessionError::Version(
 				client.versions,
-				[setup::Version::DRAFT_03].into(),
+				[setup::Version::DRAFT_04].into(),
 			));
 		}
 
@@ -150,7 +152,7 @@ impl Session {
 
 		let server = setup::Server {
 			role,
-			version: setup::Version::DRAFT_03,
+			version: setup::Version::DRAFT_04,
 			params: Default::default(),
 		};
 

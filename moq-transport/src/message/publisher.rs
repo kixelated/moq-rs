@@ -50,4 +50,5 @@ publisher_msgs! {
 	SubscribeOk,
 	SubscribeError,
 	SubscribeDone,
+	TrackStatus,
 }

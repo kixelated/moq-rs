@@ -13,7 +13,7 @@ use crate::{
 
 use crate::watch::Queue;
 
-use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, SubscribedRecv};
+use super::{Announce, AnnounceRecv, Session, SessionError, Subscribed, SubscribedRecv, TrackStatusRequested};
 
 // TODO remove Clone.
 #[derive(Clone)]
@@ -60,11 +60,28 @@ impl Publisher {
 			}
 		};
 
+		let mut track_status_tasks = FuturesUnordered::new();
 		let mut tasks = FuturesUnordered::new();
 		let mut done = None;
 
 		loop {
 			tokio::select! {
+				track_status_request = announce.track_status_requested(), if done.is_none() => {
+					let track_status_request = match track_status_request {
+						Ok(Some(track_status_request)) => track_status_request,
+						Ok(None) => { done = Some(Ok(())); continue },
+						Err(err) => { done = Some(Err(err)); continue },
+					};
+
+					let tracks = tracks.clone();
+
+					track_status_tasks.push(async move {
+						let info = track_status_request.info.clone();
+						if let Err(err) = Self::serve_track_status_request(track_status_request, tracks).await {
+							log::warn!("failed serving track status request: {:?}, error: {}", info, err)
+						}
+					});
+				},
 				subscribe = announce.subscribed(), if done.is_none() => {
 					let subscribe = match subscribe {
 						Ok(Some(subscribe)) => subscribe,
@@ -81,10 +98,28 @@ impl Publisher {
 						}
 					});
 				},
+				_ = track_status_tasks.next(), if !track_status_tasks.is_empty() => {},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(done.unwrap()?)
 			}
 		}
+	}
+
+	pub async fn serve_track_status_request(mut track_status_request: TrackStatusRequested, mut tracks: TracksReader) -> Result<(), SessionError> {
+		let track = tracks.subscribe(&track_status_request.info.track.clone()).ok_or(ServeError::NotFound)?;
+		let (latest_group_id, latest_object_id) = track.latest().ok_or(ServeError::NotFound)?;
+
+		let response = message::TrackStatus {
+			track_namespace: track_status_request.info.namespace.clone(),
+			track_name: track_status_request.info.track.clone(),
+			status_code: 0x00, // TODO: Implement status codes
+			last_group_id: latest_group_id,
+			last_object_id: latest_object_id,
+		};
+
+		track_status_request.respond(response).await?;
+
+		Ok(())
 	}
 
 	pub async fn serve_subscribe(subscribe: Subscribed, mut tracks: TracksReader) -> Result<(), SessionError> {
@@ -109,6 +144,7 @@ impl Publisher {
 			message::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
 			message::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
 			message::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
+			message::Subscriber::TrackStatusRequest(msg) => self.recv_track_status_request(msg),
 		};
 
 		if let Err(err) = res {
@@ -179,6 +215,20 @@ impl Publisher {
 		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {
 			subscribed.recv_unsubscribe()?;
 		}
+
+		Ok(())
+	}
+
+	fn recv_track_status_request(&mut self, msg: message::TrackStatusRequest) -> Result<(), SessionError> {
+		let namespace = msg.track_namespace.clone();
+		let track_name = msg.track_name.clone();
+
+		let announce = self.announces.lock().unwrap().get(&namespace).ok_or(ServeError::NotFound)?;
+
+		let track_status_requested = TrackStatusRequested::new(self.clone(), msg);
+
+		// TODO
+
 
 		Ok(())
 	}
