@@ -60,6 +60,7 @@ impl Publisher {
 			}
 		};
 
+		let mut track_status_tasks = FuturesUnordered::new();
 		let mut tasks = FuturesUnordered::new();
 		let mut done = None;
 
@@ -74,7 +75,7 @@ impl Publisher {
 
 					let tracks = tracks.clone();
 
-					tasks.push(async move {
+					track_status_tasks.push(async move {
 						let info = track_status_request.info.clone();
 						if let Err(err) = Self::serve_track_status_request(track_status_request, tracks).await {
 							log::warn!("failed serving track status request: {:?}, error: {}", info, err)
@@ -97,17 +98,26 @@ impl Publisher {
 						}
 					});
 				},
+				_ = track_status_tasks.next(), if !track_status_tasks.is_empty() => {},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(done.unwrap()?)
 			}
 		}
 	}
 
-	pub async fn serve_track_status_request(track_status_request: message::TrackStatusRequest, mut tracks: TracksReader) -> Result<(), SessionError> {
-		let track = tracks.subscribe(&track_status_request.track_name).ok_or(ServeError::NotFound)?;
+	pub async fn serve_track_status_request(mut track_status_request: TrackStatusRequested, mut tracks: TracksReader) -> Result<(), SessionError> {
+		let track = tracks.subscribe(&track_status_request.info.track.clone()).ok_or(ServeError::NotFound)?;
 		let (latest_group_id, latest_object_id) = track.latest().ok_or(ServeError::NotFound)?;
 
-		track_status_request.respond(latest_group_id, latest_object_id).await?;
+		let response = message::TrackStatus {
+			track_namespace: track_status_request.info.namespace.clone(),
+			track_name: track_status_request.info.track.clone(),
+			status_code: 0x00, // TODO: Implement status codes
+			last_group_id: latest_group_id,
+			last_object_id: latest_object_id,
+		};
+
+		track_status_request.respond(response).await?;
 
 		Ok(())
 	}
@@ -215,7 +225,7 @@ impl Publisher {
 
 		let announce = self.announces.lock().unwrap().get(&namespace).ok_or(ServeError::NotFound)?;
 
-		let track_status_requested = TrackStatusRequested {self.clone(), msg};
+		let track_status_requested = TrackStatusRequested::new(self.clone(), msg);
 
 		// TODO
 

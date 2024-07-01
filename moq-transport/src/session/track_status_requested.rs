@@ -1,4 +1,4 @@
-use super::Publisher;
+use super::{Publisher, SessionError};
 use crate::message;
 
 #[derive(Debug, Clone)]
@@ -18,7 +18,8 @@ impl TrackStatusRequested {
         Self { publisher, msg, info: TrackStatusRequestedInfo { namespace: msg.track_namespace.clone(), track: msg.track_name.clone() }}
     }
 
-    pub async fn respond(self, status: message::TrackStatusResponse) -> anyhow::Result<()> {
-        self.publisher.send(message::Message::TrackStatusResponse(status)).await
+    pub async fn respond(&mut self, status: message::TrackStatus) -> Result<(), SessionError> {
+        self.publisher.send_message(status);
+        Ok(())
     }
 }
