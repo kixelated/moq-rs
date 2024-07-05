@@ -65,8 +65,6 @@ impl Endpoint {
 			server_config
 		});
 
-
-
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
 		let endpoint_config = quinn::EndpointConfig::default();
