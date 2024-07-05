@@ -59,10 +59,13 @@ impl Endpoint {
 
 		let server_config = config.tls.server.map(|mut server| {
 			server.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+			server.key_log = Arc::new(rustls::KeyLogFile::new());
 			let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server));
 			server_config.transport_config(transport.clone());
 			server_config
 		});
+
+
 
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
@@ -183,7 +186,7 @@ impl Client {
 			"moqt" => moq_transport::setup::ALPN.to_vec(),
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
 		}];
-
+		config.key_log = Arc::new(rustls::KeyLogFile::new());
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
 		config.transport_config(self.transport.clone());
 
