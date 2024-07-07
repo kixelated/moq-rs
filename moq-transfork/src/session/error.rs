@@ -6,10 +6,16 @@ pub enum SessionError {
 	Network(#[from] web_transport::SessionError),
 
 	#[error("write error: {0}")]
-	Write(#[from] coding::WriteError),
+	Write(#[from] web_transport::WriteError),
 
 	#[error("read error: {0}")]
-	Read(#[from] coding::ReadError),
+	Read(#[from] web_transport::ReadError),
+
+	#[error("decode error: {0}")]
+	Decode(#[from] coding::DecodeError),
+
+	#[error("encode error: {0}")]
+	Encode(#[from] coding::EncodeError),
 
 	// TODO move to a ConnectError
 	#[error("unsupported versions: client={0:?} server={1:?}")]
@@ -23,9 +29,13 @@ pub enum SessionError {
 	#[error("role violation")]
 	RoleViolation,
 
+	/// A required extension was not present
+	#[error("extension required: {0}")]
+	RequiredExtension(u64),
+
 	/// An unexpected stream was received
 	#[error("unexpected stream: {0:?}")]
-	UnexpectedStream(message::Control),
+	UnexpectedStream(message::Stream),
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]
@@ -46,17 +56,40 @@ impl SessionError {
 	/// An integer code that is sent over the wire.
 	pub fn code(&self) -> u32 {
 		match self {
+			Self::RequiredExtension(_) => 407,
 			Self::RoleIncompatible(..) => 406,
 			Self::RoleViolation => 405,
 			Self::Network(_) => 503,
 			Self::Read(_) => 400,
+			Self::Decode(_) => 401,
 			Self::Write(_) => 500,
+			Self::Encode(_) => 501,
 			Self::Version(..) => 406,
 			Self::UnexpectedStream(_) => 500,
 			Self::BoundsExceeded(_) => 500,
 			Self::Duplicate => 409,
 			Self::Internal => 500,
 			Self::Closed(err) => err.code(),
+		}
+	}
+}
+
+pub(super) trait Close {
+	fn close(&mut self, code: u32);
+}
+
+pub(super) trait OrClose<S: Close, V> {
+	fn or_close(self, stream: &mut S) -> Result<V, SessionError>;
+}
+
+impl<S: Close, V> OrClose<S, V> for Result<V, SessionError> {
+	fn or_close(self, stream: &mut S) -> Result<V, SessionError> {
+		match self {
+			Ok(v) => Ok(v),
+			Err(err) => {
+				stream.close(err.code());
+				Err(err)
+			}
 		}
 	}
 }

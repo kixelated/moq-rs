@@ -10,7 +10,7 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{collections::HashMap, fmt, ops, sync::Arc};
+use std::{collections::HashMap, ops, sync::Arc};
 
 use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
 use crate::{util::State, Closed};

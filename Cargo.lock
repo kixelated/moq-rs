@@ -779,9 +779,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "clap",
- "env_logger",
  "futures",
- "log",
  "moq-native",
  "moq-transfork",
  "tokio",
@@ -878,6 +876,7 @@ dependencies = [
 name = "moq-transfork"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bytes",
  "futures",
  "paste",

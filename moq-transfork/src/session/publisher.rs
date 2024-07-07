@@ -6,13 +6,11 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	coding::{Stream, Writer},
-	message, setup,
-	util::Queue,
-	BroadcastReader, Closed, GroupReader, Track, TrackReader, Unknown, UnknownReader, UnknownWriter,
+	message, setup, util::Queue, BroadcastReader, Closed, GroupReader, Track, TrackReader, Unknown, UnknownReader,
+	UnknownWriter,
 };
 
-use super::{Announce, Session, SessionError};
+use super::{Announce, OrClose, Session, SessionError, Stream, Writer};
 
 #[derive(Clone)]
 pub struct Publisher {
@@ -46,7 +44,7 @@ impl Publisher {
 	}
 
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
-	#[tracing::instrument("session", skip_all, fields(session = self.session.id))]
+	#[tracing::instrument("session", skip_all, fields(id = self.session.id))]
 	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
 		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
@@ -102,20 +100,18 @@ impl Publisher {
 		Err(Closed::UnknownBroadcast)
 	}
 
-	pub(super) async fn recv_subscribe(&mut self, mut stream: Stream) {
-		if let Err(err) = self.recv_subscribe_inner(&mut stream).await {
-			stream.writer.reset(err.code());
-		}
+	pub(super) async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+		let subscribe = stream.reader.decode().await?;
+		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("subscribed", skip_all, err, fields(stream = stream.id))]
-	async fn recv_subscribe_inner(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
-		let req = stream.reader.decode::<message::Subscribe>().await?;
-		tracing::info!(?req);
-
-		let subscribe = req.id;
-
-		let track = Track::new(&req.broadcast, &req.track, req.priority).build();
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, subscribe = subscribe.id))]
+	async fn serve_subscribe(
+		&mut self,
+		stream: &mut Stream,
+		subscribe: message::Subscribe,
+	) -> Result<(), SessionError> {
+		let track = Track::new(&subscribe.broadcast, &subscribe.track, subscribe.priority).build();
 		let mut track = self.subscribe(track).await?;
 
 		let info = message::Info {
@@ -125,8 +121,9 @@ impl Publisher {
 			track_priority: track.priority,
 		};
 
-		tracing::info!(?info);
 		stream.writer.encode(&info).await?;
+
+		tracing::info!("ok");
 
 		let mut tasks = FuturesUnordered::new();
 		let mut fin = false;
@@ -142,18 +139,19 @@ impl Publisher {
 						},
 					};
 
-					let mut this = self.clone();
+					let session = self.session.clone();
+					let broadcast= track.broadcast.clone();
+					let track = track.name.clone();
 
 					tasks.push(async move {
-						let res = this.serve_group(subscribe, &mut group).await;
+						let res = Self::serve_group(session, broadcast, track, subscribe.id, &mut group).await;
 						(group, res)
 					});
 				},
 				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => {
 					match res? {
-						Some(update) => {
+						Some(_update) => {
 							// TODO use it
-							tracing::info!(?update, "received update");
 						},
 						None => return Ok(()),
 					}
@@ -162,33 +160,35 @@ impl Publisher {
 					let (group, res) = res.unwrap();
 
 					if let Err(err) = res {
-						let msg = message::GroupDrop {
+						let drop = message::GroupDrop {
 							sequence: group.sequence,
 							count: 0,
 							code: err.code(),
 						};
-						stream.writer.encode(&msg).await?;
+
+						stream.writer.encode(&drop).await?;
 					}
 				},
 			}
 		}
 	}
 
-	pub async fn serve_group(&mut self, subscribe: u64, group: &mut GroupReader) -> Result<(), SessionError> {
-		let stream = self.session.open_uni().await?;
-		let mut stream = Writer::new(stream);
+	#[tracing::instrument("group", skip_all, err, fields(?broadcast, ?track, subscribe, group = group.sequence))]
+	pub async fn serve_group(
+		mut session: web_transport::Session,
+		broadcast: String,
+		track: String,
+		subscribe: u64,
+		group: &mut GroupReader,
+	) -> Result<(), SessionError> {
+		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
 
-		let res = self.serve_group_inner(subscribe, group, &mut stream).await;
-		if let Err(err) = &res {
-			stream.reset(err.code());
-		}
-
-		res
+		Self::serve_group_inner(subscribe, group, &mut stream)
+			.await
+			.or_close(&mut stream)
 	}
 
-	#[tracing::instrument("group", skip_all, err, fields(subscribe, group = group.sequence, stream = stream.id))]
 	pub async fn serve_group_inner(
-		&mut self,
 		subscribe: u64,
 		group: &mut GroupReader,
 		stream: &mut Writer,
@@ -201,45 +201,45 @@ impl Publisher {
 		stream.encode(&msg).await?;
 
 		// TODO abort if the subscription is closed
+		let mut size = 0;
 
 		while let Some(chunk) = group.read().await? {
+			size += chunk.len();
 			stream.write(&chunk).await?;
 		}
 
 		// TODO block until all bytes have been acknowledged so we can still reset
 		// writer.finish().await?;
 
+		tracing::debug!(size);
+
 		Ok(())
 	}
 
-	pub(super) async fn recv_datagrams(&mut self, mut stream: Stream) {
-		if let Err(err) = self.recv_datagrams_inner(&mut stream).await {
-			stream.writer.reset(err.code());
-		}
+	pub(super) async fn recv_datagrams(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+		let subscribe = stream.reader.decode().await?;
+		self.serve_datagrams(stream, subscribe).await
 	}
 
-	#[tracing::instrument("datagrams", skip_all, err, fields(stream = stream.id))]
-	async fn recv_datagrams_inner(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
-		let req: message::Subscribe = stream.reader.decode().await?;
-		tracing::info!(?req);
-
+	#[tracing::instrument("datagrams", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, subscribe = subscribe.id))]
+	async fn serve_datagrams(
+		&mut self,
+		stream: &mut Stream,
+		subscribe: message::Subscribe,
+	) -> Result<(), SessionError> {
 		todo!("datagrams");
 	}
 
-	pub(super) async fn recv_fetch(&mut self, mut stream: Stream) {
-		if let Err(err) = self.recv_fetch_inner(&mut stream).await {
-			stream.writer.reset(err.code());
-		}
+	pub(super) async fn recv_fetch(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+		let fetch = stream.reader.decode().await?;
+		self.serve_fetch(stream, fetch).await
 	}
 
-	#[tracing::instrument("fetch", skip_all, err, fields(stream = stream.id))]
-	async fn recv_fetch_inner(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
-		let req: message::Fetch = stream.reader.decode().await?;
-		tracing::info!(?req);
-
-		let track = Track::new(&req.broadcast, &req.track, req.priority).build();
+	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
+	async fn serve_fetch(&mut self, stream: &mut Stream, fetch: message::Fetch) -> Result<(), SessionError> {
+		let track = Track::new(&fetch.broadcast, &fetch.track, fetch.priority).build();
 		let track = self.subscribe(track).await?;
-		let group = track.get(req.group)?;
+		let group = track.get(fetch.group)?;
 
 		unimplemented!("TODO fetch");
 
@@ -255,29 +255,24 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn recv_info(&mut self, mut stream: Stream) {
-		if let Err(err) = self.recv_info_inner(&mut stream).await {
-			stream.writer.reset(err.code());
-		}
+	pub(super) async fn recv_info(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+		let info = stream.reader.decode().await?;
+		self.serve_info(stream, info).await
 	}
 
-	#[tracing::instrument("info", skip_all, err, fields(stream = stream.id))]
-	async fn recv_info_inner(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
-		let request: message::InfoRequest = stream.reader.decode().await?;
-		tracing::info!(?request);
-
-		let track = Track::new(&request.broadcast, &request.track, 0).build();
+	#[tracing::instrument("info", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
+	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), SessionError> {
+		let track = Track::new(&info.broadcast, &info.track, 0).build();
 		let track = self.subscribe(track).await?;
 
-		let response = message::Info {
+		let info = message::Info {
 			group_latest: track.latest(),
 			track_priority: track.priority,
 			group_expires: track.group_expires,
 			group_order: track.group_order,
 		};
-		tracing::info!(?response);
 
-		stream.writer.encode(&response).await?;
+		stream.writer.encode(&info).await?;
 
 		Ok(())
 	}

@@ -8,7 +8,7 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{fmt, ops, sync::Arc};
+use std::{ops, sync::Arc};
 
 use crate::util::State;
 

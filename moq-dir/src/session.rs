@@ -14,9 +14,10 @@ impl Session {
 		Self { session, listings }
 	}
 
+	#[tracing::instrument("session", skip_all, err, fields(session = self.session.id))]
 	pub async fn run(self) -> anyhow::Result<()> {
 		let session = self.session.clone();
-		let (session, publisher, subscriber) = moq_transfork::Session::accept(session).await?;
+		let (session, publisher, subscriber) = moq_transfork::Session::accept_any(session).await?;
 
 		let mut tasks = FuturesUnordered::new();
 		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed());
@@ -42,15 +43,7 @@ impl Session {
 			tokio::select! {
 				Some(announce) = remote.announced() => {
 					let this = self.clone();
-
-					tasks.push(async move {
-						let info = announce.name.clone();
-						log::info!("serving announce: {:?}", info);
-
-						if let Err(err) = this.serve_announce(announce).await {
-							log::warn!("failed serving announce: {:?}, error: {}", info, err)
-						}
-					});
+					tasks.push(this.serve_announce(announce));
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(()),
@@ -58,6 +51,7 @@ impl Session {
 		}
 	}
 
+	#[tracing::instrument("serve", skip_all, err, fields(broadcast = announce.name))]
 	async fn serve_announce(mut self, announce: BroadcastReader) -> anyhow::Result<()> {
 		self.listings.register(&announce.name)?;
 		announce.closed().await?;

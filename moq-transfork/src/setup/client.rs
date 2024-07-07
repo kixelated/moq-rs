@@ -1,35 +1,23 @@
-use super::{Role, Versions};
+use super::{Extensions, Versions};
 use crate::coding::*;
 
 /// Sent by the client to setup the session.
+#[derive(Debug, Clone)]
 pub struct Client {
 	/// The list of supported versions in preferred order.
 	pub versions: Versions,
 
-	/// Indicate if the client is a publisher, a subscriber, or both.
-	pub role: Role,
-
-	pub path: Option<String>,
-
-	/// Unknown parameters.
-	pub unknown: Params,
+	/// Extensions.
+	pub extensions: Extensions,
 }
 
 impl Decode for Client {
 	/// Decode a client setup message.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let versions = Versions::decode(r)?;
-		let mut unknown = Params::decode(r)?;
+		let extensions = Extensions::decode(r)?;
 
-		let role = unknown.remove::<Role>(0)?.ok_or(DecodeError::MissingParameter)?;
-		let path = unknown.remove::<String>(1)?;
-
-		Ok(Self {
-			versions,
-			role,
-			path,
-			unknown,
-		})
+		Ok(Self { versions, extensions })
 	}
 }
 
@@ -37,15 +25,7 @@ impl Encode for Client {
 	/// Encode a server setup message.
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.versions.encode(w)?;
-
-		let mut params = self.unknown.clone();
-		params.insert(0, self.role)?;
-
-		if let Some(path) = self.path.as_ref() {
-			params.insert(1, path.as_str())?;
-		}
-
-		params.encode(w)?;
+		self.extensions.encode(w)?;
 
 		Ok(())
 	}
@@ -54,17 +34,19 @@ impl Encode for Client {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::setup::Version;
+	use crate::setup::{Role, Version};
 	use bytes::BytesMut;
 
 	#[test]
 	fn client_coding() {
 		let mut buf = BytesMut::new();
+
+		let mut extensions = Extensions::default();
+		extensions.set(Role::Both).unwrap();
+
 		let client = Client {
 			versions: [Version::DRAFT_03].into(),
-			role: Role::Both,
-			path: None,
-			unknown: Default::default(),
+			extensions,
 		};
 
 		client.encode(&mut buf).unwrap();
@@ -75,7 +57,12 @@ mod tests {
 
 		let decoded = Client::decode(&mut buf).unwrap();
 		assert_eq!(decoded.versions, client.versions);
-		assert_eq!(decoded.role, client.role);
-		//assert_eq!(decoded.params, client.params);
+
+		let role = decoded
+			.extensions
+			.get::<Role>()
+			.expect("no extension found")
+			.expect("failed to decode");
+		assert_eq!(Role::Both, role);
 	}
 }

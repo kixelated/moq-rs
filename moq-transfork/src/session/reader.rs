@@ -1,21 +1,14 @@
-use std::{cmp, fmt, io, ops};
+use std::{cmp, fmt, io};
 
 use bytes::{Buf, Bytes, BytesMut};
 
-use crate::coding::{Decode, DecodeError};
+use crate::{coding::*, SessionError};
+
+use super::Close;
 
 pub struct Reader {
 	stream: web_transport::RecvStream,
 	buffer: BytesMut,
-}
-
-#[derive(thiserror::Error, Debug, Clone)]
-pub enum ReadError {
-	#[error("decode error: {0}")]
-	Decode(#[from] DecodeError),
-
-	#[error("webtransport error: {0}")]
-	Transport(#[from] web_transport::ReadError),
 }
 
 impl Reader {
@@ -26,7 +19,20 @@ impl Reader {
 		}
 	}
 
-	pub async fn decode<T: Decode>(&mut self) -> Result<T, ReadError> {
+	pub async fn accept(session: &mut web_transport::Session) -> Result<Self, SessionError> {
+		let recv = session.accept_uni().await?;
+		let reader = Self::new(recv);
+		Ok(reader)
+	}
+
+	// A separate function just to avoid an extra log line
+	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, SessionError> {
+		let msg = self.decode_silent().await?;
+		tracing::debug!(?msg, "decode");
+		Ok(msg)
+	}
+
+	pub async fn decode_silent<T: Decode + fmt::Debug>(&mut self) -> Result<T, SessionError> {
 		loop {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
@@ -55,16 +61,15 @@ impl Reader {
 	}
 
 	// Decode optional messages at the end of a stream
-	// The weird order of Option<Result is for tokio::select!
-	pub async fn decode_maybe<T: Decode>(&mut self) -> Result<Option<T>, ReadError> {
+	pub async fn decode_maybe<T: Decode + fmt::Debug>(&mut self) -> Result<Option<T>, SessionError> {
 		match self.finished().await {
 			Ok(()) => Ok(None),
-			Err(ReadError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
+			Err(SessionError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
 			Err(e) => Err(e),
 		}
 	}
 
-	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, ReadError> {
+	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, SessionError> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());
 			let data = self.buffer.split_to(size).freeze();
@@ -75,7 +80,7 @@ impl Reader {
 	}
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes
-	pub async fn finished(&mut self) -> Result<(), ReadError> {
+	pub async fn finished(&mut self) -> Result<(), SessionError> {
 		if self.buffer.is_empty() && !self.stream.read_buf(&mut self.buffer).await? {
 			return Ok(());
 		}
@@ -84,20 +89,14 @@ impl Reader {
 	}
 
 	/// Wait until the stream is closed, ignoring any unread bytes
-	pub async fn closed(&mut self) -> Result<(), ReadError> {
+	pub async fn closed(&mut self) -> Result<(), SessionError> {
 		while self.stream.read_buf(&mut self.buffer).await? {}
 		Ok(())
 	}
-
-	pub fn stop(&mut self, code: u32) {
-		self.stream.stop(code);
-	}
 }
 
-impl ops::Deref for Reader {
-	type Target = web_transport::StreamInfo;
-
-	fn deref(&self) -> &Self::Target {
-		&self.stream.info
+impl Close for Reader {
+	fn close(&mut self, code: u32) {
+		self.stream.stop(code);
 	}
 }

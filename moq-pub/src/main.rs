@@ -51,7 +51,6 @@ async fn main() -> anyhow::Result<()> {
 		tls: tls.clone(),
 	})?;
 
-	tracing::info!(url = ?cli.url, "connecting to relay");
 	let session = quic.client.connect(&cli.url).await?;
 
 	let (session, mut publisher) = Publisher::connect(session)

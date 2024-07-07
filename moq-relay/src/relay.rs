@@ -45,7 +45,6 @@ impl Relay {
 
 		/*
 		let root = if let Some(url) = self.config.announce {
-			tracing::info!("forwarding announces to {}", url);
 			let conn = quic
 				.client
 				.connect(&url)
@@ -67,19 +66,18 @@ impl Relay {
 		// let remotes = Remotes::new();
 
 		let mut server = quic.server.context("missing TLS certificate")?;
-		tracing::info!("listening on {}", server.local_addr()?);
+
+		tracing::info!(bind = %self.config.bind, "listening");
 
 		loop {
 			tokio::select! {
-				res = server.accept() => {
-					let conn = res.context("failed to accept QUIC connection")?;
-
+				Some(conn) = server.accept() => {
 					let locals = locals.clone();
 					//let remotes = remotes.clone();
 					//let root = root.clone();
 
 					tasks.push(async move {
-						let (session, publisher, subscriber) = moq_transfork::Session::accept(conn).await?;
+						let (session, publisher, subscriber) = moq_transfork::Session::accept_any(conn).await?;
 						let session = Session {
 							session,
 							producer: publisher.map(|publisher| Producer::new(publisher, locals.clone())),
@@ -89,11 +87,8 @@ impl Relay {
 						session.run().await
 					});
 				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					if let Err(err) = res.unwrap() {
-						tracing::warn!("failed to run MoQ session: {}", err);
-					}
-				},
+				_ = tasks.next(), if !tasks.is_empty() => {},
+				else => return Ok(()),
 			}
 		}
 	}

@@ -1,5 +1,3 @@
-use std::fmt;
-
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{Consumer, Producer};

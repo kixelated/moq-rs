@@ -1,28 +1,34 @@
 use std::future;
 
 use crate::{
-	coding::{self},
-	message, model, setup,
+	message, model,
+	setup::{self, Extensions},
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 
 mod announce;
 mod error;
 mod publisher;
+mod reader;
+mod stream;
 mod subscribe;
 mod subscriber;
+mod writer;
 
 pub use error::*;
 pub use publisher::*;
 pub use subscriber::*;
 
 use announce::*;
+use reader::*;
+use stream::*;
 use subscribe::*;
+use writer::*;
 
 #[must_use = "run() must be called"]
 pub struct Session {
 	webtransport: web_transport::Session,
-	setup: coding::Stream,
+	setup: Stream,
 	publisher: Option<Publisher>,
 	subscriber: Option<Subscriber>,
 	unknown: Option<model::UnknownWriter>, // provided to Subscriber
@@ -32,7 +38,7 @@ impl Session {
 	fn new(
 		webtransport: web_transport::Session,
 		role: setup::Role,
-		stream: coding::Stream,
+		stream: Stream,
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
 		let unknown = model::Unknown::produce();
 		let publisher = role.is_publisher().then(|| Publisher::new(webtransport.clone()));
@@ -51,131 +57,123 @@ impl Session {
 		(session, publisher, subscriber)
 	}
 
+	/// Connect a session as both a publisher and subscriber.
 	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
 		Self::connect_role(session, setup::Role::Both)
 			.await
 			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
 	}
 
-	#[tracing::instrument("connect", skip_all, err, fields(session = session.id))]
+	/// Connect a session as either a publisher, subscriber, or both, as chosen by server.
+	pub async fn connect_any(
+		session: web_transport::Session,
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		Self::connect_role(session, setup::Role::Any).await
+	}
+
+	#[tracing::instrument("session", skip_all, err, fields(id = session.id))]
 	pub async fn connect_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut stream = coding::Stream::open(&mut session, message::Control::Session).await?;
+		let mut stream = Stream::open(&mut session, message::Stream::Session).await?;
 
-		let role = match Self::connect_setup(&mut stream, role).await {
-			Ok(role) => role,
-			Err(err) => {
-				stream.writer.reset(err.code());
-				return Err(err);
-			}
-		};
-
-		let session = Session::new(session, role, stream);
-		Ok(session)
+		let role = Self::connect_setup(&mut stream, role).await.or_close(&mut stream)?;
+		Ok(Session::new(session, role, stream))
 	}
 
-	async fn connect_setup(setup: &mut coding::Stream, role: setup::Role) -> Result<setup::Role, SessionError> {
-		let request = setup::Client {
-			role,
+	async fn connect_setup(setup: &mut Stream, client_role: setup::Role) -> Result<setup::Role, SessionError> {
+		let mut extensions = setup::Extensions::default();
+		extensions.set(client_role)?;
+
+		let client = setup::Client {
 			versions: [setup::Version::FORK_00].into(),
-			path: None, // TODO use for QUIC
-			unknown: Default::default(),
+			extensions,
 		};
 
-		tracing::info!(client_role = ?role, client_version = ?setup::Version::FORK_00);
-		setup.writer.encode(&request).await?;
+		tracing::info!(versions = ?client.versions, role=?client_role, "client setup");
+		setup.writer.encode(&client).await?;
 
-		let response: setup::Server = setup.reader.decode().await?;
-		tracing::info!(server_role = ?response.role, server_version = ?response.version);
+		let server: setup::Server = setup.reader.decode().await?;
+		let server_role = server.extensions.get()?.unwrap_or_default();
 
-		// Downgrade our role based on the server's role.
-		let role = match response.role {
-			setup::Role::Both => role,
-			setup::Role::Publisher => match role {
-				// Both sides are publishers only
-				setup::Role::Publisher => return Err(SessionError::RoleIncompatible(response.role, role)),
-				_ => setup::Role::Subscriber,
-			},
-			setup::Role::Subscriber => match role {
-				// Both sides are subscribers only
-				setup::Role::Subscriber => return Err(SessionError::RoleIncompatible(response.role, role)),
-				_ => setup::Role::Publisher,
-			},
-		};
+		tracing::info!(version = ?server.version, role=?server_role, "server setup");
+
+		let role = client_role
+			.downgrade(server_role)
+			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
+
+		if client_role != role {
+			tracing::info!(?role, "client downgraded");
+		}
 
 		Ok(role)
 	}
 
-	pub async fn accept(
-		session: web_transport::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		Self::accept_role(session, setup::Role::Both).await
+	/// Accept a session as both a publisher and subscriber.
+	pub async fn accept(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
+		Self::accept_role(session, setup::Role::Both)
+			.await
+			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
 	}
 
-	#[tracing::instrument("accept", skip_all, err, fields(session = session.id))]
+	/// Accept a session as either a publisher, subscriber, or both, as chosen by the client.
+	pub async fn accept_any(
+		session: web_transport::Session,
+	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
+		Self::accept_role(session, setup::Role::Any).await
+	}
+
+	#[tracing::instrument("session", skip_all, err, fields(id = session.id))]
 	pub async fn accept_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
 	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let (t, mut control) = coding::Stream::accept(&mut session).await?;
-		if t != message::Control::Session {
-			return Err(SessionError::UnexpectedStream(t));
+		let mut stream = Stream::accept(&mut session).await?;
+		let kind = stream.reader.decode_silent().await?;
+
+		if kind != message::Stream::Session {
+			return Err(SessionError::UnexpectedStream(kind));
 		}
 
-		let role = match Self::accept_setup(&mut control, role).await {
-			Ok(role) => role,
-			Err(err) => {
-				control.writer.reset(err.code());
-				return Err(err);
-			}
-		};
+		let role = Self::accept_setup(&mut stream, role).await.or_close(&mut stream)?;
 
-		Ok(Session::new(session, role, control))
+		Ok(Session::new(session, role, stream))
 	}
 
-	async fn accept_setup(control: &mut coding::Stream, role: setup::Role) -> Result<setup::Role, SessionError> {
-		let request: setup::Client = control.reader.decode().await?;
-		tracing::info!(client_role = ?request.role, client_versions = ?request.versions);
+	async fn accept_setup(control: &mut Stream, server_role: setup::Role) -> Result<setup::Role, SessionError> {
+		let client: setup::Client = control.reader.decode().await?;
 
-		if !request.versions.contains(&setup::Version::FORK_00) {
-			return Err(SessionError::Version(
-				request.versions,
-				[setup::Version::FORK_00].into(),
-			));
+		if !client.versions.contains(&setup::Version::FORK_00) {
+			return Err(SessionError::Version(client.versions, [setup::Version::FORK_00].into()));
 		}
 
-		// Downgrade our role based on the client's role.
-		let role = match request.role {
-			setup::Role::Both => role,
-			setup::Role::Publisher => match role {
-				// Both sides are publishers only
-				setup::Role::Publisher => return Err(SessionError::RoleIncompatible(request.role, role)),
-				_ => setup::Role::Subscriber,
-			},
-			setup::Role::Subscriber => match role {
-				// Both sides are subscribers only
-				setup::Role::Subscriber => return Err(SessionError::RoleIncompatible(request.role, role)),
-				_ => setup::Role::Publisher,
-			},
-		};
+		let client_role = client.extensions.get()?.unwrap_or_default();
 
-		let response = setup::Server {
-			role,
+		tracing::info!(versions=?client.versions, role=?client_role,  "client setup");
+
+		let server_role = server_role
+			.downgrade(client_role)
+			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
+
+		let mut extensions = Extensions::default();
+		extensions.set(server_role)?;
+
+		let server = setup::Server {
 			version: setup::Version::FORK_00,
-			unknown: Default::default(),
+			extensions,
 		};
 
-		tracing::info!(server_role = ?role, server_version = ?response.version);
-		control.writer.encode(&response).await?;
+		tracing::info!(version = ?server.version, role = ?server_role, "server setup");
 
-		Ok(role)
+		control.writer.encode(&server).await?;
+
+		Ok(server_role)
 	}
 
 	#[tracing::instrument("session", skip_all, err, fields(id = self.webtransport.id))]
 	pub async fn run(mut self) -> Result<(), SessionError> {
-		let res = tokio::select! {
+		tokio::select! {
 			res = Self::run_update(&mut self.setup) => res,
 			res = Self::run_bi(self.webtransport.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
 			res = Self::run_uni(self.webtransport.clone(), self.subscriber.clone()) => res,
@@ -191,22 +189,12 @@ impl Session {
 					None => future::pending().await,
 				}
 			} => res,
-		};
-
-		if let Err(err) = &res {
-			tracing::error!(?err);
-			self.setup.writer.reset(err.code());
 		}
-
-		res
+		.or_close(&mut self.setup)
 	}
 
-	#[tracing::instrument("update", skip_all, err, fields(stream = stream.id))]
-	async fn run_update(stream: &mut coding::Stream) -> Result<(), SessionError> {
-		while let Some(info) = stream.reader.decode_maybe::<setup::Info>().await? {
-			// TODO use info
-			tracing::info!(?info);
-		}
+	async fn run_update(stream: &mut Stream) -> Result<(), SessionError> {
+		while let Some(_update) = stream.reader.decode_maybe::<setup::Info>().await? {}
 
 		Ok(())
 	}
@@ -219,8 +207,8 @@ impl Session {
 
 		loop {
 			tokio::select! {
-				res = webtransport.accept_uni() => {
-					let stream = coding::Reader::new(res?);
+				res = Reader::accept(&mut webtransport) => {
+					let stream = res?;
 					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
 					tasks.push(Self::run_data(stream, subscriber));
@@ -239,55 +227,59 @@ impl Session {
 
 		loop {
 			tokio::select! {
-				res = coding::Stream::accept(&mut session) => {
-					let (t, stream) = res?;
+				res = Stream::accept(&mut session) => {
+					let stream = res?;
 					let publisher = publisher.clone();
 					let subscriber = subscriber.clone();
 
-					tasks.push(Self::run_control(stream, t, publisher, subscriber));
+					tasks.push(Self::run_control(stream, publisher, subscriber));
 				},
 				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
 			};
 		}
 	}
 
-	async fn run_data(mut stream: coding::Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
-		match stream.decode::<message::Data>().await? {
-			message::Data::Group => subscriber.recv_group(stream).await,
+	async fn run_data(mut stream: Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
+		match stream.decode_silent().await? {
+			message::StreamUni::Group => subscriber.recv_group(&mut stream).await,
 		}
+		.or_close(&mut stream)
+		.ok();
 
 		Ok(())
 	}
 
 	async fn run_control(
-		stream: coding::Stream,
-		kind: message::Control,
+		mut stream: Stream,
 		publisher: Option<Publisher>,
 		subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
+		let kind = stream.reader.decode_silent().await?;
 		match kind {
-			message::Control::Session => return Err(SessionError::UnexpectedStream(kind)),
-			message::Control::Announce => {
+			message::Stream::Session => return Err(SessionError::UnexpectedStream(kind)),
+			message::Stream::Announce => {
 				let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
-				subscriber.recv_announce(stream).await
+				subscriber.recv_announce(&mut stream).await
 			}
-			message::Control::Subscribe => {
+			message::Stream::Subscribe => {
 				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_subscribe(stream).await
+				publisher.recv_subscribe(&mut stream).await
 			}
-			message::Control::Datagrams => {
+			message::Stream::Datagrams => {
 				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_datagrams(stream).await
+				publisher.recv_datagrams(&mut stream).await
 			}
-			message::Control::Fetch => {
+			message::Stream::Fetch => {
 				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_fetch(stream).await
+				publisher.recv_fetch(&mut stream).await
 			}
-			message::Control::Info => {
+			message::Stream::Info => {
 				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_info(stream).await
+				publisher.recv_info(&mut stream).await
 			}
-		};
+		}
+		.or_close(&mut stream)
+		.ok();
 
 		Ok(())
 	}

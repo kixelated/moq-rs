@@ -38,13 +38,7 @@ pub struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	env_logger::init();
-
-	// Disable tracing so we don't get a bunch of Quinn spam.
-	let tracer = tracing_subscriber::FmtSubscriber::builder()
-		.with_max_level(tracing::Level::WARN)
-		.finish();
-	tracing::subscriber::set_global_default(tracer).unwrap();
+	moq_native::log::init();
 
 	let cli = Cli::parse();
 	let tls = cli.tls.load()?;
@@ -57,21 +51,14 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut tasks = FuturesUnordered::new();
 
-	log::info!("listening on {}", quic.local_addr()?);
-
 	loop {
 		tokio::select! {
-			res = quic.accept() => {
-				let session = res.context("failed to accept QUIC connection")?;
+			Some(session) = quic.accept() => {
 				let session = Session::new(session, listings.clone());
-
-				tasks.push(async move {
-					if let Err(err) = session.run().await {
-						log::warn!("session terminated: {}", err);
-					}
-				});
+				tasks.push(session.run());
 			},
-			res = tasks.next(), if !tasks.is_empty() => res.unwrap(),
+			_ = tasks.next(), if !tasks.is_empty() => {},
+			else => return Ok(()),
 		}
 	}
 }

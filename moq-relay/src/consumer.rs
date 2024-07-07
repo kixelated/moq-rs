@@ -22,15 +22,7 @@ impl Consumer {
 			tokio::select! {
 				Some(broadcast) = self.remote.announced() => {
 					let this = self.clone();
-
-					tasks.push(async move {
-						let name = broadcast.name.clone();
-						tracing::info!("serving broadcast: {:?}", name);
-
-						if let Err(err) = this.serve(broadcast).await {
-							tracing::warn!("failed serving broadcast: {:?}, error: {}", name, err)
-						}
-					});
+					tasks.push(this.serve(broadcast))
 				},
 				_ = tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(()),
@@ -38,6 +30,7 @@ impl Consumer {
 		}
 	}
 
+	#[tracing::instrument("serve", skip_all, err, fields(broadcast = broadcast.name))]
 	async fn serve(mut self, broadcast: BroadcastReader) -> Result<(), anyhow::Error> {
 		//let mut tasks = FuturesUnordered::new();
 
@@ -55,7 +48,6 @@ impl Consumer {
 
 			tasks.push(
 				async move {
-					tracing::info!("forwarding announce: {:?}", broadcast.name);
 					let (_writer, reader) = broadcast.produce();
 
 					let mut announce = forward.announce(reader).context("failed forwarding announce")?;
@@ -75,7 +67,6 @@ impl Consumer {
 					let mut remote = self.remote.clone();
 
 					tasks.push(async move {
-						tracing::info!("forwarding subscribe: {:?}", request.track);
 						let writer = request.produce();
 
 						let sub = remote.subscribe(writer);

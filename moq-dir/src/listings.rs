@@ -49,15 +49,12 @@ impl Listings {
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
-			log::info!("creating prefix: {}", prefix);
 			let track = state.writer.create(prefix, 0).build().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
 			state.active.insert(prefix.to_string(), listing);
 		}
-
-		log::info!("added listing: {} {}", prefix, base);
 
 		Ok(Some(Registration {
 			listing: self.clone(),
@@ -73,10 +70,7 @@ impl Listings {
 		let listing = state.active.get_mut(prefix).ok_or(Closed::UnknownTrack)?;
 		listing.remove(base)?;
 
-		log::info!("removed listing: {} {}", prefix, base);
-
 		if listing.is_empty() {
-			log::info!("removed prefix: {}", prefix);
 			state.active.remove(prefix);
 			state.writer.remove(prefix);
 		}

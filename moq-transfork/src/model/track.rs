@@ -16,7 +16,7 @@ use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
 use crate::{util::State, Closed};
 
-use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
+use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Clone)]

@@ -1,6 +1,6 @@
 use crate::util::State;
 use bytes::{Bytes, BytesMut};
-use std::{fmt, ops, sync::Arc};
+use std::{ops, sync::Arc};
 
 use super::Closed;
 

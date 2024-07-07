@@ -27,7 +27,6 @@ impl Producer {
 		loop {
 			tokio::select! {
 				Some(request) = unknown.requested() => {
-					tracing::info!("got unknown request");
 					let this = self.clone();
 					tasks.push(async move {
 						match this.route(&request.track).await {
@@ -42,6 +41,7 @@ impl Producer {
 		}
 	}
 
+	#[tracing::instrument("route", skip_all, err, fields(broadcast = track.broadcast, track = track.name))]
 	async fn route(&self, track: &Track) -> Result<TrackReader, Closed> {
 		if let Some(mut broadcast) = self.locals.route(&track.broadcast) {
 			return broadcast.subscribe(track.clone()).await;

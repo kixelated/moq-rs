@@ -102,15 +102,15 @@ impl Server {
 					self.accept.push(Self::accept_session(conn).boxed());
 				}
 				res = self.accept.next(), if !self.accept.is_empty() => {
-					match res.unwrap() {
-						Ok(session) => return Some(session),
-						Err(err) => tracing::warn!("failed to accept QUIC connection: {}", err),
+					if let Ok(session) = res.unwrap() {
+						return Some(session)
 					}
 				}
 			}
 		}
 	}
 
+	#[tracing::instrument("session", skip_all, err, fields(id))]
 	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport::Session> {
 		let handshake = conn
 			.handshake_data()
@@ -119,26 +119,16 @@ impl Server {
 			.unwrap();
 
 		let alpn = handshake.protocol.context("missing ALPN")?;
-		let alpn = String::from_utf8_lossy(&alpn);
-		let server_name = handshake.server_name.unwrap_or_default();
+		let alpn = String::from_utf8(alpn).context("failed to decode ALPN")?;
+		let host = handshake.server_name.unwrap_or_default();
 
-		tracing::debug!(
-			"received QUIC handshake: ip={} alpn={} server={}",
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
+		tracing::debug!(%host, ip = %conn.remote_address(), %alpn, "connecting");
 
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
-		tracing::debug!(
-			"established QUIC connection: id={} ip={} alpn={} server={}",
-			conn.stable_id(),
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
+		let span = tracing::Span::current();
+		span.record("id", conn.stable_id()); // TODO can we get this earlier?
 
 		let session = match alpn.as_bytes() {
 			web_transport_quinn::ALPN => {
@@ -158,6 +148,8 @@ impl Server {
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
+		tracing::info!("connected");
+
 		Ok(session.into())
 	}
 
@@ -174,15 +166,18 @@ pub struct Client {
 }
 
 impl Client {
+	#[tracing::instrument("session", skip_all, err, fields(id, %url))]
 	pub async fn connect(&self, url: &Url) -> anyhow::Result<web_transport::Session> {
 		let mut config = self.config.clone();
 
-		// TODO support connecting to both ALPNs at the same time
-		config.alpn_protocols = vec![match url.scheme() {
-			"https" => web_transport_quinn::ALPN.to_vec(),
-			"moqf" => moq_transfork::setup::ALPN.to_vec(),
+		let alpn = match url.scheme() {
+			"https" => web_transport_quinn::ALPN,
+			"moqf" => moq_transfork::setup::ALPN,
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
-		}];
+		};
+
+		// TODO support connecting to both ALPNs at the same time
+		config.alpn_protocols = vec![alpn.to_vec()];
 
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
 		config.transport_config(self.transport.clone());
@@ -191,19 +186,24 @@ impl Client {
 		let port = url.port().unwrap_or(443);
 
 		// Look up the DNS entry.
-		let addr = tokio::net::lookup_host((host.clone(), port))
+		let ip = tokio::net::lookup_host((host.clone(), port))
 			.await
 			.context("failed DNS lookup")?
 			.next()
 			.context("no DNS entries")?;
 
-		let connection = self.quic.connect_with(config, addr, &host)?.await?;
+		tracing::debug!(%host, %port, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
+
+		let connection = self.quic.connect_with(config, ip, &host)?.await?;
+		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
 			"https" => web_transport_quinn::connect_with(connection, url).await?,
 			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};
+
+		tracing::info!("connected");
 
 		Ok(session.into())
 	}

@@ -47,7 +47,6 @@ impl Locals {
 	}
 
 	pub fn route(&self, broadcast: &str) -> Option<BroadcastReader> {
-		tracing::info!("routing broadcast: {:?}", broadcast);
 		self.broadcasts.lock().unwrap().get(broadcast).cloned()
 	}
 }

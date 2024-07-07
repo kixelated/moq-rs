@@ -6,13 +6,11 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	coding::{Reader, Stream},
-	message, setup,
-	util::Queue,
-	Broadcast, BroadcastReader, Closed, Track, TrackReader, TrackWriter, UnknownReader, UnknownWriter,
+	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, Track, TrackReader, TrackWriter, UnknownReader,
+	UnknownWriter,
 };
 
-use super::{Session, SessionError, Subscribe};
+use super::{Reader, Session, SessionError, Stream, Subscribe};
 
 #[derive(Clone)]
 pub struct Subscriber {
@@ -107,26 +105,23 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn recv_announce(&mut self, mut stream: Stream) {
-		if let Err(err) = self.recv_announce_inner(&mut stream).await {
-			stream.writer.reset(err.code());
-		}
+	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+		let announce = stream.reader.decode().await?;
+		self.serve_announce(stream, announce).await
 	}
 
-	#[tracing::instrument("announced", skip_all, err, fields(stream = stream.id))]
-	async fn recv_announce_inner(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
-		let msg = stream.reader.decode::<message::Announce>().await?;
-
-		let (mut writer, reader) = Broadcast::new(&msg.broadcast).produce();
+	#[tracing::instrument("announce", skip_all, err, fields(broadcast = announce.broadcast))]
+	async fn serve_announce(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
+		let (mut writer, reader) = Broadcast::new(&announce.broadcast).produce();
 		let _ = writer.unknown(self.unknown.clone());
 
 		self.announced.push(reader).map_err(|_| SessionError::Internal)?;
 
-		tracing::info!(broadcast = writer.name);
-
 		// Send the OK message.
 		let msg = message::AnnounceOk {};
 		stream.writer.encode(&msg).await?;
+
+		tracing::info!("ok");
 
 		// Wait until the reader is closed.
 		tokio::select! {
@@ -137,31 +132,30 @@ impl Subscriber {
 		Ok(())
 	}
 
-	pub(super) async fn recv_group(&mut self, mut stream: Reader) {
-		if let Err(err) = self.recv_group_inner(&mut stream).await {
-			stream.stop(err.code());
-		}
+	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), SessionError> {
+		let group = stream.decode().await?;
+		self.serve_group(stream, group).await
 	}
 
-	#[tracing::instrument("group", skip_all, err, fields(stream = stream.id))]
-	async fn recv_group_inner(&mut self, stream: &mut Reader) -> Result<(), SessionError> {
-		let _header = message::Data::Group = stream.decode().await?;
+	#[tracing::instrument("group", skip_all, err, fields(broadcast, track, group = group.sequence, subscribe = group.subscribe))]
+	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), SessionError> {
+		let mut group = {
+			let mut lookup = self.lookup.lock().unwrap();
+			let track = lookup.get_mut(&group.subscribe).ok_or(Closed::UnknownSubscribe)?;
 
-		let header: message::Group = stream.decode().await?;
-		tracing::debug!(?header);
+			tracing::Span::current().record("broadcast", &track.broadcast);
+			tracing::Span::current().record("track", &track.name);
 
-		let mut group = self
-			.lookup
-			.lock()
-			.unwrap()
-			.get_mut(&header.subscribe)
-			.ok_or(Closed::UnknownSubscribe)?
-			.create(header.sequence)?;
+			track.create(group.sequence)?
+		};
 
+		let mut size = 0;
 		while let Some(chunk) = stream.read_chunk(usize::MAX).await? {
-			tracing::trace!(chunk.size = chunk.len());
+			size += chunk.len();
 			group.write(chunk)?;
 		}
+
+		tracing::debug!(size);
 
 		Ok(())
 	}
