@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
 	let cli = Cli::parse();
+	let mut nmspc = cli.name.clone();
 
 	let (writer, _, reader) = serve::Tracks::new(cli.name).produce();
 	let media = Media::new(writer)?;
@@ -70,19 +71,20 @@ async fn main() -> anyhow::Result<()> {
 
 	tokio::select! {
 		res = session.run() => res.context("session error")?,
-		res = run_media(media) => res.context("media error")?,
+		res = run_media(media,&mut nmspc) => res.context("media error")?,
 		res = publisher.announce(reader) => res.context("publisher error")?,
 	}
 
 	Ok(())
 }
 
-async fn run_media(mut media: Media) -> anyhow::Result<()> {
+async fn run_media(mut media: Media,namespace: & String) -> anyhow::Result<()> {
 	let mut input = tokio::io::stdin();
 	let mut buf = BytesMut::new();
+	let mut name = namespace.clone();
 
 	loop {
 		input.read_buf(&mut buf).await.context("failed to read from stdin")?;
-		media.parse(&mut buf).context("failed to parse media")?;
+		media.parse(&mut buf,&mut name).context("failed to parse media")?;
 	}
 }
