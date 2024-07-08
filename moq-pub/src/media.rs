@@ -45,12 +45,13 @@ impl Media {
 
 	// Parse the input buffer, reading any full atoms we can find.
 	// Keep appending more data and calling parse.
-	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<()> {
-		while self.parse_atom(buf)? {}
+	pub fn parse<B: Buf>(&mut self, buf: &mut B,namespace: & String) -> anyhow::Result<()> {
+		let mut name = namespace.clone();
+		while self.parse_atom(buf,&mut name)? {}
 		Ok(())
 	}
 
-	fn parse_atom<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<bool> {
+	fn parse_atom<B: Buf>(&mut self, buf: &mut B,namespace: &mut String) -> anyhow::Result<bool> {
 		let atom = match next_atom(buf)? {
 			Some(atom) => atom,
 			None => return Ok(false),
@@ -76,7 +77,8 @@ impl Media {
 				// Parse the moov box so we can detect the timescales for each track.
 				let moov = mp4::MoovBox::read_box(&mut reader, header.size)?;
 
-				self.setup(&moov, atom)?;
+				let mut namespc = namespace.clone();
+				self.setup(&moov, atom,&mut namespc)?;
 				self.moov = Some(moov);
 			}
 			mp4::BoxType::MoofBox => {
@@ -127,7 +129,7 @@ impl Media {
 		Ok(true)
 	}
 
-	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
+	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes,namespace: &mut String) -> anyhow::Result<()> {
 		// Create a track for each track in the moov
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
@@ -154,10 +156,11 @@ impl Media {
 		// Produce the catalog
 		for trak in &moov.traks {
 			let mut track = json!({
-				"container": "mp4",
 				"init_track": "0.mp4",
 				"data_track": format!("{}.m4s", trak.tkhd.track_id),
 			});
+
+			let mut selection_params = json!({});
 
 			let stsd = &trak.mdia.minf.stbl.stsd;
 			if let Some(avc1) = &stsd.avc1 {
@@ -176,10 +179,11 @@ impl Media {
 				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
 				let codec_str = codec.to_string();
 
-				track["kind"] = json!("video");
-				track["codec"] = json!(codec_str);
-				track["width"] = json!(width);
-				track["height"] = json!(height);
+				track["name"] = json!(format!("video_{}p", height));
+				selection_params["codec"] = json!(codec_str);
+				selection_params["width"] = json!(width);
+				selection_params["height"] = json!(height);
+				track["selectionParams"] = json!(selection_params);
 			} else if let Some(_hev1) = &stsd.hev1 {
 				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
 				anyhow::bail!("HEVC not yet supported")
@@ -192,25 +196,30 @@ impl Media {
 					.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
-				track["kind"] = json!("audio");
-				track["codec"] = json!(codec_str);
-				track["channel_count"] = json!(mp4a.channelcount);
-				track["sample_rate"] = json!(mp4a.samplerate.value());
-				track["sample_size"] = json!(mp4a.samplesize);
+				track["name"] = json!("audio");
+				selection_params["codec"] = json!(codec_str);
+				selection_params["channel_count"] = json!(mp4a.channelcount);
+				selection_params["sample_rate"] = json!(mp4a.samplerate.value());
+				selection_params["sample_size"] = json!(mp4a.samplesize);
+
 
 				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
 				if bitrate > 0 {
-					track["bit_rate"] = json!(bitrate);
+					selection_params["bit_rate"] = json!(bitrate);
 				}
+				track["selectionParams"] = json!(selection_params);
 			} else if let Some(vp09) = &stsd.vp09 {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
 
-				track["kind"] = json!("video");
-				track["codec"] = json!(codec_str);
-				track["width"] = json!(vp09.width); // no idea if this needs to be multiplied
-				track["height"] = json!(vp09.height); // no idea if this needs to be multiplied
+				track["name"] = json!(format!("video_{}p", vp09.height));
+				selection_params["codec"] = json!(codec_str);
+				selection_params["width"] = json!(vp09.width);// no idea if this needs to be multiplied
+				selection_params["height"] = json!(vp09.height); // no idea if this needs to be multiplied
+				track["selectionParams"] = json!(selection_params);
+
+
 
 				// TODO Test if this actually works; I'm just guessing based on mp4box.js
 				anyhow::bail!("VP9 not yet supported")
@@ -222,7 +231,15 @@ impl Media {
 			tracks.push(track);
 		}
 
+		let nm = ["quic.video/watch/",namespace].join("");
 		let catalog = json!({
+			"version": 1,
+			"sequence": 0,
+			"streamingFormat": 1,
+			"streamingFormatVersion": "0.2",
+			"namespace": nm,
+			"packaging": "cmaf",
+			"renderGroup":1,
 			"tracks": tracks
 		});
 
