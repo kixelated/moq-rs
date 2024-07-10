@@ -1,20 +1,16 @@
 use clap::Parser;
 
-mod consumer;
-mod local;
 //mod origin;
-mod producer;
 mod relay;
 //mod remote;
+mod origins;
 mod session;
 mod web;
 
-pub use consumer::*;
-pub use local::*;
 //pub use origin::*;
-pub use producer::*;
 pub use relay::*;
 //pub use remote::*;
+pub use origins::*;
 pub use session::*;
 pub use web::*;
 

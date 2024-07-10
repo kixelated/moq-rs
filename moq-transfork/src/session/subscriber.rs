@@ -6,8 +6,7 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, Track, TrackReader, TrackWriter, UnknownReader,
-	UnknownWriter,
+	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter,
 };
 
 use super::{Reader, Session, SessionError, Stream, Subscribe};
@@ -18,20 +17,16 @@ pub struct Subscriber {
 	announced: Queue<BroadcastReader>,
 	subscribe: Queue<Subscribe>,
 
-	// Used to forward any Subscribes from Announced broadcasts.
-	unknown: UnknownReader,
-
-	lookup: Arc<Mutex<HashMap<u64, TrackWriter>>>,
+	lookup: Arc<Mutex<HashMap<u64, (Broadcast, TrackWriter)>>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
 
 impl Subscriber {
-	pub(super) fn new(session: web_transport::Session, unknown: UnknownReader) -> Self {
+	pub(super) fn new(session: web_transport::Session) -> Self {
 		Self {
 			session,
 			announced: Default::default(),
 			subscribe: Default::default(),
-			unknown,
 			lookup: Default::default(),
 			next_id: Default::default(),
 		}
@@ -51,29 +46,24 @@ impl Subscriber {
 		self.announced.pop().await
 	}
 
-	// Manually route a broadcast to this subscriber.
-	pub fn route(&mut self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
-		let (mut writer, reader) = broadcast.produce();
-		writer.unknown(self.unknown.clone())?;
-		Ok(reader)
-	}
-
 	#[tracing::instrument("session", skip_all, fields(session = self.session.id))]
-	pub async fn subscribe(&mut self, track: Track) -> Result<TrackReader, SessionError> {
+	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, SessionError> {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 		let (writer, reader) = track.produce();
 
-		self.lookup.lock().unwrap().insert(id, writer);
-		let subscribe = Subscribe::open(&mut self.session, id, reader.clone()).await?;
+		self.lookup.lock().unwrap().insert(id, (broadcast.clone(), writer));
+
+		let stream = Stream::open(&mut self.session, message::Stream::Subscribe).await?;
+		let mut subscribe = Subscribe::new(stream, id, broadcast, reader.clone());
+		subscribe.start().await?; // wait for an OK before returning
 
 		self.subscribe.push(subscribe).map_err(|_| SessionError::Internal)?;
 
 		Ok(reader)
 	}
 
-	pub(super) async fn run(self, mut unknown: UnknownWriter) -> Result<(), SessionError> {
+	pub(super) async fn run(self) -> Result<(), SessionError> {
 		let mut subscribes = FuturesUnordered::new();
-		let mut unknowns = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
@@ -86,20 +76,6 @@ impl Subscriber {
 					let id = res.unwrap();
 					self.lookup.lock().unwrap().remove(&id);
 				}
-				Some(unknown) = unknown.requested() => {
-					let mut this = self.clone();
-
-					unknowns.push(async move {
-						match this.subscribe(unknown.track.clone()).await {
-							Ok(track) => unknown.respond(track),
-							Err(SessionError::Closed(err)) => unknown.close(err),
-							Err(err) => return Err(err),
-						};
-
-						Ok(())
-					})
-				},
-				res = unknowns.next(), if !unknowns.is_empty() => res.unwrap()?,
 				else => return Ok(()),
 			};
 		}
@@ -112,8 +88,11 @@ impl Subscriber {
 
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = announce.broadcast))]
 	async fn serve_announce(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
-		let (mut writer, reader) = Broadcast::new(&announce.broadcast).produce();
-		let _ = writer.unknown(self.unknown.clone());
+		let broadcast = Broadcast::new(announce.broadcast);
+		let (mut writer, reader) = broadcast.clone().produce();
+
+		let mut router = Router::produce();
+		writer.route(router.1)?;
 
 		self.announced.push(reader).map_err(|_| SessionError::Internal)?;
 
@@ -123,13 +102,27 @@ impl Subscriber {
 
 		tracing::info!("ok");
 
-		// Wait until the reader is closed.
-		tokio::select! {
-			res = stream.reader.closed() => res?,
-			res = writer.closed() => res?,
-		};
+		let mut tasks = FuturesUnordered::new();
 
-		Ok(())
+		// Wait until the reader is closed.
+		loop {
+			tokio::select! {
+				Some(req) = router.0.requested() => {
+					let mut this = self.clone();
+					let broadcast = broadcast.clone();
+
+					tasks.push(async move {
+						match this.subscribe(broadcast, req.info.clone()).await {
+							Ok(track) => req.respond(track),
+							Err(err) => req.reject(Closed::Unknown /* TODO err*/),
+						};
+					});
+				},
+				res = stream.reader.closed() => return res,
+				res = writer.closed() => return res.map_err(Into::into),
+				_ = tasks.next(), if !tasks.is_empty() => {},
+			};
+		}
 	}
 
 	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), SessionError> {
@@ -141,9 +134,9 @@ impl Subscriber {
 	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), SessionError> {
 		let mut group = {
 			let mut lookup = self.lookup.lock().unwrap();
-			let track = lookup.get_mut(&group.subscribe).ok_or(Closed::UnknownSubscribe)?;
+			let (broadcast, track) = lookup.get_mut(&group.subscribe).ok_or(Closed::Unknown)?;
 
-			tracing::Span::current().record("broadcast", &track.broadcast);
+			tracing::Span::current().record("broadcast", &broadcast.name);
 			tracing::Span::current().record("track", &track.name);
 
 			track.create(group.sequence)?

@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use std::{ops, sync::Arc};
 
-use crate::util::State;
+use crate::{util::State, Produce};
 
 use super::{Closed, Frame, FrameReader, FrameWriter};
 
@@ -26,8 +26,13 @@ impl Group {
 	pub fn new(sequence: u64) -> Group {
 		Self { sequence }
 	}
+}
 
-	pub fn produce(self) -> (GroupWriter, GroupReader) {
+impl Produce for Group {
+	type Reader = GroupReader;
+	type Writer = GroupWriter;
+
+	fn produce(self) -> (GroupWriter, GroupReader) {
 		let state = State::default();
 		let info = Arc::new(self);
 

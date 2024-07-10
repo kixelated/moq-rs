@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create MoQ Transport session")?;
 
-	let broadcast = Broadcast::new(&config.name);
+	let broadcast = Broadcast::new(config.name);
 	let media = Media::load(subscriber, broadcast).await?;
 
 	tokio::select! {

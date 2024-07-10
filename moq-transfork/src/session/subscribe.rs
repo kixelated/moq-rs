@@ -1,30 +1,33 @@
-use crate::{message, model};
+use crate::{message, model, Broadcast, TrackReader};
 
 use super::{OrClose, SessionError, Stream};
 
 pub struct Subscribe {
 	pub id: u64,
+	broadcast: Broadcast,
 	track: model::TrackReader,
 	stream: Stream,
 }
 
 impl Subscribe {
-	pub async fn open(
-		session: &mut web_transport::Session,
-		id: u64,
-		track: model::TrackReader,
-	) -> Result<Self, SessionError> {
-		let stream = Stream::open(session, message::Stream::Subscribe).await?;
-		let mut this = Self { id, track, stream };
-		this.open_inner().await.or_close(&mut this.stream)?;
-		Ok(this)
+	pub fn new(stream: Stream, id: u64, broadcast: Broadcast, track: TrackReader) -> Self {
+		Self {
+			id,
+			track,
+			broadcast,
+			stream,
+		}
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id=self.id, broadcast=self.track.broadcast, track=self.track.name))]
-	async fn open_inner(&mut self) -> Result<(), SessionError> {
+	pub async fn start(&mut self) -> Result<(), SessionError> {
+		self.start_inner().await.or_close(&mut self.stream)
+	}
+
+	#[tracing::instrument("subscribe", skip_all, err, fields(id=self.id, broadcast=self.broadcast.name, track=self.track.name))]
+	async fn start_inner(&mut self) -> Result<(), SessionError> {
 		let request = message::Subscribe {
 			id: self.id,
-			broadcast: self.track.broadcast.to_string(),
+			broadcast: self.broadcast.name.clone(),
 
 			track: self.track.name.clone(),
 			priority: self.track.priority,
@@ -47,11 +50,11 @@ impl Subscribe {
 		Ok(())
 	}
 
-	pub async fn run(mut self) {
-		let _ = self.run_inner().await.or_close(&mut self.stream);
+	pub async fn run(mut self) -> Result<(), SessionError> {
+		self.run_inner().await.or_close(&mut self.stream)
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id = self.id, broadcast=self.track.broadcast, track=self.track.name))]
+	#[tracing::instrument("subscribe", skip_all, err, fields(id = self.id, broadcast=self.broadcast.name, track=self.track.name))]
 	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
 		loop {
 			tokio::select! {

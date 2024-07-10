@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 	let mut quic = quic.server.context("missing server certificate")?;
 
-	let broadcast = Broadcast::new(&cli.broadcast);
+	let broadcast = Broadcast::new(cli.broadcast);
 	let listings = Listings::new(broadcast);
 
 	let mut tasks = FuturesUnordered::new();

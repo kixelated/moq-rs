@@ -8,17 +8,8 @@ pub enum Closed {
 	#[error("app code={0}")]
 	App(u32),
 
-	#[error("unknown broadcast")]
-	UnknownBroadcast,
-
-	#[error("unknown track")]
-	UnknownTrack,
-
-	#[error("unknown group")]
-	UnknownGroup,
-
-	#[error("unknown subscribe")]
-	UnknownSubscribe,
+	#[error("unknown")]
+	Unknown,
 
 	// The broadcast/track is a duplicate
 	#[error("duplicate")]
@@ -30,10 +21,7 @@ impl Closed {
 		match self {
 			Self::Cancel => 0,
 			Self::App(code) => *code,
-			Self::UnknownBroadcast => 404,
-			Self::UnknownTrack => 405,
-			Self::UnknownGroup => 406,
-			Self::UnknownSubscribe => 407,
+			Self::Unknown => 404,
 			Self::Duplicate => 409,
 		}
 	}

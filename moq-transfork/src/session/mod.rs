@@ -1,7 +1,7 @@
 use std::future;
 
 use crate::{
-	message, model,
+	message,
 	setup::{self, Extensions},
 };
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -31,7 +31,6 @@ pub struct Session {
 	setup: Stream,
 	publisher: Option<Publisher>,
 	subscriber: Option<Subscriber>,
-	unknown: Option<model::UnknownWriter>, // provided to Subscriber
 }
 
 impl Session {
@@ -40,18 +39,14 @@ impl Session {
 		role: setup::Role,
 		stream: Stream,
 	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let unknown = model::Unknown::produce();
 		let publisher = role.is_publisher().then(|| Publisher::new(webtransport.clone()));
-		let subscriber = role
-			.is_subscriber()
-			.then(|| Subscriber::new(webtransport.clone(), unknown.1));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(webtransport.clone()));
 
 		let session = Self {
 			webtransport,
 			setup: stream,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
-			unknown: Some(unknown.0),
 		};
 
 		(session, publisher, subscriber)
@@ -185,7 +180,7 @@ impl Session {
 			} => res,
 			res = async move {
 				match self.subscriber {
-					Some(subscriber) => subscriber.run(self.unknown.unwrap()).await,
+					Some(subscriber) => subscriber.run().await,
 					None => future::pending().await,
 				}
 			} => res,

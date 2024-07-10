@@ -12,8 +12,8 @@
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
 use std::{collections::HashMap, ops, sync::Arc};
 
-use super::{Track, TrackBuilder, TrackReader, TrackWriter, UnknownReader};
-use crate::{util::State, Closed};
+use super::{Track, TrackBuilder, TrackReader, TrackWriter};
+use crate::{util::State, Closed, Produce, RouterReader};
 
 /// Static information about a broadcast.
 #[derive(Clone)]
@@ -22,11 +22,16 @@ pub struct Broadcast {
 }
 
 impl Broadcast {
-	pub fn new(name: &str) -> Self {
-		Self { name: name.to_string() }
+	pub fn new<T: Into<String>>(name: T) -> Self {
+		Self { name: name.into() }
 	}
+}
 
-	pub fn produce(self) -> (BroadcastWriter, BroadcastReader) {
+impl Produce for Broadcast {
+	type Reader = BroadcastReader;
+	type Writer = BroadcastWriter;
+
+	fn produce(self) -> (BroadcastWriter, BroadcastReader) {
 		let info = Arc::new(self);
 		let state = State::default();
 
@@ -39,7 +44,7 @@ impl Broadcast {
 
 pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
-	unknown: Option<UnknownReader>,
+	router: Option<RouterReader<Track>>,
 	closed: Result<(), Closed>,
 }
 
@@ -47,7 +52,7 @@ impl Default for BroadcastState {
 	fn default() -> Self {
 		Self {
 			tracks: HashMap::new(),
-			unknown: None,
+			router: None,
 			closed: Ok(()),
 		}
 	}
@@ -64,13 +69,13 @@ impl BroadcastWriter {
 		Self { state, info }
 	}
 
-	pub fn create(&mut self, name: &str, priority: u64) -> BroadcastTrackBuilder {
-		BroadcastTrackBuilder::new(self, name, priority)
+	pub fn create<T: Into<String>>(&mut self, name: T, priority: u64) -> BroadcastTrackBuilder {
+		BroadcastTrackBuilder::new(self, name.into(), priority)
 	}
 
-	/// Optionally route unknown tracks to the provided [UnknownReader].
-	pub fn unknown(&mut self, reader: UnknownReader) -> Result<(), Closed> {
-		self.state.lock_mut().ok_or(Closed::Cancel)?.unknown = Some(reader);
+	/// Optionally route requests for unknown tracks.
+	pub fn route(&mut self, router: RouterReader<Track>) -> Result<(), Closed> {
+		self.state.lock_mut().ok_or(Closed::Cancel)?.router = Some(router);
 		Ok(())
 	}
 
@@ -130,9 +135,9 @@ pub struct BroadcastTrackBuilder<'a> {
 }
 
 impl<'a> BroadcastTrackBuilder<'a> {
-	fn new(broadcast: &'a mut BroadcastWriter, name: &str, priority: u64) -> Self {
+	fn new(broadcast: &'a mut BroadcastWriter, name: String, priority: u64) -> Self {
 		Self {
-			track: Track::new(&broadcast.name, name, priority),
+			track: Track::new(name, priority),
 			broadcast,
 		}
 	}
@@ -171,18 +176,18 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn subscribe(&mut self, track: Track) -> Result<TrackReader, Closed> {
-		let unknown = {
+	pub async fn request(&mut self, track: Track) -> Result<TrackReader, Closed> {
+		let router = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {
 				return Ok(track);
 			}
 
-			state.unknown.clone().ok_or(Closed::UnknownTrack)?
+			state.router.clone().ok_or(Closed::Unknown)?
 		};
 
 		// TODO cache to deduplicate?
-		unknown.subscribe(track).await
+		router.request(track).await
 	}
 
 	pub async fn closed(&self) -> Result<(), Closed> {
@@ -206,5 +211,11 @@ impl ops::Deref for BroadcastReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+impl PartialEq for BroadcastReader {
+	fn eq(&self, other: &Self) -> bool {
+		self.state == other.state
 	}
 }

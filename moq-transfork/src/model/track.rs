@@ -14,14 +14,13 @@
 
 use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
-use crate::{util::State, Closed};
+use crate::{util::State, Closed, Produce};
 
 use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Clone)]
 pub struct Track {
-	pub broadcast: String, // TODO remove
 	pub name: String,
 	pub priority: u64,
 	pub group_order: GroupOrder,
@@ -29,17 +28,21 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn new(broadcast: &str, name: &str, priority: u64) -> TrackBuilder {
+	pub fn new<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
 		TrackBuilder::new(Self {
-			broadcast: broadcast.to_string(),
-			name: name.to_string(),
+			name: name.into(),
 			priority,
 			group_order: GroupOrder::Descending,
 			group_expires: None,
 		})
 	}
+}
 
-	pub fn produce(self) -> (TrackWriter, TrackReader) {
+impl Produce for Track {
+	type Reader = TrackReader;
+	type Writer = TrackWriter;
+
+	fn produce(self) -> (TrackWriter, TrackReader) {
 		let state = State::default();
 		let info = Arc::new(self);
 
@@ -180,7 +183,7 @@ impl TrackReader {
 		}
 
 		state.closed.clone()?;
-		Err(Closed::UnknownGroup)
+		Err(Closed::Unknown)
 	}
 
 	// NOTE: This can return groups out of order.

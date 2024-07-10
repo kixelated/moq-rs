@@ -121,6 +121,12 @@ impl<T: fmt::Debug> fmt::Debug for State<T> {
 	}
 }
 
+impl<T> PartialEq for State<T> {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.state, &other.state)
+	}
+}
+
 pub struct StateRef<'a, T> {
 	state: Arc<Mutex<StateInner<T>>>,
 	lock: MutexGuard<'a, StateInner<T>>,

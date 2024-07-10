@@ -7,7 +7,7 @@ use clap::Parser;
 
 mod clock;
 
-use moq_transfork::{Broadcast, Publisher, Subscriber, Track};
+use moq_transfork::{Broadcast, Produce, Publisher, Subscriber, Track};
 
 #[derive(Parser, Clone)]
 pub struct Cli {
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let (mut writer, reader) = Broadcast::new(&config.broadcast).produce();
+		let (mut writer, reader) = Broadcast::new(config.broadcast).produce();
 		publisher
 			.announce(reader)
 			.await
@@ -72,9 +72,10 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to create MoQ Transport session")?;
 
-		let track = Track::new(&config.broadcast, &config.track, 0).build();
+		let broadcast = Broadcast::new(config.broadcast);
+		let track = Track::new(config.track, 0).build();
 
-		let reader = subscriber.subscribe(track).await?;
+		let reader = subscriber.subscribe(broadcast, track).await?;
 		let clock = clock::Subscriber::new(reader);
 
 		tokio::select! {

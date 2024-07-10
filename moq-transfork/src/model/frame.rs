@@ -1,4 +1,4 @@
-use crate::util::State;
+use crate::{util::State, Produce};
 use bytes::{Bytes, BytesMut};
 use std::{ops, sync::Arc};
 
@@ -13,8 +13,13 @@ impl Frame {
 	pub fn new(size: usize) -> Frame {
 		Self { size }
 	}
+}
 
-	pub fn produce(self) -> (FrameWriter, FrameReader) {
+impl Produce for Frame {
+	type Reader = FrameReader;
+	type Writer = FrameWriter;
+
+	fn produce(self) -> (FrameWriter, FrameReader) {
 		let state = State::default();
 		let info = Arc::new(self);
 

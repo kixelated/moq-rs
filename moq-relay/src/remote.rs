@@ -164,7 +164,7 @@ impl RemoteProducer {
 		let mut run = session.run().boxed();
 
 		let broadcast = format!(".origin.{}", self.host);
-		let (writer, reader) = Track::new(&broadcast, "broadcasts").produce();
+		let (writer, reader) = Track::new(broadcast, "broadcasts").produce();
 		let subscribe = subscriber.subscribe(writer);
 		let mut broadcasts = ListingReader::new(reader);
 

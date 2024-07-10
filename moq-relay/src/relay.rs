@@ -4,9 +4,10 @@ use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_native::quic;
+use moq_transfork::{model, Broadcast, RouterReader, RouterWriter};
 use url::Url;
 
-use crate::{Consumer, Locals, Producer, Session};
+use crate::{Origins, Session};
 
 pub struct RelayConfig {
 	/// Listen on this address
@@ -27,15 +28,21 @@ pub struct RelayConfig {
 
 pub struct Relay {
 	config: RelayConfig,
+	outgoing: Origins,
+	incoming: (RouterWriter<Broadcast>, RouterReader<Broadcast>),
 }
 
 impl Relay {
 	// Create a QUIC endpoint that can be used for both clients and servers.
 	pub fn new(config: RelayConfig) -> Self {
-		Self { config }
+		Self {
+			config,
+			outgoing: Origins::default(),
+			incoming: model::Router::produce(),
+		}
 	}
 
-	pub async fn run(self) -> anyhow::Result<()> {
+	pub async fn run(mut self) -> anyhow::Result<()> {
 		let mut tasks = FuturesUnordered::new();
 
 		let quic = quic::Endpoint::new(quic::Config {
@@ -62,7 +69,6 @@ impl Relay {
 		};
 		*/
 
-		let locals = Locals::new(/*self.config.host*/);
 		// let remotes = Remotes::new();
 
 		let mut server = quic.server.context("missing TLS certificate")?;
@@ -72,21 +78,10 @@ impl Relay {
 		loop {
 			tokio::select! {
 				Some(conn) = server.accept() => {
-					let locals = locals.clone();
-					//let remotes = remotes.clone();
-					//let root = root.clone();
-
-					tasks.push(async move {
-						let (session, publisher, subscriber) = moq_transfork::Session::accept_any(conn).await?;
-						let session = Session {
-							session,
-							producer: publisher.map(|publisher| Producer::new(publisher, locals.clone())),
-							consumer: subscriber.map(|subscriber| Consumer::new(subscriber, locals)),
-						};
-
-						session.run().await
-					});
+					let session = Session::new(conn, self.outgoing.clone(), self.incoming.1.clone());
+					tasks.push(session.run());
 				},
+				_ = self.outgoing.serve(&mut self.incoming.0) => anyhow::bail!("router serve finished"),
 				_ = tasks.next(), if !tasks.is_empty() => {},
 				else => return Ok(()),
 			}

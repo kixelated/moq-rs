@@ -6,8 +6,7 @@ use std::{
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message, setup, util::Queue, BroadcastReader, Closed, GroupReader, Track, TrackReader, Unknown, UnknownReader,
-	UnknownWriter,
+	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, GroupReader, RouterReader, Track, TrackReader,
 };
 
 use super::{Announce, OrClose, Session, SessionError, Stream, Writer};
@@ -18,9 +17,8 @@ pub struct Publisher {
 
 	// Used to route incoming subscriptions
 	broadcasts: Arc<Mutex<HashMap<String, BroadcastReader>>>,
-
 	announced: Queue<Announce>,
-	unknown: Option<UnknownReader>,
+	router: Arc<Mutex<Option<RouterReader<Broadcast>>>>,
 }
 
 impl Publisher {
@@ -29,7 +27,7 @@ impl Publisher {
 			session: webtransport,
 			broadcasts: Default::default(),
 			announced: Default::default(),
-			unknown: None,
+			router: Default::default(),
 		}
 	}
 
@@ -57,14 +55,9 @@ impl Publisher {
 		Ok(())
 	}
 
-	/// Route any unknown subscriptions to the provided [UnknownWriter].
-	///
-	/// If this is not called, any uknonwn subscriptions will be rejected with [ServeError::NotFound].
-	/// This may be called multiple times, but only the last one will be used.
-	pub fn unknown(&mut self) -> UnknownWriter {
-		let (writer, reader) = Unknown::produce();
-		self.unknown = Some(reader);
-		writer
+	// Optionally send any requests for unknown broadcasts to the router
+	pub fn route(&mut self, router: RouterReader<Broadcast>) {
+		*self.router.lock().unwrap() = Some(router);
 	}
 
 	pub(super) async fn run(self) -> Result<(), SessionError> {
@@ -87,17 +80,19 @@ impl Publisher {
 		}
 	}
 
-	async fn subscribe(&mut self, track: Track) -> Result<TrackReader, Closed> {
-		let broadcast = self.broadcasts.lock().unwrap().get(&track.broadcast).cloned();
-		if let Some(mut broadcast) = broadcast {
-			return broadcast.subscribe(track).await;
+	async fn request(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Closed> {
+		let reader = self.broadcasts.lock().unwrap().get(&broadcast.name).cloned();
+		if let Some(mut broadcast) = reader {
+			return broadcast.request(track).await;
 		}
 
-		if let Some(unknown) = self.unknown.as_mut() {
-			return unknown.subscribe(track).await;
+		let router = self.router.lock().unwrap().clone();
+		if let Some(router) = router {
+			let mut reader = router.request(broadcast).await?;
+			return reader.request(track).await;
 		}
 
-		Err(Closed::UnknownBroadcast)
+		Err(Closed::Unknown)
 	}
 
 	pub(super) async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
@@ -111,8 +106,9 @@ impl Publisher {
 		stream: &mut Stream,
 		subscribe: message::Subscribe,
 	) -> Result<(), SessionError> {
-		let track = Track::new(&subscribe.broadcast, &subscribe.track, subscribe.priority).build();
-		let mut track = self.subscribe(track).await?;
+		let broadcast = Broadcast::new(subscribe.broadcast);
+		let track = Track::new(subscribe.track, subscribe.priority).build();
+		let mut track = self.request(broadcast.clone(), track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest(),
@@ -140,7 +136,7 @@ impl Publisher {
 					};
 
 					let session = self.session.clone();
-					let broadcast= track.broadcast.clone();
+					let broadcast = broadcast.name.clone();
 					let track = track.name.clone();
 
 					tasks.push(async move {
@@ -237,8 +233,9 @@ impl Publisher {
 
 	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, stream: &mut Stream, fetch: message::Fetch) -> Result<(), SessionError> {
-		let track = Track::new(&fetch.broadcast, &fetch.track, fetch.priority).build();
-		let track = self.subscribe(track).await?;
+		let broadcast = Broadcast::new(fetch.broadcast);
+		let track = Track::new(fetch.track, fetch.priority).build();
+		let track = self.request(broadcast, track).await?;
 		let group = track.get(fetch.group)?;
 
 		unimplemented!("TODO fetch");
@@ -262,8 +259,9 @@ impl Publisher {
 
 	#[tracing::instrument("info", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), SessionError> {
-		let track = Track::new(&info.broadcast, &info.track, 0).build();
-		let track = self.subscribe(track).await?;
+		let broadcast = Broadcast::new(info.broadcast);
+		let track = Track::new(info.track, 0).build();
+		let track = self.request(broadcast, track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest(),

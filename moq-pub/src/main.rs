@@ -8,7 +8,7 @@ use tokio::io::AsyncReadExt;
 
 use moq_native::quic;
 use moq_pub::Media;
-use moq_transfork::{Broadcast, Publisher};
+use moq_transfork::{Broadcast, Produce, Publisher};
 
 #[derive(Parser, Clone)]
 pub struct Cli {
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 
-	let (writer, reader) = Broadcast::new(&cli.name).produce();
+	let (writer, reader) = Broadcast::new(cli.name).produce();
 	let media = Media::new(writer)?;
 
 	publisher.announce(reader).await.context("failed to announce")?;

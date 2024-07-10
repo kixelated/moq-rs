@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::{Broadcast, BroadcastReader, BroadcastWriter, Closed};
+use moq_transfork::{Broadcast, BroadcastReader, BroadcastWriter, Closed, Produce};
 
 use crate::ListingWriter;
 
@@ -67,7 +67,7 @@ impl Listings {
 		let mut state = self.state.lock().unwrap();
 
 		// TODO this is the wrong error message.
-		let listing = state.active.get_mut(prefix).ok_or(Closed::UnknownTrack)?;
+		let listing = state.active.get_mut(prefix).ok_or(Closed::Unknown)?;
 		listing.remove(base)?;
 
 		if listing.is_empty() {
