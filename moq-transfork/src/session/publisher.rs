@@ -42,7 +42,7 @@ impl Publisher {
 	}
 
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
-	#[tracing::instrument("session", skip_all, fields(id = self.session.id))]
+	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
 	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
 		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
@@ -80,16 +80,16 @@ impl Publisher {
 		}
 	}
 
-	async fn request(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Closed> {
+	async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Closed> {
 		let reader = self.broadcasts.lock().unwrap().get(&broadcast.name).cloned();
 		if let Some(mut broadcast) = reader {
-			return broadcast.request(track).await;
+			return broadcast.subscribe(track).await;
 		}
 
 		let router = self.router.lock().unwrap().clone();
 		if let Some(router) = router {
-			let mut reader = router.request(broadcast).await?;
-			return reader.request(track).await;
+			let mut reader = router.subscribe(broadcast).await?;
+			return reader.subscribe(track).await;
 		}
 
 		Err(Closed::Unknown)
@@ -100,7 +100,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, subscribe = subscribe.id))]
+	#[tracing::instrument("subscribed", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(
 		&mut self,
 		stream: &mut Stream,
@@ -108,7 +108,7 @@ impl Publisher {
 	) -> Result<(), SessionError> {
 		let broadcast = Broadcast::new(subscribe.broadcast);
 		let track = Track::new(subscribe.track, subscribe.priority).build();
-		let mut track = self.request(broadcast.clone(), track).await?;
+		let mut track = self.subscribe(broadcast.clone(), track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest(),
@@ -169,7 +169,7 @@ impl Publisher {
 		}
 	}
 
-	#[tracing::instrument("group", skip_all, err, fields(?broadcast, ?track, subscribe, group = group.sequence))]
+	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
 	pub async fn serve_group(
 		mut session: web_transport::Session,
 		broadcast: String,
@@ -235,7 +235,7 @@ impl Publisher {
 	async fn serve_fetch(&mut self, stream: &mut Stream, fetch: message::Fetch) -> Result<(), SessionError> {
 		let broadcast = Broadcast::new(fetch.broadcast);
 		let track = Track::new(fetch.track, fetch.priority).build();
-		let track = self.request(broadcast, track).await?;
+		let track = self.subscribe(broadcast, track).await?;
 		let group = track.get(fetch.group)?;
 
 		unimplemented!("TODO fetch");
@@ -257,11 +257,11 @@ impl Publisher {
 		self.serve_info(stream, info).await
 	}
 
-	#[tracing::instrument("info", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
+	#[tracing::instrument("track", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), SessionError> {
 		let broadcast = Broadcast::new(info.broadcast);
 		let track = Track::new(info.track, 0).build();
-		let track = self.request(broadcast, track).await?;
+		let track = self.subscribe(broadcast, track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest(),

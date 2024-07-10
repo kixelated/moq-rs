@@ -110,7 +110,6 @@ impl Server {
 		}
 	}
 
-	#[tracing::instrument("session", skip_all, err, fields(id))]
 	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport::Session> {
 		let handshake = conn
 			.handshake_data()
@@ -148,8 +147,6 @@ impl Server {
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
-		tracing::info!("connected");
-
 		Ok(session.into())
 	}
 
@@ -166,7 +163,6 @@ pub struct Client {
 }
 
 impl Client {
-	#[tracing::instrument("session", skip_all, err, fields(id, %url))]
 	pub async fn connect(&self, url: &Url) -> anyhow::Result<web_transport::Session> {
 		let mut config = self.config.clone();
 
@@ -192,7 +188,7 @@ impl Client {
 			.next()
 			.context("no DNS entries")?;
 
-		tracing::debug!(%host, %port, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
+		tracing::debug!(%url, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
 
 		let connection = self.quic.connect_with(config, ip, &host)?.await?;
 		tracing::Span::current().record("id", connection.stable_id());
@@ -202,8 +198,6 @@ impl Client {
 			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};
-
-		tracing::info!("connected");
 
 		Ok(session.into())
 	}

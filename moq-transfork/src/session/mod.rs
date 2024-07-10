@@ -66,7 +66,6 @@ impl Session {
 		Self::connect_role(session, setup::Role::Any).await
 	}
 
-	#[tracing::instrument("session", skip_all, err, fields(id = session.id))]
 	pub async fn connect_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
@@ -86,21 +85,20 @@ impl Session {
 			extensions,
 		};
 
-		tracing::info!(versions = ?client.versions, role=?client_role, "client setup");
 		setup.writer.encode(&client).await?;
 
 		let server: setup::Server = setup.reader.decode().await?;
 		let server_role = server.extensions.get()?.unwrap_or_default();
-
-		tracing::info!(version = ?server.version, role=?server_role, "server setup");
 
 		let role = client_role
 			.downgrade(server_role)
 			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
 
 		if client_role != role {
-			tracing::info!(?role, "client downgraded");
+			tracing::debug!(?role, "client downgraded");
 		}
+
+		tracing::info!(version = ?server.version, role = ?role, "connected");
 
 		Ok(role)
 	}
@@ -119,7 +117,6 @@ impl Session {
 		Self::accept_role(session, setup::Role::Any).await
 	}
 
-	#[tracing::instrument("session", skip_all, err, fields(id = session.id))]
 	pub async fn accept_role(
 		mut session: web_transport::Session,
 		role: setup::Role,
@@ -145,28 +142,25 @@ impl Session {
 
 		let client_role = client.extensions.get()?.unwrap_or_default();
 
-		tracing::info!(versions=?client.versions, role=?client_role,  "client setup");
-
-		let server_role = server_role
+		let role = server_role
 			.downgrade(client_role)
 			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
 
 		let mut extensions = Extensions::default();
-		extensions.set(server_role)?;
+		extensions.set(role)?;
 
 		let server = setup::Server {
 			version: setup::Version::FORK_00,
 			extensions,
 		};
 
-		tracing::info!(version = ?server.version, role = ?server_role, "server setup");
-
 		control.writer.encode(&server).await?;
+
+		tracing::info!(version = ?server.version, ?role, "connected");
 
 		Ok(server_role)
 	}
 
-	#[tracing::instrument("session", skip_all, err, fields(id = self.webtransport.id))]
 	pub async fn run(mut self) -> Result<(), SessionError> {
 		tokio::select! {
 			res = Self::run_update(&mut self.setup) => res,

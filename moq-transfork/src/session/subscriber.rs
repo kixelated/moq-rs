@@ -4,6 +4,7 @@ use std::{
 };
 
 use futures::{stream::FuturesUnordered, StreamExt};
+use tracing::Instrument;
 
 use crate::{
 	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter,
@@ -17,7 +18,7 @@ pub struct Subscriber {
 	announced: Queue<BroadcastReader>,
 	subscribe: Queue<Subscribe>,
 
-	lookup: Arc<Mutex<HashMap<u64, (Broadcast, TrackWriter)>>>,
+	lookup: Arc<Mutex<HashMap<u64, TrackWriter>>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
 
@@ -46,12 +47,20 @@ impl Subscriber {
 		self.announced.pop().await
 	}
 
-	#[tracing::instrument("session", skip_all, fields(session = self.session.id))]
 	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, SessionError> {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+		self.subscribe_inner(broadcast, track, id).await
+	}
+
+	async fn subscribe_inner(
+		&mut self,
+		broadcast: Broadcast,
+		track: Track,
+		id: u64,
+	) -> Result<TrackReader, SessionError> {
 		let (writer, reader) = track.produce();
 
-		self.lookup.lock().unwrap().insert(id, (broadcast.clone(), writer));
+		self.lookup.lock().unwrap().insert(id, writer);
 
 		let stream = Stream::open(&mut self.session, message::Stream::Subscribe).await?;
 		let mut subscribe = Subscribe::new(stream, id, broadcast, reader.clone());
@@ -86,7 +95,7 @@ impl Subscriber {
 		self.serve_announce(stream, announce).await
 	}
 
-	#[tracing::instrument("announce", skip_all, err, fields(broadcast = announce.broadcast))]
+	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
 	async fn serve_announce(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
 		let broadcast = Broadcast::new(announce.broadcast);
 		let (mut writer, reader) = broadcast.clone().produce();
@@ -111,10 +120,11 @@ impl Subscriber {
 					let mut this = self.clone();
 					let broadcast = broadcast.clone();
 
+					let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 					tasks.push(async move {
-						match this.subscribe(broadcast, req.info.clone()).await {
-							Ok(track) => req.respond(track),
-							Err(err) => req.reject(Closed::Unknown /* TODO err*/),
+						match this.subscribe_inner(broadcast, req.info.clone(), id).await {
+							Ok(track) => req.serve(track),
+							Err(err) => req.close(Closed::Unknown /* TODO err*/),
 						};
 					});
 				},
@@ -130,17 +140,15 @@ impl Subscriber {
 		self.serve_group(stream, group).await
 	}
 
-	#[tracing::instrument("group", skip_all, err, fields(broadcast, track, group = group.sequence, subscribe = group.subscribe))]
+	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
 	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), SessionError> {
-		let mut group = {
-			let mut lookup = self.lookup.lock().unwrap();
-			let (broadcast, track) = lookup.get_mut(&group.subscribe).ok_or(Closed::Unknown)?;
-
-			tracing::Span::current().record("broadcast", &broadcast.name);
-			tracing::Span::current().record("track", &track.name);
-
-			track.create(group.sequence)?
-		};
+		let mut group = self
+			.lookup
+			.lock()
+			.unwrap()
+			.get_mut(&group.subscribe)
+			.ok_or(Closed::Unknown)?
+			.create(group.sequence)?;
 
 		let mut size = 0;
 		while let Some(chunk) = stream.read_chunk(usize::MAX).await? {

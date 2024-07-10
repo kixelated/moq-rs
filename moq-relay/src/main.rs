@@ -18,7 +18,7 @@ use std::net;
 use url::Url;
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Config {
 	/// Listen on this address
 	#[arg(long, default_value = "[::]:443")]
 	pub bind: net::SocketAddr,
@@ -26,6 +26,10 @@ pub struct Cli {
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
+
+	/// Log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 
 	/// Forward all announces to the provided server for authentication/routing.
 	/// If not provided, the relay accepts every unique announce.
@@ -45,10 +49,10 @@ pub struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	moq_native::log::init();
+	let config = Config::parse();
+	config.log.init();
 
-	let cli = Cli::parse();
-	let tls = cli.tls.load()?;
+	let tls = config.tls.load()?;
 
 	if tls.server.is_none() {
 		anyhow::bail!("missing TLS certificates");
@@ -57,15 +61,15 @@ async fn main() -> anyhow::Result<()> {
 	// Create a QUIC server for media.
 	let relay = Relay::new(RelayConfig {
 		tls: tls.clone(),
-		bind: cli.bind,
-		host: cli.node,
-		announce: cli.announce,
+		bind: config.bind,
+		host: config.node,
+		announce: config.announce,
 	});
 
-	if cli.dev {
+	if config.dev {
 		// Create a web server too.
 		// Currently this only contains the certificate fingerprint (for development only).
-		let web = Web::new(WebConfig { bind: cli.bind, tls });
+		let web = Web::new(WebConfig { bind: config.bind, tls });
 
 		tokio::spawn(async move {
 			web.run().await.expect("failed to run web server");

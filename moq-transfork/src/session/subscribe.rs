@@ -23,7 +23,7 @@ impl Subscribe {
 		self.start_inner().await.or_close(&mut self.stream)
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id=self.id, broadcast=self.broadcast.name, track=self.track.name))]
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=self.broadcast.name, track=self.track.name, id = self.id))]
 	async fn start_inner(&mut self) -> Result<(), SessionError> {
 		let request = message::Subscribe {
 			id: self.id,
@@ -54,7 +54,7 @@ impl Subscribe {
 		self.run_inner().await.or_close(&mut self.stream)
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id = self.id, broadcast=self.broadcast.name, track=self.track.name))]
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast = self.broadcast.name, track=self.track.name, id = self.id))]
 	pub async fn run_inner(&mut self) -> Result<(), SessionError> {
 		loop {
 			tokio::select! {

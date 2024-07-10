@@ -25,6 +25,10 @@ pub struct Config {
 	#[arg(long)]
 	pub name: String,
 
+	/// Log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
+
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
@@ -32,9 +36,8 @@ pub struct Config {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	moq_native::log::init();
-
 	let config = Config::parse();
+	config.log.init();
 
 	let tls = config.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;

@@ -7,9 +7,6 @@ cd "$(dirname "$0")/.."
 # Generate the self-signed certificate if needed
 ./dev/cert
 
-# Use debug logging by default
-export RUST_LOG="${RUST_LOG:-debug}"
-
 # Default to a self-signed certificate
 # TODO automatically generate if it doesn't exist.
 CERT="${CERT:-dev/localhost.crt}"
@@ -36,4 +33,4 @@ fi
 echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS -- "$@"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS "$@"

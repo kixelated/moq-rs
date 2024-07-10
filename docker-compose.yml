@@ -2,8 +2,6 @@ version: "3.8"
 
 x-moq: &x-moq
   build: .
-  environment:
-    RUST_LOG: ${RUST_LOG:-debug}
   volumes:
     - ./dev/localhost.crt:/etc/tls/cert:ro
     - ./dev/localhost.key:/etc/tls/key:ro

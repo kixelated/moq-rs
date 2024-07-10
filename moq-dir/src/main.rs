@@ -16,7 +16,7 @@ pub use listings::*;
 pub use session::*;
 
 #[derive(Clone, clap::Parser)]
-pub struct Cli {
+pub struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:443")]
 	pub bind: net::SocketAddr,
@@ -34,19 +34,23 @@ pub struct Cli {
 	/// Any announcements that don't match are ignored.
 	#[arg(long, default_value = ".")]
 	pub broadcast: String,
+
+	/// Log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	moq_native::log::init();
+	let config = Config::parse();
+	config.log.init();
 
-	let cli = Cli::parse();
-	let tls = cli.tls.load()?;
+	let tls = config.tls.load()?;
 
-	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
+	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 	let mut quic = quic.server.context("missing server certificate")?;
 
-	let broadcast = Broadcast::new(cli.broadcast);
+	let broadcast = Broadcast::new(config.broadcast);
 	let listings = Listings::new(broadcast);
 
 	let mut tasks = FuturesUnordered::new();

@@ -5,6 +5,7 @@ use anyhow::Context;
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_native::quic;
 use moq_transfork::{model, Broadcast, RouterReader, RouterWriter};
+use tracing::Instrument;
 use url::Url;
 
 use crate::{Origins, Session};
@@ -30,6 +31,7 @@ pub struct Relay {
 	config: RelayConfig,
 	outgoing: Origins,
 	incoming: (RouterWriter<Broadcast>, RouterReader<Broadcast>),
+	next_id: u64,
 }
 
 impl Relay {
@@ -39,6 +41,7 @@ impl Relay {
 			config,
 			outgoing: Origins::default(),
 			incoming: model::Router::produce(),
+			next_id: 0,
 		}
 	}
 
@@ -73,13 +76,15 @@ impl Relay {
 
 		let mut server = quic.server.context("missing TLS certificate")?;
 
-		tracing::info!(bind = %self.config.bind, "listening");
+		tracing::info!(addr = %self.config.bind, "listening");
 
 		loop {
 			tokio::select! {
 				Some(conn) = server.accept() => {
 					let session = Session::new(conn, self.outgoing.clone(), self.incoming.1.clone());
-					tasks.push(session.run());
+					let span = tracing::info_span!("session", id = self.next_id);
+					self.next_id += 1;
+					tasks.push(session.run().instrument(span));
 				},
 				_ = self.outgoing.serve(&mut self.incoming.0) => anyhow::bail!("router serve finished"),
 				_ = tasks.next(), if !tasks.is_empty() => {},

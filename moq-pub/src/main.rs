@@ -11,7 +11,7 @@ use moq_pub::Media;
 use moq_transfork::{Broadcast, Produce, Publisher};
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
@@ -37,27 +37,31 @@ pub struct Cli {
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
+
+	/// Log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	moq_native::log::init();
+	let config = Config::parse();
+	config.log.init();
 
-	let cli = Cli::parse();
-	let tls = cli.tls.load()?;
+	let tls = config.tls.load()?;
 
 	let quic = quic::Endpoint::new(moq_native::quic::Config {
-		bind: cli.bind,
+		bind: config.bind,
 		tls: tls.clone(),
 	})?;
 
-	let session = quic.client.connect(&cli.url).await?;
+	let session = quic.client.connect(&config.url).await?;
 
 	let (session, mut publisher) = Publisher::connect(session)
 		.await
 		.context("failed to create MoQ Transport publisher")?;
 
-	let (writer, reader) = Broadcast::new(cli.name).produce();
+	let (writer, reader) = Broadcast::new(config.name).produce();
 	let media = Media::new(writer)?;
 
 	publisher.announce(reader).await.context("failed to announce")?;

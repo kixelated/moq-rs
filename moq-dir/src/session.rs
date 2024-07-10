@@ -14,7 +14,6 @@ impl Session {
 		Self { session, listings }
 	}
 
-	#[tracing::instrument("session", skip_all, err, fields(session = self.session.id))]
 	pub async fn run(self) -> anyhow::Result<()> {
 		let session = self.session.clone();
 		let (session, publisher, subscriber) = moq_transfork::Session::accept_any(session).await?;

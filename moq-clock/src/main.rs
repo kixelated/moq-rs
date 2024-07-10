@@ -10,7 +10,7 @@ mod clock;
 use moq_transfork::{Broadcast, Produce, Publisher, Subscriber, Track};
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
@@ -34,13 +34,17 @@ pub struct Cli {
 	/// The name of the clock track.
 	#[arg(long, default_value = "now")]
 	pub track: String,
+
+	/// The log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	moq_native::log::init();
+	let config = Config::parse();
+	config.log.init();
 
-	let config = Cli::parse();
 	let tls = config.tls.load()?;
 
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;

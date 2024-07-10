@@ -44,8 +44,8 @@ impl Origins {
 		while let Some(request) = writer.requested().await {
 			let state = self.state.lock().unwrap();
 			match state.lookup.get(&request.info.name).and_then(|bs| bs.front()) {
-				Some(broadcast) => request.respond(broadcast.clone()),
-				None => request.reject(Closed::Unknown),
+				Some(broadcast) => request.serve(broadcast.clone()),
+				None => request.close(Closed::Unknown),
 			}
 		}
 	}

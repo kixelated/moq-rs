@@ -44,7 +44,7 @@ impl<T: Produce> RouterReader<T> {
 		Self { queue }
 	}
 
-	pub async fn request(&self, info: T) -> Result<T::Reader, Closed> {
+	pub async fn subscribe(&self, info: T) -> Result<T::Reader, Closed> {
 		let request = RouterRequest::<T>::new(info);
 		if self.queue.push(request.split()).is_err() {
 			return Err(Closed::Cancel);
@@ -74,7 +74,7 @@ impl<T: Produce> RouterRequest<T> {
 		}
 	}
 
-	pub fn respond(self, reader: T::Reader) {
+	pub fn serve(self, reader: T::Reader) {
 		if let Some(mut state) = self.reply.lock_mut() {
 			state.replace(Ok(reader));
 		}
@@ -88,7 +88,7 @@ impl<T: Produce> RouterRequest<T> {
 		writer
 	}
 
-	pub fn reject(self, error: Closed) {
+	pub fn close(self, error: Closed) {
 		if let Some(mut state) = self.reply.lock_mut() {
 			state.replace(Err(error));
 		}

@@ -7,7 +7,7 @@ pub struct Announce {
 }
 
 impl Announce {
-	#[tracing::instrument("announce", skip_all, err, fields(broadcast=broadcast.name))]
+	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
 	pub async fn open(session: &mut web_transport::Session, broadcast: BroadcastReader) -> Result<Self, SessionError> {
 		let stream = Stream::open(session, message::Stream::Announce).await?;
 
@@ -30,7 +30,7 @@ impl Announce {
 		Ok(())
 	}
 
-	#[tracing::instrument("announce", skip_all, err, fields(broadcast=self.broadcast.name))]
+	#[tracing::instrument("announce", skip_all, err, fields(broadcast = self.broadcast.name))]
 	pub async fn run(mut self) -> Result<(), SessionError> {
 		tokio::select! {
 			res = self.stream.reader.closed() => res.map_err(SessionError::from),

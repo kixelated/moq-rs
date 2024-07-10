@@ -176,7 +176,7 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn request(&mut self, track: Track) -> Result<TrackReader, Closed> {
+	pub async fn subscribe(&mut self, track: Track) -> Result<TrackReader, Closed> {
 		let router = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {
@@ -187,7 +187,7 @@ impl BroadcastReader {
 		};
 
 		// TODO cache to deduplicate?
-		router.request(track).await
+		router.subscribe(track).await
 	}
 
 	pub async fn closed(&self) -> Result<(), Closed> {
