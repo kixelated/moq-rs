@@ -193,8 +193,7 @@ impl Media {
 	// Parse the input buffer, reading any full atoms we can find.
 	// Keep appending more data and calling parse.
 	pub fn parse<B: Buf>(&mut self, buf: &mut B, namespace: &str) -> anyhow::Result<()> {
-		let name = namespace.to_owned();
-		while self.parse_atom(buf, &name)? {}
+		while self.parse_atom(buf, namespace)? {}
 		Ok(())
 	}
 
@@ -224,8 +223,7 @@ impl Media {
 				// Parse the moov box so we can detect the timescales for each track.
 				let moov = mp4::MoovBox::read_box(&mut reader, header.size)?;
 
-				let namespc = namespace.to_owned();
-				self.setup(&moov, atom, &namespc)?;
+				self.setup(&moov, atom, namespace)?;
 				self.moov = Some(moov);
 			}
 			mp4::BoxType::MoofBox => {

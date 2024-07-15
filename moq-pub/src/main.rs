@@ -81,10 +81,9 @@ async fn main() -> anyhow::Result<()> {
 async fn run_media(mut media: Media, namespace: &str) -> anyhow::Result<()> {
 	let mut input = tokio::io::stdin();
 	let mut buf = BytesMut::new();
-	let name = namespace.to_owned();
 
 	loop {
 		input.read_buf(&mut buf).await.context("failed to read from stdin")?;
-		media.parse(&mut buf, &name).context("failed to parse media")?;
+		media.parse(&mut buf, namespace).context("failed to parse media")?;
 	}
 }
