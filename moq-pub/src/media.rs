@@ -10,6 +10,7 @@ use std::time;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct CommonTrackFields {
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub namespace: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub packaging: Option<TrackPackaging>,
@@ -99,6 +100,8 @@ pub struct Catalog {
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Tracks {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub namespace: Option<String>,
 	pub name: String,
 	#[serde(rename = "initTrack")]
 	pub init_track: Option<String>,
@@ -146,7 +149,7 @@ pub struct SelectionParam {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub samplerate: Option<u32>,
 	#[serde(rename = "channelConfig", skip_serializing_if = "Option::is_none")]
-	pub channel_config: Option<u16>,
+	pub channel_config: Option<String>,
 	#[serde(rename = "displayWidth", skip_serializing_if = "Option::is_none")]
 	pub display_width: Option<u16>,
 	#[serde(rename = "displayHeight", skip_serializing_if = "Option::is_none")]
@@ -327,6 +330,7 @@ impl Media {
 				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
 				let codec_str = codec.to_string();
 
+				track.namespace = Some(namespace.to_string());
 				track.name = format!("video_{}p", height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(width.into());
@@ -346,9 +350,10 @@ impl Media {
 					.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
+				track.namespace = Some(namespace.to_string());
 				track.name = "audio".to_string();
 				selection_params.codec = Some(codec_str);
-				selection_params.channel_config = Some(mp4a.channelcount);
+				selection_params.channel_config = Some(mp4a.channelcount.to_string());
 				selection_params.samplerate = Some(mp4a.samplerate.value().into());
 
 				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
@@ -362,6 +367,7 @@ impl Media {
 				let vpcc = &vp09.vpcc;
 				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
 
+				track.namespace = Some(namespace.to_string());
 				track.name = format!("video_{}p", vp09.height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(vp09.width.into());
