@@ -8,6 +8,7 @@ members = [
 	"moq-clock",
 	"moq-dir",
 	"moq-native",
+	"moq-catalog",
 ]
 resolver = "2"
 

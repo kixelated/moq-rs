@@ -2,161 +2,10 @@ use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
 use moq_transport::serve::{GroupWriter, GroupsWriter, TrackWriter, TracksWriter};
 use mp4::{self, ReadBox, TrackType};
-use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time;
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct CommonTrackFields {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub namespace: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub packaging: Option<TrackPackaging>,
-	#[serde(rename = "renderGroup", skip_serializing_if = "Option::is_none")]
-	pub render_group: Option<u16>,
-	#[serde(rename = "altGroup", skip_serializing_if = "Option::is_none")]
-	pub alt_group: Option<u16>,
-}
-
-impl CommonTrackFields {
-	/// Serialize function to conditionally include fields based on their commonality amoung tracks
-	pub fn serialize_with_common_fields(&self, tracks: &mut [Tracks]) -> Option<CommonTrackFields> {
-		// Checking if packaging,render_group and alt_group are common across tracks
-		let mut common_packaging = self.packaging.clone();
-		let mut common_render_group = self.render_group;
-		let mut common_alt_group = self.alt_group;
-
-		for track in &mut *tracks {
-			if let Some(ref track_packaging) = track.packaging {
-				if common_packaging.is_none() {
-					common_packaging = Some(track_packaging.clone());
-				} else if common_packaging != Some(track_packaging.clone()) {
-					common_packaging = None;
-				}
-			}
-
-			if let Some(track_render_group) = track.render_group {
-				if common_render_group.is_none() {
-					common_render_group = Some(track_render_group);
-				} else if common_render_group != Some(track_render_group) {
-					common_render_group = None;
-				}
-			}
-
-			if let Some(track_alt_group) = track.alt_group {
-				if common_alt_group.is_none() {
-					common_alt_group = Some(track_alt_group);
-				} else if common_alt_group != Some(track_alt_group) {
-					common_alt_group = None;
-				}
-			}
-		}
-
-		if common_render_group.is_some() {
-			for track in tracks.iter_mut() {
-				track.render_group = None;
-			}
-		}
-		if common_packaging.is_some() {
-			for track in tracks.iter_mut() {
-				track.packaging = None;
-			}
-		}
-		if common_alt_group.is_some() {
-			for track in tracks.iter_mut() {
-				track.alt_group = None;
-			}
-		}
-
-		// Serialize only if all tracks have the same values for packaging, render_group and alt_group
-		if common_packaging.is_some() || common_render_group.is_some() {
-			Some(CommonTrackFields {
-				namespace: self.namespace.clone(),
-				packaging: common_packaging,
-				render_group: common_render_group,
-				alt_group: common_alt_group,
-			})
-		} else {
-			None
-		}
-	}
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Catalog {
-	pub version: u16,
-	#[serde(rename = "streamingFormat")]
-	pub streaming_format: u16,
-	#[serde(rename = "streamingFormatVersion")]
-	pub streaming_format_version: String,
-	#[serde(rename = "supportsDeltaUpdates")]
-	pub streaming_delta_updates: bool,
-	#[serde(rename = "commonTrackFields")]
-	pub common_track_fields: Option<CommonTrackFields>,
-	pub tracks: Vec<Tracks>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct Tracks {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub namespace: Option<String>,
-	pub name: String,
-	#[serde(rename = "initTrack")]
-	pub init_track: Option<String>,
-	#[serde(rename = "initData")]
-	pub data_track: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub packaging: Option<TrackPackaging>,
-	#[serde(rename = "renderGroup", skip_serializing_if = "Option::is_none")]
-	pub render_group: Option<u16>,
-	#[serde(rename = "altGroup", skip_serializing_if = "Option::is_none")]
-	pub alt_group: Option<u16>,
-	#[serde(rename = "selectionParams")]
-	pub selection_params: SelectionParam,
-	#[serde(rename = "temporalId", skip_serializing_if = "Option::is_none")]
-	pub temporal_id: Option<u32>,
-	#[serde(rename = "spatialId", skip_serializing_if = "Option::is_none")]
-	pub spatial_id: Option<u32>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub depends: Option<Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
-pub enum TrackPackaging {
-	#[serde(rename = "cmaf")]
-	#[default]
-	Cmaf,
-	#[serde(rename = "loc")]
-	Loc,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct SelectionParam {
-	pub codec: Option<String>,
-	#[serde(rename = "mimeType")]
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub mime_type: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub framerate: Option<u64>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub bitrate: Option<u32>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub width: Option<u32>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub height: Option<u32>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub samplerate: Option<u32>,
-	#[serde(rename = "channelConfig", skip_serializing_if = "Option::is_none")]
-	pub channel_config: Option<String>,
-	#[serde(rename = "displayWidth", skip_serializing_if = "Option::is_none")]
-	pub display_width: Option<u16>,
-	#[serde(rename = "displayHeight", skip_serializing_if = "Option::is_none")]
-	pub display_height: Option<u16>,
-	#[serde(rename = "lang", skip_serializing_if = "Option::is_none")]
-	pub language: Option<String>,
-}
 
 pub struct Media {
 	// Tracks based on their track ID.
@@ -195,12 +44,12 @@ impl Media {
 
 	// Parse the input buffer, reading any full atoms we can find.
 	// Keep appending more data and calling parse.
-	pub fn parse<B: Buf>(&mut self, buf: &mut B, namespace: &str) -> anyhow::Result<()> {
-		while self.parse_atom(buf, namespace)? {}
+	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<()> {
+		while self.parse_atom(buf)? {}
 		Ok(())
 	}
 
-	fn parse_atom<B: Buf>(&mut self, buf: &mut B, namespace: &str) -> anyhow::Result<bool> {
+	fn parse_atom<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<bool> {
 		let atom = match next_atom(buf)? {
 			Some(atom) => atom,
 			None => return Ok(false),
@@ -226,7 +75,7 @@ impl Media {
 				// Parse the moov box so we can detect the timescales for each track.
 				let moov = mp4::MoovBox::read_box(&mut reader, header.size)?;
 
-				self.setup(&moov, atom, namespace)?;
+				self.setup(&moov, atom)?;
 				self.moov = Some(moov);
 			}
 			mp4::BoxType::MoofBox => {
@@ -277,7 +126,7 @@ impl Media {
 		Ok(true)
 	}
 
-	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes, namespace: &str) -> anyhow::Result<()> {
+	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
 		// Create a track for each track in the moov
 		for trak in &moov.traks {
 			let id = trak.tkhd.track_id;
@@ -303,16 +152,18 @@ impl Media {
 
 		// Produce the catalog
 		for trak in &moov.traks {
-			let mut selection_params = SelectionParam::default();
-			let mut track = Tracks::default();
+			let mut selection_params = moq_catalog::SelectionParam::default();
+
+			let mut track = moq_catalog::Track {
+				init_track: Some("0.mp4".to_string()),
+				data_track: Some(format!("{}.m4s", trak.tkhd.track_id)),
+				namespace: Some(self.broadcast.namespace.clone()),
+				packaging: Some(moq_catalog::TrackPackaging::Cmaf),
+				render_group: Some(1),
+				..Default::default()
+			};
 
 			let stsd = &trak.mdia.minf.stbl.stsd;
-
-			if trak.mdia.hdlr.handler_type.to_string() == "vide" || trak.mdia.hdlr.handler_type.to_string() == "soun" {
-				track.packaging = Some(TrackPackaging::Cmaf);
-			} else {
-				track.packaging = Some(TrackPackaging::Loc);
-			}
 
 			if let Some(avc1) = &stsd.avc1 {
 				// avc1[.PPCCLL]
@@ -330,14 +181,10 @@ impl Media {
 				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
 				let codec_str = codec.to_string();
 
-				track.namespace = Some(namespace.to_string());
 				track.name = format!("video_{}p", height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(width.into());
 				selection_params.height = Some(height.into());
-				track.render_group = Some(1);
-				track.alt_group = Some(1);
-				track.selection_params = selection_params
 			} else if let Some(_hev1) = &stsd.hev1 {
 				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
 				anyhow::bail!("HEVC not yet supported")
@@ -350,7 +197,6 @@ impl Media {
 					.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
-				track.namespace = Some(namespace.to_string());
 				track.name = "audio".to_string();
 				selection_params.codec = Some(codec_str);
 				selection_params.channel_config = Some(mp4a.channelcount.to_string());
@@ -360,21 +206,15 @@ impl Media {
 				if bitrate > 0 {
 					selection_params.bitrate = Some(bitrate);
 				}
-				track.render_group = Some(1);
-				track.selection_params = selection_params
 			} else if let Some(vp09) = &stsd.vp09 {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
 
-				track.namespace = Some(namespace.to_string());
 				track.name = format!("video_{}p", vp09.height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(vp09.width.into());
 				selection_params.height = Some(vp09.height.into());
-				track.render_group = Some(1);
-				track.alt_group = Some(1);
-				track.selection_params = selection_params;
 
 				// TODO Test if this actually works; I'm just guessing based on mp4box.js
 				anyhow::bail!("VP9 not yet supported")
@@ -383,23 +223,17 @@ impl Media {
 				anyhow::bail!("unknown codec for track: {}", trak.tkhd.track_id);
 			}
 
-			track.init_track = Some("0.mp4".to_string());
-			track.data_track = Some(format!("{}.m4s", trak.tkhd.track_id));
+			track.selection_params = selection_params;
 
 			tracks.push(track);
 		}
 
-		let commontrackfields = CommonTrackFields {
-			namespace: Some(["quic.video/watch/", namespace].join("")),
-			..Default::default()
-		};
-
-		let catalog = Catalog {
+		let catalog = moq_catalog::Root {
 			version: 1,
 			streaming_format: 1,
 			streaming_format_version: "0.2".to_string(),
 			streaming_delta_updates: true,
-			common_track_fields: commontrackfields.serialize_with_common_fields(&mut tracks),
+			common_track_fields: moq_catalog::CommonTrackFields::from_tracks(&mut tracks),
 			tracks,
 		};
 

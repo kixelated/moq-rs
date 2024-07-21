@@ -857,6 +857,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-catalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "moq-clock"
 version = "0.4.1"
 dependencies = [
@@ -916,18 +923,18 @@ dependencies = [
 
 [[package]]
 name = "moq-pub"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bytes",
  "clap",
  "env_logger",
  "log",
+ "moq-catalog",
  "moq-native",
  "moq-transport",
  "mp4",
  "rfc6381-codec",
- "serde",
  "serde_json",
  "tokio",
  "tracing",
