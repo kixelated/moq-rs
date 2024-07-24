@@ -1,8 +1,8 @@
-use crate::{util::State, Produce};
+use crate::runtime::Watch;
 use bytes::{Bytes, BytesMut};
-use std::{ops, sync::Arc};
+use std::ops;
 
-use super::Closed;
+use super::{Closed, Produce};
 
 #[derive(Clone, PartialEq)]
 pub struct Frame {
@@ -20,11 +20,10 @@ impl Produce for Frame {
 	type Writer = FrameWriter;
 
 	fn produce(self) -> (FrameWriter, FrameReader) {
-		let state = State::default();
-		let info = Arc::new(self);
+		let state = Watch::default();
 
-		let writer = FrameWriter::new(state.split(), info.clone());
-		let reader = FrameReader::new(state, info);
+		let writer = FrameWriter::new(state.split(), self.clone());
+		let reader = FrameReader::new(state, self);
 
 		(writer, reader)
 	}
@@ -50,14 +49,14 @@ impl Default for FrameState {
 /// Used to write data to a stream and notify readers.
 pub struct FrameWriter {
 	// Mutable stream state.
-	state: State<FrameState>,
+	state: Watch<FrameState>,
 
 	// Immutable stream state.
-	pub info: Arc<Frame>,
+	pub info: Frame,
 }
 
 impl FrameWriter {
-	fn new(state: State<FrameState>, info: Arc<Frame>) -> Self {
+	fn new(state: Watch<FrameState>, info: Frame) -> Self {
 		Self { state, info }
 	}
 
@@ -90,10 +89,10 @@ impl ops::Deref for FrameWriter {
 #[derive(Clone)]
 pub struct FrameReader {
 	// Modify the stream state.
-	state: State<FrameState>,
+	state: Watch<FrameState>,
 
 	// Immutable stream state.
-	pub info: Arc<Frame>,
+	pub info: Frame,
 
 	// The number of frames we've read.
 	// NOTE: Cloned readers inherit this offset, but then run in parallel.
@@ -101,7 +100,7 @@ pub struct FrameReader {
 }
 
 impl FrameReader {
-	fn new(state: State<FrameState>, group: Arc<Frame>) -> Self {
+	fn new(state: Watch<FrameState>, group: Frame) -> Self {
 		Self {
 			state,
 			info: group,
@@ -121,7 +120,7 @@ impl FrameReader {
 				}
 
 				state.closed.clone()?;
-				match state.modified() {
+				match state.changed() {
 					Some(modified) => modified,
 					None => return Ok(None),
 				}

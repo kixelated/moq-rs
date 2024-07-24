@@ -8,11 +8,11 @@
 //!
 //! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::{ops, sync::Arc};
+use std::ops;
 
-use crate::{util::State, Produce};
+use crate::runtime::Watch;
 
-use super::{Closed, Frame, FrameReader, FrameWriter};
+use super::{Closed, Frame, FrameReader, FrameWriter, Produce};
 
 /// Parameters that can be specified by the user
 #[derive(Clone, PartialEq)]
@@ -33,11 +33,10 @@ impl Produce for Group {
 	type Writer = GroupWriter;
 
 	fn produce(self) -> (GroupWriter, GroupReader) {
-		let state = State::default();
-		let info = Arc::new(self);
+		let state = Watch::default();
 
-		let writer = GroupWriter::new(state.split(), info.clone());
-		let reader = GroupReader::new(state, info);
+		let writer = GroupWriter::new(state.split(), self.clone());
+		let reader = GroupReader::new(state, self);
 
 		(writer, reader)
 	}
@@ -63,17 +62,17 @@ impl Default for GroupState {
 /// Used to write data to a stream and notify readers.
 pub struct GroupWriter {
 	// Mutable stream state.
-	state: State<GroupState>,
+	state: Watch<GroupState>,
 
 	// Immutable stream state.
-	pub info: Arc<Group>,
+	pub info: Group,
 
 	// Cache the number of frames we've written to avoid a mutex
 	total: usize,
 }
 
 impl GroupWriter {
-	fn new(state: State<GroupState>, info: Arc<Group>) -> Self {
+	fn new(state: Watch<GroupState>, info: Group) -> Self {
 		Self { state, info, total: 0 }
 	}
 
@@ -117,10 +116,10 @@ impl ops::Deref for GroupWriter {
 #[derive(Clone)]
 pub struct GroupReader {
 	// Modify the stream state.
-	state: State<GroupState>,
+	state: Watch<GroupState>,
 
 	// Immutable stream state.
-	pub info: Arc<Group>,
+	pub info: Group,
 
 	// The number of frames we've read.
 	// NOTE: Cloned readers inherit this offset, but then run in parallel.
@@ -128,7 +127,7 @@ pub struct GroupReader {
 }
 
 impl GroupReader {
-	fn new(state: State<GroupState>, group: Arc<Group>) -> Self {
+	fn new(state: Watch<GroupState>, group: Group) -> Self {
 		Self {
 			state,
 			info: group,
@@ -156,7 +155,7 @@ impl GroupReader {
 				}
 
 				state.closed.clone()?;
-				match state.modified() {
+				match state.changed() {
 					Some(modified) => modified,
 					None => return Ok(None),
 				}

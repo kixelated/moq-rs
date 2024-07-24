@@ -8,7 +8,7 @@ use tokio::io::AsyncReadExt;
 
 use moq_native::quic;
 use moq_pub::Media;
-use moq_transfork::{Broadcast, Produce, Publisher};
+use moq_transfork::prelude::*;
 
 #[derive(Parser, Clone)]
 pub struct Config {
@@ -56,25 +56,13 @@ async fn main() -> anyhow::Result<()> {
 	})?;
 
 	let session = quic.client.connect(&config.url).await?;
-
-	let (session, mut publisher) = Publisher::connect(session)
-		.await
-		.context("failed to create MoQ Transport publisher")?;
+	let mut publisher = moq_transfork::Client::new(session).publisher().await?;
 
 	let (writer, reader) = Broadcast::new(config.name).produce();
-	let media = Media::new(writer)?;
+	let mut media = Media::new(writer)?;
 
 	publisher.announce(reader).await.context("failed to announce")?;
 
-	tokio::select! {
-		res = session.run() => res.context("session error")?,
-		res = run_media(media) => res.context("media error")?,
-	}
-
-	Ok(())
-}
-
-async fn run_media(mut media: Media) -> anyhow::Result<()> {
 	let mut input = tokio::io::stdin();
 	let mut buf = BytesMut::new();
 

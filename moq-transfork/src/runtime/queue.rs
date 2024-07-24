@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
-use super::State;
+use super::Watch;
 
 pub struct Queue<T> {
-	state: State<VecDeque<T>>,
+	state: Watch<VecDeque<T>>,
 }
 
 impl<T> Queue<T> {
@@ -23,7 +23,7 @@ impl<T> Queue<T> {
 				if !queue.is_empty() {
 					return queue.into_mut()?.pop_front();
 				}
-				queue.modified()?
+				queue.changed()?
 			}
 			.await;
 		}
@@ -57,7 +57,7 @@ impl<T> Clone for Queue<T> {
 impl<T> Default for Queue<T> {
 	fn default() -> Self {
 		Self {
-			state: State::new(Default::default()),
+			state: Watch::new(Default::default()),
 		}
 	}
 }

@@ -1,8 +1,8 @@
 use std::ops;
 
 use crate::{
-	util::{Queue, State},
-	Closed, Produce,
+	model::{Closed, Produce},
+	runtime::{Queue, Watch},
 };
 
 pub struct Router<T: Produce> {
@@ -56,14 +56,14 @@ impl<T: Produce> RouterReader<T> {
 
 pub struct RouterRequest<T: Produce> {
 	pub info: T,
-	reply: State<Option<Result<T::Reader, Closed>>>,
+	reply: Watch<Option<Result<T::Reader, Closed>>>,
 }
 
 impl<T: Produce> RouterRequest<T> {
 	fn new(info: T) -> Self {
 		Self {
 			info,
-			reply: State::default(),
+			reply: Watch::default(),
 		}
 	}
 
@@ -102,7 +102,7 @@ impl<T: Produce> RouterRequest<T> {
 					return res;
 				}
 
-				state.modified().ok_or(Closed::Unknown)?
+				state.changed().ok_or(Closed::Unknown)?
 			}
 			.await
 		}

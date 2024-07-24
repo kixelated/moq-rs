@@ -74,11 +74,11 @@ impl SessionError {
 	}
 }
 
-pub(super) trait Close {
+pub(crate) trait Close {
 	fn close(&mut self, code: u32);
 }
 
-pub(super) trait OrClose<S: Close, V> {
+pub(crate) trait OrClose<S: Close, V> {
 	fn or_close(self, stream: &mut S) -> Result<V, SessionError>;
 }
 

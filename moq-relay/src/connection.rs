@@ -1,31 +1,31 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transfork::{Broadcast, RouterReader, SessionError};
+use moq_transfork::prelude::*;
 
 use crate::Origins;
 
-pub struct Session {
-	session: web_transport::Session,
+pub struct Connection {
+	session: moq_transfork::Server,
 	incoming: Origins,
 	outgoing: RouterReader<Broadcast>,
 }
 
-impl Session {
+impl Connection {
 	pub fn new(session: web_transport::Session, incoming: Origins, outgoing: RouterReader<Broadcast>) -> Self {
 		Self {
-			session,
+			session: moq_transfork::Server::new(session),
 			incoming,
 			outgoing,
 		}
 	}
 
 	pub async fn run(self) -> Result<(), SessionError> {
-		let (session, publisher, subscriber) = moq_transfork::Session::accept_any(self.session).await?;
+		let (publisher, subscriber) = self.session.any().await?;
 
 		let mut tasks = FuturesUnordered::new();
-		tasks.push(session.run().boxed());
 
 		if let Some(mut publisher) = publisher {
-			publisher.route(self.outgoing)
+			publisher.route(self.outgoing);
+			tasks.push(async move { publisher.closed().await }.boxed());
 		}
 
 		if let Some(subscriber) = subscriber {
@@ -35,7 +35,7 @@ impl Session {
 		tasks.select_next_some().await
 	}
 
-	async fn run_producer(mut subscriber: moq_transfork::Subscriber, router: Origins) -> Result<(), SessionError> {
+	async fn run_producer(mut subscriber: Subscriber, router: Origins) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

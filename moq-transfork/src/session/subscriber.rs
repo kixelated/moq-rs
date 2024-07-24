@@ -1,29 +1,27 @@
-use std::{
-	collections::HashMap,
-	sync::{atomic, Arc, Mutex},
-};
+use std::{collections::HashMap, sync::atomic};
 
 use futures::{stream::FuturesUnordered, StreamExt};
-use tracing::Instrument;
 
 use crate::{
-	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter,
+	message,
+	model::{Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter},
+	runtime::{Lock, Queue, Ref},
 };
 
 use super::{Reader, Session, SessionError, Stream, Subscribe};
 
 #[derive(Clone)]
 pub struct Subscriber {
-	session: web_transport::Session,
+	session: Session,
 	announced: Queue<BroadcastReader>,
 	subscribe: Queue<Subscribe>,
 
-	lookup: Arc<Mutex<HashMap<u64, TrackWriter>>>,
-	next_id: Arc<atomic::AtomicU64>,
+	lookup: Lock<HashMap<u64, TrackWriter>>,
+	next_id: Ref<atomic::AtomicU64>, // TODO move to runtime
 }
 
 impl Subscriber {
-	pub(super) fn new(session: web_transport::Session) -> Self {
+	pub(super) fn new(session: Session) -> Self {
 		Self {
 			session,
 			announced: Default::default(),
@@ -31,16 +29,6 @@ impl Subscriber {
 			lookup: Default::default(),
 			next_id: Default::default(),
 		}
-	}
-
-	pub async fn accept(session: web_transport::Session) -> Result<(Session, Self), SessionError> {
-		let (session, _, subscriber) = Session::accept_role(session, setup::Role::Subscriber).await?;
-		Ok((session, subscriber.unwrap()))
-	}
-
-	pub async fn connect(session: web_transport::Session) -> Result<(Session, Self), SessionError> {
-		let (session, _, subscriber) = Session::connect_role(session, setup::Role::Subscriber).await?;
-		Ok((session, subscriber.unwrap()))
 	}
 
 	pub async fn announced(&mut self) -> Option<BroadcastReader> {
@@ -60,9 +48,9 @@ impl Subscriber {
 	) -> Result<TrackReader, SessionError> {
 		let (writer, reader) = track.produce();
 
-		self.lookup.lock().unwrap().insert(id, writer);
+		self.lookup.lock().insert(id, writer);
 
-		let stream = Stream::open(&mut self.session, message::Stream::Subscribe).await?;
+		let stream = self.session.open(message::Stream::Subscribe).await?;
 		let mut subscribe = Subscribe::new(stream, id, broadcast, reader.clone());
 		subscribe.start().await?; // wait for an OK before returning
 
@@ -83,7 +71,7 @@ impl Subscriber {
 				}),
 				res = subscribes.next(), if !subscribes.is_empty() => {
 					let id = res.unwrap();
-					self.lookup.lock().unwrap().remove(&id);
+					self.lookup.lock().remove(&id);
 				}
 				else => return Ok(()),
 			};
@@ -145,7 +133,6 @@ impl Subscriber {
 		let mut group = self
 			.lookup
 			.lock()
-			.unwrap()
 			.get_mut(&group.subscribe)
 			.ok_or(Closed::Unknown)?
 			.create(group.sequence)?;
@@ -159,5 +146,9 @@ impl Subscriber {
 		tracing::debug!(size);
 
 		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), SessionError> {
+		self.session.closed().await
 	}
 }

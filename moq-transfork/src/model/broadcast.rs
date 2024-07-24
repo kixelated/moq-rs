@@ -10,10 +10,10 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{collections::HashMap, ops, sync::Arc};
+use std::{collections::HashMap, ops};
 
-use super::{Track, TrackBuilder, TrackReader, TrackWriter};
-use crate::{util::State, Closed, Produce, RouterReader};
+use super::{Closed, Produce, RouterReader, Track, TrackBuilder, TrackReader, TrackWriter};
+use crate::runtime::{Ref, Watch};
 
 /// Static information about a broadcast.
 #[derive(Clone)]
@@ -32,8 +32,8 @@ impl Produce for Broadcast {
 	type Writer = BroadcastWriter;
 
 	fn produce(self) -> (BroadcastWriter, BroadcastReader) {
-		let info = Arc::new(self);
-		let state = State::default();
+		let info = Ref::new(self);
+		let state = Watch::default();
 
 		let writer = BroadcastWriter::new(state.split(), info.clone());
 		let reader = BroadcastReader::new(state, info);
@@ -60,12 +60,12 @@ impl Default for BroadcastState {
 
 /// Publish new tracks for a broadcast by name.
 pub struct BroadcastWriter {
-	state: State<BroadcastState>,
-	pub info: Arc<Broadcast>,
+	state: Watch<BroadcastState>,
+	pub info: Ref<Broadcast>,
 }
 
 impl BroadcastWriter {
-	fn new(state: State<BroadcastState>, info: Arc<Broadcast>) -> Self {
+	fn new(state: Watch<BroadcastState>, info: Ref<Broadcast>) -> Self {
 		Self { state, info }
 	}
 
@@ -111,7 +111,7 @@ impl BroadcastWriter {
 				let state = self.state.lock();
 				state.closed.clone()?;
 
-				match state.modified() {
+				match state.changed() {
 					Some(notify) => notify,
 					None => return Ok(()),
 				}
@@ -166,12 +166,12 @@ impl<'a> ops::DerefMut for BroadcastTrackBuilder<'a> {
 /// This can be cloned to create handles.
 #[derive(Clone)]
 pub struct BroadcastReader {
-	state: State<BroadcastState>,
-	pub info: Arc<Broadcast>,
+	state: Watch<BroadcastState>,
+	pub info: Ref<Broadcast>,
 }
 
 impl BroadcastReader {
-	fn new(state: State<BroadcastState>, info: Arc<Broadcast>) -> Self {
+	fn new(state: Watch<BroadcastState>, info: Ref<Broadcast>) -> Self {
 		Self { state, info }
 	}
 
@@ -196,7 +196,7 @@ impl BroadcastReader {
 				let state = self.state.lock();
 				state.closed.clone()?;
 
-				match state.modified() {
+				match state.changed() {
 					Some(notify) => notify,
 					None => return Ok(()),
 				}
@@ -211,11 +211,5 @@ impl ops::Deref for BroadcastReader {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-impl PartialEq for BroadcastReader {
-	fn eq(&self, other: &Self) -> bool {
-		self.state == other.state
 	}
 }

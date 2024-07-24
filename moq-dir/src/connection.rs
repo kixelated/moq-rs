@@ -1,28 +1,27 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use moq_transfork::{BroadcastReader, Subscriber};
+use moq_transfork::prelude::*;
 
 use crate::Listings;
 
 #[derive(Clone)]
-pub struct Session {
+pub struct Connection {
 	session: web_transport::Session,
 	listings: Listings,
 }
 
-impl Session {
+impl Connection {
 	pub fn new(session: web_transport::Session, listings: Listings) -> Self {
 		Self { session, listings }
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let session = self.session.clone();
-		let (session, publisher, subscriber) = moq_transfork::Session::accept_any(session).await?;
+		let (publisher, subscriber) = moq_transfork::Server::new(self.session.clone()).any().await?;
 
 		let mut tasks = FuturesUnordered::new();
-		tasks.push(async move { session.run().await.map_err(Into::into) }.boxed());
 
 		if let Some(mut remote) = publisher {
 			remote.announce(self.listings.broadcast()).await?;
+			tasks.push(async move { remote.closed().await }.boxed());
 		}
 
 		if let Some(remote) = subscriber {
@@ -35,7 +34,7 @@ impl Session {
 		Ok(())
 	}
 
-	async fn serve_publisher(self, mut remote: Subscriber) -> anyhow::Result<()> {
+	async fn serve_publisher(self, mut remote: Subscriber) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

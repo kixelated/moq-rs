@@ -4,11 +4,11 @@ use anyhow::Context;
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use moq_native::quic;
-use moq_transfork::{model, Broadcast, RouterReader, RouterWriter};
+use moq_transfork::prelude::*;
 use tracing::Instrument;
 use url::Url;
 
-use crate::{Origins, Session};
+use crate::{Connection, Origins};
 
 pub struct RelayConfig {
 	/// Listen on this address
@@ -40,7 +40,7 @@ impl Relay {
 		Self {
 			config,
 			outgoing: Origins::default(),
-			incoming: model::Router::produce(),
+			incoming: Router::produce(),
 			next_id: 0,
 		}
 	}
@@ -81,7 +81,7 @@ impl Relay {
 		loop {
 			tokio::select! {
 				Some(conn) = server.accept() => {
-					let session = Session::new(conn, self.outgoing.clone(), self.incoming.1.clone());
+					let session = Connection::new(conn, self.outgoing.clone(), self.incoming.1.clone());
 					let span = tracing::info_span!("session", id = self.next_id);
 					self.next_id += 1;
 					tasks.push(session.run().instrument(span));

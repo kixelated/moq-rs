@@ -1,11 +1,14 @@
-use crate::{message, model, Broadcast, TrackReader};
+use crate::{
+	message,
+	model::{Broadcast, TrackReader},
+};
 
 use super::{OrClose, SessionError, Stream};
 
 pub struct Subscribe {
 	pub id: u64,
 	broadcast: Broadcast,
-	track: model::TrackReader,
+	track: TrackReader,
 	stream: Stream,
 }
 

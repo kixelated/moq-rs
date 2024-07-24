@@ -1,19 +1,19 @@
 use anyhow::Context;
 use clap::Parser;
 use futures::{stream::FuturesUnordered, StreamExt};
-use moq_transfork::Broadcast;
+use moq_transfork::prelude::*;
 
 use std::net;
 
 use moq_native::{quic, tls};
 
+mod connection;
 mod listing;
 mod listings;
-mod session;
 
+pub use connection::*;
 pub use listing::*;
 pub use listings::*;
-pub use session::*;
 
 #[derive(Clone, clap::Parser)]
 pub struct Config {
@@ -58,8 +58,8 @@ async fn main() -> anyhow::Result<()> {
 	loop {
 		tokio::select! {
 			Some(session) = quic.accept() => {
-				let session = Session::new(session, listings.clone());
-				tasks.push(session.run());
+				let connection = Connection::new(session, listings.clone());
+				tasks.push(connection.run());
 			},
 			_ = tasks.next(), if !tasks.is_empty() => {},
 			else => return Ok(()),

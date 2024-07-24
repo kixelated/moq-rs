@@ -1,50 +1,39 @@
-use std::{
-	collections::{hash_map, HashMap},
-	sync::{Arc, Mutex},
-};
+use std::collections::{hash_map, HashMap};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message, setup, util::Queue, Broadcast, BroadcastReader, Closed, GroupReader, RouterReader, Track, TrackReader,
+	message,
+	model::{Broadcast, BroadcastReader, Closed, GroupReader, RouterReader, Track, TrackReader},
+	runtime::{Lock, Queue},
 };
 
 use super::{Announce, OrClose, Session, SessionError, Stream, Writer};
 
 #[derive(Clone)]
 pub struct Publisher {
-	session: web_transport::Session,
+	session: Session,
 
 	// Used to route incoming subscriptions
-	broadcasts: Arc<Mutex<HashMap<String, BroadcastReader>>>,
+	broadcasts: Lock<HashMap<String, BroadcastReader>>,
 	announced: Queue<Announce>,
-	router: Arc<Mutex<Option<RouterReader<Broadcast>>>>,
+	router: Lock<Option<RouterReader<Broadcast>>>,
 }
 
 impl Publisher {
-	pub(crate) fn new(webtransport: web_transport::Session) -> Self {
+	pub(crate) fn new(session: Session) -> Self {
 		Self {
-			session: webtransport,
+			session,
 			broadcasts: Default::default(),
 			announced: Default::default(),
 			router: Default::default(),
 		}
 	}
 
-	pub async fn accept(session: web_transport::Session) -> Result<(Session, Publisher), SessionError> {
-		let (session, publisher, _) = Session::accept_role(session, setup::Role::Publisher).await?;
-		Ok((session, publisher.unwrap()))
-	}
-
-	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher), SessionError> {
-		let (session, publisher, _) = Session::connect_role(session, setup::Role::Publisher).await?;
-		Ok((session, publisher.unwrap()))
-	}
-
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
 	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
-		match self.broadcasts.lock().unwrap().entry(broadcast.name.clone()) {
+		match self.broadcasts.lock().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
@@ -57,7 +46,7 @@ impl Publisher {
 
 	// Optionally send any requests for unknown broadcasts to the router
 	pub fn route(&mut self, router: RouterReader<Broadcast>) {
-		*self.router.lock().unwrap() = Some(router);
+		*self.router.lock() = Some(router);
 	}
 
 	pub(super) async fn run(self) -> Result<(), SessionError> {
@@ -74,19 +63,19 @@ impl Publisher {
 				},
 				res = tasks.next(), if !tasks.is_empty() => {
 					let announce = res.unwrap();
-					self.broadcasts.lock().unwrap().remove(&announce);
+					self.broadcasts.lock().remove(&announce);
 				},
 			}
 		}
 	}
 
 	async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Closed> {
-		let reader = self.broadcasts.lock().unwrap().get(&broadcast.name).cloned();
+		let reader = self.broadcasts.lock().get(&broadcast.name).cloned();
 		if let Some(mut broadcast) = reader {
 			return broadcast.subscribe(track).await;
 		}
 
-		let router = self.router.lock().unwrap().clone();
+		let router = self.router.lock().clone();
 		if let Some(router) = router {
 			let mut reader = router.subscribe(broadcast).await?;
 			return reader.subscribe(track).await;
@@ -136,11 +125,9 @@ impl Publisher {
 					};
 
 					let session = self.session.clone();
-					let broadcast = broadcast.name.clone();
-					let track = track.name.clone();
 
 					tasks.push(async move {
-						let res = Self::serve_group(session, broadcast, track, subscribe.id, &mut group).await;
+						let res = Self::serve_group(session, subscribe.id, &mut group).await;
 						(group, res)
 					});
 				},
@@ -171,13 +158,11 @@ impl Publisher {
 
 	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
 	pub async fn serve_group(
-		mut session: web_transport::Session,
-		broadcast: String,
-		track: String,
+		mut session: Session,
 		subscribe: u64,
 		group: &mut GroupReader,
 	) -> Result<(), SessionError> {
-		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
+		let mut stream = session.open_uni(message::StreamUni::Group).await?;
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await
@@ -273,5 +258,9 @@ impl Publisher {
 		stream.writer.encode(&info).await?;
 
 		Ok(())
+	}
+
+	pub async fn closed(&self) -> Result<(), SessionError> {
+		self.session.closed().await
 	}
 }

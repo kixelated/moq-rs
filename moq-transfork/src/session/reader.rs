@@ -19,12 +19,6 @@ impl Reader {
 		}
 	}
 
-	pub async fn accept(session: &mut web_transport::Session) -> Result<Self, SessionError> {
-		let recv = session.accept_uni().await?;
-		let reader = Self::new(recv);
-		Ok(reader)
-	}
-
 	// A separate function just to avoid an extra log line
 	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, SessionError> {
 		let msg = self.decode_silent().await?;

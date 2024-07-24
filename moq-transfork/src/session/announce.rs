@@ -1,5 +1,5 @@
 use super::{OrClose, SessionError, Stream};
-use crate::{message, BroadcastReader};
+use crate::{message, model::BroadcastReader, Session};
 
 pub struct Announce {
 	broadcast: BroadcastReader,
@@ -8,8 +8,8 @@ pub struct Announce {
 
 impl Announce {
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
-	pub async fn open(session: &mut web_transport::Session, broadcast: BroadcastReader) -> Result<Self, SessionError> {
-		let stream = Stream::open(session, message::Stream::Announce).await?;
+	pub async fn open(session: &mut Session, broadcast: BroadcastReader) -> Result<Self, SessionError> {
+		let stream = session.open(message::Stream::Announce).await?;
 
 		let mut this = Self { broadcast, stream };
 		this.open_inner().await.or_close(&mut this.stream)?;

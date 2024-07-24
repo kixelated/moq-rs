@@ -11,19 +11,20 @@ edition = "2021"
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bytes = "1"
 thiserror = "1"
-tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 tracing = "0.1"
+
+# note: web-transport pulls in 'rt' on non-wasm32
+tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 
 web-transport = { workspace = true }
 
 paste = "1"
 futures = "0.3"
 
-[dev-dependencies]
-anyhow = "1"
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"

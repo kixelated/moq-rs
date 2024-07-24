@@ -1,22 +1,23 @@
 use std::future;
 
-use crate::{
-	message,
-	setup::{self, Extensions},
-};
+use crate::{message, runtime, runtime::Watch, setup, Closed};
 use futures::{stream::FuturesUnordered, StreamExt};
 
 mod announce;
+mod client;
 mod error;
 mod publisher;
 mod reader;
+mod server;
 mod stream;
 mod subscribe;
 mod subscriber;
 mod writer;
 
+pub use client::*;
 pub use error::*;
 pub use publisher::*;
+pub use server::*;
 pub use subscriber::*;
 
 use announce::*;
@@ -25,147 +26,122 @@ use stream::*;
 use subscribe::*;
 use writer::*;
 
-#[must_use = "run() must be called"]
-pub struct Session {
+struct SessionState {
+	closed: Result<(), SessionError>,
+}
+
+impl Default for SessionState {
+	fn default() -> Self {
+		Self { closed: Ok(()) }
+	}
+}
+
+#[derive(Clone)]
+pub(crate) struct Session {
 	webtransport: web_transport::Session,
-	setup: Stream,
-	publisher: Option<Publisher>,
-	subscriber: Option<Subscriber>,
+	state: Watch<SessionState>,
 }
 
 impl Session {
-	fn new(
-		webtransport: web_transport::Session,
-		role: setup::Role,
-		stream: Stream,
-	) -> (Self, Option<Publisher>, Option<Subscriber>) {
-		let publisher = role.is_publisher().then(|| Publisher::new(webtransport.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(webtransport.clone()));
-
-		let session = Self {
+	pub fn new(webtransport: web_transport::Session) -> Self {
+		Self {
 			webtransport,
+			state: Default::default(),
+		}
+	}
+
+	pub fn spawn(self, role: setup::Role, stream: Stream) -> (Option<Publisher>, Option<Subscriber>) {
+		let frontend = self.split();
+
+		let publisher = role.is_publisher().then(|| Publisher::new(frontend.clone()));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(frontend));
+
+		let background = Background {
+			session: self,
 			setup: stream,
 			publisher: publisher.clone(),
 			subscriber: subscriber.clone(),
 		};
 
-		(session, publisher, subscriber)
+		runtime::spawn(background.run());
+
+		(publisher, subscriber)
 	}
 
-	/// Connect a session as both a publisher and subscriber.
-	pub async fn connect(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
-		Self::connect_role(session, setup::Role::Both)
-			.await
-			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
+	pub async fn open(&mut self, typ: message::Stream) -> Result<Stream, SessionError> {
+		let (send, recv) = self.webtransport.open_bi().await?;
+
+		let mut writer = Writer::new(send);
+		let reader = Reader::new(recv);
+		writer.encode_silent(&typ).await?;
+
+		Ok(Stream { writer, reader })
 	}
 
-	/// Connect a session as either a publisher, subscriber, or both, as chosen by server.
-	pub async fn connect_any(
-		session: web_transport::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		Self::connect_role(session, setup::Role::Any).await
+	pub async fn open_uni(&mut self, typ: message::StreamUni) -> Result<Writer, SessionError> {
+		let send = self.webtransport.open_uni().await?;
+
+		let mut writer = Writer::new(send);
+		writer.encode_silent(&typ).await?;
+
+		Ok(writer)
 	}
 
-	pub async fn connect_role(
-		mut session: web_transport::Session,
-		role: setup::Role,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut stream = Stream::open(&mut session, message::Stream::Session).await?;
-
-		let role = Self::connect_setup(&mut stream, role).await.or_close(&mut stream)?;
-		Ok(Session::new(session, role, stream))
+	pub async fn accept(&mut self) -> Result<Stream, SessionError> {
+		let (send, recv) = self.webtransport.accept_bi().await?;
+		let writer = Writer::new(send);
+		let reader = Reader::new(recv);
+		Ok(Stream { writer, reader })
 	}
 
-	async fn connect_setup(setup: &mut Stream, client_role: setup::Role) -> Result<setup::Role, SessionError> {
-		let mut extensions = setup::Extensions::default();
-		extensions.set(client_role)?;
+	pub async fn accept_uni(&mut self) -> Result<Reader, SessionError> {
+		let recv = self.webtransport.accept_uni().await?;
+		let reader = Reader::new(recv);
+		Ok(reader)
+	}
 
-		let client = setup::Client {
-			versions: [setup::Version::FORK_00].into(),
-			extensions,
-		};
-
-		setup.writer.encode(&client).await?;
-
-		let server: setup::Server = setup.reader.decode().await?;
-		let server_role = server.extensions.get()?.unwrap_or_default();
-
-		let role = client_role
-			.downgrade(server_role)
-			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
-
-		if client_role != role {
-			tracing::debug!(?role, "client downgraded");
+	pub fn close(&self, err: SessionError) {
+		if let Some(mut state) = self.state.lock_mut() {
+			state.closed = Err(err);
 		}
-
-		tracing::info!(version = ?server.version, role = ?role, "connected");
-
-		Ok(role)
 	}
 
-	/// Accept a session as both a publisher and subscriber.
-	pub async fn accept(session: web_transport::Session) -> Result<(Session, Publisher, Subscriber), SessionError> {
-		Self::accept_role(session, setup::Role::Both)
-			.await
-			.map(|(session, publisher, subscriber)| (session, publisher.unwrap(), subscriber.unwrap()))
-	}
+	pub async fn closed(&self) -> Result<(), SessionError> {
+		loop {
+			{
+				let state = self.state.lock();
+				state.closed.clone()?;
 
-	/// Accept a session as either a publisher, subscriber, or both, as chosen by the client.
-	pub async fn accept_any(
-		session: web_transport::Session,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		Self::accept_role(session, setup::Role::Any).await
-	}
-
-	pub async fn accept_role(
-		mut session: web_transport::Session,
-		role: setup::Role,
-	) -> Result<(Session, Option<Publisher>, Option<Subscriber>), SessionError> {
-		let mut stream = Stream::accept(&mut session).await?;
-		let kind = stream.reader.decode_silent().await?;
-
-		if kind != message::Stream::Session {
-			return Err(SessionError::UnexpectedStream(kind));
+				match state.changed() {
+					Some(notify) => notify,
+					None => return Err(Closed::Unknown.into()),
+				}
+			}
+			.await;
 		}
-
-		let role = Self::accept_setup(&mut stream, role).await.or_close(&mut stream)?;
-
-		Ok(Session::new(session, role, stream))
 	}
 
-	async fn accept_setup(control: &mut Stream, server_role: setup::Role) -> Result<setup::Role, SessionError> {
-		let client: setup::Client = control.reader.decode().await?;
-
-		if !client.versions.contains(&setup::Version::FORK_00) {
-			return Err(SessionError::Version(client.versions, [setup::Version::FORK_00].into()));
+	pub fn split(&self) -> Self {
+		Self {
+			webtransport: self.webtransport.clone(),
+			state: self.state.split(),
 		}
-
-		let client_role = client.extensions.get()?.unwrap_or_default();
-
-		let role = server_role
-			.downgrade(client_role)
-			.ok_or(SessionError::RoleIncompatible(client_role, server_role))?;
-
-		let mut extensions = Extensions::default();
-		extensions.set(role)?;
-
-		let server = setup::Server {
-			version: setup::Version::FORK_00,
-			extensions,
-		};
-
-		control.writer.encode(&server).await?;
-
-		tracing::info!(version = ?server.version, ?role, "connected");
-
-		Ok(server_role)
 	}
+}
 
-	pub async fn run(mut self) -> Result<(), SessionError> {
-		tokio::select! {
+struct Background {
+	session: Session,
+	setup: Stream,
+	publisher: Option<Publisher>,
+	subscriber: Option<Subscriber>,
+}
+
+impl Background {
+	async fn run(mut self) {
+		let res = tokio::select! {
 			res = Self::run_update(&mut self.setup) => res,
-			res = Self::run_bi(self.webtransport.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
-			res = Self::run_uni(self.webtransport.clone(), self.subscriber.clone()) => res,
+			res = Self::run_bi(self.session.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
+			res = Self::run_uni(self.session.clone(), self.subscriber.clone()) => res,
 			res = async move {
 				match self.publisher {
 					Some(publisher) => publisher.run().await,
@@ -178,8 +154,14 @@ impl Session {
 					None => future::pending().await,
 				}
 			} => res,
+			res = self.session.closed() => res,
 		}
-		.or_close(&mut self.setup)
+		.or_close(&mut self.setup);
+
+		if let Err(err) = res {
+			tracing::warn!(?err, "session closed");
+			self.session.close(err);
+		}
 	}
 
 	async fn run_update(stream: &mut Stream) -> Result<(), SessionError> {
@@ -188,15 +170,12 @@ impl Session {
 		Ok(())
 	}
 
-	async fn run_uni(
-		mut webtransport: web_transport::Session,
-		subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
+	async fn run_uni(mut session: Session, subscriber: Option<Subscriber>) -> Result<(), SessionError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {
 			tokio::select! {
-				res = Reader::accept(&mut webtransport) => {
+				res = session.accept_uni() => {
 					let stream = res?;
 					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
 
@@ -208,7 +187,7 @@ impl Session {
 	}
 
 	async fn run_bi(
-		mut session: web_transport::Session,
+		mut session: Session,
 		publisher: Option<Publisher>,
 		subscriber: Option<Subscriber>,
 	) -> Result<(), SessionError> {
@@ -216,7 +195,7 @@ impl Session {
 
 		loop {
 			tokio::select! {
-				res = Stream::accept(&mut session) => {
+				res = session.accept() => {
 					let stream = res?;
 					let publisher = publisher.clone();
 					let subscriber = subscriber.clone();

@@ -3,9 +3,8 @@ use std::{
 	net,
 };
 
-use anyhow::Context;
 use clap::Parser;
-use moq_transfork::Broadcast;
+use moq_transfork::prelude::*;
 use url::Url;
 
 use moq_native::quic;
@@ -43,22 +42,11 @@ async fn main() -> anyhow::Result<()> {
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
 	let session = quic.client.connect(&config.url).await?;
-	let (session, subscriber) = moq_transfork::Subscriber::connect(session)
-		.await
-		.context("failed to create MoQ Transport session")?;
+	let subscriber = moq_transfork::Client::new(session).subscriber().await?;
 
 	let broadcast = Broadcast::new(config.name);
-	let media = Media::load(subscriber, broadcast).await?;
+	let mut media = Media::load(subscriber, broadcast).await?;
 
-	tokio::select! {
-		res = session.run() => res.context("session error")?,
-		res = run_media(media) => res.context("media error")?,
-	}
-
-	Ok(())
-}
-
-async fn run_media(mut media: Media) -> anyhow::Result<()> {
 	let mut stdout = io::stdout();
 
 	while let Some(frame) = media.next().await? {
