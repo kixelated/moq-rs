@@ -127,20 +127,6 @@ impl Media {
 	}
 
 	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
-		// Create a track for each track in the moov
-		for trak in &moov.traks {
-			let id = trak.tkhd.track_id;
-			let name = format!("{}.m4s", id);
-
-			let timescale = track_timescale(moov, id);
-			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
-
-			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create(&name).context("broadcast closed")?;
-			let track = Track::new(track, handler, timescale);
-			self.tracks.insert(id, track);
-		}
-
 		// Combine the ftyp+moov atoms into a single object.
 		let mut init = self.ftyp.clone().context("missing ftyp")?.to_vec();
 		init.extend_from_slice(&raw);
@@ -152,11 +138,17 @@ impl Media {
 
 		// Produce the catalog
 		for trak in &moov.traks {
+			let id = trak.tkhd.track_id;
+			let name = format!("{}.m4s", id);
+
+			let timescale = track_timescale(moov, id);
+			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
+
 			let mut selection_params = moq_catalog::SelectionParam::default();
 
 			let mut track = moq_catalog::Track {
-				init_track: Some("0.mp4".to_string()),
-				data_track: Some(format!("{}.m4s", trak.tkhd.track_id)),
+				init_track: Some(self.init.name.clone()),
+				name: name.clone(),
 				namespace: Some(self.broadcast.namespace.clone()),
 				packaging: Some(moq_catalog::TrackPackaging::Cmaf),
 				render_group: Some(1),
@@ -181,7 +173,6 @@ impl Media {
 				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
 				let codec_str = codec.to_string();
 
-				track.name = format!("video_{}p", height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(width.into());
 				selection_params.height = Some(height.into());
@@ -197,7 +188,6 @@ impl Media {
 					.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
-				track.name = "audio".to_string();
 				selection_params.codec = Some(codec_str);
 				selection_params.channel_config = Some(mp4a.channelcount.to_string());
 				selection_params.samplerate = Some(mp4a.samplerate.value().into());
@@ -211,7 +201,6 @@ impl Media {
 				let vpcc = &vp09.vpcc;
 				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
 
-				track.name = format!("video_{}p", vp09.height);
 				selection_params.codec = Some(codec_str);
 				selection_params.width = Some(vp09.width.into());
 				selection_params.height = Some(vp09.height.into());
@@ -226,6 +215,11 @@ impl Media {
 			track.selection_params = selection_params;
 
 			tracks.push(track);
+
+			// Store the track publisher in a map so we can update it later.
+			let track = self.broadcast.create(&name).context("broadcast closed")?;
+			let track = Track::new(track, handler, timescale);
+			self.tracks.insert(id, track);
 		}
 
 		let catalog = moq_catalog::Root {
