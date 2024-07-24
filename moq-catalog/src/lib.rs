@@ -31,11 +31,11 @@ pub struct Track {
 
 	pub name: String,
 
-	#[serde(rename = "initTrack")]
+	#[serde(rename = "initTrack", skip_serializing_if = "Option::is_none")]
 	pub init_track: Option<String>,
 
-	#[serde(rename = "initData")]
-	pub data_track: Option<String>,
+	#[serde(rename = "initData", skip_serializing_if = "Option::is_none")]
+	pub init_data: Option<String>,
 
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub packaging: Option<TrackPackaging>,
