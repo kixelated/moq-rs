@@ -12,4 +12,6 @@ pub mod runtime;
 pub mod session;
 pub mod setup;
 
+mod macros;
+
 pub use prelude::*;

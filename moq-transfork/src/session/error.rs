@@ -75,7 +75,7 @@ impl SessionError {
 }
 
 pub(crate) trait Close {
-	fn close(&mut self, code: u32);
+	fn close(&mut self, err: SessionError);
 }
 
 pub(crate) trait OrClose<S: Close, V> {
@@ -87,7 +87,7 @@ impl<S: Close, V> OrClose<S, V> for Result<V, SessionError> {
 		match self {
 			Ok(v) => Ok(v),
 			Err(err) => {
-				stream.close(err.code());
+				stream.close(err.clone());
 				Err(err)
 			}
 		}

@@ -3,10 +3,11 @@ use std::{
 	future::Future,
 	ops::{Deref, DerefMut},
 	pin::Pin,
+	sync::{Arc, Weak},
 	task,
 };
 
-use super::{Lock, LockGuard, LockWeak, Ref, RefWeak};
+use super::{Lock, LockGuard, LockWeak};
 
 struct WatchState<T> {
 	value: T,
@@ -52,7 +53,7 @@ impl<T: fmt::Debug> fmt::Debug for WatchState<T> {
 
 pub struct Watch<T> {
 	state: Lock<WatchState<T>>,
-	drop: Ref<WatchDrop<T>>,
+	drop: Arc<WatchDrop<T>>,
 }
 
 impl<T> Watch<T> {
@@ -61,7 +62,7 @@ impl<T> Watch<T> {
 
 		Self {
 			state: state.clone(),
-			drop: Ref::new(WatchDrop { state }),
+			drop: Arc::new(WatchDrop { state }),
 		}
 	}
 
@@ -85,7 +86,7 @@ impl<T> Watch<T> {
 	pub fn downgrade(&self) -> WatchWeak<T> {
 		WatchWeak {
 			state: self.state.downgrade(),
-			drop: self.drop.downgrade(),
+			drop: Arc::downgrade(&self.drop),
 		}
 	}
 
@@ -93,7 +94,7 @@ impl<T> Watch<T> {
 		let state = self.state.clone();
 		Self {
 			state: state.clone(),
-			drop: Ref::new(WatchDrop { state }),
+			drop: Arc::new(WatchDrop { state }),
 		}
 	}
 }
@@ -125,7 +126,7 @@ impl<T: fmt::Debug> fmt::Debug for Watch<T> {
 pub struct WatchRef<'a, T> {
 	state: Lock<WatchState<T>>,
 	lock: LockGuard<'a, WatchState<T>>,
-	drop: Ref<WatchDrop<T>>,
+	drop: Arc<WatchDrop<T>>,
 }
 
 impl<'a, T> WatchRef<'a, T> {
@@ -165,7 +166,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for WatchRef<'a, T> {
 
 pub struct WatchMut<'a, T> {
 	lock: LockGuard<'a, WatchState<T>>,
-	_drop: Ref<WatchDrop<T>>,
+	_drop: Arc<WatchDrop<T>>,
 }
 
 impl<'a, T> Deref for WatchMut<'a, T> {
@@ -217,7 +218,7 @@ impl<T> Future for WatchChanged<T> {
 
 pub struct WatchWeak<T> {
 	state: LockWeak<WatchState<T>>,
-	drop: RefWeak<WatchDrop<T>>,
+	drop: Weak<WatchDrop<T>>,
 }
 
 impl<T> WatchWeak<T> {

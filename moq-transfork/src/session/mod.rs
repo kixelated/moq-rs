@@ -1,16 +1,14 @@
-use std::future;
-
-use crate::{message, runtime, runtime::Watch, setup, Closed};
-use futures::{stream::FuturesUnordered, StreamExt};
-
-mod announce;
+use crate::{
+	message,
+	runtime::{self, Watch},
+	setup, Closed,
+};
 mod client;
 mod error;
 mod publisher;
 mod reader;
 mod server;
 mod stream;
-mod subscribe;
 mod subscriber;
 mod writer;
 
@@ -20,11 +18,11 @@ pub use publisher::*;
 pub use server::*;
 pub use subscriber::*;
 
-use announce::*;
 use reader::*;
 use stream::*;
-use subscribe::*;
 use writer::*;
+
+use crate::async_clone;
 
 struct SessionState {
 	closed: Result<(), SessionError>,
@@ -50,22 +48,97 @@ impl Session {
 		}
 	}
 
-	pub fn spawn(self, role: setup::Role, stream: Stream) -> (Option<Publisher>, Option<Subscriber>) {
-		let frontend = self.split();
+	pub fn start(self, role: setup::Role, stream: Stream) -> (Option<Publisher>, Option<Subscriber>) {
+		let backend = self.split();
 
-		let publisher = role.is_publisher().then(|| Publisher::new(frontend.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(frontend));
+		let publisher = role.is_publisher().then(|| Publisher::new(self.clone()));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(self));
 
-		let background = Background {
-			session: self,
-			setup: stream,
-			publisher: publisher.clone(),
-			subscriber: subscriber.clone(),
-		};
+		runtime::spawn(async_clone!(backend, {
+			backend.run_session(stream).await.or_close(&mut backend).ok();
+		}));
 
-		runtime::spawn(background.run());
+		runtime::spawn(async_clone!(backend, publisher, subscriber, {
+			backend.run_bi(publisher, subscriber).await.or_close(&mut backend).ok();
+		}));
+
+		runtime::spawn(async_clone!(backend, subscriber, {
+			backend.run_uni(subscriber).await.or_close(&mut backend).ok();
+		}));
 
 		(publisher, subscriber)
+	}
+
+	async fn run_session(&mut self, mut stream: Stream) -> Result<(), SessionError> {
+		while let Some(_info) = stream.reader.decode_maybe::<setup::Info>().await? {}
+		Err(Closed::Cancel.into())
+	}
+
+	async fn run_uni(&mut self, subscriber: Option<Subscriber>) -> Result<(), SessionError> {
+		loop {
+			let mut stream = self.accept_uni().await?;
+			let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
+
+			runtime::spawn(async move {
+				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
+			});
+		}
+	}
+
+	async fn run_bi(
+		&mut self,
+		publisher: Option<Publisher>,
+		subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
+		loop {
+			let mut stream = self.accept().await?;
+			let publisher = publisher.clone();
+			let subscriber = subscriber.clone();
+
+			runtime::spawn(async move {
+				Self::run_control(&mut stream, publisher, subscriber)
+					.await
+					.or_close(&mut stream)
+					.ok();
+			});
+		}
+	}
+
+	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
+		match stream.decode_silent().await? {
+			message::StreamUni::Group => subscriber.recv_group(stream).await,
+		}
+	}
+
+	async fn run_control(
+		stream: &mut Stream,
+		publisher: Option<Publisher>,
+		subscriber: Option<Subscriber>,
+	) -> Result<(), SessionError> {
+		let kind = stream.reader.decode_silent().await?;
+		match kind {
+			message::Stream::Session => return Err(SessionError::UnexpectedStream(kind)),
+			message::Stream::Announce => {
+				let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
+				subscriber.recv_announce(stream).await
+			}
+			message::Stream::Subscribe => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_subscribe(stream).await
+			}
+			message::Stream::Datagrams => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_datagrams(stream).await
+			}
+			message::Stream::Fetch => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_fetch(stream).await
+			}
+			message::Stream::Info => {
+				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				publisher.recv_info(stream).await
+			}
+		}
 	}
 
 	pub async fn open(&mut self, typ: message::Stream) -> Result<Stream, SessionError> {
@@ -100,12 +173,6 @@ impl Session {
 		Ok(reader)
 	}
 
-	pub fn close(&self, err: SessionError) {
-		if let Some(mut state) = self.state.lock_mut() {
-			state.closed = Err(err);
-		}
-	}
-
 	pub async fn closed(&self) -> Result<(), SessionError> {
 		loop {
 			{
@@ -129,126 +196,12 @@ impl Session {
 	}
 }
 
-struct Background {
-	session: Session,
-	setup: Stream,
-	publisher: Option<Publisher>,
-	subscriber: Option<Subscriber>,
-}
-
-impl Background {
-	async fn run(mut self) {
-		let res = tokio::select! {
-			res = Self::run_update(&mut self.setup) => res,
-			res = Self::run_bi(self.session.clone(), self.publisher.clone(), self.subscriber.clone()) => res,
-			res = Self::run_uni(self.session.clone(), self.subscriber.clone()) => res,
-			res = async move {
-				match self.publisher {
-					Some(publisher) => publisher.run().await,
-					None => future::pending().await,
-				}
-			} => res,
-			res = async move {
-				match self.subscriber {
-					Some(subscriber) => subscriber.run().await,
-					None => future::pending().await,
-				}
-			} => res,
-			res = self.session.closed() => res,
+impl Close for Session {
+	fn close(&mut self, err: SessionError) {
+		if let Some(mut state) = self.state.lock_mut() {
+			tracing::warn!(?err, "closing session");
+			self.webtransport.close(err.code(), &err.to_string());
+			state.closed = Err(err);
 		}
-		.or_close(&mut self.setup);
-
-		if let Err(err) = res {
-			tracing::warn!(?err, "session closed");
-			self.session.close(err);
-		}
-	}
-
-	async fn run_update(stream: &mut Stream) -> Result<(), SessionError> {
-		while let Some(_update) = stream.reader.decode_maybe::<setup::Info>().await? {}
-
-		Ok(())
-	}
-
-	async fn run_uni(mut session: Session, subscriber: Option<Subscriber>) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-
-		loop {
-			tokio::select! {
-				res = session.accept_uni() => {
-					let stream = res?;
-					let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
-
-					tasks.push(Self::run_data(stream, subscriber));
-				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
-			};
-		}
-	}
-
-	async fn run_bi(
-		mut session: Session,
-		publisher: Option<Publisher>,
-		subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-
-		loop {
-			tokio::select! {
-				res = session.accept() => {
-					let stream = res?;
-					let publisher = publisher.clone();
-					let subscriber = subscriber.clone();
-
-					tasks.push(Self::run_control(stream, publisher, subscriber));
-				},
-				res = tasks.next(), if !tasks.is_empty() => res.unwrap()?,
-			};
-		}
-	}
-
-	async fn run_data(mut stream: Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
-		match stream.decode_silent().await? {
-			message::StreamUni::Group => subscriber.recv_group(&mut stream).await,
-		}
-		.or_close(&mut stream)
-		.ok();
-
-		Ok(())
-	}
-
-	async fn run_control(
-		mut stream: Stream,
-		publisher: Option<Publisher>,
-		subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
-		let kind = stream.reader.decode_silent().await?;
-		match kind {
-			message::Stream::Session => return Err(SessionError::UnexpectedStream(kind)),
-			message::Stream::Announce => {
-				let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
-				subscriber.recv_announce(&mut stream).await
-			}
-			message::Stream::Subscribe => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_subscribe(&mut stream).await
-			}
-			message::Stream::Datagrams => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_datagrams(&mut stream).await
-			}
-			message::Stream::Fetch => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_fetch(&mut stream).await
-			}
-			message::Stream::Info => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
-				publisher.recv_info(&mut stream).await
-			}
-		}
-		.or_close(&mut stream)
-		.ok();
-
-		Ok(())
 	}
 }

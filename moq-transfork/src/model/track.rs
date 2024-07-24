@@ -16,10 +16,10 @@ use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
 use crate::{
 	model::{Closed, Produce},
-	runtime::{Ref, Watch},
+	runtime::Watch,
 };
 
-use std::{cmp::Ordering, ops, time};
+use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Clone)]
@@ -47,7 +47,7 @@ impl Produce for Track {
 
 	fn produce(self) -> (TrackWriter, TrackReader) {
 		let state = Watch::default();
-		let info = Ref::new(self);
+		let info = Arc::new(self);
 
 		let writer = TrackWriter::new(state.split(), info.clone());
 		let reader = TrackReader::new(state, info);
@@ -101,7 +101,7 @@ impl Default for TrackState {
 }
 
 pub struct TrackWriter {
-	pub info: Ref<Track>,
+	pub info: Arc<Track>,
 	state: Watch<TrackState>,
 
 	// Cache the next sequence number to use
@@ -109,7 +109,7 @@ pub struct TrackWriter {
 }
 
 impl TrackWriter {
-	fn new(state: Watch<TrackState>, info: Ref<Track>) -> Self {
+	fn new(state: Watch<TrackState>, info: Arc<Track>) -> Self {
 		Self { info, state, next: 0 }
 	}
 
@@ -165,13 +165,13 @@ impl ops::Deref for TrackWriter {
 
 #[derive(Clone)]
 pub struct TrackReader {
-	pub info: Ref<Track>,
+	pub info: Arc<Track>,
 	state: Watch<TrackState>,
 	epoch: u64,
 }
 
 impl TrackReader {
-	fn new(state: Watch<TrackState>, info: Ref<Track>) -> Self {
+	fn new(state: Watch<TrackState>, info: Arc<Track>) -> Self {
 		Self { state, epoch: 0, info }
 	}
 

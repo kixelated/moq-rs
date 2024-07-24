@@ -41,7 +41,7 @@ impl Writer {
 }
 
 impl Close for Writer {
-	fn close(&mut self, code: u32) {
-		self.stream.reset(code);
+	fn close(&mut self, err: SessionError) {
+		self.stream.reset(err.code());
 	}
 }

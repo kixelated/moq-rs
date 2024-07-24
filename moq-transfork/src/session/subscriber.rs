@@ -1,23 +1,25 @@
-use std::{collections::HashMap, sync::atomic};
-
-use futures::{stream::FuturesUnordered, StreamExt};
+use std::{
+	collections::{hash_map, HashMap},
+	sync::{atomic, Arc},
+};
 
 use crate::{
 	message,
 	model::{Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter},
-	runtime::{Lock, Queue, Ref},
+	runtime::{self, Lock, Queue},
+	BroadcastWriter, OrClose, RouterWriter,
 };
 
-use super::{Reader, Session, SessionError, Stream, Subscribe};
+use super::{Reader, Session, SessionError, Stream};
 
 #[derive(Clone)]
 pub struct Subscriber {
 	session: Session,
 	announced: Queue<BroadcastReader>,
-	subscribe: Queue<Subscribe>,
 
-	lookup: Lock<HashMap<u64, TrackWriter>>,
-	next_id: Ref<atomic::AtomicU64>, // TODO move to runtime
+	broadcasts: Lock<HashMap<String, BroadcastReader>>,
+	tracks: Lock<HashMap<u64, TrackWriter>>,
+	next_id: Arc<atomic::AtomicU64>,
 }
 
 impl Subscriber {
@@ -25,73 +27,151 @@ impl Subscriber {
 		Self {
 			session,
 			announced: Default::default(),
-			subscribe: Default::default(),
-			lookup: Default::default(),
+
+			broadcasts: Default::default(),
+			tracks: Default::default(),
 			next_id: Default::default(),
 		}
 	}
 
+	// TODO make a handle so there can be multiple subscribers
 	pub async fn announced(&mut self) -> Option<BroadcastReader> {
 		self.announced.pop().await
 	}
 
-	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, SessionError> {
-		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-		self.subscribe_inner(broadcast, track, id).await
-	}
+	// TODO come up with a better name
+	/// Serve a broadcast from this session.
+	///
+	/// This method allows us to serve a broadcast without waiting for an announcement.
+	/// It's optional to announce a broadcast so this is often required.
+	pub fn serve(&self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
+		let (mut writer, reader) = broadcast.clone().produce();
 
-	async fn subscribe_inner(
-		&mut self,
-		broadcast: Broadcast,
-		track: Track,
-		id: u64,
-	) -> Result<TrackReader, SessionError> {
-		let (writer, reader) = track.produce();
+		match self.broadcasts.lock().entry(broadcast.name.clone()) {
+			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
+			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
+		};
 
-		self.lookup.lock().insert(id, writer);
+		let router = Router::produce();
+		writer.route(router.1)?;
 
-		let stream = self.session.open(message::Stream::Subscribe).await?;
-		let mut subscribe = Subscribe::new(stream, id, broadcast, reader.clone());
-		subscribe.start().await?; // wait for an OK before returning
+		let announce = Announce {
+			broadcast: writer,
+			router: router.0,
+			broadcasts: self.broadcasts.clone(),
+		};
 
-		self.subscribe.push(subscribe).map_err(|_| SessionError::Internal)?;
+		runtime::spawn(self.clone().run_announce(announce));
 
 		Ok(reader)
 	}
 
-	pub(super) async fn run(self) -> Result<(), SessionError> {
-		let mut subscribes = FuturesUnordered::new();
+	async fn run_announce(self, mut announce: Announce) {
+		while let Some(request) = announce.router.requested().await {
+			let mut this = self.clone();
+			let broadcast = announce.broadcast.info.as_ref().clone();
 
+			runtime::spawn(async move {
+				match this.subscribe(broadcast, request.info.clone()).await {
+					Ok(track) => request.serve(track),
+					Err(err) => request.close(Closed::Unknown /* TODO err*/),
+				};
+			});
+		}
+	}
+
+	#[tracing::instrument(skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
+	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, SessionError> {
+		let sub = self.init_subscribe(track);
+		let mut stream = self.session.open(message::Stream::Subscribe).await?;
+
+		self.start_subscribe(&mut stream, broadcast, &sub)
+			.await
+			.or_close(&mut stream)?; // wait for an OK before returning
+
+		let mut this = self.clone();
+		let track = sub.track.clone();
+
+		runtime::spawn(async move {
+			this.run_subscribe(&mut stream, sub).await.or_close(&mut stream).ok();
+		});
+
+		Ok(track)
+	}
+
+	fn init_subscribe(&mut self, track: Track) -> Subscribe {
+		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+
+		let (writer, reader) = track.produce();
+		self.tracks.lock().insert(id, writer);
+
+		Subscribe {
+			id,
+			track: reader,
+			tracks: self.tracks.clone(),
+		}
+	}
+
+	async fn start_subscribe(
+		&mut self,
+		stream: &mut Stream,
+		broadcast: Broadcast,
+		sub: &Subscribe,
+	) -> Result<(), SessionError> {
+		let request = message::Subscribe {
+			id: sub.id,
+			broadcast: broadcast.name.clone(),
+
+			track: sub.track.name.clone(),
+			priority: sub.track.priority,
+
+			group_order: sub.track.group_order,
+			group_expires: sub.track.group_expires,
+
+			// TODO
+			group_min: None,
+			group_max: None,
+		};
+
+		stream.writer.encode(&request).await?;
+
+		// TODO use the response to update the track
+		let _response: message::Info = stream.reader.decode().await?;
+
+		tracing::info!("ok");
+
+		Ok(())
+	}
+
+	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), SessionError> {
 		loop {
 			tokio::select! {
-				Some(subscribe) = self.subscribe.pop() => subscribes.push(async move {
-					let id = subscribe.id;
-					let _ = subscribe.run().await;
-					id
-				}),
-				res = subscribes.next(), if !subscribes.is_empty() => {
-					let id = res.unwrap();
-					self.lookup.lock().remove(&id);
-				}
-				else => return Ok(()),
+				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
+					// TODO expose updates to application
+					// TODO use to detect gaps
+					if res?.is_none() {
+						return Ok(());
+					}
+				},
+				res = sub.track.closed() => res?,
 			};
 		}
 	}
 
 	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
 		let announce = stream.reader.decode().await?;
-		self.serve_announce(stream, announce).await
+		self.announced_run(stream, announce).await
 	}
 
 	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
-	async fn serve_announce(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
+	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
 		let broadcast = Broadcast::new(announce.broadcast);
-		let (mut writer, reader) = broadcast.clone().produce();
 
-		let mut router = Router::produce();
-		writer.route(router.1)?;
-
-		self.announced.push(reader).map_err(|_| SessionError::Internal)?;
+		// Serve the broadcast and add it to the announced queue.
+		let broadcast = self.serve(broadcast)?;
+		self.announced
+			.push(broadcast.clone())
+			.map_err(|_| SessionError::Internal)?;
 
 		// Send the OK message.
 		let msg = message::AnnounceOk {};
@@ -99,27 +179,10 @@ impl Subscriber {
 
 		tracing::info!("ok");
 
-		let mut tasks = FuturesUnordered::new();
-
-		// Wait until the reader is closed.
-		loop {
-			tokio::select! {
-				Some(req) = router.0.requested() => {
-					let mut this = self.clone();
-					let broadcast = broadcast.clone();
-
-					let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-					tasks.push(async move {
-						match this.subscribe_inner(broadcast, req.info.clone(), id).await {
-							Ok(track) => req.serve(track),
-							Err(err) => req.close(Closed::Unknown /* TODO err*/),
-						};
-					});
-				},
-				res = stream.reader.closed() => return res,
-				res = writer.closed() => return res.map_err(Into::into),
-				_ = tasks.next(), if !tasks.is_empty() => {},
-			};
+		// Wait until the stream is closed.
+		tokio::select! {
+			res = stream.reader.closed() => res,
+			res = broadcast.closed() => res.map_err(Into::into),
 		}
 	}
 
@@ -131,7 +194,7 @@ impl Subscriber {
 	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
 	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), SessionError> {
 		let mut group = self
-			.lookup
+			.tracks
 			.lock()
 			.get_mut(&group.subscribe)
 			.ok_or(Closed::Unknown)?
@@ -150,5 +213,31 @@ impl Subscriber {
 
 	pub async fn closed(&self) -> Result<(), SessionError> {
 		self.session.closed().await
+	}
+}
+
+// Simple wrapper to remove on drop.
+struct Subscribe {
+	pub id: u64,
+	pub track: TrackReader,
+	tracks: Lock<HashMap<u64, TrackWriter>>,
+}
+
+impl Drop for Subscribe {
+	fn drop(&mut self) {
+		self.tracks.lock().remove(&self.id);
+	}
+}
+
+// Simple wrapper to remove on drop.
+struct Announce {
+	pub broadcast: BroadcastWriter,
+	pub router: RouterWriter<Track>,
+	broadcasts: Lock<HashMap<String, BroadcastReader>>,
+}
+
+impl Drop for Announce {
+	fn drop(&mut self) {
+		self.broadcasts.lock().remove(&self.broadcast.name);
 	}
 }

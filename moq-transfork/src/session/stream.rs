@@ -1,4 +1,4 @@
-use super::{Close, Reader, Writer};
+use super::{Close, Reader, SessionError, Writer};
 
 pub struct Stream {
 	pub writer: Writer,
@@ -6,8 +6,8 @@ pub struct Stream {
 }
 
 impl Close for Stream {
-	fn close(&mut self, code: u32) {
-		self.writer.close(code);
-		self.reader.close(code);
+	fn close(&mut self, err: SessionError) {
+		self.writer.close(err.clone());
+		self.reader.close(err);
 	}
 }

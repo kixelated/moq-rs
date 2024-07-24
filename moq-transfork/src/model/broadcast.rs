@@ -10,10 +10,10 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{collections::HashMap, ops};
+use std::{collections::HashMap, ops, sync::Arc};
 
 use super::{Closed, Produce, RouterReader, Track, TrackBuilder, TrackReader, TrackWriter};
-use crate::runtime::{Ref, Watch};
+use crate::runtime::Watch;
 
 /// Static information about a broadcast.
 #[derive(Clone)]
@@ -32,7 +32,7 @@ impl Produce for Broadcast {
 	type Writer = BroadcastWriter;
 
 	fn produce(self) -> (BroadcastWriter, BroadcastReader) {
-		let info = Ref::new(self);
+		let info = Arc::new(self);
 		let state = Watch::default();
 
 		let writer = BroadcastWriter::new(state.split(), info.clone());
@@ -61,11 +61,11 @@ impl Default for BroadcastState {
 /// Publish new tracks for a broadcast by name.
 pub struct BroadcastWriter {
 	state: Watch<BroadcastState>,
-	pub info: Ref<Broadcast>,
+	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastWriter {
-	fn new(state: Watch<BroadcastState>, info: Ref<Broadcast>) -> Self {
+	fn new(state: Watch<BroadcastState>, info: Arc<Broadcast>) -> Self {
 		Self { state, info }
 	}
 
@@ -167,11 +167,11 @@ impl<'a> ops::DerefMut for BroadcastTrackBuilder<'a> {
 #[derive(Clone)]
 pub struct BroadcastReader {
 	state: Watch<BroadcastState>,
-	pub info: Ref<Broadcast>,
+	pub info: Arc<Broadcast>,
 }
 
 impl BroadcastReader {
-	fn new(state: Watch<BroadcastState>, info: Ref<Broadcast>) -> Self {
+	fn new(state: Watch<BroadcastState>, info: Arc<Broadcast>) -> Self {
 		Self { state, info }
 	}
 

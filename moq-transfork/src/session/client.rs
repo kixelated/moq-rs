@@ -28,7 +28,7 @@ impl Client {
 		let mut stream = self.session.open(message::Stream::Session).await?;
 
 		let role = Self::setup(&mut stream, role).await.or_close(&mut stream)?;
-		Ok(Session::spawn(self.session, role, stream))
+		Ok(Session::start(self.session, role, stream))
 	}
 
 	async fn setup(setup: &mut Stream, client_role: setup::Role) -> Result<setup::Role, SessionError> {

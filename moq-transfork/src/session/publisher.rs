@@ -5,10 +5,10 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use crate::{
 	message,
 	model::{Broadcast, BroadcastReader, Closed, GroupReader, RouterReader, Track, TrackReader},
-	runtime::{Lock, Queue},
+	runtime::{self, Lock},
 };
 
-use super::{Announce, OrClose, Session, SessionError, Stream, Writer};
+use super::{OrClose, Session, SessionError, Stream, Writer};
 
 #[derive(Clone)]
 pub struct Publisher {
@@ -16,7 +16,6 @@ pub struct Publisher {
 
 	// Used to route incoming subscriptions
 	broadcasts: Lock<HashMap<String, BroadcastReader>>,
-	announced: Queue<Announce>,
 	router: Lock<Option<RouterReader<Broadcast>>>,
 }
 
@@ -25,7 +24,6 @@ impl Publisher {
 		Self {
 			session,
 			broadcasts: Default::default(),
-			announced: Default::default(),
 			router: Default::default(),
 		}
 	}
@@ -33,40 +31,57 @@ impl Publisher {
 	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
 	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), SessionError> {
+		let announce = self.init_announce(broadcast)?;
+
+		let mut stream = self.session.open(message::Stream::Announce).await?;
+		self.start_announce(&mut stream, &announce)
+			.await
+			.or_close(&mut stream)?;
+
+		runtime::spawn(async move {
+			Self::run_announce(stream, announce).await.ok();
+		});
+
+		Ok(())
+	}
+
+	fn init_announce(&mut self, broadcast: BroadcastReader) -> Result<Announce, SessionError> {
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Closed::Duplicate.into()),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
-		let announce = Announce::open(&mut self.session, broadcast).await?;
-		self.announced.push(announce).map_err(|_| SessionError::Internal)?;
+		Ok(Announce {
+			broadcast,
+			broadcasts: self.broadcasts.clone(),
+		})
+	}
+
+	async fn start_announce(&mut self, stream: &mut Stream, announce: &Announce) -> Result<(), SessionError> {
+		let announce = message::Announce {
+			broadcast: announce.broadcast.name.clone(),
+		};
+
+		stream.writer.encode(&announce).await?;
+
+		let _ok = stream.reader.decode::<message::AnnounceOk>().await?;
+		tracing::info!("ok");
 
 		Ok(())
+	}
+
+	async fn run_announce(mut stream: Stream, announce: Announce) -> Result<(), SessionError> {
+		tokio::select! {
+			// Keep the stream open until the broadcast is closed
+			res = stream.reader.closed() => res.map_err(SessionError::from),
+			res = announce.broadcast.closed() => res.map_err(SessionError::from),
+		}
+		.or_close(&mut stream)
 	}
 
 	// Optionally send any requests for unknown broadcasts to the router
 	pub fn route(&mut self, router: RouterReader<Broadcast>) {
 		*self.router.lock() = Some(router);
-	}
-
-	pub(super) async fn run(self) -> Result<(), SessionError> {
-		let mut tasks = FuturesUnordered::new();
-
-		loop {
-			tokio::select! {
-				Some(announce) = self.announced.pop() => {
-					tasks.push(async move {
-						let id = announce.id().to_string();
-						let _ = announce.run().await;
-						id
-					});
-				},
-				res = tasks.next(), if !tasks.is_empty() => {
-					let announce = res.unwrap();
-					self.broadcasts.lock().remove(&announce);
-				},
-			}
-		}
 	}
 
 	async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Closed> {
@@ -262,5 +277,16 @@ impl Publisher {
 
 	pub async fn closed(&self) -> Result<(), SessionError> {
 		self.session.closed().await
+	}
+}
+
+struct Announce {
+	pub broadcast: BroadcastReader,
+	broadcasts: Lock<HashMap<String, BroadcastReader>>,
+}
+
+impl Drop for Announce {
+	fn drop(&mut self) {
+		self.broadcasts.lock().remove(&self.broadcast.name);
 	}
 }

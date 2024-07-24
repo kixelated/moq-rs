@@ -90,7 +90,7 @@ impl Reader {
 }
 
 impl Close for Reader {
-	fn close(&mut self, code: u32) {
-		self.stream.stop(code);
+	fn close(&mut self, err: SessionError) {
+		self.stream.stop(err.code());
 	}
 }

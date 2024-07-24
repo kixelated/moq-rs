@@ -49,7 +49,7 @@ impl Server {
 
 		let role = Self::setup(&mut stream, role).await.or_close(&mut stream)?;
 
-		Ok(Session::spawn(self.session, role, stream))
+		Ok(Session::start(self.session, role, stream))
 	}
 
 	async fn setup(control: &mut Stream, server_role: setup::Role) -> Result<setup::Role, SessionError> {
