@@ -88,6 +88,6 @@ macro_rules! header_types {
 header_types! {
 	Object = 0x0,
 	//Datagram = 0x1,
-	Group = 0x50,
-	Track = 0x51,
+	Group = 0x51,
+	Track = 0x50,
 }
