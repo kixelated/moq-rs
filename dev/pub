@@ -5,17 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Download the Big Buck Bunny video if it doesn't exist
-if [ ! -f dev/bbb.mp4 ]; then
-	echo "Downloading ya boye Big Buck Bunny..."
-	wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/tmp.mp4
+if [ ! -f dev/bbb.fmp4 ]; then
+	if [ ! -f dev/bbb.mp4 ]; then
+		echo "Downloading ya boye Big Buck Bunny..."
+		wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/bbb.mp4
+	fi
 
 	echo "Converting to a (properly) fragmented MP4..."
-	ffmpeg -i dev/tmp.mp4 \
+	ffmpeg -i dev/bbb.mp4 \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		dev/bbb.mp4
-
-	rm dev/tmp.mp4
+		dev/bbb.fmp4
 fi
 
 # Use debug logging by default
@@ -34,7 +34,7 @@ NAME="${NAME:-bbb}"
 URL="${URL:-"$SCHEME://$ADDR"}"
 
 # Default to a source video
-INPUT="${INPUT:-dev/bbb.mp4}"
+INPUT="${INPUT:-dev/bbb.fmp4}"
 
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
