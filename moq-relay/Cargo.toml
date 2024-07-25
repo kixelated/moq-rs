@@ -13,7 +13,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
-moq-native = { path = "../moq-native", version = "0.2" }
+moq-native = { path = "../moq-native", version = "0.3" }
 moq-api = { path = "../moq-api", version = "0.1" }
 
 # QUIC
@@ -25,7 +25,9 @@ futures = "0.3"
 
 # Web server to serve the fingerprint
 axum = { version = "0.7", features = ["tokio"] }
-hyper-serve = { version = "0.6", features = ["tls-rustls"] } # fork of axum-server
+hyper-serve = { version = "0.6", features = [
+	"tls-rustls",
+] } # fork of axum-server
 tower-http = { version = "0.5", features = ["cors"] }
 hex = "0.4"
 
