@@ -9,7 +9,7 @@ This repository contains a few crates:
 
 -   **moq-relay**: Accepting content from publishers and serves it to any subscribers.
 -   **moq-pub**: Publishes fMP4 broadcasts.
--   **moq-transport**: An implementation of the underlying MoQ protocol.
+-   **moq-transfork**: An implementation of the underlying MoQ protocol.
 -   **moq-dir**: Aggregates announcements, used to discover broadcasts.
 -   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
 
@@ -66,17 +66,17 @@ moq-pub can also be run as a library, currently used for a [gstreamer plugin](ht
 This is in a separate repository to avoid gstreamer being a hard requirement.
 See [run](https://github.com/kixelated/moq-gst/blob/main/run) for an example pipeline.
 
-## moq-transport
+## moq-transfork
 
 A media-agnostic library used by [moq-relay](moq-relay) and [moq-pub](moq-pub) to serve the underlying subscriptions.
 It has caching/deduplication built-in, so your application is oblivious to the number of connections under the hood.
 
-See the published [crate](https://crates.io/crates/moq-transport) and [documentation](https://docs.rs/moq-transport/latest/moq_transport/).
+See the published [crate](https://crates.io/crates/moq-transfork) and [documentation](https://docs.rs/moq-transfork/latest/moq_transfork/).
 
 ## moq-clock
 
 [moq-clock](moq-clock) is a simple client that can publish or subscribe to the current time.
-It's meant to demonstate that [moq-transport](moq-transport) can be used for more than just media.
+It's meant to demonstate that [moq-transfork](moq-transfork) can be used for more than just media.
 
 ## moq-dir
 

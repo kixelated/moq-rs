@@ -7,13 +7,15 @@ members = [
 	"moq-clock",
 	"moq-dir",
 	"moq-native",
+	"moq-catalog",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 # Make it easy to test web-transport changes
-web-transport = { path = "../web-transport-rs/web-transport", version = "0.2.2" }
-web-transport-quinn = { path = "../web-transport-rs/web-transport-quinn", version = "0.2.2" }
+web-transport = { path = "../web-transport-rs/web-transport", version = "0.3" }
+env_logger = "0.11"
+log = { version = "0.4", features = ["std"] }
 
 # Use debug symbols in production until things are more stable
 [profile.release]

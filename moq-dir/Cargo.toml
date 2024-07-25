@@ -5,14 +5,14 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-native = { path = "../moq-native", version = "0.2" }
+moq-native = { path = "../moq-native", version = "0.3" }
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
 
 # QUIC
@@ -30,5 +30,7 @@ anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
 
 # Logging
+log = { workspace = true }
+env_logger = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"

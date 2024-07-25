@@ -57,12 +57,18 @@ impl Endpoint {
 		transport.mtu_discovery_config(None); // Disable MTU discovery
 		let transport = Arc::new(transport);
 
-		let server_config = config.tls.server.map(|mut server| {
-			server.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transfork::setup::ALPN.to_vec()];
-			let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server));
-			server_config.transport_config(transport.clone());
-			server_config
-		});
+		let mut server_config = None;
+
+		if let Some(mut config) = config.tls.server {
+			config.alpn_protocols = vec![web_transport::quinn::ALPN.to_vec(), moq_transfork::setup::ALPN.to_vec()];
+			config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
+			let mut config = quinn::ServerConfig::with_crypto(Arc::new(config));
+			config.transport_config(transport.clone());
+
+			server_config = Some(config);
+		}
 
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
@@ -110,7 +116,9 @@ impl Server {
 		}
 	}
 
-	async fn accept_session(mut conn: quinn::Connecting) -> anyhow::Result<web_transport::Session> {
+	async fn accept_session(conn: quinn::Incoming) -> anyhow::Result<web_transport::Session> {
+		let mut conn = conn.accept()?;
+
 		let handshake = conn
 			.handshake_data()
 			.await?
@@ -130,9 +138,9 @@ impl Server {
 		span.record("id", conn.stable_id()); // TODO can we get this earlier?
 
 		let session = match alpn.as_bytes() {
-			web_transport_quinn::ALPN => {
+			web_transport::quinn::ALPN => {
 				// Wait for the CONNECT request.
-				let request = web_transport_quinn::accept(conn)
+				let request = web_transport::quinn::accept(conn)
 					.await
 					.context("failed to receive WebTransport request")?;
 
@@ -167,7 +175,7 @@ impl Client {
 		let mut config = self.config.clone();
 
 		let alpn = match url.scheme() {
-			"https" => web_transport_quinn::ALPN,
+			"https" => web_transport::quinn::ALPN,
 			"moqf" => moq_transfork::setup::ALPN,
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
 		};
@@ -175,6 +183,9 @@ impl Client {
 		// TODO support connecting to both ALPNs at the same time
 		config.alpn_protocols = vec![alpn.to_vec()];
 
+		config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
 		config.transport_config(self.transport.clone());
 
@@ -194,7 +205,7 @@ impl Client {
 		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
-			"https" => web_transport_quinn::connect_with(connection, url).await?,
+			"https" => web_transport::quinn::connect_with(connection, url).await?,
 			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};

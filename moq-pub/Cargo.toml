@@ -5,7 +5,7 @@ authors = ["Mike English", "Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.5.1"
+version = "0.6.1"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -14,8 +14,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-native = { path = "../moq-native", version = "0.2" }
+moq-native = { path = "../moq-native", version = "0.3" }
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
+moq-catalog = { path = "../moq-catalog", version = "0.2" }
 
 url = "2"
 bytes = "1"
@@ -25,8 +26,10 @@ tokio = { version = "1", features = ["full"] }
 
 # CLI, logging, error handling
 clap = { version = "4", features = ["derive"] }
-mp4 = "0.13"
+log = { workspace = true }
+env_logger = { workspace = true }
+mp4 = "0.14"
 anyhow = { version = "1", features = ["backtrace"] }
 serde_json = "1"
-rfc6381-codec = "0.1"
+rfc6381-codec = "0.2"
 tracing = "0.1"
