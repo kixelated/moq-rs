@@ -12,11 +12,11 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-native = { path = "../moq-native", version = "0.2" }
+moq-native = { path = "../moq-native", version = "0.3" }
 moq-transport = { path = "../moq-transport", version = "0.5" }
 
 # QUIC
-web-transport = "0.2"
+web-transport = { workspace = true }
 bytes = "1"
 
 # Async stuff
@@ -30,7 +30,7 @@ anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
 
 # Logging
-log = { version = "0.4", features = ["std"] }
-env_logger = "0.9"
+log = { workspace = true }
+env_logger = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"

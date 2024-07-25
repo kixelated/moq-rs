@@ -5,7 +5,7 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -13,30 +13,22 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
-web-transport = "0.2"
+web-transport = { workspace = true }
+web-transport-quinn = "0.3"
 
-# QUIC
-quinn = "0.10"
-web-transport-quinn = "0.2"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+rustls-native-certs = "0.7"
+quinn = { version = "0.11", features = ["ring"] }
+ring = "0.17"
+webpki = "0.22"
+
+hex = "0.4"
 url = "2"
 
-# Crypto
-ring = "0.16"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-pemfile = "1"
-rustls-native-certs = "0.6"
-webpki = "0.22"
-hex = "0.4"
-
-# Async stuff
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
-# Error handling
 anyhow = { version = "1", features = ["backtrace"] }
-
-# CLI
 clap = { version = "4", features = ["derive"] }
-
-# Logging
 log = { version = "0.4", features = ["std"] }

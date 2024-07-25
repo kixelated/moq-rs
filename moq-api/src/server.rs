@@ -41,9 +41,7 @@ impl Server {
 
 		// Create the redis client.
 		let redis = redis::Client::open(self.config.redis)?;
-		let redis = redis
-			.get_tokio_connection_manager() // TODO get_tokio_connection_manager_with_backoff?
-			.await?;
+		let redis = redis.get_connection_manager().await?;
 
 		let app = Router::new()
 			.route(
@@ -57,9 +55,8 @@ impl Server {
 
 		log::info!("serving requests: bind={}", self.config.bind);
 
-		axum::Server::bind(&self.config.bind)
-			.serve(app.into_make_service())
-			.await?;
+		let listener = tokio::net::TcpListener::bind(&self.config.bind).await?;
+		axum::serve(listener, app.into_make_service()).await?;
 
 		Ok(())
 	}

@@ -13,4 +13,7 @@ pub enum ApiError {
 
 	#[error("url error: {0}")]
 	Url(#[from] url::ParseError),
+
+	#[error("io error: {0}")]
+	Io(#[from] std::io::Error),
 }

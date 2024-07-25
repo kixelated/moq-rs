@@ -13,28 +13,23 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
-moq-native = { path = "../moq-native", version = "0.2" }
-moq-api = { path = "../moq-api", version = "0.1" }
+moq-native = { path = "../moq-native", version = "0.3" }
+moq-api = { path = "../moq-api", version = "0.2" }
 
 # QUIC
 url = "2"
-
-# Crypto
-ring = "0.16"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-pemfile = "1"
-rustls-native-certs = "0.6"
-webpki = "0.22"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
 # Web server to serve the fingerprint
-axum = { version = "0.6", features = ["tokio"] }
-axum-server = { version = "0.5", features = ["tls-rustls"] }
+axum = { version = "0.7", features = ["tokio"] }
+hyper-serve = { version = "0.6", features = [
+	"tls-rustls",
+] } # fork of axum-server
+tower-http = { version = "0.5", features = ["cors"] }
 hex = "0.4"
-tower-http = { version = "0.4", features = ["cors"] }
 
 # Error handling
 anyhow = { version = "1", features = ["backtrace"] }
@@ -43,7 +38,7 @@ anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
 
 # Logging
-log = { version = "0.4", features = ["std"] }
-env_logger = "0.9"
+log = { workspace = true }
+env_logger = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"
