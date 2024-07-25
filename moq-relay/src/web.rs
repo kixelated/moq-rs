@@ -1,7 +1,7 @@
 use std::{net, sync::Arc};
 
 use axum::{extract::State, http::Method, response::IntoResponse, routing::get, Router};
-use axum_server::tls_rustls::RustlsAcceptor;
+use hyper_serve::tls_rustls::RustlsAcceptor;
 use tower_http::cors::{Any, CorsLayer};
 
 pub struct WebConfig {
@@ -13,7 +13,7 @@ pub struct WebConfig {
 // TODO remove this when Chrome adds support for self-signed certificates using WebTransport
 pub struct Web {
 	app: Router,
-	server: axum_server::Server<RustlsAcceptor>,
+	server: hyper_serve::Server<RustlsAcceptor>,
 }
 
 impl Web {
@@ -24,14 +24,14 @@ impl Web {
 
 		let mut tls = config.tls.server.expect("missing server configuration");
 		tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-		let tls = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(tls));
+		let tls = hyper_serve::tls_rustls::RustlsConfig::from_config(Arc::new(tls));
 
 		let app = Router::new()
 			.route("/fingerprint", get(serve_fingerprint))
 			.layer(CorsLayer::new().allow_origin(Any).allow_methods([Method::GET]))
 			.with_state(fingerprint);
 
-		let server = axum_server::bind_rustls(config.bind, tls);
+		let server = hyper_serve::bind_rustls(config.bind, tls);
 
 		Self { app, server }
 	}
