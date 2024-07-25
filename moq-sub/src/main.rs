@@ -1,4 +1,4 @@
-use std::{net, time};
+use std::net;
 
 use anyhow::Context;
 use clap::Parser;
@@ -18,12 +18,10 @@ async fn main() -> anyhow::Result<()> {
 		.finish();
 	tracing::subscriber::set_global_default(tracer).unwrap();
 
-	let config = Config::parse();
-
 	let out = tokio::io::stdout();
 
+	let config = Config::parse();
 	let tls = config.tls.load()?;
-
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
 	let session = quic.client.connect(&config.url).await?;
@@ -43,22 +41,6 @@ async fn main() -> anyhow::Result<()> {
 	}
 
 	Ok(())
-}
-
-pub struct NoCertificateVerification {}
-
-impl rustls::client::ServerCertVerifier for NoCertificateVerification {
-	fn verify_server_cert(
-		&self,
-		_end_entity: &rustls::Certificate,
-		_intermediates: &[rustls::Certificate],
-		_server_name: &rustls::ServerName,
-		_scts: &mut dyn Iterator<Item = &[u8]>,
-		_ocsp_response: &[u8],
-		_now: time::SystemTime,
-	) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-		Ok(rustls::client::ServerCertVerified::assertion())
-	}
 }
 
 #[derive(Parser, Clone)]

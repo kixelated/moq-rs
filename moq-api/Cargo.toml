@@ -16,8 +16,8 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 # HTTP server
-axum = "0.6"
-hyper = { version = "0.14", features = ["full"] }
+axum = "0.7"
+hyper = { version = "1.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 
 # HTTP client
