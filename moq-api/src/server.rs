@@ -55,9 +55,8 @@ impl Server {
 
 		log::info!("serving requests: bind={}", self.config.bind);
 
-		axum::Server::bind(&self.config.bind)
-			.serve(app.into_make_service())
-			.await?;
+		let listener = tokio::net::TcpListener::bind(&self.config.bind).await.unwrap();
+		axum::serve(listener, app.into_make_service()).await?;
 
 		Ok(())
 	}
