@@ -3,10 +3,12 @@ members = [
 	"moq-transport",
 	"moq-relay",
 	"moq-pub",
+	"moq-sub",
 	"moq-api",
 	"moq-clock",
 	"moq-dir",
 	"moq-native",
+	"moq-catalog",
 ]
 resolver = "2"
 

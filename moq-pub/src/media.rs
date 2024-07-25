@@ -2,7 +2,6 @@ use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
 use moq_transport::serve::{GroupWriter, GroupsWriter, TrackWriter, TracksWriter};
 use mp4::{self, ReadBox, TrackType};
-use serde_json::json;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -128,20 +127,6 @@ impl Media {
 	}
 
 	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
-		// Create a track for each track in the moov
-		for trak in &moov.traks {
-			let id = trak.tkhd.track_id;
-			let name = format!("{}.m4s", id);
-
-			let timescale = track_timescale(moov, id);
-			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
-
-			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create(&name).context("broadcast closed")?;
-			let track = Track::new(track, handler, timescale);
-			self.tracks.insert(id, track);
-		}
-
 		// Combine the ftyp+moov atoms into a single object.
 		let mut init = self.ftyp.clone().context("missing ftyp")?.to_vec();
 		init.extend_from_slice(&raw);
@@ -153,13 +138,25 @@ impl Media {
 
 		// Produce the catalog
 		for trak in &moov.traks {
-			let mut track = json!({
-				"container": "mp4",
-				"init_track": "0.mp4",
-				"data_track": format!("{}.m4s", trak.tkhd.track_id),
-			});
+			let id = trak.tkhd.track_id;
+			let name = format!("{}.m4s", id);
+
+			let timescale = track_timescale(moov, id);
+			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
+
+			let mut selection_params = moq_catalog::SelectionParam::default();
+
+			let mut track = moq_catalog::Track {
+				init_track: Some(self.init.name.clone()),
+				name: name.clone(),
+				namespace: Some(self.broadcast.namespace.clone()),
+				packaging: Some(moq_catalog::TrackPackaging::Cmaf),
+				render_group: Some(1),
+				..Default::default()
+			};
 
 			let stsd = &trak.mdia.minf.stbl.stsd;
+
 			if let Some(avc1) = &stsd.avc1 {
 				// avc1[.PPCCLL]
 				//
@@ -176,10 +173,9 @@ impl Media {
 				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
 				let codec_str = codec.to_string();
 
-				track["kind"] = json!("video");
-				track["codec"] = json!(codec_str);
-				track["width"] = json!(width);
-				track["height"] = json!(height);
+				selection_params.codec = Some(codec_str);
+				selection_params.width = Some(width.into());
+				selection_params.height = Some(height.into());
 			} else if let Some(_hev1) = &stsd.hev1 {
 				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
 				anyhow::bail!("HEVC not yet supported")
@@ -192,25 +188,22 @@ impl Media {
 					.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
-				track["kind"] = json!("audio");
-				track["codec"] = json!(codec_str);
-				track["channel_count"] = json!(mp4a.channelcount);
-				track["sample_rate"] = json!(mp4a.samplerate.value());
-				track["sample_size"] = json!(mp4a.samplesize);
+				selection_params.codec = Some(codec_str);
+				selection_params.channel_config = Some(mp4a.channelcount.to_string());
+				selection_params.samplerate = Some(mp4a.samplerate.value().into());
 
 				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
 				if bitrate > 0 {
-					track["bit_rate"] = json!(bitrate);
+					selection_params.bitrate = Some(bitrate);
 				}
 			} else if let Some(vp09) = &stsd.vp09 {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
 
-				track["kind"] = json!("video");
-				track["codec"] = json!(codec_str);
-				track["width"] = json!(vp09.width); // no idea if this needs to be multiplied
-				track["height"] = json!(vp09.height); // no idea if this needs to be multiplied
+				selection_params.codec = Some(codec_str);
+				selection_params.width = Some(vp09.width.into());
+				selection_params.height = Some(vp09.height.into());
 
 				// TODO Test if this actually works; I'm just guessing based on mp4box.js
 				anyhow::bail!("VP9 not yet supported")
@@ -219,14 +212,27 @@ impl Media {
 				anyhow::bail!("unknown codec for track: {}", trak.tkhd.track_id);
 			}
 
+			track.selection_params = selection_params;
+
 			tracks.push(track);
+
+			// Store the track publisher in a map so we can update it later.
+			let track = self.broadcast.create(&name).context("broadcast closed")?;
+			let track = Track::new(track, handler, timescale);
+			self.tracks.insert(id, track);
 		}
 
-		let catalog = json!({
-			"tracks": tracks
-		});
+		let catalog = moq_catalog::Root {
+			version: 1,
+			streaming_format: 1,
+			streaming_format_version: "0.2".to_string(),
+			streaming_delta_updates: true,
+			common_track_fields: moq_catalog::CommonTrackFields::from_tracks(&mut tracks),
+			tracks,
+		};
 
 		let catalog_str = serde_json::to_string_pretty(&catalog)?;
+
 		log::info!("catalog: {}", catalog_str);
 
 		// Create a single fragment for the segment.

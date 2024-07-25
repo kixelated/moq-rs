@@ -46,6 +46,22 @@ Requires:
 Alternatively, you can use Gstreamer via [moq-gst](https://github.com/kixelated/moq-gst).
 The [run](https://github.com/kixelated/moq-gst/blob/main/run) script does the exact same thing.
 
+## moq-sub
+
+You can use `moq-sub` to subscribe to media streams from a MoQ relay and pipe them to the standard output.
+By piping the command to a video player, e.g. `ffplay` or `mpv`, you can play a MoQ broadcast natively.
+
+Currently, `moq-sub` simply dumps all received segments of the first video and the first audio track 
+directly to `stdout`.
+
+The following command subscribes to a stream from a MoQ relay and plays it with `ffplay`.
+By default, the URL is `https://localhost:4433/dev`, so it will play the stream published with `dev/pub` 
+to the relay started with `dev/relay`. You can change the broadcast name by setting the `NAME` env var.
+
+```bash
+./dev/sub
+```
+
 ## moq-clock
 
 To show that MoQ can do more than just media, we made a simple clock.

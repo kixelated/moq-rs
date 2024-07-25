@@ -1,7 +1,7 @@
 //! A track is a collection of semi-reliable and semi-ordered streams, split into a [Writer] and [Reader] handle.
 //!
 //! A [Writer] creates streams with a sequence number and priority.
-//! The sequest number is used to determine the order of streams, while the priority is used to determine which stream to transmit first.
+//! The sequence number is used to determine the order of streams, while the priority is used to determine which stream to transmit first.
 //! This may seem counter-intuitive, but is designed for live streaming where the newest streams may be higher priority.
 //! A cloned [Writer] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
 //!

@@ -61,6 +61,7 @@ impl Endpoint {
 
 		if let Some(mut config) = config.tls.server {
 			config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+			config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
 			let mut config = quinn::ServerConfig::with_crypto(Arc::new(config));
@@ -190,6 +191,8 @@ impl Client {
 			"moqt" => moq_transport::setup::ALPN.to_vec(),
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
 		}];
+
+		config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
