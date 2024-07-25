@@ -14,7 +14,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transport = { path = "../moq-transport", version = "0.5" }
 moq-native = { path = "../moq-native", version = "0.3" }
-moq-api = { path = "../moq-api", version = "0.1" }
+moq-api = { path = "../moq-api", version = "0.2" }
 
 # QUIC
 url = "2"
