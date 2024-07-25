@@ -115,8 +115,13 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub async fn serve_track_status(mut track_status_request: TrackStatusRequested, mut tracks: TracksReader) -> Result<(), SessionError> {
-		let track = tracks.subscribe(&track_status_request.info.track.clone()).ok_or(ServeError::NotFound)?;
+	pub async fn serve_track_status(
+		mut track_status_request: TrackStatusRequested,
+		mut tracks: TracksReader,
+	) -> Result<(), SessionError> {
+		let track = tracks
+			.subscribe(&track_status_request.info.track.clone())
+			.ok_or(ServeError::NotFound)?;
 		let response;
 
 		if let Some((latest_group_id, latest_object_id)) = track.latest() {
@@ -230,9 +235,10 @@ impl Publisher {
 
 		let track_status_requested = TrackStatusRequested::new(self.clone(), msg);
 
-		announce.recv_track_status_requested(track_status_requested).map_err(Into::into)
+		announce
+			.recv_track_status_requested(track_status_requested)
+			.map_err(Into::into)
 	}
-
 
 	fn recv_unsubscribe(&mut self, msg: message::Unsubscribe) -> Result<(), SessionError> {
 		if let Some(subscribed) = self.subscribed.lock().unwrap().get_mut(&msg.id) {

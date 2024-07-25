@@ -106,17 +106,15 @@ impl Announce {
 			{
 				let state = self.state.lock();
 				if !state.track_statuses_requested.is_empty() {
-					return Ok(state.into_mut().and_then(|mut state| state.track_statuses_requested.pop_front()));
+					return Ok(state
+						.into_mut()
+						.and_then(|mut state| state.track_statuses_requested.pop_front()));
 				}
 
 				state.closed.clone()?;
 				match state.modified() {
-					Some(notified) => {
-						notified
-					},
-					None => {
-						return Ok(None)
-					},
+					Some(notified) => notified,
+					None => return Ok(None),
 				}
 			}
 			.await;
@@ -197,7 +195,10 @@ impl AnnounceRecv {
 		Ok(())
 	}
 
-	pub fn recv_track_status_requested(&mut self, track_status_requested: TrackStatusRequested) -> Result<(), ServeError> {
+	pub fn recv_track_status_requested(
+		&mut self,
+		track_status_requested: TrackStatusRequested,
+	) -> Result<(), ServeError> {
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.track_statuses_requested.push_back(track_status_requested);
 		Ok(())

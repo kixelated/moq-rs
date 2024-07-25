@@ -146,7 +146,6 @@ impl Subscriber {
 	}
 
 	fn recv_track_status(&mut self, _msg: &message::TrackStatus) -> Result<(), SessionError> {
-
 		// TODO: Expose this somehow?
 		// TODO: Also add a way to sent a Track Status Request in the first place
 
