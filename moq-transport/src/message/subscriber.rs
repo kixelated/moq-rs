@@ -50,5 +50,6 @@ subscriber_msgs! {
 	AnnounceCancel,
 	Subscribe,
 	Unsubscribe,
+	SubscribeUpdate,
 	TrackStatusRequest,
 }

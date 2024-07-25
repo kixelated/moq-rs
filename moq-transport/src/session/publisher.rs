@@ -160,6 +160,7 @@ impl Publisher {
 			message::Subscriber::AnnounceCancel(msg) => self.recv_announce_cancel(msg),
 			message::Subscriber::Subscribe(msg) => self.recv_subscribe(msg),
 			message::Subscriber::Unsubscribe(msg) => self.recv_unsubscribe(msg),
+			message::Subscriber::SubscribeUpdate(msg) => self.recv_subscribe_update(msg),
 			message::Subscriber::TrackStatusRequest(msg) => self.recv_track_status_request(msg),
 		};
 
@@ -225,6 +226,11 @@ impl Publisher {
 		}
 
 		Ok(())
+	}
+
+	fn recv_subscribe_update(&mut self, _msg: message::SubscribeUpdate) -> Result<(), SessionError> {
+		// TODO: Implement updating subscriptions.
+		Err(SessionError::Internal)
 	}
 
 	fn recv_track_status_request(&mut self, msg: message::TrackStatusRequest) -> Result<(), SessionError> {

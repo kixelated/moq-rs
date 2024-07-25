@@ -42,6 +42,7 @@ mod subscribe;
 mod subscribe_done;
 mod subscribe_error;
 mod subscribe_ok;
+mod subscribe_update;
 mod subscriber;
 mod track_status;
 mod track_status_request;
@@ -59,6 +60,7 @@ pub use subscribe::*;
 pub use subscribe_done::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
+pub use subscribe_update::*;
 pub use subscriber::*;
 pub use track_status::*;
 pub use track_status_request::*;
@@ -147,6 +149,7 @@ message_types! {
 	// SetupServer = 0x41
 
 	// SUBSCRIBE family, sent by subscriber
+	SubscribeUpdate = 0x2,
 	Subscribe = 0x3,
 	Unsubscribe = 0xa,
 
