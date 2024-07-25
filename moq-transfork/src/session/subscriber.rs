@@ -40,11 +40,10 @@ impl Subscriber {
 	}
 
 	// TODO come up with a better name
-	/// Serve a broadcast from this session.
+	/// Subscribe to tracks from a given broadcast.
 	///
-	/// This method allows us to serve a broadcast without waiting for an announcement.
-	/// It's optional to announce a broadcast so this is often required.
-	pub fn serve(&self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
+	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
+	pub fn namespace(&self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
 		let (mut writer, reader) = broadcast.clone().produce();
 
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
@@ -168,7 +167,7 @@ impl Subscriber {
 		let broadcast = Broadcast::new(announce.broadcast);
 
 		// Serve the broadcast and add it to the announced queue.
-		let broadcast = self.serve(broadcast)?;
+		let broadcast = self.namespace(broadcast)?;
 		self.announced
 			.push(broadcast.clone())
 			.map_err(|_| SessionError::Internal)?;
