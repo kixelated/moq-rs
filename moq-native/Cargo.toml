@@ -20,7 +20,6 @@ rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
 rustls-native-certs = "0.7"
 quinn = { version = "0.11", features = ["ring"] }
-quinn-proto = { version = "0.11", features = ["ring"] }
 ring = "0.17"
 webpki = "0.22"
 

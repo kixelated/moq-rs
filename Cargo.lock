@@ -1127,7 +1127,6 @@ dependencies = [
  "log",
  "moq-transport",
  "quinn",
- "quinn-proto",
  "ring",
  "rustls 0.23.7",
  "rustls-native-certs",
