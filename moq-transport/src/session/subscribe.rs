@@ -47,6 +47,8 @@ impl Subscribe {
 			track_alias: id,
 			track_namespace: track.namespace.clone(),
 			track_name: track.name.clone(),
+			subscribe_priority: 0, // TODO: expose this
+			group_order: 0,        // TODO: expose this
 			filter_type: FilterType::LatestGroup,
 			// TODO add these to the publisher.
 			start: Some(SubscribePair {
