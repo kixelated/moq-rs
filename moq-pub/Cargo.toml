@@ -30,6 +30,5 @@ log = { workspace = true }
 env_logger = { workspace = true }
 mp4 = "0.14"
 anyhow = { version = "1", features = ["backtrace"] }
-serde_json = "1"
 rfc6381-codec = "0.2"
 tracing = "0.1"

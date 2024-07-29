@@ -5,7 +5,10 @@
 /// https://www.ietf.org/archive/id/draft-ietf-moq-catalogformat-01.html
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+pub type Error = serde_json::Error;
+pub type Result<T> = serde_json::Result<T>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Root {
 	pub version: u16,
 
@@ -24,7 +27,37 @@ pub struct Root {
 	pub tracks: Vec<Track>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+impl Root {
+	pub fn from_str(s: &str) -> serde_json::Result<Self> {
+		serde_json::from_str(s)
+	}
+
+	pub fn from_slice(v: &[u8]) -> serde_json::Result<Self> {
+		serde_json::from_slice(v)
+	}
+
+	pub fn from_reader(reader: impl std::io::Read) -> serde_json::Result<Self> {
+		serde_json::from_reader(reader)
+	}
+
+	pub fn to_string(&self) -> serde_json::Result<String> {
+		serde_json::to_string(self)
+	}
+
+	pub fn to_string_pretty(&self) -> serde_json::Result<String> {
+		serde_json::to_string_pretty(self)
+	}
+
+	pub fn to_vec(&self) -> serde_json::Result<Vec<u8>> {
+		serde_json::to_vec(self)
+	}
+
+	pub fn to_writer(&self, writer: impl std::io::Write) -> serde_json::Result<()> {
+		serde_json::to_writer(writer, self)
+	}
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Track {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub namespace: Option<String>,
@@ -87,7 +120,7 @@ pub enum TrackPackaging {
 	Loc,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SelectionParam {
 	pub codec: Option<String>,
 
@@ -123,7 +156,7 @@ pub struct SelectionParam {
 	pub language: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct CommonTrackFields {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub namespace: Option<String>,

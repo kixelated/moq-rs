@@ -5,12 +5,13 @@ use std::{
 
 use crate::{
 	message,
-	model::{Broadcast, BroadcastReader, Closed, Produce, Router, Track, TrackReader, TrackWriter},
+	model::{Broadcast, BroadcastReader, Produce, Router, Track, TrackReader, TrackWriter},
 	runtime::{self, Lock, Queue},
-	BroadcastWriter, OrClose, RouterWriter,
+	util::OrClose,
+	BroadcastWriter, MoqError, RouterWriter,
 };
 
-use super::{Reader, Session, SessionError, Stream};
+use super::{Reader, Session, Stream};
 
 #[derive(Clone)]
 pub struct Subscriber {
@@ -43,7 +44,7 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn namespace(&self, broadcast: Broadcast) -> Result<BroadcastReader, SessionError> {
+	pub fn namespace(&self, broadcast: Broadcast) -> Result<BroadcastReader, MoqError> {
 		let (mut writer, reader) = broadcast.clone().produce();
 
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
@@ -52,7 +53,7 @@ impl Subscriber {
 		};
 
 		let router = Router::produce();
-		writer.route(router.1)?;
+		writer.route_tracks(router.1)?;
 
 		let announce = Announce {
 			broadcast: writer,
@@ -73,14 +74,14 @@ impl Subscriber {
 			runtime::spawn(async move {
 				match this.subscribe(broadcast, request.info.clone()).await {
 					Ok(track) => request.serve(track),
-					Err(err) => request.close(Closed::Unknown /* TODO err*/),
+					Err(err) => request.close(err),
 				};
 			});
 		}
 	}
 
 	#[tracing::instrument(skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
-	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, SessionError> {
+	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, MoqError> {
 		let sub = self.init_subscribe(track);
 		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
@@ -116,7 +117,7 @@ impl Subscriber {
 		stream: &mut Stream,
 		broadcast: Broadcast,
 		sub: &Subscribe,
-	) -> Result<(), SessionError> {
+	) -> Result<(), MoqError> {
 		let request = message::Subscribe {
 			id: sub.id,
 			broadcast: broadcast.name.clone(),
@@ -142,7 +143,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), SessionError> {
+	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), MoqError> {
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
@@ -157,20 +158,18 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), SessionError> {
+	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), MoqError> {
 		let announce = stream.reader.decode().await?;
 		self.announced_run(stream, announce).await
 	}
 
 	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
-	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), SessionError> {
+	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), MoqError> {
 		let broadcast = Broadcast::new(announce.broadcast);
 
 		// Serve the broadcast and add it to the announced queue.
 		let broadcast = self.namespace(broadcast)?;
-		self.announced
-			.push(broadcast.clone())
-			.map_err(|_| SessionError::Internal)?;
+		self.announced.push(broadcast.clone()).map_err(|_| MoqError::Cancel)?;
 
 		// Send the OK message.
 		let msg = message::AnnounceOk {};
@@ -185,24 +184,24 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), SessionError> {
+	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), MoqError> {
 		let group = stream.decode().await?;
 		self.serve_group(stream, group).await
 	}
 
 	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
-	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), SessionError> {
+	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), MoqError> {
 		let mut group = self
 			.tracks
 			.lock()
 			.get_mut(&group.subscribe)
-			.ok_or(Closed::Unknown)?
-			.create(group.sequence)?;
+			.ok_or(MoqError::NotFound)?
+			.create_group(group.sequence)?;
 
 		let mut size = 0;
 		while let Some(chunk) = stream.read_chunk(usize::MAX).await? {
 			size += chunk.len();
-			group.write(chunk)?;
+			group.write_frame(chunk)?;
 		}
 
 		tracing::debug!(size);
@@ -210,7 +209,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	pub async fn closed(&self) -> Result<(), SessionError> {
+	pub async fn closed(&self) -> Result<(), MoqError> {
 		self.session.closed().await
 	}
 }

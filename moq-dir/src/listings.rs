@@ -34,7 +34,7 @@ impl Listings {
 	}
 
 	// Returns a Registration that removes on drop.
-	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, Closed> {
+	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, MoqError> {
 		let (prefix, base) = Self::prefix(path);
 
 		if !prefix.starts_with(&self.reader.name) {
@@ -49,7 +49,7 @@ impl Listings {
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
-			let track = state.writer.create(prefix, 0).build().unwrap();
+			let track = state.writer.create_track(prefix, 0).build().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;
@@ -63,16 +63,16 @@ impl Listings {
 		}))
 	}
 
-	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), Closed> {
+	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), MoqError> {
 		let mut state = self.state.lock().unwrap();
 
 		// TODO this is the wrong error message.
-		let listing = state.active.get_mut(prefix).ok_or(Closed::Unknown)?;
+		let listing = state.active.get_mut(prefix).ok_or(MoqError::NotFound)?;
 		listing.remove(base)?;
 
 		if listing.is_empty() {
 			state.active.remove(prefix);
-			state.writer.remove(prefix);
+			state.writer.remove_track(prefix);
 		}
 
 		Ok(())

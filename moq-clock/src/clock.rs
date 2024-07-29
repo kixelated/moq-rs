@@ -22,7 +22,7 @@ impl Publisher {
 		loop {
 			let segment = self
 				.track
-				.create(sequence as u64)
+				.create_group(sequence as u64)
 				.context("failed to create minute segment")?;
 
 			sequence += 1;
@@ -47,11 +47,15 @@ impl Publisher {
 		// Everything but the second.
 		let base = now.format("%Y-%m-%d %H:%M:").to_string();
 
-		segment.write(base.clone().into()).context("failed to write base")?;
+		segment
+			.write_frame(base.clone().into())
+			.context("failed to write base")?;
 
 		loop {
 			let delta = now.format("%S").to_string();
-			segment.write(delta.clone().into()).context("failed to write delta")?;
+			segment
+				.write_frame(delta.clone().into())
+				.context("failed to write delta")?;
 
 			println!("{}{}", base, delta);
 
@@ -81,16 +85,16 @@ impl Subscriber {
 	}
 
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		while let Some(mut group) = self.track.next().await? {
+		while let Some(mut group) = self.track.next_group().await? {
 			let base = group
-				.read()
+				.read_frame()
 				.await
 				.context("failed to get first object")?
 				.context("empty group")?;
 
 			let base = String::from_utf8_lossy(&base);
 
-			while let Some(object) = group.read().await? {
+			while let Some(object) = group.read_frame().await? {
 				let str = String::from_utf8_lossy(&object);
 				println!("{}{}", base, str);
 			}

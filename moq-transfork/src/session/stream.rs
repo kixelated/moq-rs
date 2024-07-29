@@ -1,4 +1,5 @@
-use super::{Close, Reader, SessionError, Writer};
+use super::{Close, Reader, Writer};
+use crate::MoqError;
 
 pub struct Stream {
 	pub writer: Writer,
@@ -6,7 +7,7 @@ pub struct Stream {
 }
 
 impl Close for Stream {
-	fn close(&mut self, err: SessionError) {
+	fn close(&mut self, err: MoqError) {
 		self.writer.close(err.clone());
 		self.reader.close(err);
 	}

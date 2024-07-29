@@ -27,8 +27,11 @@ pub struct Media {
 
 impl Media {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast.create(".catalog", 0).build().context("broadcast closed")?;
-		let init = broadcast.create("0.mp4", 1).build().context("broadcast closed")?;
+		let catalog = broadcast
+			.create_track(".catalog", 0)
+			.build()
+			.context("broadcast closed")?;
+		let init = broadcast.create_track("0.mp4", 1).build().context("broadcast closed")?;
 
 		Ok(Media {
 			tracks: Default::default(),
@@ -131,7 +134,7 @@ impl Media {
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
-		self.init.append()?.write(init.into())?;
+		self.init.append_group()?.write_frame(init.into())?;
 
 		let mut tracks = Vec::new();
 
@@ -224,7 +227,7 @@ impl Media {
 			// Store the track publisher in a map so we can update it later.
 			let track = self
 				.broadcast
-				.create(&name, priority)
+				.create_track(&name, priority)
 				.build()
 				.context("broadcast closed")?;
 
@@ -241,12 +244,12 @@ impl Media {
 			tracks,
 		};
 
-		let catalog = serde_json::to_string_pretty(&catalog)?;
+		let catalog = catalog.to_string_pretty()?;
 
 		log::info!("catalog: {}", catalog);
 
 		// Create a single fragment for the segment.
-		self.catalog.append()?.write(catalog.into())?;
+		self.catalog.append_group()?.write_frame(catalog.into())?;
 
 		Ok(())
 	}
@@ -320,15 +323,15 @@ impl Track {
 	pub fn header(&mut self, raw: Bytes) -> anyhow::Result<()> {
 		if let Some(current) = self.current.as_mut() {
 			// Use the existing segment
-			current.write(raw)?;
+			current.write_frame(raw)?;
 			return Ok(());
 		}
 
 		// Otherwise make a new segment
-		let mut segment = self.track.append()?;
+		let mut segment = self.track.append_group()?;
 
 		// Write the fragment in it's own object.
-		segment.write(raw)?;
+		segment.write_frame(raw)?;
 
 		// Save for the next iteration
 		self.current = Some(segment);
@@ -338,7 +341,7 @@ impl Track {
 
 	pub fn data(&mut self, raw: Bytes) -> anyhow::Result<()> {
 		let segment = self.current.as_mut().context("missing current fragment")?;
-		segment.write(raw)?;
+		segment.write_frame(raw)?;
 
 		Ok(())
 	}

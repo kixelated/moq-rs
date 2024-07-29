@@ -22,16 +22,16 @@ impl ListingWriter {
 		}
 	}
 
-	pub fn insert(&mut self, name: String) -> Result<(), Closed> {
+	pub fn insert(&mut self, name: String) -> Result<(), MoqError> {
 		if !self.current.insert(name.clone()) {
-			return Err(Closed::Duplicate);
+			return Err(MoqError::Duplicate);
 		}
 
 		match self.group {
 			// Create a delta if the current group is small enough.
-			Some(ref mut group) if self.current.len() < 2 * group.total() => {
+			Some(ref mut group) if self.current.len() < 2 * group.frame_count() => {
 				let msg = format!("+{}", name);
-				group.write(msg.into())?;
+				group.write_frame(msg.into())?;
 			}
 			// Otherwise create a snapshot with every element.
 			_ => self.group = Some(self.snapshot()?),
@@ -40,17 +40,17 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, name: &str) -> Result<(), Closed> {
+	pub fn remove(&mut self, name: &str) -> Result<(), MoqError> {
 		if !self.current.remove(name) {
 			// TODO this is a wrong error message.
-			return Err(Closed::Unknown);
+			return Err(MoqError::NotFound);
 		}
 
 		match self.group {
 			// Create a delta if the current group is small enough.
-			Some(ref mut group) if self.current.len() < 2 * group.total() => {
+			Some(ref mut group) if self.current.len() < 2 * group.frame_count() => {
 				let msg = format!("-{}", name);
-				group.write(msg.into())?;
+				group.write_frame(msg.into())?;
 			}
 			// Otherwise create a snapshot with every element.
 			_ => self.group = Some(self.snapshot()?),
@@ -59,13 +59,13 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	fn snapshot(&mut self) -> Result<GroupWriter, Closed> {
+	fn snapshot(&mut self) -> Result<GroupWriter, MoqError> {
 		let mut groups = match self.groups.take() {
 			Some(groups) => groups,
 			None => self.track.take().unwrap(),
 		};
 
-		let mut group = groups.append()?;
+		let mut group = groups.append_group()?;
 
 		let mut msg = BytesMut::new();
 		for name in &self.current {
@@ -73,7 +73,7 @@ impl ListingWriter {
 			msg.extend_from_slice(b"\n");
 		}
 
-		group.write(msg.freeze())?;
+		group.write_frame(msg.freeze())?;
 		self.groups = Some(groups);
 
 		Ok(group)
@@ -125,7 +125,7 @@ impl ListingReader {
 		}
 
 		if self.group.is_none() {
-			self.group = Some(self.track.next().await?.context("empty track")?);
+			self.group = Some(self.track.next_group().await?.context("empty track")?);
 		}
 
 		let mut group_done = false;
@@ -133,7 +133,7 @@ impl ListingReader {
 
 		loop {
 			tokio::select! {
-				next = self.track.next(), if !groups_done => {
+				next = self.track.next_group(), if !groups_done => {
 					if let Some(next) = next? {
 						self.group = Some(next);
 						group_done = false;
@@ -141,7 +141,7 @@ impl ListingReader {
 						groups_done = true;
 					}
 				},
-				object = self.group.as_mut().unwrap().read(), if !group_done => {
+				object = self.group.as_mut().unwrap().read_frame(), if !group_done => {
 					let payload = match object? {
 						Some(object) => object,
 						None => {
@@ -152,7 +152,7 @@ impl ListingReader {
 
 					if payload.is_empty() {
 						anyhow::bail!("empty payload");
-					} else if self.group.as_mut().unwrap().current() == 1 {
+					} else if self.group.as_mut().unwrap().frame_index() == 1 {
 						// This is a full snapshot, not a delta
 						let set = HashSet::from_iter(payload.split(|&b| b == b'\n').map(|s| String::from_utf8_lossy(s).to_string()));
 

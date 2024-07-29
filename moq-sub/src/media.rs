@@ -23,10 +23,10 @@ impl Media {
 		let mut init = subscriber.subscribe(broadcast.clone(), init).await?;
 
 		let init = init
-			.next()
+			.next_group()
 			.await?
 			.context("empty init track")?
-			.read()
+			.read_frame()
 			.await?
 			.context("empty init group")?;
 
@@ -122,7 +122,7 @@ impl MediaTrack {
 	// Returns the next atom in the current track
 	pub async fn next(mut self) -> anyhow::Result<(Self, Option<Bytes>)> {
 		if self.current.is_none() {
-			self.current = self.groups.next().await?;
+			self.current = self.groups.next_group().await?;
 		}
 
 		let mut track_eof = false;
@@ -130,7 +130,7 @@ impl MediaTrack {
 
 		loop {
 			tokio::select! {
-				res = self.groups.next(), if !track_eof => {
+				res = self.groups.next_group(), if !track_eof => {
 					if let Some(group) = res? {
 						// TODO only drop the current group after a configurable latency
 						self.current.replace(group);
@@ -139,7 +139,7 @@ impl MediaTrack {
 						track_eof = true;
 					}
 				}
-				res = self.current.as_mut().unwrap().read(), if !group_eof => {
+				res = self.current.as_mut().unwrap().read_frame(), if !group_eof => {
 					if let Some(frame) = res? {
 						return Ok((self, Some(frame)));
 					} else {

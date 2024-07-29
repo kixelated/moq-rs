@@ -6,13 +6,14 @@
 //! A [Reader] reads an ordered stream of frames.
 //! The reader can be cloned, in which case each reader receives a copy of each frame. (fanout)
 //!
-//! The stream is closed with [ServeError::Closed] when all writers or readers are dropped.
+//! The stream is closed with [ServeError::MoqError] when all writers or readers are dropped.
 use bytes::Bytes;
 use std::ops;
 
 use crate::runtime::Watch;
+use crate::MoqError;
 
-use super::{Closed, Frame, FrameReader, FrameWriter, Produce};
+use super::{Frame, FrameReader, FrameWriter, Produce};
 
 /// Parameters that can be specified by the user
 #[derive(Clone, PartialEq)]
@@ -47,7 +48,7 @@ struct GroupState {
 	frames: Vec<FrameReader>,
 
 	// Set when the writer or all readers are dropped.
-	closed: Result<(), Closed>,
+	closed: Result<(), MoqError>,
 }
 
 impl Default for GroupState {
@@ -77,29 +78,29 @@ impl GroupWriter {
 	}
 
 	// Write a frame in one go
-	pub fn write(&mut self, frame: bytes::Bytes) -> Result<(), Closed> {
-		self.write_chunks(frame.len())?.write(frame)
+	pub fn write_frame(&mut self, frame: bytes::Bytes) -> Result<(), MoqError> {
+		self.write_frame_chunked(frame.len())?.write(frame)
 	}
 
 	// Create a frame with an upfront size
-	pub fn write_chunks(&mut self, size: usize) -> Result<FrameWriter, Closed> {
+	pub fn write_frame_chunked(&mut self, size: usize) -> Result<FrameWriter, MoqError> {
 		let (writer, reader) = Frame::new(size).produce();
 
-		self.state.lock_mut().ok_or(Closed::Cancel)?.frames.push(reader);
+		self.state.lock_mut().ok_or(MoqError::Cancel)?.frames.push(reader);
 		self.total += 1;
 
 		Ok(writer)
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: Closed) -> Result<(), Closed> {
+	pub fn close(&mut self, err: MoqError) -> Result<(), MoqError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-		state.into_mut().ok_or(Closed::Cancel)?.closed = Err(err);
+		state.into_mut().ok_or(MoqError::Cancel)?.closed = Err(err);
 		Ok(())
 	}
 
-	pub fn total(&self) -> usize {
+	pub fn frame_count(&self) -> usize {
 		self.total
 	}
 }
@@ -136,15 +137,15 @@ impl GroupReader {
 	}
 
 	// Read the next frame.
-	pub async fn read(&mut self) -> Result<Option<Bytes>, Closed> {
-		Ok(match self.read_chunks().await? {
+	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, MoqError> {
+		Ok(match self.read_frame_chunked().await? {
 			Some(mut reader) => Some(reader.read_all().await?),
 			None => None,
 		})
 	}
 
 	// Return a reader for the next frame.
-	pub async fn read_chunks(&mut self) -> Result<Option<FrameReader>, Closed> {
+	pub async fn read_frame_chunked(&mut self) -> Result<Option<FrameReader>, MoqError> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -165,12 +166,12 @@ impl GroupReader {
 	}
 
 	// Return the current index of the frame in the group
-	pub fn current(&self) -> usize {
+	pub fn frame_index(&self) -> usize {
 		self.index
 	}
 
 	// Return the current total number of frames in the group
-	pub fn total(&self) -> usize {
+	pub fn frame_count(&self) -> usize {
 		self.state.lock().frames.len()
 	}
 }

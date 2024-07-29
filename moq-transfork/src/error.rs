@@ -1,7 +1,7 @@
-use crate::{coding, message, model, setup};
+use crate::{coding, message, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
-pub enum SessionError {
+pub enum MoqError {
 	#[error("webtransport session: {0}")]
 	Network(#[from] web_transport::SessionError),
 
@@ -42,54 +42,48 @@ pub enum SessionError {
 	BoundsExceeded(#[from] coding::BoundsExceeded),
 
 	/// A duplicate ID was used
+	// The broadcast/track is a duplicate
 	#[error("duplicate")]
 	Duplicate,
 
-	#[error("internal error")]
-	Internal,
+	// TODO remove
+	//#[error("internal error")]
+	//Internal,
 
-	#[error("closed: {0}")]
-	Closed(#[from] model::Closed),
+	// Cancel is returned when there are no more readers.
+	#[error("cancelled")]
+	Cancel,
+
+	// The application closes the stream with a code.
+	#[error("app code={0}")]
+	App(u32),
+
+	#[error("not found")]
+	NotFound,
+	// TODO Remove
+	//#[error("unknown")]
+	//Unknown,
 }
 
-impl SessionError {
+impl MoqError {
 	/// An integer code that is sent over the wire.
-	pub fn code(&self) -> u32 {
+	pub fn to_code(&self) -> u32 {
 		match self {
-			Self::RequiredExtension(_) => 407,
-			Self::RoleIncompatible(..) => 406,
-			Self::RoleViolation => 405,
-			Self::Network(_) => 503,
-			Self::Read(_) => 400,
-			Self::Decode(_) => 401,
-			Self::Write(_) => 500,
-			Self::Encode(_) => 501,
-			Self::Version(..) => 406,
-			Self::UnexpectedStream(_) => 500,
-			Self::BoundsExceeded(_) => 500,
-			Self::Duplicate => 409,
-			Self::Internal => 500,
-			Self::Closed(err) => err.code(),
-		}
-	}
-}
-
-pub(crate) trait Close {
-	fn close(&mut self, err: SessionError);
-}
-
-pub(crate) trait OrClose<S: Close, V> {
-	fn or_close(self, stream: &mut S) -> Result<V, SessionError>;
-}
-
-impl<S: Close, V> OrClose<S, V> for Result<V, SessionError> {
-	fn or_close(self, stream: &mut S) -> Result<V, SessionError> {
-		match self {
-			Ok(v) => Ok(v),
-			Err(err) => {
-				stream.close(err.clone());
-				Err(err)
-			}
+			Self::Cancel => 0,
+			Self::RequiredExtension(_) => 1,
+			Self::RoleIncompatible(..) => 2,
+			Self::RoleViolation => 3,
+			Self::Network(_) => 4,
+			Self::Read(_) => 5,
+			Self::Decode(_) => 6,
+			Self::Write(_) => 7,
+			Self::Encode(_) => 8,
+			Self::Version(..) => 9,
+			Self::UnexpectedStream(_) => 10,
+			Self::BoundsExceeded(_) => 11,
+			Self::Duplicate => 12,
+			Self::NotFound => 13,
+			Self::App(app) => *app + 64,
 		}
 	}
 }

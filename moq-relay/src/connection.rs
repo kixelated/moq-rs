@@ -18,7 +18,7 @@ impl Connection {
 		}
 	}
 
-	pub async fn run(self) -> Result<(), SessionError> {
+	pub async fn run(self) -> Result<(), MoqError> {
 		let (publisher, subscriber) = self.session.any().await?;
 
 		let mut tasks = FuturesUnordered::new();
@@ -35,7 +35,7 @@ impl Connection {
 		tasks.select_next_some().await
 	}
 
-	async fn run_producer(mut subscriber: Subscriber, router: Origins) -> Result<(), SessionError> {
+	async fn run_producer(mut subscriber: Subscriber, router: Origins) -> Result<(), MoqError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

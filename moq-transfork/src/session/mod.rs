@@ -1,10 +1,11 @@
 use crate::{
-	message,
+	async_clone, message,
 	runtime::{self, Watch},
-	setup, Closed,
+	setup,
+	util::{Close, OrClose},
+	MoqError,
 };
 mod client;
-mod error;
 mod publisher;
 mod reader;
 mod server;
@@ -13,7 +14,6 @@ mod subscriber;
 mod writer;
 
 pub use client::*;
-pub use error::*;
 pub use publisher::*;
 pub use server::*;
 pub use subscriber::*;
@@ -22,10 +22,8 @@ use reader::*;
 use stream::*;
 use writer::*;
 
-use crate::async_clone;
-
 struct SessionState {
-	closed: Result<(), SessionError>,
+	closed: Result<(), MoqError>,
 }
 
 impl Default for SessionState {
@@ -69,15 +67,15 @@ impl Session {
 		(publisher, subscriber)
 	}
 
-	async fn run_session(&mut self, mut stream: Stream) -> Result<(), SessionError> {
+	async fn run_session(&mut self, mut stream: Stream) -> Result<(), MoqError> {
 		while let Some(_info) = stream.reader.decode_maybe::<setup::Info>().await? {}
-		Err(Closed::Cancel.into())
+		Err(MoqError::Cancel.into())
 	}
 
-	async fn run_uni(&mut self, subscriber: Option<Subscriber>) -> Result<(), SessionError> {
+	async fn run_uni(&mut self, subscriber: Option<Subscriber>) -> Result<(), MoqError> {
 		loop {
 			let mut stream = self.accept_uni().await?;
-			let subscriber = subscriber.clone().ok_or(SessionError::RoleViolation)?;
+			let subscriber = subscriber.clone().ok_or(MoqError::RoleViolation)?;
 
 			runtime::spawn(async move {
 				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
@@ -85,11 +83,7 @@ impl Session {
 		}
 	}
 
-	async fn run_bi(
-		&mut self,
-		publisher: Option<Publisher>,
-		subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
+	async fn run_bi(&mut self, publisher: Option<Publisher>, subscriber: Option<Subscriber>) -> Result<(), MoqError> {
 		loop {
 			let mut stream = self.accept().await?;
 			let publisher = publisher.clone();
@@ -104,7 +98,7 @@ impl Session {
 		}
 	}
 
-	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), SessionError> {
+	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), MoqError> {
 		match stream.decode_silent().await? {
 			message::StreamUni::Group => subscriber.recv_group(stream).await,
 		}
@@ -114,34 +108,34 @@ impl Session {
 		stream: &mut Stream,
 		publisher: Option<Publisher>,
 		subscriber: Option<Subscriber>,
-	) -> Result<(), SessionError> {
+	) -> Result<(), MoqError> {
 		let kind = stream.reader.decode_silent().await?;
 		match kind {
-			message::Stream::Session => return Err(SessionError::UnexpectedStream(kind)),
+			message::Stream::Session => return Err(MoqError::UnexpectedStream(kind)),
 			message::Stream::Announce => {
-				let mut subscriber = subscriber.ok_or(SessionError::RoleViolation)?;
+				let mut subscriber = subscriber.ok_or(MoqError::RoleViolation)?;
 				subscriber.recv_announce(stream).await
 			}
 			message::Stream::Subscribe => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				let mut publisher = publisher.ok_or(MoqError::RoleViolation)?;
 				publisher.recv_subscribe(stream).await
 			}
 			message::Stream::Datagrams => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				let mut publisher = publisher.ok_or(MoqError::RoleViolation)?;
 				publisher.recv_datagrams(stream).await
 			}
 			message::Stream::Fetch => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				let mut publisher = publisher.ok_or(MoqError::RoleViolation)?;
 				publisher.recv_fetch(stream).await
 			}
 			message::Stream::Info => {
-				let mut publisher = publisher.ok_or(SessionError::RoleViolation)?;
+				let mut publisher = publisher.ok_or(MoqError::RoleViolation)?;
 				publisher.recv_info(stream).await
 			}
 		}
 	}
 
-	pub async fn open(&mut self, typ: message::Stream) -> Result<Stream, SessionError> {
+	pub async fn open(&mut self, typ: message::Stream) -> Result<Stream, MoqError> {
 		let (send, recv) = self.webtransport.open_bi().await?;
 
 		let mut writer = Writer::new(send);
@@ -151,7 +145,7 @@ impl Session {
 		Ok(Stream { writer, reader })
 	}
 
-	pub async fn open_uni(&mut self, typ: message::StreamUni) -> Result<Writer, SessionError> {
+	pub async fn open_uni(&mut self, typ: message::StreamUni) -> Result<Writer, MoqError> {
 		let send = self.webtransport.open_uni().await?;
 
 		let mut writer = Writer::new(send);
@@ -160,20 +154,20 @@ impl Session {
 		Ok(writer)
 	}
 
-	pub async fn accept(&mut self) -> Result<Stream, SessionError> {
+	pub async fn accept(&mut self) -> Result<Stream, MoqError> {
 		let (send, recv) = self.webtransport.accept_bi().await?;
 		let writer = Writer::new(send);
 		let reader = Reader::new(recv);
 		Ok(Stream { writer, reader })
 	}
 
-	pub async fn accept_uni(&mut self) -> Result<Reader, SessionError> {
+	pub async fn accept_uni(&mut self) -> Result<Reader, MoqError> {
 		let recv = self.webtransport.accept_uni().await?;
 		let reader = Reader::new(recv);
 		Ok(reader)
 	}
 
-	pub async fn closed(&self) -> Result<(), SessionError> {
+	pub async fn closed(&self) -> Result<(), MoqError> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -181,7 +175,7 @@ impl Session {
 
 				match state.changed() {
 					Some(notify) => notify,
-					None => return Err(Closed::Unknown.into()),
+					None => return Err(MoqError::Cancel.into()),
 				}
 			}
 			.await;
@@ -197,10 +191,10 @@ impl Session {
 }
 
 impl Close for Session {
-	fn close(&mut self, err: SessionError) {
+	fn close(&mut self, err: MoqError) {
 		if let Some(mut state) = self.state.lock_mut() {
 			tracing::warn!(?err, "closing session");
-			self.webtransport.close(err.code(), &err.to_string());
+			self.webtransport.close(err.to_code(), &err.to_string());
 			state.closed = Err(err);
 		}
 	}

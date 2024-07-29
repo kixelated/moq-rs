@@ -34,7 +34,7 @@ impl Connection {
 		Ok(())
 	}
 
-	async fn serve_publisher(self, mut remote: Subscriber) -> Result<(), SessionError> {
+	async fn serve_publisher(self, mut remote: Subscriber) -> Result<(), MoqError> {
 		let mut tasks = FuturesUnordered::new();
 
 		loop {

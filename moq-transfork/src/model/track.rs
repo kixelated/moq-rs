@@ -10,14 +10,11 @@
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Reader] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [Closed::Closed] when all writers or readers are dropped.
+//! The track is closed with [MoqError::MoqError] when all writers or readers are dropped.
 
 use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
-use crate::{
-	model::{Closed, Produce},
-	runtime::Watch,
-};
+use crate::{runtime::Watch, MoqError, Produce};
 
 use std::{cmp::Ordering, ops, sync::Arc, time};
 
@@ -87,7 +84,7 @@ impl TrackBuilder {
 struct TrackState {
 	latest: Option<GroupReader>,
 	epoch: u64, // Updated each time latest changes
-	closed: Result<(), Closed>,
+	closed: Result<(), MoqError>,
 }
 
 impl Default for TrackState {
@@ -114,16 +111,16 @@ impl TrackWriter {
 	}
 
 	// Build a new group with the given sequence number.
-	pub fn create(&mut self, sequence: u64) -> Result<GroupWriter, Closed> {
+	pub fn create_group(&mut self, sequence: u64) -> Result<GroupWriter, MoqError> {
 		let group = Group::new(sequence);
 		let (writer, reader) = group.produce();
 
-		let mut state = self.state.lock_mut().ok_or(Closed::Cancel)?;
+		let mut state = self.state.lock_mut().ok_or(MoqError::Cancel)?;
 
 		if let Some(latest) = &state.latest {
 			match writer.sequence.cmp(&latest.sequence) {
 				Ordering::Less => return Ok(writer), // TODO dropped immediately, lul
-				Ordering::Equal => return Err(Closed::Duplicate),
+				Ordering::Equal => return Err(MoqError::Duplicate),
 				Ordering::Greater => state.latest = Some(reader),
 			}
 		} else {
@@ -139,16 +136,16 @@ impl TrackWriter {
 	}
 
 	// Build a new group with the next sequence number.
-	pub fn append(&mut self) -> Result<GroupWriter, Closed> {
-		self.create(self.next)
+	pub fn append_group(&mut self) -> Result<GroupWriter, MoqError> {
+		self.create_group(self.next)
 	}
 
 	/// Close the segment with an error.
-	pub fn close(&mut self, err: Closed) -> Result<(), Closed> {
+	pub fn close(&mut self, err: MoqError) -> Result<(), MoqError> {
 		let state = self.state.lock();
 		state.closed.clone()?;
 
-		let mut state = state.into_mut().ok_or(Closed::Cancel)?;
+		let mut state = state.into_mut().ok_or(MoqError::Cancel)?;
 		state.closed = Err(err);
 
 		Ok(())
@@ -175,7 +172,7 @@ impl TrackReader {
 		Self { state, epoch: 0, info }
 	}
 
-	pub fn get(&self, sequence: u64) -> Result<GroupReader, Closed> {
+	pub fn get_group(&self, sequence: u64) -> Result<GroupReader, MoqError> {
 		let state = self.state.lock();
 
 		// TODO support more than just the latest group
@@ -186,12 +183,12 @@ impl TrackReader {
 		}
 
 		state.closed.clone()?;
-		Err(Closed::Unknown)
+		Err(MoqError::NotFound)
 	}
 
 	// NOTE: This can return groups out of order.
 	// TODO obey order and expires
-	pub async fn next(&mut self) -> Result<Option<GroupReader>, Closed> {
+	pub async fn next_group(&mut self) -> Result<Option<GroupReader>, MoqError> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -212,12 +209,12 @@ impl TrackReader {
 	}
 
 	// Returns the largest group
-	pub fn latest(&self) -> u64 {
+	pub fn latest_group(&self) -> u64 {
 		let state = self.state.lock();
 		state.latest.as_ref().map(|group| group.sequence).unwrap_or_default()
 	}
 
-	pub async fn closed(&self) -> Result<(), Closed> {
+	pub async fn closed(&self) -> Result<(), MoqError> {
 		loop {
 			{
 				let state = self.state.lock();

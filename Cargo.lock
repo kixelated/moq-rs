@@ -985,6 +985,7 @@ name = "moq-catalog"
 version = "0.2.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1060,7 +1061,6 @@ dependencies = [
  "moq-transfork",
  "mp4",
  "rfc6381-codec",
- "serde_json",
  "tokio",
  "tracing",
  "url",
