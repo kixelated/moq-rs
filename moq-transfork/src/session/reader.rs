@@ -58,7 +58,7 @@ impl Reader {
 	pub async fn decode_maybe<T: Decode + fmt::Debug>(&mut self) -> Result<Option<T>, MoqError> {
 		match self.finished().await {
 			Ok(()) => Ok(None),
-			Err(MoqError::Decode(DecodeError::ExpectedData)) => Ok(Some(self.decode().await?)),
+			Err(MoqError::Decode(DecodeError::ExpectedEnd)) => Ok(Some(self.decode().await?)),
 			Err(e) => Err(e),
 		}
 	}

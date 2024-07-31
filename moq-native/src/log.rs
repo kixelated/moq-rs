@@ -32,6 +32,7 @@ impl Args {
 			.from_env_lossy();
 
 		let logger = tracing_subscriber::FmtSubscriber::builder()
+			.with_writer(std::io::stderr)
 			.with_env_filter(filter)
 			.finish();
 

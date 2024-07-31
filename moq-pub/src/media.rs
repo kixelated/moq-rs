@@ -15,7 +15,7 @@ pub struct Media {
 
 	// The init and catalog tracks
 	init: TrackWriter,
-	catalog: TrackWriter,
+	catalog: moq_catalog::Writer,
 
 	// The ftyp and moov atoms at the start of the file.
 	ftyp: Option<Bytes>,
@@ -27,10 +27,7 @@ pub struct Media {
 
 impl Media {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
-		let catalog = broadcast
-			.create_track(".catalog", 0)
-			.build()
-			.context("broadcast closed")?;
+		let catalog = moq_catalog::Writer::publish(&mut broadcast)?;
 		let init = broadcast.create_track("0.mp4", 1).build().context("broadcast closed")?;
 
 		Ok(Media {
@@ -244,12 +241,10 @@ impl Media {
 			tracks,
 		};
 
-		let catalog = catalog.to_string_pretty()?;
-
-		log::info!("catalog: {}", catalog);
+		log::info!("catalog: {:?}", catalog);
 
 		// Create a single fragment for the segment.
-		self.catalog.append_group()?.write_frame(catalog.into())?;
+		self.catalog.write(catalog)?;
 
 		Ok(())
 	}

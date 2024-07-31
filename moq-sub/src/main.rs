@@ -16,10 +16,6 @@ pub struct Config {
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
 
-	/// Connect to the given URL starting with https://
-	#[arg()]
-	pub url: Url,
-
 	/// The name of the broadcast
 	#[arg(long)]
 	pub name: String,
@@ -31,12 +27,19 @@ pub struct Config {
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
+
+	/// Connect to the given URL starting with https://
+	#[arg()]
+	pub url: Url,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 	config.log.init();
+
+	tracing::debug!("connecting to server: url={}", config.url);
+	tracing::info!("connecting to server: url={}", config.url);
 
 	let tls = config.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
@@ -45,9 +48,14 @@ async fn main() -> anyhow::Result<()> {
 	let subscriber = moq_transfork::Client::new(session).subscriber().await?;
 
 	let broadcast = Broadcast::new(config.name);
-	let mut media = Media::load(subscriber, broadcast).await?;
+	let broadcast = subscriber.namespace(broadcast)?;
+	let mut media = Media::load(&broadcast).await?;
 
 	let mut stdout = io::stdout();
+
+	if let Some(init) = media.init() {
+		stdout.write(init)?;
+	}
 
 	while let Some(frame) = media.next().await? {
 		stdout.write(&frame)?;

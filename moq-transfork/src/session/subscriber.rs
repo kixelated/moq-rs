@@ -198,13 +198,19 @@ impl Subscriber {
 			.ok_or(MoqError::NotFound)?
 			.create_group(group.sequence)?;
 
-		let mut size = 0;
-		while let Some(chunk) = stream.read_chunk(usize::MAX).await? {
-			size += chunk.len();
-			group.write_frame(chunk)?;
-		}
+		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
+			let mut frame = group.create_frame(frame.size)?;
+			let mut remain = frame.size;
 
-		tracing::debug!(size);
+			while remain > 0 {
+				let chunk = stream.read_chunk(remain).await?.ok_or(MoqError::WrongSize)?;
+
+				remain = remain.checked_sub(chunk.len()).ok_or(MoqError::WrongSize)?;
+				tracing::trace!(chunk = chunk.len(), remain, "chunk");
+
+				frame.write_chunk(chunk)?;
+			}
+		}
 
 		Ok(())
 	}

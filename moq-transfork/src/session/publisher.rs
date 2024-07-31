@@ -89,13 +89,13 @@ impl Publisher {
 	async fn subscribe(&self, broadcast: Broadcast, track: Track) -> Result<TrackReader, MoqError> {
 		let reader = self.broadcasts.lock().get(&broadcast.name).cloned();
 		if let Some(broadcast) = reader {
-			return broadcast.get_track(track).await;
+			return broadcast.subscribe(track).await;
 		}
 
 		let router = self.router.lock().clone();
 		if let Some(router) = router {
 			let reader = router.subscribe(broadcast).await?;
-			return reader.get_track(track).await;
+			return reader.subscribe(track).await;
 		}
 
 		Err(MoqError::NotFound)
@@ -190,18 +190,26 @@ impl Publisher {
 
 		stream.encode(&msg).await?;
 
-		// TODO abort if the subscription is closed
-		let mut size = 0;
+		while let Some(mut frame) = group.next_frame().await? {
+			let header = message::Frame { size: frame.size };
+			stream.encode(&header).await?;
 
-		while let Some(chunk) = group.read_frame().await? {
-			size += chunk.len();
-			stream.write(&chunk).await?;
+			let mut remain = frame.size;
+
+			while let Some(chunk) = frame.read_chunk().await? {
+				remain = remain.checked_sub(chunk.len()).ok_or(MoqError::WrongSize)?;
+				tracing::trace!(chunk = chunk.len(), remain, "chunk");
+
+				stream.write(&chunk).await?;
+			}
+
+			if remain > 0 {
+				return Err(MoqError::WrongSize);
+			}
 		}
 
 		// TODO block until all bytes have been acknowledged so we can still reset
 		// writer.finish().await?;
-
-		tracing::debug!(size);
 
 		Ok(())
 	}
@@ -212,7 +220,7 @@ impl Publisher {
 	}
 
 	#[tracing::instrument("datagrams", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, subscribe = subscribe.id))]
-	async fn serve_datagrams(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), MoqError> {
+	async fn serve_datagrams(&mut self, _stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), MoqError> {
 		todo!("datagrams");
 	}
 
@@ -222,24 +230,13 @@ impl Publisher {
 	}
 
 	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
-	async fn serve_fetch(&mut self, stream: &mut Stream, fetch: message::Fetch) -> Result<(), MoqError> {
+	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), MoqError> {
 		let broadcast = Broadcast::new(fetch.broadcast);
 		let track = Track::new(fetch.track, fetch.priority).build();
 		let track = self.subscribe(broadcast, track).await?;
-		let group = track.get_group(fetch.group)?;
+		let _group = track.get_group(fetch.group)?;
 
 		unimplemented!("TODO fetch");
-
-		/*
-		group.skip(fetch.offset);
-
-		while let Some(chunk) = group.read().await {
-			let chunk = chunk?;
-			writer.write(&chunk).await?;
-		}
-		*/
-
-		Ok(())
 	}
 
 	pub(super) async fn recv_info(&mut self, stream: &mut Stream) -> Result<(), MoqError> {

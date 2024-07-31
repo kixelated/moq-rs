@@ -60,9 +60,9 @@ pub enum MoqError {
 
 	#[error("not found")]
 	NotFound,
-	// TODO Remove
-	//#[error("unknown")]
-	//Unknown,
+
+	#[error("wrong frame size")]
+	WrongSize,
 }
 
 impl MoqError {
@@ -83,6 +83,7 @@ impl MoqError {
 			Self::BoundsExceeded(_) => 11,
 			Self::Duplicate => 12,
 			Self::NotFound => 13,
+			Self::WrongSize => 14,
 			Self::App(app) => *app + 64,
 		}
 	}

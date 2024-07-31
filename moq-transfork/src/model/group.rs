@@ -79,11 +79,11 @@ impl GroupWriter {
 
 	// Write a frame in one go
 	pub fn write_frame(&mut self, frame: bytes::Bytes) -> Result<(), MoqError> {
-		self.write_frame_chunked(frame.len())?.write(frame)
+		self.create_frame(frame.len())?.write_chunk(frame)
 	}
 
 	// Create a frame with an upfront size
-	pub fn write_frame_chunked(&mut self, size: usize) -> Result<FrameWriter, MoqError> {
+	pub fn create_frame(&mut self, size: usize) -> Result<FrameWriter, MoqError> {
 		let (writer, reader) = Frame::new(size).produce();
 
 		self.state.lock_mut().ok_or(MoqError::Cancel)?.frames.push(reader);
@@ -138,14 +138,14 @@ impl GroupReader {
 
 	// Read the next frame.
 	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, MoqError> {
-		Ok(match self.read_frame_chunked().await? {
+		Ok(match self.next_frame().await? {
 			Some(mut reader) => Some(reader.read_all().await?),
 			None => None,
 		})
 	}
 
 	// Return a reader for the next frame.
-	pub async fn read_frame_chunked(&mut self) -> Result<Option<FrameReader>, MoqError> {
+	pub async fn next_frame(&mut self) -> Result<Option<FrameReader>, MoqError> {
 		loop {
 			{
 				let state = self.state.lock();

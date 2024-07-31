@@ -16,6 +16,8 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
 moq-native = { path = "../moq-native", version = "0.3" }
+moq-catalog = { path = "../moq-catalog", version = "0.3" }
+
 url = "2"
 
 # Async stuff

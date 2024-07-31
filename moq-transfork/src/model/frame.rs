@@ -60,7 +60,7 @@ impl FrameWriter {
 		Self { state, info }
 	}
 
-	pub fn write(&mut self, chunk: bytes::Bytes) -> Result<(), MoqError> {
+	pub fn write_chunk(&mut self, chunk: bytes::Bytes) -> Result<(), MoqError> {
 		let mut state = self.state.lock_mut().ok_or(MoqError::Cancel)?;
 		state.chunks.push(chunk);
 
@@ -109,7 +109,7 @@ impl FrameReader {
 	}
 
 	// Return the next chunk.
-	pub async fn read(&mut self) -> Result<Option<Bytes>, MoqError> {
+	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, MoqError> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -131,7 +131,7 @@ impl FrameReader {
 
 	// Return all of the chunks concatenated together.
 	pub async fn read_all(&mut self) -> Result<Bytes, MoqError> {
-		let first = self.read().await?.unwrap_or_else(Bytes::new);
+		let first = self.read_chunk().await?.unwrap_or_else(Bytes::new);
 		if first.len() == self.size {
 			// If there's one chunk, return it without allocating.
 			return Ok(first);
@@ -140,7 +140,7 @@ impl FrameReader {
 		let mut buf = BytesMut::with_capacity(2 * first.len());
 		buf.extend_from_slice(&first);
 
-		while let Some(chunk) = self.read().await? {
+		while let Some(chunk) = self.read_chunk().await? {
 			buf.extend_from_slice(&chunk);
 		}
 

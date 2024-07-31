@@ -15,4 +15,4 @@ NAME="${NAME:-bbb}"
 # Combine the host and name into a URL.
 URL="${URL:-"https://$ADDR/$NAME"}"
 
-cargo run --bin moq-sub -- --name "$NAME" "$URL" "$@" | ffplay -
+cargo run --bin moq-sub -- --name "$NAME" "$URL" "$@" | ffplay -hide_banner -nostats -i -

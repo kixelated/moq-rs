@@ -1,10 +1,7 @@
-use std::{future::Future, io::Cursor, pin::Pin};
-
 use anyhow::Context;
 use moq_transfork::prelude::*;
 
-use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use mp4::ReadBox;
+use futures::{stream::FuturesUnordered, StreamExt};
 
 use bytes::Bytes;
 
@@ -12,96 +9,69 @@ pub struct Media {
 	// The init segment for the media
 	init: Option<Bytes>,
 
-	// Returns the next atom for an track, and the track so it can be polled again
-	tasks: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<(MediaTrack, Option<Bytes>)>> + Send>>>,
+	// The tracks that the media is composed of
+	tracks: Vec<MediaTrack>,
 }
 
 impl Media {
-	// TODO TODO use the catalog to discover tracks, not the init segment
-	pub async fn load(mut subscriber: Subscriber, broadcast: Broadcast) -> anyhow::Result<Self> {
-		let init = Track::new("0.mp4", 0).build();
-		let mut init = subscriber.subscribe(broadcast.clone(), init).await?;
+	pub async fn load(broadcast: &BroadcastReader) -> anyhow::Result<Self> {
+		let catalog = moq_catalog::Reader::subscribe(&broadcast).await?.read().await?;
+		let mut tracks = Vec::new();
 
-		let init = init
-			.next_group()
-			.await?
-			.context("empty init track")?
-			.read_frame()
-			.await?
-			.context("empty init group")?;
+		let init = Self::load_init(&catalog, &broadcast).await?;
 
-		let ftyp = next_atom(&init)?;
-		anyhow::ensure!(&ftyp[4..8] == b"ftyp", "expected ftyp atom");
+		for track in catalog.tracks {
+			// TODO proper track typing
+			let priority = match track.selection_params.width {
+				Some(_) => 2,
+				_ => 1,
+			};
 
-		let moov = next_atom(&init[ftyp.len()..])?;
-		anyhow::ensure!(&moov[4..8] == b"moov", "expected moov atom");
+			let track = Track::new(track.name, priority).build();
+			let track = broadcast.subscribe(track).await?;
+			let track = MediaTrack::new(track);
+			tracks.push(track);
+		}
 
-		let mut moov_reader = Cursor::new(&moov);
-		let moov_header = mp4::BoxHeader::read(&mut moov_reader)?;
+		Ok(Self { init, tracks })
+	}
 
-		let moov = mp4::MoovBox::read_box(&mut moov_reader, moov_header.size)?;
+	// TODO This is quite limited because we can currently only flush a single fMP4 init header
+	async fn load_init(catalog: &moq_catalog::Root, broadcast: &BroadcastReader) -> anyhow::Result<Option<Bytes>> {
+		for track in &catalog.tracks {
+			if let Some(name) = &track.init_track {
+				let track = moq_transfork::Track::new(name, 0).build();
+				let mut track = broadcast.subscribe(track).await?;
 
-		let mut has_video = false;
-		let mut has_audio = false;
+				let mut group = track.next_group().await?.context("no groups")?;
+				let frame = group.read_frame().await?.context("no frames")?;
 
-		let tasks = FuturesUnordered::new();
-
-		for trak in &moov.traks {
-			let id = trak.tkhd.track_id;
-			let name = format!("{}.m4s", id);
-			log::info!("found track {name}");
-
-			let mut active = false;
-			if !has_video && trak.mdia.minf.stbl.stsd.avc1.is_some() {
-				active = true;
-				has_video = true;
-				log::info!("using {name} for video");
-			}
-			if !has_audio && trak.mdia.minf.stbl.stsd.mp4a.is_some() {
-				active = true;
-				has_audio = true;
-				log::info!("using {name} for audio");
-			}
-
-			if active {
-				let track_type =
-					mp4::TrackType::try_from(&trak.mdia.hdlr.handler_type).context("unnknown track type")?;
-
-				let priority = match track_type {
-					mp4::TrackType::Video => 3,
-					mp4::TrackType::Audio => 2,
-					mp4::TrackType::Subtitle => 1,
-				};
-
-				let track = Track::new(name, priority).build();
-
-				let track = subscriber.subscribe(broadcast.clone(), track).await?;
-				let track = MediaTrack::new(track);
-				tasks.push(track.next().boxed());
+				return Ok(Some(frame));
 			}
 		}
 
-		Ok(Self {
-			init: Some(init),
-			tasks,
-		})
+		Ok(None)
+	}
+
+	pub fn init(&self) -> Option<&Bytes> {
+		self.init.as_ref()
 	}
 
 	// Returns the next atom in any track
 	pub async fn next(&mut self) -> anyhow::Result<Option<Bytes>> {
-		if let Some(init) = self.init.take() {
-			return Ok(Some(init));
+		let mut futures = FuturesUnordered::new();
+
+		for track in &mut self.tracks {
+			futures.push(track.next());
 		}
 
 		loop {
-			if let Some(res) = self.tasks.next().await {
-				if let (track, Some(next)) = res? {
-					self.tasks.push(track.next().boxed());
-					return Ok(Some(next));
-				}
-			} else {
-				return Ok(None);
-			}
+			match futures.next().await {
+				Some(Err(err)) => return Err(err),
+				Some(Ok(Some(next))) => return Ok(Some(next)),
+				Some(Ok(None)) => continue,
+				None => return Ok(None),
+			};
 		}
 	}
 }
@@ -120,7 +90,7 @@ impl MediaTrack {
 	}
 
 	// Returns the next atom in the current track
-	pub async fn next(mut self) -> anyhow::Result<(Self, Option<Bytes>)> {
+	pub async fn next(&mut self) -> anyhow::Result<Option<Bytes>> {
 		if self.current.is_none() {
 			self.current = self.groups.next_group().await?;
 		}
@@ -141,7 +111,7 @@ impl MediaTrack {
 				}
 				res = self.current.as_mut().unwrap().read_frame(), if !group_eof => {
 					if let Some(frame) = res? {
-						return Ok((self, Some(frame)));
+						return Ok(Some(frame));
 					} else {
 						group_eof = true;
 					}
@@ -149,28 +119,4 @@ impl MediaTrack {
 			}
 		}
 	}
-}
-
-// Returns the next atom in the buffer.
-fn next_atom<'a>(buf: &'a [u8]) -> anyhow::Result<&'a [u8]> {
-	// Convert the first 4 bytes into the size.
-	let size = u32::from_be_bytes(buf[0..4].try_into()?) as usize;
-
-	Ok(match size {
-		// Until the end of the atom
-		0 => buf,
-
-		// The next 8 bytes are the extended size to be used instead.
-		1 => {
-			let size = u64::from_be_bytes(buf[8..16].try_into()?) as usize;
-			anyhow::ensure!(size >= 16, "impossible extended box size: {}", size);
-			&buf[..size]
-		}
-
-		2..=7 => {
-			anyhow::bail!("impossible box size: {}", size)
-		}
-
-		size => &buf[..size],
-	})
 }

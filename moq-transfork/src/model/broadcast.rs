@@ -176,7 +176,7 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn get_track(&self, track: Track) -> Result<TrackReader, MoqError> {
+	pub async fn subscribe(&self, track: Track) -> Result<TrackReader, MoqError> {
 		let router = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {

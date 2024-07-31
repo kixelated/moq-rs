@@ -2,6 +2,7 @@
 mod announce;
 mod datagram;
 mod fetch;
+mod frame;
 mod group;
 mod info;
 mod stream;
@@ -10,6 +11,7 @@ mod subscribe;
 pub use announce::*;
 pub use datagram::*;
 pub use fetch::*;
+pub use frame::*;
 pub use group::*;
 pub use info::*;
 pub use stream::*;
