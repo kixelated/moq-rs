@@ -49,7 +49,7 @@ impl Publisher {
 
 	fn init_announce(&mut self, broadcast: BroadcastReader) -> Result<Announce, Error> {
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate.into()),
+			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
@@ -109,7 +109,7 @@ impl Publisher {
 	#[tracing::instrument("subscribed", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let broadcast = Broadcast::new(subscribe.broadcast);
-		let track = Track::new(subscribe.track, subscribe.priority).build();
+		let track = Track::create(subscribe.track, subscribe.priority).build();
 		let mut track = self.subscribe(broadcast.clone(), track).await?;
 
 		let info = message::Info {
@@ -228,7 +228,7 @@ impl Publisher {
 	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
 		let broadcast = Broadcast::new(fetch.broadcast);
-		let track = Track::new(fetch.track, fetch.priority).build();
+		let track = Track::create(fetch.track, fetch.priority).build();
 		let track = self.subscribe(broadcast, track).await?;
 		let _group = track.get_group(fetch.group)?;
 
@@ -243,7 +243,7 @@ impl Publisher {
 	#[tracing::instrument("track", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), Error> {
 		let broadcast = Broadcast::new(info.broadcast);
-		let track = Track::new(info.track, 0).build();
+		let track = Track::create(info.track, 0).build();
 		let track = self.subscribe(broadcast, track).await?;
 
 		let info = message::Info {

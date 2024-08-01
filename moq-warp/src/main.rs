@@ -83,11 +83,11 @@ async fn subscribe(client: moq_transfork::Client, broadcast: Broadcast) -> anyho
 	let mut stdout = tokio::io::stdout();
 
 	if let Some(init) = consumer.init() {
-		stdout.write(init).await?;
+		stdout.write_all(init).await?;
 	}
 
 	while let Some(frame) = consumer.next().await? {
-		stdout.write(&frame).await?;
+		stdout.write_all(&frame).await?;
 	}
 
 	Ok(())

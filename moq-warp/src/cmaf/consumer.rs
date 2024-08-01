@@ -31,7 +31,7 @@ impl Consumer {
 				_ => 1,
 			};
 
-			let track = Track::new(track.name, priority).build();
+			let track = Track::create(track.name, priority).build();
 			let track = broadcast.subscribe(track).await?;
 			let track = MediaTrack::new(track);
 			tracks.push(track);
@@ -44,7 +44,7 @@ impl Consumer {
 	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> Result<Option<Bytes>, Error> {
 		for track in &catalog.tracks {
 			if let Some(name) = &track.init_track {
-				let track = moq_transfork::Track::new(name, 0).build();
+				let track = moq_transfork::Track::create(name, 0).build();
 				let mut track = broadcast.subscribe(track).await?;
 
 				let mut group = track.next_group().await?.ok_or(Error::EmptyInit)?;

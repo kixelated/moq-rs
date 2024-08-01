@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
 		let mut subscriber = session.subscriber().await?;
 
 		let broadcast = Broadcast::new(config.broadcast);
-		let track = Track::new(config.track, 0).build();
+		let track = Track::create(config.track, 0).build();
 
 		let reader = subscriber.subscribe(broadcast, track).await?;
 		let clock = clock::Subscriber::new(reader);

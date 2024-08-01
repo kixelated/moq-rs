@@ -143,7 +143,7 @@ pub struct BroadcastTrackBuilder<'a> {
 impl<'a> BroadcastTrackBuilder<'a> {
 	fn new(broadcast: &'a mut BroadcastWriter, name: String, priority: u64) -> Self {
 		Self {
-			track: Track::new(name, priority),
+			track: Track::create(name, priority),
 			broadcast,
 		}
 	}

@@ -10,7 +10,7 @@
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Reader] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [MoqError::MoqError] when all writers or readers are dropped.
+//! The track is closed with [Error::Error] when all writers or readers are dropped.
 
 use super::{Group, GroupReader, GroupWriter};
 pub use crate::message::GroupOrder;
@@ -28,7 +28,7 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn new<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
+	pub fn create<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
 		TrackBuilder::new(Self {
 			name: name.into(),
 			priority,

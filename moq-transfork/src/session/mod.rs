@@ -69,7 +69,7 @@ impl Session {
 
 	async fn run_session(&mut self, mut stream: Stream) -> Result<(), Error> {
 		while let Some(_info) = stream.reader.decode_maybe::<setup::Info>().await? {}
-		Err(Error::Cancel.into())
+		Err(Error::Cancel)
 	}
 
 	async fn run_uni(&mut self, subscriber: Option<Subscriber>) -> Result<(), Error> {
@@ -111,7 +111,7 @@ impl Session {
 	) -> Result<(), Error> {
 		let kind = stream.reader.decode_silent().await?;
 		match kind {
-			message::Stream::Session => return Err(Error::UnexpectedStream(kind)),
+			message::Stream::Session => Err(Error::UnexpectedStream(kind)),
 			message::Stream::Announce => {
 				let mut subscriber = subscriber.ok_or(Error::RoleViolation)?;
 				subscriber.recv_announce(stream).await
@@ -175,7 +175,7 @@ impl Session {
 
 				match state.changed() {
 					Some(notify) => notify,
-					None => return Err(Error::Cancel.into()),
+					None => return Err(Error::Cancel),
 				}
 			}
 			.await;

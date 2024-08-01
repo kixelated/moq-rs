@@ -22,6 +22,7 @@ pub struct Root {
 }
 
 impl Root {
+	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(s: &str) -> Result<Self> {
 		Ok(serde_json::from_str(s)?)
 	}
