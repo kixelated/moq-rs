@@ -2,18 +2,18 @@
 members = [
 	"moq-transfork",
 	"moq-relay",
-	"moq-pub",
-	"moq-sub",
 	"moq-clock",
 	"moq-dir",
 	"moq-native",
-	"moq-catalog",
+	"moq-warp",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 # Make it easy to test web-transport changes
 web-transport = { path = "../web-transport-rs/web-transport", version = "0.3" }
+
+# TODO finish switching to tracing
 env_logger = "0.11"
 log = { version = "0.4", features = ["std"] }
 

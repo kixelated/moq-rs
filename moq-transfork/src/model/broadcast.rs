@@ -27,6 +27,12 @@ impl Broadcast {
 	}
 }
 
+impl<T: Into<String>> From<T> for Broadcast {
+	fn from(name: T) -> Self {
+		Self::new(name)
+	}
+}
+
 impl Produce for Broadcast {
 	type Reader = BroadcastReader;
 	type Writer = BroadcastWriter;

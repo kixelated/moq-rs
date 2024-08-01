@@ -1051,18 +1051,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9be0862c1b3f26a88803c4a49de6889c10e608b3ee9344e6ef5b45fb37ad3d1"
 
 [[package]]
-name = "moq-catalog"
-version = "0.3.0"
-dependencies = [
- "moq-transfork",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "moq-clock"
 version = "0.4.2"
 dependencies = [
@@ -1122,25 +1110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-pub"
-version = "0.6.1"
-dependencies = [
- "anyhow",
- "bytes",
- "clap",
- "env_logger",
- "log",
- "moq-catalog",
- "moq-native",
- "moq-transfork",
- "mp4",
- "rfc6381-codec",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "moq-relay"
 version = "0.5.1"
 dependencies = [
@@ -1163,26 +1132,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-sub"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "bytes",
- "clap",
- "env_logger",
- "futures",
- "log",
- "moq-catalog",
- "moq-native",
- "moq-transfork",
- "mp4",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
 name = "moq-transfork"
 version = "0.1.0"
 dependencies = [
@@ -1194,6 +1143,27 @@ dependencies = [
  "tracing",
  "wasm-bindgen-futures",
  "web-transport",
+]
+
+[[package]]
+name = "moq-warp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "futures",
+ "moq-native",
+ "moq-transfork",
+ "mp4",
+ "rfc6381-codec",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

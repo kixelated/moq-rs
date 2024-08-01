@@ -6,7 +6,9 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 
-pub struct Media {
+use crate::catalog;
+
+pub struct Producer {
 	// Broadcast based on their track ID.
 	tracks: HashMap<u32, Track>,
 
@@ -15,7 +17,7 @@ pub struct Media {
 
 	// The init and catalog tracks
 	init: TrackWriter,
-	catalog: moq_catalog::Writer,
+	catalog: catalog::Writer,
 
 	// The ftyp and moov atoms at the start of the file.
 	ftyp: Option<Bytes>,
@@ -25,12 +27,12 @@ pub struct Media {
 	current: Option<u32>,
 }
 
-impl Media {
+impl Producer {
 	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
-		let catalog = moq_catalog::Writer::publish(&mut broadcast)?;
+		let catalog = catalog::Writer::publish(&mut broadcast)?;
 		let init = broadcast.create_track("0.mp4", 1).build().context("broadcast closed")?;
 
-		Ok(Media {
+		Ok(Producer {
 			tracks: Default::default(),
 			broadcast,
 			catalog,
@@ -142,13 +144,13 @@ impl Media {
 
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
-			let mut selection_params = moq_catalog::SelectionParam::default();
+			let mut selection_params = catalog::SelectionParam::default();
 
-			let mut track = moq_catalog::Track {
+			let mut track = catalog::Track {
 				init_track: Some(self.init.name.clone()),
 				name: name.clone(),
 				namespace: Some(self.broadcast.name.clone()),
-				packaging: Some(moq_catalog::TrackPackaging::Cmaf),
+				packaging: Some(catalog::TrackPackaging::Cmaf),
 				render_group: Some(1),
 				..Default::default()
 			};
@@ -232,16 +234,16 @@ impl Media {
 			self.tracks.insert(id, track);
 		}
 
-		let catalog = moq_catalog::Root {
+		let catalog = catalog::Root {
 			version: 1,
 			streaming_format: 1,
 			streaming_format_version: "0.2".to_string(),
 			streaming_delta_updates: true,
-			common_track_fields: moq_catalog::CommonTrackFields::from_tracks(&mut tracks),
+			common_track_fields: catalog::CommonTrackFields::from_tracks(&mut tracks),
 			tracks,
 		};
 
-		log::info!("catalog: {:?}", catalog);
+		tracing::info!(?catalog);
 
 		// Create a single fragment for the segment.
 		self.catalog.write(catalog)?;

@@ -5,7 +5,8 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use bytes::Bytes;
 
-pub struct Media {
+use crate::catalog;
+pub struct Consumer {
 	// The init segment for the media
 	init: Option<Bytes>,
 
@@ -13,9 +14,11 @@ pub struct Media {
 	tracks: Vec<MediaTrack>,
 }
 
-impl Media {
-	pub async fn load(broadcast: &BroadcastReader) -> anyhow::Result<Self> {
-		let catalog = moq_catalog::Reader::subscribe(&broadcast).await?.read().await?;
+impl Consumer {
+	pub async fn load(broadcast: BroadcastReader) -> anyhow::Result<Self> {
+		let catalog = catalog::Reader::subscribe(&broadcast).await?.read().await?;
+		tracing::info!(?catalog);
+
 		let mut tracks = Vec::new();
 
 		let init = Self::load_init(&catalog, &broadcast).await?;
@@ -37,7 +40,7 @@ impl Media {
 	}
 
 	// TODO This is quite limited because we can currently only flush a single fMP4 init header
-	async fn load_init(catalog: &moq_catalog::Root, broadcast: &BroadcastReader) -> anyhow::Result<Option<Bytes>> {
+	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> anyhow::Result<Option<Bytes>> {
 		for track in &catalog.tracks {
 			if let Some(name) = &track.init_track {
 				let track = moq_transfork::Track::new(name, 0).build();
@@ -91,31 +94,16 @@ impl MediaTrack {
 
 	// Returns the next atom in the current track
 	pub async fn next(&mut self) -> anyhow::Result<Option<Bytes>> {
-		if self.current.is_none() {
-			self.current = self.groups.next_group().await?;
-		}
-
-		let mut track_eof = false;
-		let mut group_eof = false;
-
 		loop {
-			tokio::select! {
-				res = self.groups.next_group(), if !track_eof => {
-					if let Some(group) = res? {
-						// TODO only drop the current group after a configurable latency
-						self.current.replace(group);
-						group_eof = false;
-					} else {
-						track_eof = true;
-					}
-				}
-				res = self.current.as_mut().unwrap().read_frame(), if !group_eof => {
-					if let Some(frame) = res? {
+			match self.current.as_mut() {
+				Some(group) => {
+					if let Some(frame) = group.read_frame().await? {
 						return Ok(Some(frame));
 					} else {
-						group_eof = true;
+						self.current = None;
 					}
 				}
+				None => self.current = self.groups.next_group().await?,
 			}
 		}
 	}

@@ -1,11 +1,11 @@
 [package]
-name = "moq-catalog"
+name = "moq-warp"
 description = "Media over QUIC"
-authors = ["Luke Curley"]
+authors = []
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.3.0"
+version = "0.1.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -14,11 +14,23 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+moq-transfork = { path = "../moq-transfork", version = "0.1" }
+moq-native = { path = "../moq-native", version = "0.3" }
+
+url = "2"
+
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+bytes = "1"
+
+clap = { version = "4", features = ["derive"] }
+mp4 = "0.14"
+anyhow = { version = "1", features = ["backtrace"] }
+rfc6381-codec = "0.2"
+
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = { version = "3", features = ["hex"] }
 
 thiserror = "1"
 tracing = "0.1"
-
-moq-transfork = { path = "../moq-transfork" }

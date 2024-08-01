@@ -1,6 +1,6 @@
 use std::time;
 
-use crate::{Error, Result, Root};
+use super::{Error, Result, Root};
 
 pub struct Reader {
 	track: moq_transfork::TrackReader,
@@ -23,7 +23,6 @@ impl Reader {
 	pub async fn read(&mut self) -> Result<Root> {
 		let mut group = self.track.next_group().await?.ok_or(Error::Empty)?;
 		let frame = group.read_frame().await?.ok_or(Error::Empty)?;
-		tracing::debug!(raw = %String::from_utf8_lossy(&frame), "decoding catalog");
 		Root::from_slice(&frame)
 	}
 

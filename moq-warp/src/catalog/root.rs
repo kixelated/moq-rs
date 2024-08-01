@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{CommonTrackFields, Result, Track};
+use super::{CommonTrackFields, Result, Track};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Root {

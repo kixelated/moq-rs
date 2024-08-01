@@ -1,6 +1,6 @@
 use std::time;
 
-use crate::{Result, Root};
+use super::{Result, Root};
 
 pub struct Writer {
 	track: moq_transfork::TrackWriter,
@@ -22,8 +22,6 @@ impl Writer {
 
 	pub fn write(&mut self, root: Root) -> Result<()> {
 		let frame = root.to_string()?;
-		tracing::debug!(raw = frame, "encoded catalog");
-
 		let mut group = self.track.append_group()?;
 		group.write_frame(frame.into())?;
 

@@ -44,7 +44,8 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn namespace(&self, broadcast: Broadcast) -> Result<BroadcastReader, MoqError> {
+	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastReader, MoqError> {
+		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
