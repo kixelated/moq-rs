@@ -93,7 +93,7 @@ impl Media {
 					{
 						// Start a new group for the keyframe.
 						for track in self.tracks.values_mut() {
-							track.end_group();
+							track.keyframe();
 						}
 					}
 				}
@@ -299,8 +299,11 @@ struct Track {
 	// The track we're producing
 	track: TrackWriter,
 
-	// The current segment
-	current: Option<GroupWriter>,
+	// The current group of pictures
+	group: Option<GroupWriter>,
+
+	// The moof header
+	header: Option<Bytes>,
 
 	// The type of track, ex. "vide" or "soun"
 	handler: TrackType,
@@ -310,39 +313,40 @@ impl Track {
 	fn new(track: TrackWriter, handler: TrackType) -> Self {
 		Self {
 			track,
-			current: None,
+			group: None,
+			header: None,
 			handler,
 		}
 	}
 
-	pub fn header(&mut self, raw: Bytes) -> anyhow::Result<()> {
-		if let Some(current) = self.current.as_mut() {
-			// Use the existing segment
-			current.write_frame(raw)?;
-			return Ok(());
+	pub fn header(&mut self, moof: Bytes) -> anyhow::Result<()> {
+		if self.header.is_some() {
+			anyhow::bail!("multiple moof headers");
 		}
 
-		// Otherwise make a new segment
-		let mut segment = self.track.append_group()?;
+		self.header = Some(moof);
+		Ok(())
+	}
 
-		// Write the fragment in it's own object.
-		segment.write_frame(raw)?;
+	pub fn data(&mut self, mdat: Bytes) -> anyhow::Result<()> {
+		let moof = self.header.take().context("missing moof header")?;
 
-		// Save for the next iteration
-		self.current = Some(segment);
+		let mut group = match self.group.take() {
+			Some(group) => group,
+			None => self.track.append_group()?,
+		};
+
+		let mut frame = group.create_frame(mdat.len() + moof.len())?;
+		frame.write_chunk(moof)?;
+		frame.write_chunk(mdat)?;
+
+		self.group.replace(group);
 
 		Ok(())
 	}
 
-	pub fn data(&mut self, raw: Bytes) -> anyhow::Result<()> {
-		let segment = self.current.as_mut().context("missing current fragment")?;
-		segment.write_frame(raw)?;
-
-		Ok(())
-	}
-
-	pub fn end_group(&mut self) {
-		self.current = None;
+	pub fn keyframe(&mut self) {
+		self.group = None;
 	}
 }
 

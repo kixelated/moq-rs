@@ -32,13 +32,10 @@ impl Origins {
 
 	fn unannounce(&self, broadcast: &BroadcastReader) {
 		let mut state = self.state.lock().unwrap();
-		let broadcasts = state.lookup.get_mut(&broadcast.name).expect("missing entry");
+		let _broadcasts = state.lookup.get_mut(&broadcast.name).expect("missing entry");
 
 		// TODO? broadcasts.retain(|b| b != broadcast);
 		unimplemented!("unannounce");
-		if broadcasts.is_empty() {
-			state.lookup.remove(&broadcast.name);
-		}
 	}
 
 	pub async fn serve(&self, writer: &mut RouterWriter<Broadcast>) {
