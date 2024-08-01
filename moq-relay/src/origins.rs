@@ -43,7 +43,7 @@ impl Origins {
 			let state = self.state.lock().unwrap();
 			match state.lookup.get(&request.info.name).and_then(|bs| bs.front()) {
 				Some(broadcast) => request.serve(broadcast.clone()),
-				None => request.close(MoqError::NotFound),
+				None => request.close(moq_transfork::Error::NotFound),
 			}
 		}
 	}

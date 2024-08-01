@@ -1,7 +1,7 @@
 use crate::{coding, message, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
-pub enum MoqError {
+pub enum Error {
 	#[error("webtransport session: {0}")]
 	Network(#[from] web_transport::SessionError),
 
@@ -65,7 +65,7 @@ pub enum MoqError {
 	WrongSize,
 }
 
-impl MoqError {
+impl Error {
 	/// An integer code that is sent over the wire.
 	pub fn to_code(&self) -> u32 {
 		match self {
@@ -88,3 +88,5 @@ impl MoqError {
 		}
 	}
 }
+
+pub type Result<T> = std::result::Result<T, Error>;

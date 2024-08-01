@@ -1,4 +1,3 @@
-use anyhow::{self, Context};
 use bytes::{Buf, Bytes};
 use moq_transfork::prelude::*;
 use mp4::{self, ReadBox, TrackType};
@@ -6,6 +5,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 
+use super::Error;
 use crate::catalog;
 
 pub struct Producer {
@@ -28,9 +28,9 @@ pub struct Producer {
 }
 
 impl Producer {
-	pub fn new(mut broadcast: BroadcastWriter) -> anyhow::Result<Self> {
+	pub fn new(mut broadcast: BroadcastWriter) -> Result<Self, Error> {
 		let catalog = catalog::Writer::publish(&mut broadcast)?;
-		let init = broadcast.create_track("0.mp4", 1).build().context("broadcast closed")?;
+		let init = broadcast.create_track("0.mp4", 1).build()?;
 
 		Ok(Producer {
 			tracks: Default::default(),
@@ -45,12 +45,12 @@ impl Producer {
 
 	// Parse the input buffer, reading any full atoms we can find.
 	// Keep appending more data and calling parse.
-	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<()> {
+	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		while self.parse_atom(buf)? {}
 		Ok(())
 	}
 
-	fn parse_atom<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<bool> {
+	fn parse_atom<B: Buf>(&mut self, buf: &mut B) -> Result<bool, Error> {
 		let atom = match next_atom(buf)? {
 			Some(atom) => atom,
 			None => return Ok(false),
@@ -62,7 +62,7 @@ impl Producer {
 		match header.name {
 			mp4::BoxType::FtypBox => {
 				if self.ftyp.is_some() {
-					anyhow::bail!("multiple ftyp atoms");
+					return Err(Error::DuplicateBox("ftyp"));
 				}
 
 				// Save the ftyp atom for later.
@@ -70,7 +70,7 @@ impl Producer {
 			}
 			mp4::BoxType::MoovBox => {
 				if self.moov.is_some() {
-					anyhow::bail!("multiple moov atoms");
+					return Err(Error::DuplicateBox("moov"));
 				}
 
 				// Parse the moov box so we can detect the timescales for each track.
@@ -87,12 +87,7 @@ impl Producer {
 
 				if fragment.keyframe {
 					// Gross but thanks to rust we have to do a separate hashmap lookup
-					if self
-						.tracks
-						.get(&fragment.track)
-						.context("failed to find track")?
-						.handler == TrackType::Video
-					{
+					if self.tracks.get(&fragment.track).ok_or(Error::UnknownTrack)?.handler == TrackType::Video {
 						// Start a new group for the keyframe.
 						for track in self.tracks.values_mut() {
 							track.keyframe();
@@ -101,22 +96,23 @@ impl Producer {
 				}
 
 				// Get the track for this moof.
-				let track = self.tracks.get_mut(&fragment.track).context("failed to find track")?;
+				let track = self.tracks.get_mut(&fragment.track).ok_or(Error::UnknownTrack)?;
 
 				// Save the track ID for the next iteration, which must be a mdat.
-				anyhow::ensure!(self.current.is_none(), "multiple moof atoms");
-				self.current.replace(fragment.track);
+				if self.current.replace(fragment.track).is_some() {
+					return Err(Error::DuplicateBox("moof"));
+				}
 
 				// Publish the moof header, creating a new segment if it's a keyframe.
-				track.header(atom).context("failed to publish moof")?;
+				track.header(atom)?;
 			}
 			mp4::BoxType::MdatBox => {
 				// Get the track ID from the previous moof.
-				let track = self.current.take().context("missing moof")?;
-				let track = self.tracks.get_mut(&track).context("failed to find track")?;
+				let track = self.current.take().ok_or(Error::MissingBox("moof"))?;
+				let track = self.tracks.get_mut(&track).ok_or(Error::UnknownTrack)?;
 
 				// Publish the mdat atom.
-				track.data(atom).context("failed to publish mdat")?;
+				track.data(atom)?;
 			}
 
 			_ => {
@@ -127,9 +123,9 @@ impl Producer {
 		Ok(true)
 	}
 
-	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> anyhow::Result<()> {
+	fn setup(&mut self, moov: &mp4::MoovBox, raw: Bytes) -> Result<(), Error> {
 		// Combine the ftyp+moov atoms into a single object.
-		let mut init = self.ftyp.clone().context("missing ftyp")?.to_vec();
+		let mut init = self.ftyp.clone().ok_or(Error::MissingBox("ftyp"))?.to_vec();
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
@@ -178,14 +174,9 @@ impl Producer {
 				selection_params.height = Some(height.into());
 			} else if let Some(_hev1) = &stsd.hev1 {
 				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
-				anyhow::bail!("HEVC not yet supported")
+				return Err(Error::UnsupportedCodec("HEVC"));
 			} else if let Some(mp4a) = &stsd.mp4a {
-				let desc = &mp4a
-					.esds
-					.as_ref()
-					.context("missing esds box for MP4a")?
-					.es_desc
-					.dec_config;
+				let desc = &mp4a.esds.as_ref().ok_or(Error::MissingBox("esds"))?.es_desc.dec_config;
 				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
 
 				selection_params.codec = Some(codec_str);
@@ -206,10 +197,10 @@ impl Producer {
 				selection_params.height = Some(vp09.height.into());
 
 				// TODO Test if this actually works; I'm just guessing based on mp4box.js
-				anyhow::bail!("VP9 not yet supported")
+				return Err(Error::UnsupportedCodec("VP9"));
 			} else {
 				// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
-				anyhow::bail!("unknown codec for track: {}", trak.tkhd.track_id);
+				return Err(Error::UnsupportedCodec("unknown"));
 			}
 
 			track.selection_params = selection_params;
@@ -224,11 +215,7 @@ impl Producer {
 			};
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self
-				.broadcast
-				.create_track(&name, priority)
-				.build()
-				.context("broadcast closed")?;
+			let track = self.broadcast.create_track(&name, priority).build()?;
 
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
@@ -254,13 +241,13 @@ impl Producer {
 
 // Find the next full atom in the buffer.
 // TODO return the amount of data still needed in Err?
-fn next_atom<B: Buf>(buf: &mut B) -> anyhow::Result<Option<Bytes>> {
+fn next_atom<B: Buf>(buf: &mut B) -> Result<Option<Bytes>, Error> {
 	let mut peek = Cursor::new(buf.chunk());
 
 	if peek.remaining() < 8 {
 		if buf.remaining() != buf.chunk().len() {
 			// TODO figure out a way to peek at the first 8 bytes
-			anyhow::bail!("TODO: vectored Buf not yet supported");
+			unimplemented!("TODO: vectored Buf not yet supported");
 		}
 
 		return Ok(None);
@@ -272,17 +259,19 @@ fn next_atom<B: Buf>(buf: &mut B) -> anyhow::Result<Option<Bytes>> {
 
 	let size = match size {
 		// Runs until the end of the file.
-		0 => anyhow::bail!("TODO: unsupported EOF atom"),
+		0 => unimplemented!("TODO: unsupported EOF atom"),
 
 		// The next 8 bytes are the extended size to be used instead.
 		1 => {
 			let size_ext = peek.get_u64();
-			anyhow::ensure!(size_ext >= 16, "impossible extended box size: {}", size_ext);
+			if size_ext < 16 {
+				return Err(Error::InvalidSize);
+			}
 			size_ext as usize
 		}
 
 		2..=7 => {
-			anyhow::bail!("impossible box size: {}", size)
+			return Err(Error::InvalidSize);
 		}
 
 		size => size as usize,
@@ -321,17 +310,17 @@ impl Track {
 		}
 	}
 
-	pub fn header(&mut self, moof: Bytes) -> anyhow::Result<()> {
+	pub fn header(&mut self, moof: Bytes) -> Result<(), Error> {
 		if self.header.is_some() {
-			anyhow::bail!("multiple moof headers");
+			return Err(Error::DuplicateBox("moof"));
 		}
 
 		self.header = Some(moof);
 		Ok(())
 	}
 
-	pub fn data(&mut self, mdat: Bytes) -> anyhow::Result<()> {
-		let moof = self.header.take().context("missing moof header")?;
+	pub fn data(&mut self, mdat: Bytes) -> Result<(), Error> {
+		let moof = self.header.take().ok_or(Error::MissingBox("moof"))?;
 
 		let mut group = match self.group.take() {
 			Some(group) => group,
@@ -361,9 +350,12 @@ struct Fragment {
 }
 
 impl Fragment {
-	fn new(moof: mp4::MoofBox) -> anyhow::Result<Self> {
+	fn new(moof: mp4::MoofBox) -> Result<Self, Error> {
 		// We can't split the mdat atom, so this is impossible to support
-		anyhow::ensure!(moof.trafs.len() == 1, "multiple tracks per moof atom");
+		if moof.trafs.len() != 1 {
+			return Err(Error::DuplicateBox("traf"));
+		}
+
 		let track = moof.trafs[0].tfhd.track_id;
 
 		// Detect if we should start a new segment.

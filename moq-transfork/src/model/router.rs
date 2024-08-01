@@ -2,7 +2,7 @@ use std::ops;
 
 use crate::{
 	runtime::{Queue, Watch},
-	MoqError, Produce,
+	Error, Produce,
 };
 
 pub struct Router<T: Produce> {
@@ -44,10 +44,10 @@ impl<T: Produce> RouterReader<T> {
 		Self { queue }
 	}
 
-	pub async fn subscribe(&self, info: T) -> Result<T::Reader, MoqError> {
+	pub async fn subscribe(&self, info: T) -> Result<T::Reader, Error> {
 		let request = RouterRequest::<T>::new(info);
 		if self.queue.push(request.split()).is_err() {
-			return Err(MoqError::Cancel);
+			return Err(Error::Cancel);
 		}
 
 		request.response().await
@@ -56,7 +56,7 @@ impl<T: Produce> RouterReader<T> {
 
 pub struct RouterRequest<T: Produce> {
 	pub info: T,
-	reply: Watch<Option<Result<T::Reader, MoqError>>>,
+	reply: Watch<Option<Result<T::Reader, Error>>>,
 }
 
 impl<T: Produce> RouterRequest<T> {
@@ -88,13 +88,13 @@ impl<T: Produce> RouterRequest<T> {
 		writer
 	}
 
-	pub fn close(self, error: MoqError) {
+	pub fn close(self, error: Error) {
 		if let Some(mut state) = self.reply.lock_mut() {
 			state.replace(Err(error));
 		}
 	}
 
-	pub async fn response(self) -> Result<T::Reader, MoqError> {
+	pub async fn response(self) -> Result<T::Reader, Error> {
 		loop {
 			{
 				let state = self.reply.lock();
@@ -102,7 +102,7 @@ impl<T: Produce> RouterRequest<T> {
 					return res;
 				}
 
-				state.changed().ok_or(MoqError::NotFound)?
+				state.changed().ok_or(Error::NotFound)?
 			}
 			.await
 		}

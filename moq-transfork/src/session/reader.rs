@@ -2,7 +2,7 @@ use std::{cmp, fmt, io};
 
 use bytes::{Buf, Bytes, BytesMut};
 
-use crate::{coding::*, MoqError};
+use crate::{coding::*, Error};
 
 use super::Close;
 
@@ -20,13 +20,13 @@ impl Reader {
 	}
 
 	// A separate function just to avoid an extra log line
-	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, MoqError> {
+	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, Error> {
 		let msg = self.decode_silent().await?;
 		tracing::debug!(?msg, "decode");
 		Ok(msg)
 	}
 
-	pub async fn decode_silent<T: Decode + fmt::Debug>(&mut self) -> Result<T, MoqError> {
+	pub async fn decode_silent<T: Decode + fmt::Debug>(&mut self) -> Result<T, Error> {
 		loop {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
@@ -55,15 +55,15 @@ impl Reader {
 	}
 
 	// Decode optional messages at the end of a stream
-	pub async fn decode_maybe<T: Decode + fmt::Debug>(&mut self) -> Result<Option<T>, MoqError> {
+	pub async fn decode_maybe<T: Decode + fmt::Debug>(&mut self) -> Result<Option<T>, Error> {
 		match self.finished().await {
 			Ok(()) => Ok(None),
-			Err(MoqError::Decode(DecodeError::ExpectedEnd)) => Ok(Some(self.decode().await?)),
+			Err(Error::Decode(DecodeError::ExpectedEnd)) => Ok(Some(self.decode().await?)),
 			Err(e) => Err(e),
 		}
 	}
 
-	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, MoqError> {
+	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, Error> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());
 			let data = self.buffer.split_to(size).freeze();
@@ -74,7 +74,7 @@ impl Reader {
 	}
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes
-	pub async fn finished(&mut self) -> Result<(), MoqError> {
+	pub async fn finished(&mut self) -> Result<(), Error> {
 		if self.buffer.is_empty() && !self.stream.read_buf(&mut self.buffer).await? {
 			return Ok(());
 		}
@@ -83,14 +83,14 @@ impl Reader {
 	}
 
 	/// Wait until the stream is closed, ignoring any unread bytes
-	pub async fn closed(&mut self) -> Result<(), MoqError> {
+	pub async fn closed(&mut self) -> Result<(), Error> {
 		while self.stream.read_buf(&mut self.buffer).await? {}
 		Ok(())
 	}
 }
 
 impl Close for Reader {
-	fn close(&mut self, err: MoqError) {
+	fn close(&mut self, err: Error) {
 		self.stream.stop(err.to_code());
 	}
 }

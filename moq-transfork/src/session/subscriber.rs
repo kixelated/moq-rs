@@ -8,7 +8,7 @@ use crate::{
 	model::{Broadcast, BroadcastReader, Produce, Router, Track, TrackReader, TrackWriter},
 	runtime::{self, Lock, Queue},
 	util::OrClose,
-	BroadcastWriter, MoqError, RouterWriter,
+	BroadcastWriter, Error, RouterWriter,
 };
 
 use super::{Reader, Session, Stream};
@@ -44,7 +44,7 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastReader, MoqError> {
+	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastReader, Error> {
 		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
@@ -82,7 +82,7 @@ impl Subscriber {
 	}
 
 	#[tracing::instrument(skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
-	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, MoqError> {
+	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Error> {
 		let sub = self.init_subscribe(track);
 		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
@@ -118,7 +118,7 @@ impl Subscriber {
 		stream: &mut Stream,
 		broadcast: Broadcast,
 		sub: &Subscribe,
-	) -> Result<(), MoqError> {
+	) -> Result<(), Error> {
 		let request = message::Subscribe {
 			id: sub.id,
 			broadcast: broadcast.name.clone(),
@@ -144,7 +144,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), MoqError> {
+	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), Error> {
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
@@ -159,18 +159,18 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), MoqError> {
+	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let announce = stream.reader.decode().await?;
 		self.announced_run(stream, announce).await
 	}
 
 	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
-	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), MoqError> {
+	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
 		let broadcast = Broadcast::new(announce.broadcast);
 
 		// Serve the broadcast and add it to the announced queue.
 		let broadcast = self.namespace(broadcast)?;
-		self.announced.push(broadcast.clone()).map_err(|_| MoqError::Cancel)?;
+		self.announced.push(broadcast.clone()).map_err(|_| Error::Cancel)?;
 
 		// Send the OK message.
 		let msg = message::AnnounceOk {};
@@ -185,18 +185,18 @@ impl Subscriber {
 		}
 	}
 
-	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), MoqError> {
+	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
 		let group = stream.decode().await?;
 		self.serve_group(stream, group).await
 	}
 
 	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
-	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), MoqError> {
+	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), Error> {
 		let mut group = self
 			.tracks
 			.lock()
 			.get_mut(&group.subscribe)
-			.ok_or(MoqError::NotFound)?
+			.ok_or(Error::NotFound)?
 			.create_group(group.sequence)?;
 
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
@@ -204,9 +204,9 @@ impl Subscriber {
 			let mut remain = frame.size;
 
 			while remain > 0 {
-				let chunk = stream.read_chunk(remain).await?.ok_or(MoqError::WrongSize)?;
+				let chunk = stream.read_chunk(remain).await?.ok_or(Error::WrongSize)?;
 
-				remain = remain.checked_sub(chunk.len()).ok_or(MoqError::WrongSize)?;
+				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
 				tracing::trace!(chunk = chunk.len(), remain, "chunk");
 
 				frame.write_chunk(chunk)?;
@@ -216,7 +216,7 @@ impl Subscriber {
 		Ok(())
 	}
 
-	pub async fn closed(&self) -> Result<(), MoqError> {
+	pub async fn closed(&self) -> Result<(), Error> {
 		self.session.closed().await
 	}
 }

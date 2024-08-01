@@ -11,7 +11,7 @@ use bytes::Bytes;
 use std::ops;
 
 use crate::runtime::Watch;
-use crate::MoqError;
+use crate::Error;
 
 use super::{Frame, FrameReader, FrameWriter, Produce};
 
@@ -48,7 +48,7 @@ struct GroupState {
 	frames: Vec<FrameReader>,
 
 	// Set when the writer or all readers are dropped.
-	closed: Result<(), MoqError>,
+	closed: Result<(), Error>,
 }
 
 impl Default for GroupState {
@@ -78,25 +78,25 @@ impl GroupWriter {
 	}
 
 	// Write a frame in one go
-	pub fn write_frame(&mut self, frame: bytes::Bytes) -> Result<(), MoqError> {
+	pub fn write_frame(&mut self, frame: bytes::Bytes) -> Result<(), Error> {
 		self.create_frame(frame.len())?.write_chunk(frame)
 	}
 
 	// Create a frame with an upfront size
-	pub fn create_frame(&mut self, size: usize) -> Result<FrameWriter, MoqError> {
+	pub fn create_frame(&mut self, size: usize) -> Result<FrameWriter, Error> {
 		let (writer, reader) = Frame::new(size).produce();
 
-		self.state.lock_mut().ok_or(MoqError::Cancel)?.frames.push(reader);
+		self.state.lock_mut().ok_or(Error::Cancel)?.frames.push(reader);
 		self.total += 1;
 
 		Ok(writer)
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: MoqError) -> Result<(), MoqError> {
+	pub fn close(&mut self, err: Error) -> Result<(), Error> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-		state.into_mut().ok_or(MoqError::Cancel)?.closed = Err(err);
+		state.into_mut().ok_or(Error::Cancel)?.closed = Err(err);
 		Ok(())
 	}
 
@@ -137,7 +137,7 @@ impl GroupReader {
 	}
 
 	// Read the next frame.
-	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, MoqError> {
+	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, Error> {
 		Ok(match self.next_frame().await? {
 			Some(mut reader) => Some(reader.read_all().await?),
 			None => None,
@@ -145,7 +145,7 @@ impl GroupReader {
 	}
 
 	// Return a reader for the next frame.
-	pub async fn next_frame(&mut self) -> Result<Option<FrameReader>, MoqError> {
+	pub async fn next_frame(&mut self) -> Result<Option<FrameReader>, Error> {
 		loop {
 			{
 				let state = self.state.lock();

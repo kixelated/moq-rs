@@ -4,7 +4,7 @@ pub enum Error {
 	Json(#[from] serde_json::Error),
 
 	#[error("moq error: {0}")]
-	Moq(#[from] moq_transfork::MoqError),
+	Moq(#[from] moq_transfork::Error),
 
 	#[error("empty catalog")]
 	Empty,

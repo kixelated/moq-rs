@@ -15,17 +15,12 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
-moq-native = { path = "../moq-native", version = "0.3" }
 
 url = "2"
-
-tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 bytes = "1"
 
-clap = { version = "4", features = ["derive"] }
 mp4 = "0.14"
-anyhow = { version = "1", features = ["backtrace"] }
 rfc6381-codec = "0.2"
 
 serde = { version = "1", features = ["derive"] }
@@ -34,3 +29,17 @@ serde_with = { version = "3", features = ["hex"] }
 
 thiserror = "1"
 tracing = "0.1"
+
+# CLI only dependencies
+moq-native = { path = "../moq-native", version = "0.3", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+anyhow = { version = "1", features = ["backtrace"], optional = true }
+
+[features]
+cli = ["moq-native", "tokio", "clap", "anyhow"]
+default = ["cli"]
+
+[[bin]]
+name = "moq-warp"
+required-features = ["cli"]

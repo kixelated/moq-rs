@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::coding::*;
 use crate::util::Close;
-use crate::MoqError;
+use crate::Error;
 
 pub struct Writer {
 	stream: web_transport::SendStream,
@@ -17,13 +17,13 @@ impl Writer {
 		}
 	}
 
-	pub async fn encode<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), MoqError> {
+	pub async fn encode<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {
 		tracing::debug!(?msg, "encode");
 		self.encode_silent(msg).await
 	}
 
 	// A separate function just to avoid an extra log line
-	pub async fn encode_silent<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), MoqError> {
+	pub async fn encode_silent<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {
 		self.buffer.clear();
 
 		msg.encode(&mut self.buffer)?;
@@ -35,14 +35,14 @@ impl Writer {
 		Ok(())
 	}
 
-	pub async fn write(&mut self, buf: &[u8]) -> Result<(), MoqError> {
+	pub async fn write(&mut self, buf: &[u8]) -> Result<(), Error> {
 		self.stream.write(buf).await?; // convert the error type
 		Ok(())
 	}
 }
 
 impl Close for Writer {
-	fn close(&mut self, err: MoqError) {
+	fn close(&mut self, err: Error) {
 		self.stream.reset(err.to_code());
 	}
 }

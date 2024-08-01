@@ -22,9 +22,9 @@ impl ListingWriter {
 		}
 	}
 
-	pub fn insert(&mut self, name: String) -> Result<(), MoqError> {
+	pub fn insert(&mut self, name: String) -> Result<(), moq_transfork::Error> {
 		if !self.current.insert(name.clone()) {
-			return Err(MoqError::Duplicate);
+			return Err(moq_transfork::Error::Duplicate);
 		}
 
 		match self.group {
@@ -40,10 +40,10 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, name: &str) -> Result<(), MoqError> {
+	pub fn remove(&mut self, name: &str) -> moq_transfork::Result<()> {
 		if !self.current.remove(name) {
 			// TODO this is a wrong error message.
-			return Err(MoqError::NotFound);
+			return Err(moq_transfork::Error::NotFound);
 		}
 
 		match self.group {
@@ -59,7 +59,7 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	fn snapshot(&mut self) -> Result<GroupWriter, MoqError> {
+	fn snapshot(&mut self) -> Result<GroupWriter, moq_transfork::Error> {
 		let mut groups = match self.groups.take() {
 			Some(groups) => groups,
 			None => self.track.take().unwrap(),

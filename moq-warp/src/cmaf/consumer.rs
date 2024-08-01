@@ -1,11 +1,12 @@
-use anyhow::Context;
 use moq_transfork::prelude::*;
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use bytes::Bytes;
 
+use super::Error;
 use crate::catalog;
+
 pub struct Consumer {
 	// The init segment for the media
 	init: Option<Bytes>,
@@ -15,7 +16,7 @@ pub struct Consumer {
 }
 
 impl Consumer {
-	pub async fn load(broadcast: BroadcastReader) -> anyhow::Result<Self> {
+	pub async fn load(broadcast: BroadcastReader) -> Result<Self, Error> {
 		let catalog = catalog::Reader::subscribe(&broadcast).await?.read().await?;
 		tracing::info!(?catalog);
 
@@ -40,14 +41,14 @@ impl Consumer {
 	}
 
 	// TODO This is quite limited because we can currently only flush a single fMP4 init header
-	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> anyhow::Result<Option<Bytes>> {
+	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> Result<Option<Bytes>, Error> {
 		for track in &catalog.tracks {
 			if let Some(name) = &track.init_track {
 				let track = moq_transfork::Track::new(name, 0).build();
 				let mut track = broadcast.subscribe(track).await?;
 
-				let mut group = track.next_group().await?.context("no groups")?;
-				let frame = group.read_frame().await?.context("no frames")?;
+				let mut group = track.next_group().await?.ok_or(Error::EmptyInit)?;
+				let frame = group.read_frame().await?.ok_or(Error::EmptyInit)?;
 
 				return Ok(Some(frame));
 			}
@@ -61,7 +62,7 @@ impl Consumer {
 	}
 
 	// Returns the next atom in any track
-	pub async fn next(&mut self) -> anyhow::Result<Option<Bytes>> {
+	pub async fn next(&mut self) -> Result<Option<Bytes>, Error> {
 		let mut futures = FuturesUnordered::new();
 
 		for track in &mut self.tracks {
@@ -93,7 +94,7 @@ impl MediaTrack {
 	}
 
 	// Returns the next atom in the current track
-	pub async fn next(&mut self) -> anyhow::Result<Option<Bytes>> {
+	pub async fn next(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			match self.current.as_mut() {
 				Some(group) => {

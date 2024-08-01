@@ -13,7 +13,7 @@
 use std::{collections::HashMap, ops, sync::Arc};
 
 use super::{Produce, RouterReader, Track, TrackBuilder, TrackReader, TrackWriter};
-use crate::{runtime::Watch, MoqError};
+use crate::{runtime::Watch, Error};
 
 /// Static information about a broadcast.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -51,7 +51,7 @@ impl Produce for Broadcast {
 pub struct BroadcastState {
 	tracks: HashMap<String, TrackReader>,
 	router: Option<RouterReader<Track>>,
-	closed: Result<(), MoqError>,
+	closed: Result<(), Error>,
 }
 
 impl Default for BroadcastState {
@@ -80,19 +80,19 @@ impl BroadcastWriter {
 	}
 
 	/// Optionally route requests for unknown tracks.
-	pub fn route_tracks(&mut self, router: RouterReader<Track>) -> Result<(), MoqError> {
-		self.state.lock_mut().ok_or(MoqError::Cancel)?.router = Some(router);
+	pub fn route_tracks(&mut self, router: RouterReader<Track>) -> Result<(), Error> {
+		self.state.lock_mut().ok_or(Error::Cancel)?.router = Some(router);
 		Ok(())
 	}
 
 	/// Insert a track into the broadcast.
-	pub fn insert_track(&mut self, track: Track) -> Result<TrackWriter, MoqError> {
+	pub fn insert_track(&mut self, track: Track) -> Result<TrackWriter, Error> {
 		let (writer, reader) = track.produce();
 
 		// NOTE: We overwrite the track if it already exists.
 		self.state
 			.lock_mut()
-			.ok_or(MoqError::Cancel)?
+			.ok_or(Error::Cancel)?
 			.tracks
 			.insert(reader.name.clone(), reader);
 
@@ -103,15 +103,15 @@ impl BroadcastWriter {
 		self.state.lock_mut()?.tracks.remove(track)
 	}
 
-	pub fn close(&mut self, code: u32) -> Result<(), MoqError> {
+	pub fn close(&mut self, code: u32) -> Result<(), Error> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-		state.into_mut().ok_or(MoqError::Cancel)?.closed = Err(MoqError::App(code));
+		state.into_mut().ok_or(Error::Cancel)?.closed = Err(Error::App(code));
 
 		Ok(())
 	}
 
-	pub async fn closed(&self) -> Result<(), MoqError> {
+	pub async fn closed(&self) -> Result<(), Error> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -148,7 +148,7 @@ impl<'a> BroadcastTrackBuilder<'a> {
 		}
 	}
 
-	pub fn build(self) -> Result<TrackWriter, MoqError> {
+	pub fn build(self) -> Result<TrackWriter, Error> {
 		self.broadcast.insert_track(self.track.build())
 	}
 }
@@ -182,21 +182,21 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn subscribe(&self, track: Track) -> Result<TrackReader, MoqError> {
+	pub async fn subscribe(&self, track: Track) -> Result<TrackReader, Error> {
 		let router = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {
 				return Ok(track);
 			}
 
-			state.router.clone().ok_or(MoqError::NotFound)?
+			state.router.clone().ok_or(Error::NotFound)?
 		};
 
 		// TODO cache to deduplicate?
 		router.subscribe(track).await
 	}
 
-	pub async fn closed(&self) -> Result<(), MoqError> {
+	pub async fn closed(&self) -> Result<(), Error> {
 		loop {
 			{
 				let state = self.state.lock();

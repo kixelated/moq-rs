@@ -34,7 +34,7 @@ impl Listings {
 	}
 
 	// Returns a Registration that removes on drop.
-	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, MoqError> {
+	pub fn register(&mut self, path: &str) -> Result<Option<Registration>, moq_transfork::Error> {
 		let (prefix, base) = Self::prefix(path);
 
 		if !prefix.starts_with(&self.reader.name) {
@@ -63,11 +63,11 @@ impl Listings {
 		}))
 	}
 
-	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), MoqError> {
+	fn remove(&mut self, prefix: &str, base: &str) -> Result<(), moq_transfork::Error> {
 		let mut state = self.state.lock().unwrap();
 
 		// TODO this is the wrong error message.
-		let listing = state.active.get_mut(prefix).ok_or(MoqError::NotFound)?;
+		let listing = state.active.get_mut(prefix).ok_or(moq_transfork::Error::NotFound)?;
 		listing.remove(base)?;
 
 		if listing.is_empty() {

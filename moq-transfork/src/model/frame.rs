@@ -2,7 +2,7 @@ use crate::runtime::Watch;
 use bytes::{Bytes, BytesMut};
 use std::ops;
 
-use crate::{MoqError, Produce};
+use crate::{Error, Produce};
 
 #[derive(Clone, PartialEq)]
 pub struct Frame {
@@ -34,7 +34,7 @@ struct FrameState {
 	chunks: Vec<Bytes>,
 
 	// Set when the writer or all readers are dropped.
-	closed: Result<(), MoqError>,
+	closed: Result<(), Error>,
 }
 
 impl Default for FrameState {
@@ -60,18 +60,18 @@ impl FrameWriter {
 		Self { state, info }
 	}
 
-	pub fn write_chunk(&mut self, chunk: bytes::Bytes) -> Result<(), MoqError> {
-		let mut state = self.state.lock_mut().ok_or(MoqError::Cancel)?;
+	pub fn write_chunk(&mut self, chunk: bytes::Bytes) -> Result<(), Error> {
+		let mut state = self.state.lock_mut().ok_or(Error::Cancel)?;
 		state.chunks.push(chunk);
 
 		Ok(())
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: MoqError) -> Result<(), MoqError> {
+	pub fn close(&mut self, err: Error) -> Result<(), Error> {
 		let state = self.state.lock();
 		state.closed.clone()?;
-		state.into_mut().ok_or(MoqError::Cancel)?.closed = Err(err);
+		state.into_mut().ok_or(Error::Cancel)?.closed = Err(err);
 
 		Ok(())
 	}
@@ -109,7 +109,7 @@ impl FrameReader {
 	}
 
 	// Return the next chunk.
-	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, MoqError> {
+	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			{
 				let state = self.state.lock();
@@ -130,7 +130,7 @@ impl FrameReader {
 	}
 
 	// Return all of the chunks concatenated together.
-	pub async fn read_all(&mut self) -> Result<Bytes, MoqError> {
+	pub async fn read_all(&mut self) -> Result<Bytes, Error> {
 		let first = self.read_chunk().await?.unwrap_or_else(Bytes::new);
 		if first.len() == self.size {
 			// If there's one chunk, return it without allocating.
