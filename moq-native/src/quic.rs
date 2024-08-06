@@ -107,8 +107,8 @@ impl Server {
 					let conn = res?;
 					self.accept.push(Self::accept_session(conn).boxed());
 				}
-				res = self.accept.next(), if !self.accept.is_empty() => {
-					if let Ok(session) = res.unwrap() {
+				Some(res) = self.accept.next() => {
+					if let Ok(session) = res {
 						return Some(session)
 					}
 				}

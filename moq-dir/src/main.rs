@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
 				let connection = Connection::new(session, listings.clone());
 				tasks.push(connection.run());
 			},
-			_ = tasks.next(), if !tasks.is_empty() => {},
+			Some(_res) = tasks.next() => {},
 			else => return Ok(()),
 		}
 	}

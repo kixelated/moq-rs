@@ -14,6 +14,7 @@ impl Connection {
 		Self { session, listings }
 	}
 
+	#[tracing::instrument("run", skip_all, err)]
 	pub async fn run(self) -> anyhow::Result<()> {
 		let (publisher, subscriber) = moq_transfork::Server::new(self.session.clone()).any().await?;
 
@@ -43,7 +44,7 @@ impl Connection {
 					let this = self.clone();
 					tasks.push(this.serve_announce(announce));
 				},
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				Some(_) = tasks.next() => {},
 				else => return Ok(()),
 			};
 		}

@@ -10,9 +10,9 @@
 //! A [Reader] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Writer] is dropped, or all [Reader]s are dropped.
-use std::{collections::HashMap, ops, sync::Arc};
+use std::{collections::HashMap, ops, sync::Arc, time};
 
-use super::{Produce, RouterReader, Track, TrackBuilder, TrackReader, TrackWriter};
+use super::{GroupOrder, Produce, RouterReader, Track, TrackBuilder, TrackReader, TrackWriter};
 use crate::{runtime::Watch, Error};
 
 /// Static information about a broadcast.
@@ -75,7 +75,7 @@ impl BroadcastWriter {
 		Self { state, info }
 	}
 
-	pub fn create_track<T: Into<String>>(&mut self, name: T, priority: u64) -> BroadcastTrackBuilder {
+	pub fn build_track<T: Into<String>>(&mut self, name: T, priority: u64) -> BroadcastTrackBuilder {
 		BroadcastTrackBuilder::new(self, name.into(), priority)
 	}
 
@@ -86,8 +86,8 @@ impl BroadcastWriter {
 	}
 
 	/// Insert a track into the broadcast.
-	pub fn insert_track(&mut self, track: Track) -> Result<TrackWriter, Error> {
-		let (writer, reader) = track.produce();
+	pub fn insert_track<T: Into<Track>>(&mut self, track: T) -> Result<TrackWriter, Error> {
+		let (writer, reader) = track.into().produce();
 
 		// NOTE: We overwrite the track if it already exists.
 		self.state
@@ -143,13 +143,23 @@ pub struct BroadcastTrackBuilder<'a> {
 impl<'a> BroadcastTrackBuilder<'a> {
 	fn new(broadcast: &'a mut BroadcastWriter, name: String, priority: u64) -> Self {
 		Self {
-			track: Track::create(name, priority),
+			track: Track::build(name, priority),
 			broadcast,
 		}
 	}
 
-	pub fn build(self) -> Result<TrackWriter, Error> {
-		self.broadcast.insert_track(self.track.build())
+	pub fn group_order(mut self, order: GroupOrder) -> Self {
+		self.track = self.track.group_order(order);
+		self
+	}
+
+	pub fn group_expires(mut self, expires: time::Duration) -> Self {
+		self.track = self.track.group_expires(expires);
+		self
+	}
+
+	pub fn insert(self) -> Result<TrackWriter, Error> {
+		self.broadcast.insert_track(self.track)
 	}
 }
 
@@ -182,7 +192,9 @@ impl BroadcastReader {
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn subscribe(&self, track: Track) -> Result<TrackReader, Error> {
+	pub async fn subscribe<T: Into<Track>>(&self, track: T) -> Result<TrackReader, Error> {
+		let track = track.into();
+
 		let router = {
 			let state = self.state.lock();
 			if let Some(track) = state.tracks.get(&track.name).cloned() {

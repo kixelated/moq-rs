@@ -156,15 +156,16 @@ impl Session {
 
 	pub async fn accept(&mut self) -> Result<Stream, Error> {
 		let (send, recv) = self.webtransport.accept_bi().await?;
+
 		let writer = Writer::new(send);
 		let reader = Reader::new(recv);
+
 		Ok(Stream { writer, reader })
 	}
 
 	pub async fn accept_uni(&mut self) -> Result<Reader, Error> {
-		let recv = self.webtransport.accept_uni().await?;
-		let reader = Reader::new(recv);
-		Ok(reader)
+		let stream = self.webtransport.accept_uni().await?;
+		Ok(Reader::new(stream))
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {

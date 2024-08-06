@@ -87,7 +87,7 @@ impl Relay {
 					tasks.push(session.run().instrument(span));
 				},
 				_ = self.outgoing.serve(&mut self.incoming.0) => anyhow::bail!("router serve finished"),
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				Some(_res) = tasks.next() => {},
 				else => return Ok(()),
 			}
 		}

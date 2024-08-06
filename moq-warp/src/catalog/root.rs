@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CommonTrackFields, Result, Track};
+use super::{Result, Track};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Root {
@@ -14,9 +14,6 @@ pub struct Root {
 
 	#[serde(rename = "supportsDeltaUpdates")]
 	pub streaming_delta_updates: bool,
-
-	#[serde(rename = "commonTrackFields")]
-	pub common_track_fields: CommonTrackFields,
 
 	pub tracks: Vec<Track>,
 }

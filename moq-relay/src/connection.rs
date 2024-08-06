@@ -50,7 +50,7 @@ impl Connection {
 						drop(announce);
 					})
 				},
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				Some(_res) = tasks.next() => {},
 				else => return Ok(()),
 			};
 		}

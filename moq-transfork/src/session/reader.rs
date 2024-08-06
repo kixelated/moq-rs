@@ -43,7 +43,7 @@ impl Reader {
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {
-				if !self.stream.read_buf(&mut self.buffer).await? {
+				if self.stream.read_buf(&mut self.buffer).await?.is_none() {
 					return Err(DecodeError::More(required - self.buffer.len()).into());
 				};
 
@@ -75,7 +75,7 @@ impl Reader {
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes
 	pub async fn finished(&mut self) -> Result<(), Error> {
-		if self.buffer.is_empty() && !self.stream.read_buf(&mut self.buffer).await? {
+		if self.buffer.is_empty() && self.stream.read_buf(&mut self.buffer).await?.is_none() {
 			return Ok(());
 		}
 
@@ -84,7 +84,7 @@ impl Reader {
 
 	/// Wait until the stream is closed, ignoring any unread bytes
 	pub async fn closed(&mut self) -> Result<(), Error> {
-		while self.stream.read_buf(&mut self.buffer).await? {}
+		while let Some(_) = self.stream.read_buf(&mut self.buffer).await? {}
 		Ok(())
 	}
 }

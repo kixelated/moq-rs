@@ -30,7 +30,7 @@ pub struct Producer {
 impl Producer {
 	pub fn new(mut broadcast: BroadcastWriter) -> Result<Self, Error> {
 		let catalog = catalog::Writer::publish(&mut broadcast)?;
-		let init = broadcast.create_track("0.mp4", 1).build()?;
+		let init = broadcast.build_track("0.mp4", 1).insert()?;
 
 		Ok(Producer {
 			tracks: Default::default(),
@@ -215,7 +215,7 @@ impl Producer {
 			};
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.create_track(&name, priority).build()?;
+			let track = self.broadcast.build_track(&name, priority).insert()?;
 
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
@@ -226,7 +226,6 @@ impl Producer {
 			streaming_format: 1,
 			streaming_format_version: "0.2".to_string(),
 			streaming_delta_updates: true,
-			common_track_fields: catalog::CommonTrackFields::from_tracks(&mut tracks),
 			tracks,
 		};
 

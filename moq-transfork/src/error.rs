@@ -2,14 +2,8 @@ use crate::{coding, message, setup};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
-	#[error("webtransport session: {0}")]
-	Network(#[from] web_transport::SessionError),
-
-	#[error("write error: {0}")]
-	Write(#[from] web_transport::WriteError),
-
-	#[error("read error: {0}")]
-	Read(#[from] web_transport::ReadError),
+	#[error("webtransport error: {0}")]
+	WebTransport(#[from] web_transport::Error),
 
 	#[error("decode error: {0}")]
 	Decode(#[from] coding::DecodeError),
@@ -73,11 +67,9 @@ impl Error {
 			Self::RequiredExtension(_) => 1,
 			Self::RoleIncompatible(..) => 2,
 			Self::RoleViolation => 3,
-			Self::Network(_) => 4,
-			Self::Read(_) => 5,
-			Self::Decode(_) => 6,
-			Self::Write(_) => 7,
-			Self::Encode(_) => 8,
+			Self::WebTransport(_) => 4,
+			Self::Decode(_) => 5,
+			Self::Encode(_) => 6,
 			Self::Version(..) => 9,
 			Self::UnexpectedStream(_) => 10,
 			Self::BoundsExceeded(_) => 11,

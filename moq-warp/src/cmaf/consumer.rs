@@ -17,7 +17,7 @@ pub struct Consumer {
 
 impl Consumer {
 	pub async fn load(broadcast: BroadcastReader) -> Result<Self, Error> {
-		let catalog = catalog::Reader::subscribe(&broadcast).await?.read().await?;
+		let catalog = catalog::Reader::subscribe(broadcast.clone()).await?.read().await?;
 		tracing::info!(?catalog);
 
 		let mut tracks = Vec::new();
@@ -31,7 +31,7 @@ impl Consumer {
 				_ => 1,
 			};
 
-			let track = Track::create(track.name, priority).build();
+			let track = Track::build(track.name, priority).into();
 			let track = broadcast.subscribe(track).await?;
 			let track = MediaTrack::new(track);
 			tracks.push(track);
@@ -44,7 +44,7 @@ impl Consumer {
 	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> Result<Option<Bytes>, Error> {
 		for track in &catalog.tracks {
 			if let Some(name) = &track.init_track {
-				let track = moq_transfork::Track::create(name, 0).build();
+				let track = moq_transfork::Track::build(name, 0);
 				let mut track = broadcast.subscribe(track).await?;
 
 				let mut group = track.next_group().await?.ok_or(Error::EmptyInit)?;

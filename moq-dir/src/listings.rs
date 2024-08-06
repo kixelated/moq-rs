@@ -49,7 +49,7 @@ impl Listings {
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
-			let track = state.writer.create_track(prefix, 0).build().unwrap();
+			let track = state.writer.build_track(prefix, 0).insert().unwrap();
 
 			let mut listing = ListingWriter::new(track);
 			listing.insert(base.to_string())?;

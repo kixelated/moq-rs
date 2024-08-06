@@ -24,6 +24,7 @@ impl Client {
 		self.role(setup::Role::Any).await
 	}
 
+	#[tracing::instrument("connect", skip_all, err)]
 	pub async fn role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
 		let mut stream = self.session.open(message::Stream::Session).await?;
 

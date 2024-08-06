@@ -12,10 +12,10 @@ impl Writer {
 	}
 
 	pub fn publish(broadcast: &mut moq_transfork::BroadcastWriter) -> Result<Self> {
-		let track = moq_transfork::Track::create("catalog.json", 0)
+		let track = moq_transfork::Track::build("catalog.json", 0)
 			.group_order(moq_transfork::GroupOrder::Descending)
 			.group_expires(time::Duration::ZERO)
-			.build();
+			.into();
 		let track = broadcast.insert_track(track)?;
 		Ok(Self::new(track))
 	}

@@ -3,6 +3,8 @@ use std::{
 	sync::{atomic, Arc},
 };
 
+use tracing::Instrument;
+
 use crate::{
 	message,
 	model::{Broadcast, BroadcastReader, Produce, Router, Track, TrackReader, TrackWriter},
@@ -62,7 +64,8 @@ impl Subscriber {
 			broadcasts: self.broadcasts.clone(),
 		};
 
-		runtime::spawn(self.clone().run_announce(announce));
+		let span = tracing::info_span!("announce", broadcast = broadcast.name);
+		runtime::spawn(self.clone().run_announce(announce).instrument(span));
 
 		Ok(reader)
 	}
@@ -81,8 +84,16 @@ impl Subscriber {
 		}
 	}
 
-	#[tracing::instrument(skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
-	pub async fn subscribe(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Error> {
+	pub async fn subscribe<B: Into<Broadcast>, T: Into<Track>>(
+		&mut self,
+		broadcast: B,
+		track: T,
+	) -> Result<TrackReader, Error> {
+		self.subscribe_inner(broadcast.into(), track.into()).await
+	}
+
+	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
+	pub async fn subscribe_inner(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Error> {
 		let sub = self.init_subscribe(track);
 		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
@@ -166,10 +177,8 @@ impl Subscriber {
 
 	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
 	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
-		let broadcast = Broadcast::new(announce.broadcast);
-
 		// Serve the broadcast and add it to the announced queue.
-		let broadcast = self.namespace(broadcast)?;
+		let broadcast = self.namespace(announce.broadcast)?;
 		self.announced.push(broadcast.clone()).map_err(|_| Error::Cancel)?;
 
 		// Send the OK message.

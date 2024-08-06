@@ -28,7 +28,7 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn create<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
+	pub fn build<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
 		TrackBuilder::new(Self {
 			name: name.into(),
 			priority,
@@ -72,12 +72,19 @@ impl TrackBuilder {
 		self
 	}
 
-	pub fn build(self) -> Track {
-		self.track
+	pub fn produce(self) -> (TrackWriter, TrackReader) {
+		self.track.produce()
 	}
 
-	pub fn produce(self) -> (TrackWriter, TrackReader) {
-		self.build().produce()
+	// I don't know why From isn't sufficient, but this prevents annoying Rust errors.
+	pub fn into(self) -> Track {
+		self.track
+	}
+}
+
+impl From<TrackBuilder> for Track {
+	fn from(builder: TrackBuilder) -> Self {
+		builder.track
 	}
 }
 
