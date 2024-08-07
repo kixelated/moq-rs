@@ -183,6 +183,7 @@ impl Subscribed {
 					group_id: object.group_id,
 					object_id: object.object_id,
 					size: object.size,
+					status: object.status,
 				};
 
 				self.state

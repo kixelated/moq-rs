@@ -49,7 +49,14 @@ impl Decode for GroupObject {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let object_id = u64::decode(r)?;
 		let size = usize::decode(r)?;
-		let status = ObjectStatus::decode(r)?;
+
+		// If the size is 0, then the status is sent explicitly.
+		// Otherwise, the status is assumed to be 0x0 (Object).
+		let status = if size == 0 {
+			ObjectStatus::decode(r)?
+		} else {
+			ObjectStatus::Object
+		};
 
 		Ok(Self {
 			object_id,
@@ -63,7 +70,12 @@ impl Encode for GroupObject {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		self.object_id.encode(w)?;
 		self.size.encode(w)?;
-		self.status.encode(w)?;
+
+		// If the size is 0, then the status is sent explicitly.
+		// Otherwise, the status is assumed to be 0x0 (Object).
+		if self.size == 0 {
+			self.status.encode(w)?;
+		}
 
 		Ok(())
 	}
