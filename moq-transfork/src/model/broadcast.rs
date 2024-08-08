@@ -77,8 +77,8 @@ impl BroadcastProducer {
 		Self { state, info }
 	}
 
-	pub fn build_track<T: Into<String>>(&mut self, name: T, priority: u64) -> BroadcastTrackBuilder {
-		BroadcastTrackBuilder::new(self, name.into(), priority)
+	pub fn build_track<T: Into<String>>(&mut self, name: T) -> BroadcastTrackBuilder {
+		BroadcastTrackBuilder::new(self, name.into())
 	}
 
 	/// Optionally route requests for unknown tracks.
@@ -139,11 +139,16 @@ pub struct BroadcastTrackBuilder<'a> {
 }
 
 impl<'a> BroadcastTrackBuilder<'a> {
-	fn new(broadcast: &'a mut BroadcastProducer, name: String, priority: u64) -> Self {
+	fn new(broadcast: &'a mut BroadcastProducer, name: String) -> Self {
 		Self {
-			track: Track::build(name, priority),
+			track: Track::build(name),
 			broadcast,
 		}
+	}
+
+	pub fn priority(mut self, priority: i8) -> Self {
+		self.track = self.track.priority(priority);
+		self
 	}
 
 	pub fn group_order(mut self, order: GroupOrder) -> Self {

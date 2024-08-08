@@ -79,15 +79,12 @@ impl Encode for time::Duration {
 	}
 }
 
-impl Encode for Option<time::Duration> {
+impl Encode for i8 {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let v: u64 = match self {
-			None => 0,
-			Some(v) => (v.as_millis() + 1)
-				.try_into()
-				.map_err(|_| EncodeError::BoundsExceeded)?,
-		};
-
-		v.encode(w)
+		// This is not the usual way of encoding negative numbers.
+		// i8 doesn't exist in the draft, but we use it instead of u8 for priority.
+		// A default of 0 is more ergonomic for the user than a default of 128.
+		w.put_u8(((*self as i16) + 128) as u8);
+		Ok(())
 	}
 }

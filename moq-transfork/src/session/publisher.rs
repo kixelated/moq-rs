@@ -115,7 +115,13 @@ impl Publisher {
 	#[tracing::instrument("subscribed", skip_all, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let broadcast = Broadcast::new(subscribe.broadcast);
-		let track = Track::build(subscribe.track, subscribe.priority);
+		let track = Track {
+			name: subscribe.track,
+			priority: subscribe.priority,
+			group_expires: subscribe.group_expires,
+			group_order: subscribe.group_order,
+		};
+
 		let mut track = self.subscribe(broadcast.clone(), track).await?;
 
 		let info = message::Info {
@@ -237,7 +243,7 @@ impl Publisher {
 
 	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
-		let track = Track::build(fetch.track, fetch.priority);
+		let track = Track::build(fetch.track).priority(fetch.priority);
 		let track = self.subscribe(fetch.broadcast, track).await?;
 		let _group = track.get_group(fetch.group)?;
 
@@ -251,8 +257,7 @@ impl Publisher {
 
 	#[tracing::instrument("track", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), Error> {
-		let track = Track::build(info.track, 0);
-		let track = self.subscribe(info.broadcast, track).await?;
+		let track = self.subscribe(info.broadcast, info.track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest_group(),

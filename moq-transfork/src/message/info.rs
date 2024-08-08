@@ -5,9 +5,9 @@ use crate::coding::*;
 
 #[derive(Clone, Debug)]
 pub struct Info {
-	pub track_priority: u64,
+	pub track_priority: i8,
 	pub group_order: GroupOrder,
-	pub group_expires: Option<time::Duration>,
+	pub group_expires: time::Duration,
 	pub group_latest: u64,
 }
 
@@ -24,9 +24,9 @@ impl Encode for Info {
 
 impl Decode for Info {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let track_priority = u64::decode_more(r, 3)?;
+		let track_priority = i8::decode_more(r, 3)?;
 		let group_order = GroupOrder::decode_more(r, 2)?;
-		let group_expires = Option::<time::Duration>::decode_more(r, 1)?;
+		let group_expires = time::Duration::decode_more(r, 1)?;
 		let group_latest = u64::decode(r)?;
 
 		Ok(Self {

@@ -4,7 +4,7 @@ use crate::coding::*;
 pub struct Fetch {
 	pub broadcast: String,
 	pub track: String,
-	pub priority: u64,
+	pub priority: i8,
 	pub group: u64,
 	pub offset: usize,
 }
@@ -25,7 +25,7 @@ impl Decode for Fetch {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let broadcast = String::decode_more(r, 4)?;
 		let track = String::decode_more(r, 3)?;
-		let priority = u64::decode_more(r, 2)?;
+		let priority = i8::decode_more(r, 2)?;
 		let group = u64::decode_more(r, 1)?;
 		let offset = usize::decode(r)?;
 

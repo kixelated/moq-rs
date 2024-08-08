@@ -12,7 +12,8 @@ impl Producer {
 	}
 
 	pub fn publish(broadcast: &mut moq_transfork::BroadcastProducer) -> Result<Self> {
-		let track = moq_transfork::Track::build("catalog.json", 0)
+		let track = moq_transfork::Track::build("catalog.json")
+			.priority(-1)
 			.group_order(moq_transfork::GroupOrder::Descending)
 			.group_expires(time::Duration::ZERO)
 			.into();

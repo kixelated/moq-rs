@@ -24,19 +24,24 @@ use std::{cmp::Ordering, ops, sync::Arc, time};
 #[derive(Clone)]
 pub struct Track {
 	pub name: String,
-	pub priority: u64,
+	pub priority: i8,
 	pub group_order: GroupOrder,
-	pub group_expires: Option<time::Duration>,
+	pub group_expires: time::Duration,
 }
 
 impl Track {
-	pub fn build<T: Into<String>>(name: T, priority: u64) -> TrackBuilder {
-		TrackBuilder::new(Self {
-			name: name.into(),
-			priority,
-			group_order: GroupOrder::Descending,
-			group_expires: None,
-		})
+	pub fn new<T: Into<String>>(name: T) -> Self {
+		Self::build(name).into()
+	}
+
+	pub fn build<T: Into<String>>(name: T) -> TrackBuilder {
+		TrackBuilder::new(name)
+	}
+}
+
+impl<T: Into<String>> From<T> for Track {
+	fn from(name: T) -> Self {
+		Self::new(name)
 	}
 }
 
@@ -60,8 +65,20 @@ pub struct TrackBuilder {
 }
 
 impl TrackBuilder {
-	pub fn new(track: Track) -> Self {
+	pub fn new<T: Into<String>>(name: T) -> Self {
+		let track = Track {
+			name: name.into(),
+			priority: 0,
+			group_order: GroupOrder::Descending,
+			group_expires: time::Duration::ZERO,
+		};
+
 		Self { track }
+	}
+
+	pub fn priority(mut self, priority: i8) -> Self {
+		self.track.priority = priority;
+		self
 	}
 
 	pub fn group_order(mut self, order: GroupOrder) -> Self {
@@ -70,7 +87,7 @@ impl TrackBuilder {
 	}
 
 	pub fn group_expires(mut self, expires: time::Duration) -> Self {
-		self.track.group_expires = Some(expires);
+		self.track.group_expires = expires;
 		self
 	}
 

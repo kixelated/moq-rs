@@ -30,7 +30,7 @@ pub struct Producer {
 impl Producer {
 	pub fn new(mut broadcast: BroadcastProducer) -> Result<Self, Error> {
 		let catalog = catalog::Producer::publish(&mut broadcast)?;
-		let init = broadcast.build_track("0.mp4", 1).insert();
+		let init = broadcast.insert_track("0.mp4");
 
 		Ok(Producer {
 			tracks: Default::default(),
@@ -209,13 +209,13 @@ impl Producer {
 
 			// Change the track priority based on the media type
 			let priority = match handler {
-				TrackType::Video => 4,
-				TrackType::Audio => 3,
-				TrackType::Subtitle => 2,
+				TrackType::Video => 3,
+				TrackType::Audio => 2,
+				TrackType::Subtitle => 1,
 			};
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.build_track(&name, priority).insert();
+			let track = self.broadcast.build_track(&name).priority(priority).insert();
 
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);

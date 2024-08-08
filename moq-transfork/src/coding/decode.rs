@@ -120,11 +120,11 @@ impl Decode for time::Duration {
 	}
 }
 
-impl Decode for Option<time::Duration> {
-	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
-		Ok(match u64::decode(buf)? {
-			0 => None,
-			v => Some(time::Duration::from_millis(v - 1)),
-		})
+impl Decode for i8 {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		// This is not the usual way of encoding negative numbers.
+		// i8 doesn't exist in the draft, but we use it instead of u8 for priority.
+		// A default of 0 is more ergonomic for the user than a default of 128.
+		Ok(((r.get_u8() as i16) - 128) as i8)
 	}
 }
