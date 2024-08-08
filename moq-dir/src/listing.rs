@@ -4,16 +4,16 @@ use std::collections::{HashSet, VecDeque};
 
 use moq_transfork::prelude::*;
 
-pub struct ListingWriter {
-	track: Option<TrackWriter>,
-	groups: Option<TrackWriter>,
-	group: Option<GroupWriter>,
+pub struct ListingProducer {
+	track: Option<TrackProducer>,
+	groups: Option<TrackProducer>,
+	group: Option<GroupProducer>,
 
 	current: HashSet<String>,
 }
 
-impl ListingWriter {
-	pub fn new(track: TrackWriter) -> Self {
+impl ListingProducer {
+	pub fn new(track: TrackProducer) -> Self {
 		Self {
 			track: Some(track),
 			groups: None,
@@ -31,7 +31,7 @@ impl ListingWriter {
 			// Create a delta if the current group is small enough.
 			Some(ref mut group) if self.current.len() < 2 * group.frame_count() => {
 				let msg = format!("+{}", name);
-				group.write_frame(msg.into())?;
+				group.write_frame(msg.into());
 			}
 			// Otherwise create a snapshot with every element.
 			_ => self.group = Some(self.snapshot()?),
@@ -50,7 +50,7 @@ impl ListingWriter {
 			// Create a delta if the current group is small enough.
 			Some(ref mut group) if self.current.len() < 2 * group.frame_count() => {
 				let msg = format!("-{}", name);
-				group.write_frame(msg.into())?;
+				group.write_frame(msg.into());
 			}
 			// Otherwise create a snapshot with every element.
 			_ => self.group = Some(self.snapshot()?),
@@ -59,13 +59,13 @@ impl ListingWriter {
 		Ok(())
 	}
 
-	fn snapshot(&mut self) -> Result<GroupWriter, moq_transfork::Error> {
+	fn snapshot(&mut self) -> Result<GroupProducer, moq_transfork::Error> {
 		let mut groups = match self.groups.take() {
 			Some(groups) => groups,
 			None => self.track.take().unwrap(),
 		};
 
-		let mut group = groups.append_group()?;
+		let mut group = groups.append_group();
 
 		let mut msg = BytesMut::new();
 		for name in &self.current {
@@ -73,7 +73,7 @@ impl ListingWriter {
 			msg.extend_from_slice(b"\n");
 		}
 
-		group.write_frame(msg.freeze())?;
+		group.write_frame(msg.freeze());
 		self.groups = Some(groups);
 
 		Ok(group)
@@ -95,11 +95,11 @@ pub enum ListingDelta {
 }
 
 #[derive(Clone)]
-pub struct ListingReader {
-	track: TrackReader,
+pub struct ListingConsumer {
+	track: TrackConsumer,
 
 	// Keep track of the current group.
-	group: Option<GroupReader>,
+	group: Option<GroupConsumer>,
 
 	// The current state of the listing.
 	current: HashSet<String>,
@@ -108,8 +108,8 @@ pub struct ListingReader {
 	deltas: VecDeque<ListingDelta>,
 }
 
-impl ListingReader {
-	pub fn new(track: TrackReader) -> Self {
+impl ListingConsumer {
+	pub fn new(track: TrackConsumer) -> Self {
 		Self {
 			track,
 			group: None,
@@ -183,7 +183,7 @@ impl ListingReader {
 	}
 
 	// If you just want to proxy the track
-	pub fn into_inner(self) -> TrackReader {
+	pub fn into_inner(self) -> TrackConsumer {
 		self.track
 	}
 }

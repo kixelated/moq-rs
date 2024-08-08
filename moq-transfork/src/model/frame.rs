@@ -1,6 +1,6 @@
-use crate::runtime::Watch;
 use bytes::{Bytes, BytesMut};
 use std::ops;
+use tokio::sync::watch;
 
 use crate::{Error, Produce};
 
@@ -16,14 +16,14 @@ impl Frame {
 }
 
 impl Produce for Frame {
-	type Reader = FrameReader;
-	type Writer = FrameWriter;
+	type Consumer = FrameConsumer;
+	type Producer = FrameProducer;
 
-	fn produce(self) -> (FrameWriter, FrameReader) {
-		let state = Watch::default();
+	fn produce(self) -> (FrameProducer, FrameConsumer) {
+		let (send, recv) = watch::channel(FrameState::default());
 
-		let writer = FrameWriter::new(state.split(), self.clone());
-		let reader = FrameReader::new(state, self);
+		let writer = FrameProducer::new(send, self.clone());
+		let reader = FrameConsumer::new(recv, self);
 
 		(writer, reader)
 	}
@@ -47,37 +47,30 @@ impl Default for FrameState {
 }
 
 /// Used to write data to a stream and notify readers.
-pub struct FrameWriter {
+pub struct FrameProducer {
 	// Mutable stream state.
-	state: Watch<FrameState>,
+	state: watch::Sender<FrameState>,
 
 	// Immutable stream state.
 	pub info: Frame,
 }
 
-impl FrameWriter {
-	fn new(state: Watch<FrameState>, info: Frame) -> Self {
+impl FrameProducer {
+	fn new(state: watch::Sender<FrameState>, info: Frame) -> Self {
 		Self { state, info }
 	}
 
-	pub fn write_chunk(&mut self, chunk: bytes::Bytes) -> Result<(), Error> {
-		let mut state = self.state.lock_mut().ok_or(Error::Cancel)?;
-		state.chunks.push(chunk);
-
-		Ok(())
+	pub fn write_chunk(&mut self, chunk: bytes::Bytes) {
+		self.state.send_modify(|state| state.chunks.push(chunk));
 	}
 
 	/// Close the stream with an error.
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-		state.into_mut().ok_or(Error::Cancel)?.closed = Err(err);
-
-		Ok(())
+	pub fn close(self, err: Error) {
+		self.state.send_modify(|state| state.closed = Err(err));
 	}
 }
 
-impl ops::Deref for FrameWriter {
+impl ops::Deref for FrameProducer {
 	type Target = Frame;
 
 	fn deref(&self) -> &Self::Target {
@@ -87,9 +80,9 @@ impl ops::Deref for FrameWriter {
 
 /// Notified when a stream has new data available.
 #[derive(Clone)]
-pub struct FrameReader {
+pub struct FrameConsumer {
 	// Modify the stream state.
-	state: Watch<FrameState>,
+	state: watch::Receiver<FrameState>,
 
 	// Immutable stream state.
 	pub info: Frame,
@@ -99,8 +92,8 @@ pub struct FrameReader {
 	index: usize,
 }
 
-impl FrameReader {
-	fn new(state: Watch<FrameState>, group: Frame) -> Self {
+impl FrameConsumer {
+	fn new(state: watch::Receiver<FrameState>, group: Frame) -> Self {
 		Self {
 			state,
 			info: group,
@@ -112,7 +105,7 @@ impl FrameReader {
 	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			{
-				let state = self.state.lock();
+				let state = self.state.borrow_and_update();
 
 				if let Some(chunk) = state.chunks.get(self.index).cloned() {
 					self.index += 1;
@@ -120,12 +113,11 @@ impl FrameReader {
 				}
 
 				state.closed.clone()?;
-				match state.changed() {
-					Some(modified) => modified,
-					None => return Ok(None),
-				}
 			}
-			.await; // Try again when the state changes
+
+			if self.state.changed().await.is_err() {
+				return Ok(None);
+			}
 		}
 	}
 
@@ -146,9 +138,16 @@ impl FrameReader {
 
 		Ok(buf.freeze())
 	}
+
+	pub async fn closed(&self) -> Result<(), Error> {
+		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
+			Ok(state) => state.closed.clone(),
+			Err(_) => Ok(()),
+		}
+	}
 }
 
-impl ops::Deref for FrameReader {
+impl ops::Deref for FrameConsumer {
 	type Target = Frame;
 
 	fn deref(&self) -> &Self::Target {

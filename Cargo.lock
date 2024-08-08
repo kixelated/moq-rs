@@ -1137,6 +1137,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "futures",
+ "indexmap 2.2.6",
  "paste",
  "thiserror",
  "tokio",

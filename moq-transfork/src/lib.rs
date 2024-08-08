@@ -9,7 +9,6 @@ pub mod error;
 pub mod message;
 pub mod model;
 pub mod prelude;
-pub mod runtime;
 pub mod session;
 pub mod setup;
 pub(crate) mod util;

@@ -5,17 +5,17 @@ use std::{
 
 use moq_transfork::prelude::*;
 
-use crate::ListingWriter;
+use crate::ListingProducer;
 
 struct State {
-	active: HashMap<String, ListingWriter>,
-	writer: BroadcastWriter,
+	active: HashMap<String, ListingProducer>,
+	writer: BroadcastProducer,
 }
 
 #[derive(Clone)]
 pub struct Listings {
 	state: Arc<Mutex<State>>,
-	reader: BroadcastReader,
+	reader: BroadcastConsumer,
 }
 
 impl Listings {
@@ -49,9 +49,9 @@ impl Listings {
 		if let Some(listing) = state.active.get_mut(prefix) {
 			listing.insert(base.to_string())?;
 		} else {
-			let track = state.writer.build_track(prefix, 0).insert().unwrap();
+			let track = state.writer.build_track(prefix, 0).insert();
 
-			let mut listing = ListingWriter::new(track);
+			let mut listing = ListingProducer::new(track);
 			listing.insert(base.to_string())?;
 			state.active.insert(prefix.to_string(), listing);
 		}
@@ -89,7 +89,7 @@ impl Listings {
 		}
 	}
 
-	pub fn broadcast(&self) -> BroadcastReader {
+	pub fn broadcast(&self) -> BroadcastConsumer {
 		self.reader.clone()
 	}
 }

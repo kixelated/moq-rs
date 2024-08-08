@@ -7,21 +7,20 @@ use tracing::Instrument;
 
 use crate::{
 	message,
-	model::{Broadcast, BroadcastReader, Produce, Router, Track, TrackReader, TrackWriter},
-	runtime::{self, Lock, Queue},
-	util::OrClose,
-	BroadcastWriter, Error, RouterWriter,
+	model::{Broadcast, BroadcastConsumer, Produce, Router, Track, TrackConsumer},
+	util::{spawn, Close, Lock, OrClose},
+	BroadcastProducer, Error, RouterProducer,
 };
 
-use super::{Reader, Session, Stream};
+use super::{subscribe, Announced, AnnouncedProducer, Reader, Session, Stream, SubscribeConsumer};
 
 #[derive(Clone)]
 pub struct Subscriber {
 	session: Session,
-	announced: Queue<BroadcastReader>,
+	announced: AnnouncedProducer,
 
-	broadcasts: Lock<HashMap<String, BroadcastReader>>,
-	tracks: Lock<HashMap<u64, TrackWriter>>,
+	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
+	subscribes: Lock<HashMap<u64, SubscribeConsumer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
 
@@ -32,21 +31,20 @@ impl Subscriber {
 			announced: Default::default(),
 
 			broadcasts: Default::default(),
-			tracks: Default::default(),
+			subscribes: Default::default(),
 			next_id: Default::default(),
 		}
 	}
 
-	// TODO make a handle so there can be multiple subscribers
-	pub async fn announced(&mut self) -> Option<BroadcastReader> {
-		self.announced.pop().await
+	pub fn announced(&mut self) -> Announced {
+		self.announced.subscribe()
 	}
 
 	// TODO come up with a better name
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastReader, Error> {
+	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastConsumer, Error> {
 		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
@@ -56,7 +54,7 @@ impl Subscriber {
 		};
 
 		let router = Router::produce();
-		writer.route_tracks(router.1)?;
+		writer.route_tracks(router.1);
 
 		let announce = Announce {
 			broadcast: writer,
@@ -65,7 +63,7 @@ impl Subscriber {
 		};
 
 		let span = tracing::info_span!("announce", broadcast = broadcast.name);
-		runtime::spawn(self.clone().run_announce(announce).instrument(span));
+		spawn(self.clone().run_announce(announce).instrument(span));
 
 		Ok(reader)
 	}
@@ -75,7 +73,7 @@ impl Subscriber {
 			let mut this = self.clone();
 			let broadcast = announce.broadcast.info.as_ref().clone();
 
-			runtime::spawn(async move {
+			spawn(async move {
 				match this.subscribe(broadcast, request.info.clone()).await {
 					Ok(track) => request.serve(track),
 					Err(err) => request.close(err),
@@ -88,86 +86,23 @@ impl Subscriber {
 		&mut self,
 		broadcast: B,
 		track: T,
-	) -> Result<TrackReader, Error> {
+	) -> Result<TrackConsumer, Error> {
 		self.subscribe_inner(broadcast.into(), track.into()).await
 	}
 
 	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
-	pub async fn subscribe_inner(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackReader, Error> {
-		let sub = self.init_subscribe(track);
-		let mut stream = self.session.open(message::Stream::Subscribe).await?;
-
-		self.start_subscribe(&mut stream, broadcast, &sub)
-			.await
-			.or_close(&mut stream)?; // wait for an OK before returning
-
-		let mut this = self.clone();
-		let track = sub.track.clone();
-
-		runtime::spawn(async move {
-			this.run_subscribe(&mut stream, sub).await.or_close(&mut stream).ok();
-		});
-
-		Ok(track)
-	}
-
-	fn init_subscribe(&mut self, track: Track) -> Subscribe {
+	pub async fn subscribe_inner(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackConsumer, Error> {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
-		let (writer, reader) = track.produce();
-		self.tracks.lock().insert(id, writer);
+		let (mut producer, consumer) = subscribe(id, track, self.subscribes.clone());
+		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
-		Subscribe {
-			id,
-			track: reader,
-			tracks: self.tracks.clone(),
-		}
-	}
+		producer.start(&mut stream, &broadcast).await.or_close(&mut stream)?; // wait for an OK before returning
+		spawn(async move {
+			producer.run(&mut stream).await.or_close(&mut stream).ok();
+		});
 
-	async fn start_subscribe(
-		&mut self,
-		stream: &mut Stream,
-		broadcast: Broadcast,
-		sub: &Subscribe,
-	) -> Result<(), Error> {
-		let request = message::Subscribe {
-			id: sub.id,
-			broadcast: broadcast.name.clone(),
-
-			track: sub.track.name.clone(),
-			priority: sub.track.priority,
-
-			group_order: sub.track.group_order,
-			group_expires: sub.track.group_expires,
-
-			// TODO
-			group_min: None,
-			group_max: None,
-		};
-
-		stream.writer.encode(&request).await?;
-
-		// TODO use the response to update the track
-		let _response: message::Info = stream.reader.decode().await?;
-
-		tracing::info!("ok");
-
-		Ok(())
-	}
-
-	async fn run_subscribe(&mut self, stream: &mut Stream, sub: Subscribe) -> Result<(), Error> {
-		loop {
-			tokio::select! {
-				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
-					// TODO expose updates to application
-					// TODO use to detect gaps
-					if res?.is_none() {
-						return Ok(());
-					}
-				},
-				res = sub.track.closed() => res?,
-			};
-		}
+		Ok(consumer.track)
 	}
 
 	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -179,7 +114,7 @@ impl Subscriber {
 	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
 		// Serve the broadcast and add it to the announced queue.
 		let broadcast = self.namespace(announce.broadcast)?;
-		self.announced.push(broadcast.clone()).map_err(|_| Error::Cancel)?;
+		self.announced.insert(broadcast.clone());
 
 		// Send the OK message.
 		let msg = message::AnnounceOk {};
@@ -188,41 +123,34 @@ impl Subscriber {
 		tracing::info!("ok");
 
 		// Wait until the stream is closed.
-		tokio::select! {
+		let res = tokio::select! {
 			res = stream.reader.closed() => res,
 			res = broadcast.closed() => res.map_err(Into::into),
+		};
+
+		self.announced.remove(&broadcast.name);
+
+		res
+	}
+
+	pub(super) async fn recv_group(&mut self, mut stream: Reader) {
+		match self.find_subscribe(&mut stream).await {
+			Ok((group, subscribe)) => subscribe.serve(group, stream).await,
+			Err(err) => stream.close(err),
 		}
 	}
 
-	pub(super) async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
-		let group = stream.decode().await?;
-		self.serve_group(stream, group).await
-	}
+	async fn find_subscribe(&mut self, stream: &mut Reader) -> Result<(message::Group, SubscribeConsumer), Error> {
+		let group: message::Group = stream.decode().await?;
 
-	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
-	async fn serve_group(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), Error> {
-		let mut group = self
-			.tracks
+		let subscribe = self
+			.subscribes
 			.lock()
-			.get_mut(&group.subscribe)
-			.ok_or(Error::NotFound)?
-			.create_group(group.sequence)?;
+			.get(&group.subscribe)
+			.cloned()
+			.ok_or(Error::NotFound)?;
 
-		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
-			let mut frame = group.create_frame(frame.size)?;
-			let mut remain = frame.size;
-
-			while remain > 0 {
-				let chunk = stream.read_chunk(remain).await?.ok_or(Error::WrongSize)?;
-
-				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
-				tracing::trace!(chunk = chunk.len(), remain, "chunk");
-
-				frame.write_chunk(chunk)?;
-			}
-		}
-
-		Ok(())
+		Ok((group, subscribe))
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {
@@ -230,24 +158,10 @@ impl Subscriber {
 	}
 }
 
-// Simple wrapper to remove on drop.
-struct Subscribe {
-	pub id: u64,
-	pub track: TrackReader,
-	tracks: Lock<HashMap<u64, TrackWriter>>,
-}
-
-impl Drop for Subscribe {
-	fn drop(&mut self) {
-		self.tracks.lock().remove(&self.id);
-	}
-}
-
-// Simple wrapper to remove on drop.
 struct Announce {
-	pub broadcast: BroadcastWriter,
-	pub router: RouterWriter<Track>,
-	broadcasts: Lock<HashMap<String, BroadcastReader>>,
+	pub broadcast: BroadcastProducer,
+	pub router: RouterProducer<Track>,
+	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
 }
 
 impl Drop for Announce {

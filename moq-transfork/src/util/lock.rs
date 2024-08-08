@@ -17,16 +17,6 @@ impl<T> Lock<T> {
 			inner: self.inner.lock().unwrap(),
 		}
 	}
-
-	pub fn try_lock(&self) -> Option<LockGuard<T>> {
-		self.inner.try_lock().ok().map(|inner| LockGuard { inner })
-	}
-
-	pub fn downgrade(&self) -> LockWeak<T> {
-		LockWeak {
-			inner: sync::Arc::downgrade(&self.inner),
-		}
-	}
 }
 
 impl<T: Default> Default for Lock<T> {
@@ -58,23 +48,5 @@ impl<'a, T> ops::Deref for LockGuard<'a, T> {
 impl<'a, T> ops::DerefMut for LockGuard<'a, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner
-	}
-}
-
-pub struct LockWeak<T> {
-	inner: sync::Weak<sync::Mutex<T>>,
-}
-
-impl<T> LockWeak<T> {
-	pub fn upgrade(&self) -> Option<Lock<T>> {
-		self.inner.upgrade().map(|inner| Lock { inner })
-	}
-}
-
-impl<T> Clone for LockWeak<T> {
-	fn clone(&self) -> Self {
-		Self {
-			inner: self.inner.clone(),
-		}
 	}
 }

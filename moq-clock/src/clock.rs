@@ -4,11 +4,11 @@ use chrono::prelude::*;
 use moq_transfork::prelude::*;
 
 pub struct Publisher {
-	track: TrackWriter,
+	track: TrackProducer,
 }
 
 impl Publisher {
-	pub fn new(track: TrackWriter) -> Self {
+	pub fn new(track: TrackProducer) -> Self {
 		Self { track }
 	}
 
@@ -20,10 +20,7 @@ impl Publisher {
 		let mut sequence = start.minute();
 
 		loop {
-			let segment = self
-				.track
-				.create_group(sequence as u64)
-				.context("failed to create minute segment")?;
+			let segment = self.track.create_group(sequence as u64);
 
 			sequence += 1;
 
@@ -43,19 +40,15 @@ impl Publisher {
 		}
 	}
 
-	async fn send_segment(mut segment: GroupWriter, mut now: DateTime<Utc>) -> anyhow::Result<()> {
+	async fn send_segment(mut segment: GroupProducer, mut now: DateTime<Utc>) -> anyhow::Result<()> {
 		// Everything but the second.
 		let base = now.format("%Y-%m-%d %H:%M:").to_string();
 
-		segment
-			.write_frame(base.clone().into())
-			.context("failed to write base")?;
+		segment.write_frame(base.clone().into());
 
 		loop {
 			let delta = now.format("%S").to_string();
-			segment
-				.write_frame(delta.clone().into())
-				.context("failed to write delta")?;
+			segment.write_frame(delta.clone().into());
 
 			println!("{}{}", base, delta);
 
@@ -76,11 +69,11 @@ impl Publisher {
 	}
 }
 pub struct Subscriber {
-	track: TrackReader,
+	track: TrackConsumer,
 }
 
 impl Subscriber {
-	pub fn new(track: TrackReader) -> Self {
+	pub fn new(track: TrackConsumer) -> Self {
 		Self { track }
 	}
 

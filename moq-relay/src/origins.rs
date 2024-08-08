@@ -7,7 +7,7 @@ use moq_transfork::prelude::*;
 
 #[derive(Default)]
 struct RouterState {
-	lookup: HashMap<String, VecDeque<BroadcastReader>>,
+	lookup: HashMap<String, VecDeque<BroadcastConsumer>>,
 }
 
 #[derive(Clone, Default)]
@@ -21,7 +21,7 @@ impl Origins {
 		Origins { state }
 	}
 
-	pub fn announce(&self, broadcast: BroadcastReader) -> RouterAnnounce {
+	pub fn announce(&self, broadcast: BroadcastConsumer) -> RouterAnnounce {
 		let mut state = self.state.lock().unwrap();
 		let broadcasts = state.lookup.entry(broadcast.name.clone()).or_default();
 
@@ -30,7 +30,7 @@ impl Origins {
 		RouterAnnounce::new(self.clone(), broadcast)
 	}
 
-	fn unannounce(&self, broadcast: &BroadcastReader) {
+	fn unannounce(&self, broadcast: &BroadcastConsumer) {
 		let mut state = self.state.lock().unwrap();
 		let _broadcasts = state.lookup.get_mut(&broadcast.name).expect("missing entry");
 
@@ -38,7 +38,7 @@ impl Origins {
 		unimplemented!("unannounce");
 	}
 
-	pub async fn serve(&self, writer: &mut RouterWriter<Broadcast>) {
+	pub async fn serve(&self, writer: &mut RouterProducer<Broadcast>) {
 		while let Some(request) = writer.requested().await {
 			let state = self.state.lock().unwrap();
 			match state.lookup.get(&request.info.name).and_then(|bs| bs.front()) {
@@ -51,11 +51,11 @@ impl Origins {
 
 pub struct RouterAnnounce {
 	router: Origins,
-	broadcast: BroadcastReader,
+	broadcast: BroadcastConsumer,
 }
 
 impl RouterAnnounce {
-	pub fn new(router: Origins, broadcast: BroadcastReader) -> Self {
+	pub fn new(router: Origins, broadcast: BroadcastConsumer) -> Self {
 		Self { router, broadcast }
 	}
 }

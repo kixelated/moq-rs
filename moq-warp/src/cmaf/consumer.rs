@@ -16,8 +16,8 @@ pub struct Consumer {
 }
 
 impl Consumer {
-	pub async fn load(broadcast: BroadcastReader) -> Result<Self, Error> {
-		let catalog = catalog::Reader::subscribe(broadcast.clone()).await?.read().await?;
+	pub async fn load(broadcast: BroadcastConsumer) -> Result<Self, Error> {
+		let catalog = catalog::Consumer::subscribe(broadcast.clone()).await?.read().await?;
 		tracing::info!(?catalog);
 
 		let mut tracks = Vec::new();
@@ -41,7 +41,7 @@ impl Consumer {
 	}
 
 	// TODO This is quite limited because we can currently only flush a single fMP4 init header
-	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastReader) -> Result<Option<Bytes>, Error> {
+	async fn load_init(catalog: &catalog::Root, broadcast: &BroadcastConsumer) -> Result<Option<Bytes>, Error> {
 		for track in &catalog.tracks {
 			if let Some(name) = &track.init_track {
 				let track = moq_transfork::Track::build(name, 0);
@@ -81,12 +81,12 @@ impl Consumer {
 }
 
 struct MediaTrack {
-	groups: TrackReader,
-	current: Option<GroupReader>,
+	groups: TrackConsumer,
+	current: Option<GroupConsumer>,
 }
 
 impl MediaTrack {
-	pub fn new(track: TrackReader) -> Self {
+	pub fn new(track: TrackConsumer) -> Self {
 		Self {
 			groups: track,
 			current: None,

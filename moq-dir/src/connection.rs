@@ -37,10 +37,11 @@ impl Connection {
 
 	async fn serve_publisher(self, mut remote: Subscriber) -> Result<(), moq_transfork::Error> {
 		let mut tasks = FuturesUnordered::new();
+		let mut announced = remote.announced();
 
 		loop {
 			tokio::select! {
-				Some(announce) = remote.announced() => {
+				Some(announce) = announced.next() => {
 					let this = self.clone();
 					tasks.push(this.serve_announce(announce));
 				},
@@ -51,7 +52,7 @@ impl Connection {
 	}
 
 	#[tracing::instrument("serve", skip_all, err, fields(broadcast = announce.name))]
-	async fn serve_announce(mut self, announce: BroadcastReader) -> anyhow::Result<()> {
+	async fn serve_announce(mut self, announce: BroadcastConsumer) -> anyhow::Result<()> {
 		self.listings.register(&announce.name)?;
 		announce.closed().await?;
 

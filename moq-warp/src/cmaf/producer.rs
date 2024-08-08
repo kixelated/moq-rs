@@ -13,11 +13,11 @@ pub struct Producer {
 	tracks: HashMap<u32, Track>,
 
 	// The full broadcast of tracks
-	broadcast: BroadcastWriter,
+	broadcast: BroadcastProducer,
 
 	// The init and catalog tracks
-	init: TrackWriter,
-	catalog: catalog::Writer,
+	init: TrackProducer,
+	catalog: catalog::Producer,
 
 	// The ftyp and moov atoms at the start of the file.
 	ftyp: Option<Bytes>,
@@ -28,9 +28,9 @@ pub struct Producer {
 }
 
 impl Producer {
-	pub fn new(mut broadcast: BroadcastWriter) -> Result<Self, Error> {
-		let catalog = catalog::Writer::publish(&mut broadcast)?;
-		let init = broadcast.build_track("0.mp4", 1).insert()?;
+	pub fn new(mut broadcast: BroadcastProducer) -> Result<Self, Error> {
+		let catalog = catalog::Producer::publish(&mut broadcast)?;
+		let init = broadcast.build_track("0.mp4", 1).insert();
 
 		Ok(Producer {
 			tracks: Default::default(),
@@ -129,7 +129,7 @@ impl Producer {
 		init.extend_from_slice(&raw);
 
 		// Create the catalog track with a single segment.
-		self.init.append_group()?.write_frame(init.into())?;
+		self.init.append_group().write_frame(init.into());
 
 		let mut tracks = Vec::new();
 
@@ -215,7 +215,7 @@ impl Producer {
 			};
 
 			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.build_track(&name, priority).insert()?;
+			let track = self.broadcast.build_track(&name, priority).insert();
 
 			let track = Track::new(track, handler);
 			self.tracks.insert(id, track);
@@ -287,10 +287,10 @@ fn next_atom<B: Buf>(buf: &mut B) -> Result<Option<Bytes>, Error> {
 
 struct Track {
 	// The track we're producing
-	track: TrackWriter,
+	track: TrackProducer,
 
 	// The current group of pictures
-	group: Option<GroupWriter>,
+	group: Option<GroupProducer>,
 
 	// The moof header
 	header: Option<Bytes>,
@@ -300,7 +300,7 @@ struct Track {
 }
 
 impl Track {
-	fn new(track: TrackWriter, handler: TrackType) -> Self {
+	fn new(track: TrackProducer, handler: TrackType) -> Self {
 		Self {
 			track,
 			group: None,
@@ -323,12 +323,12 @@ impl Track {
 
 		let mut group = match self.group.take() {
 			Some(group) => group,
-			None => self.track.append_group()?,
+			None => self.track.append_group(),
 		};
 
-		let mut frame = group.create_frame(mdat.len() + moof.len())?;
-		frame.write_chunk(moof)?;
-		frame.write_chunk(mdat)?;
+		let mut frame = group.create_frame(mdat.len() + moof.len());
+		frame.write_chunk(moof);
+		frame.write_chunk(mdat);
 
 		self.group.replace(group);
 

@@ -2,16 +2,16 @@ use std::time;
 
 use super::{Error, Result, Root};
 
-pub struct Reader {
-	track: moq_transfork::TrackReader,
+pub struct Consumer {
+	track: moq_transfork::TrackConsumer,
 }
 
-impl Reader {
-	pub fn new(track: moq_transfork::TrackReader) -> Self {
+impl Consumer {
+	pub fn new(track: moq_transfork::TrackConsumer) -> Self {
 		Self { track }
 	}
 
-	pub async fn subscribe(broadcast: moq_transfork::BroadcastReader) -> Result<Self> {
+	pub async fn subscribe(broadcast: moq_transfork::BroadcastConsumer) -> Result<Self> {
 		let track = moq_transfork::Track::build("catalog.json", 0)
 			.group_order(moq_transfork::GroupOrder::Descending)
 			.group_expires(time::Duration::ZERO)

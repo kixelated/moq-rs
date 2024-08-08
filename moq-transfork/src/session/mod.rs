@@ -1,18 +1,19 @@
 use crate::{
-	async_clone, message,
-	runtime::{self, Watch},
-	setup,
-	util::{Close, OrClose},
+	async_clone, message, setup,
+	util::{spawn, Close, OrClose},
 	Error,
 };
+mod announced;
 mod client;
 mod publisher;
 mod reader;
 mod server;
 mod stream;
+mod subscribe;
 mod subscriber;
 mod writer;
 
+pub use announced::*;
 pub use client::*;
 pub use publisher::*;
 pub use server::*;
@@ -20,7 +21,10 @@ pub use subscriber::*;
 
 use reader::*;
 use stream::*;
+use subscribe::*;
 use writer::*;
+
+use tokio::sync::watch;
 
 struct SessionState {
 	closed: Result<(), Error>,
@@ -35,7 +39,7 @@ impl Default for SessionState {
 #[derive(Clone)]
 pub(crate) struct Session {
 	webtransport: web_transport::Session,
-	state: Watch<SessionState>,
+	state: watch::Sender<SessionState>,
 }
 
 impl Session {
@@ -47,21 +51,20 @@ impl Session {
 	}
 
 	pub fn start(self, role: setup::Role, stream: Stream) -> (Option<Publisher>, Option<Subscriber>) {
-		let backend = self.split();
-
 		let publisher = role.is_publisher().then(|| Publisher::new(self.clone()));
-		let subscriber = role.is_subscriber().then(|| Subscriber::new(self));
+		let subscriber = role.is_subscriber().then(|| Subscriber::new(self.clone()));
+		let this = self;
 
-		runtime::spawn(async_clone!(backend, {
-			backend.run_session(stream).await.or_close(&mut backend).ok();
+		spawn(async_clone!(this, {
+			this.run_session(stream).await.or_close(&mut this).ok();
 		}));
 
-		runtime::spawn(async_clone!(backend, publisher, subscriber, {
-			backend.run_bi(publisher, subscriber).await.or_close(&mut backend).ok();
+		spawn(async_clone!(this, publisher, subscriber, {
+			this.run_bi(publisher, subscriber).await.or_close(&mut this).ok();
 		}));
 
-		runtime::spawn(async_clone!(backend, subscriber, {
-			backend.run_uni(subscriber).await.or_close(&mut backend).ok();
+		spawn(async_clone!(this, subscriber, {
+			this.run_uni(subscriber).await.or_close(&mut this).ok();
 		}));
 
 		(publisher, subscriber)
@@ -75,10 +78,13 @@ impl Session {
 	async fn run_uni(&mut self, subscriber: Option<Subscriber>) -> Result<(), Error> {
 		loop {
 			let mut stream = self.accept_uni().await?;
-			let subscriber = subscriber.clone().ok_or(Error::RoleViolation)?;
+			let mut subscriber = subscriber.clone().ok_or(Error::RoleViolation)?;
 
-			runtime::spawn(async move {
-				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
+			spawn(async move {
+				match stream.decode_silent().await {
+					Ok(message::StreamUni::Group) => subscriber.recv_group(stream).await,
+					Err(err) => stream.close(err),
+				};
 			});
 		}
 	}
@@ -89,18 +95,12 @@ impl Session {
 			let publisher = publisher.clone();
 			let subscriber = subscriber.clone();
 
-			runtime::spawn(async move {
+			spawn(async move {
 				Self::run_control(&mut stream, publisher, subscriber)
 					.await
 					.or_close(&mut stream)
 					.ok();
 			});
-		}
-	}
-
-	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
-		match stream.decode_silent().await? {
-			message::StreamUni::Group => subscriber.recv_group(stream).await,
 		}
 	}
 
@@ -169,34 +169,20 @@ impl Session {
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {
+		let mut state = self.state.subscribe();
 		loop {
-			{
-				let state = self.state.lock();
-				state.closed.clone()?;
-
-				match state.changed() {
-					Some(notify) => notify,
-					None => return Err(Error::Cancel),
-				}
+			state.borrow_and_update().closed.clone()?;
+			if state.changed().await.is_err() {
+				return Ok(());
 			}
-			.await;
-		}
-	}
-
-	pub fn split(&self) -> Self {
-		Self {
-			webtransport: self.webtransport.clone(),
-			state: self.state.split(),
 		}
 	}
 }
 
 impl Close for Session {
 	fn close(&mut self, err: Error) {
-		if let Some(mut state) = self.state.lock_mut() {
-			tracing::warn!(?err, "closing session");
-			self.webtransport.close(err.to_code(), &err.to_string());
-			state.closed = Err(err);
-		}
+		tracing::warn!(?err, "closing session");
+		self.webtransport.close(err.to_code(), &err.to_string());
+		self.state.send_modify(|state| state.closed = Err(err));
 	}
 }

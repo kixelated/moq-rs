@@ -1,20 +1,22 @@
-//! A track is a collection of semi-reliable and semi-ordered streams, split into a [Writer] and [Reader] handle.
+//! A track is a collection of semi-reliable and semi-ordered streams, split into a [Producer] and [Consumer] handle.
 //!
-//! A [Writer] creates streams with a sequence number and priority.
+//! A [Producer] creates streams with a sequence number and priority.
 //! The sequest number is used to determine the order of streams, while the priority is used to determine which stream to transmit first.
 //! This may seem counter-intuitive, but is designed for live streaming where the newest streams may be higher priority.
-//! A cloned [Writer] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
+//! A cloned [Producer] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
 //!
-//! A [Reader] may not receive all streams in order or at all.
+//! A [Consumer] may not receive all streams in order or at all.
 //! These streams are meant to be transmitted over congested networks and the key to MoQ Tranport is to not block on them.
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
-//! A cloned [Reader] will receive a copy of all new stream going forward (fanout).
+//! A cloned [Consumer] will receive a copy of all new stream going forward (fanout).
 //!
 //! The track is closed with [Error::Error] when all writers or readers are dropped.
 
-use super::{Group, GroupReader, GroupWriter};
+use tokio::sync::watch;
+
+use super::{Group, GroupConsumer, GroupProducer};
 pub use crate::message::GroupOrder;
-use crate::{runtime::Watch, Error, Produce};
+use crate::{Error, Produce};
 
 use std::{cmp::Ordering, ops, sync::Arc, time};
 
@@ -39,15 +41,15 @@ impl Track {
 }
 
 impl Produce for Track {
-	type Reader = TrackReader;
-	type Writer = TrackWriter;
+	type Consumer = TrackConsumer;
+	type Producer = TrackProducer;
 
-	fn produce(self) -> (TrackWriter, TrackReader) {
-		let state = Watch::default();
+	fn produce(self) -> (TrackProducer, TrackConsumer) {
+		let (send, recv) = watch::channel(TrackState::default());
 		let info = Arc::new(self);
 
-		let writer = TrackWriter::new(state.split(), info.clone());
-		let reader = TrackReader::new(state, info);
+		let writer = TrackProducer::new(send, info.clone());
+		let reader = TrackConsumer::new(recv, info);
 
 		(writer, reader)
 	}
@@ -72,7 +74,7 @@ impl TrackBuilder {
 		self
 	}
 
-	pub fn produce(self) -> (TrackWriter, TrackReader) {
+	pub fn produce(self) -> (TrackProducer, TrackConsumer) {
 		self.track.produce()
 	}
 
@@ -89,77 +91,77 @@ impl From<TrackBuilder> for Track {
 }
 
 struct TrackState {
-	latest: Option<GroupReader>,
-	epoch: u64, // Updated each time latest changes
+	latest: Option<GroupConsumer>,
 	closed: Result<(), Error>,
+	epoch: u64, // +1 each change
 }
 
 impl Default for TrackState {
 	fn default() -> Self {
 		Self {
 			latest: None,
-			epoch: 0,
 			closed: Ok(()),
+			epoch: 0,
 		}
 	}
 }
 
-pub struct TrackWriter {
+pub struct TrackProducer {
 	pub info: Arc<Track>,
-	state: Watch<TrackState>,
+	state: watch::Sender<TrackState>,
 
 	// Cache the next sequence number to use
 	next: u64,
 }
 
-impl TrackWriter {
-	fn new(state: Watch<TrackState>, info: Arc<Track>) -> Self {
+impl TrackProducer {
+	fn new(state: watch::Sender<TrackState>, info: Arc<Track>) -> Self {
 		Self { info, state, next: 0 }
 	}
 
 	// Build a new group with the given sequence number.
-	pub fn create_group(&mut self, sequence: u64) -> Result<GroupWriter, Error> {
+	pub fn create_group(&mut self, sequence: u64) -> GroupProducer {
 		let group = Group::new(sequence);
 		let (writer, reader) = group.produce();
 
-		let mut state = self.state.lock_mut().ok_or(Error::Cancel)?;
-
-		if let Some(latest) = &state.latest {
-			match writer.sequence.cmp(&latest.sequence) {
-				Ordering::Less => return Ok(writer), // TODO dropped immediately, lul
-				Ordering::Equal => return Err(Error::Duplicate),
-				Ordering::Greater => state.latest = Some(reader),
+		self.state.send_if_modified(|state| {
+			if let Some(latest) = &state.latest {
+				match writer.sequence.cmp(&latest.sequence) {
+					Ordering::Less => return false,  // Not modified,
+					Ordering::Equal => return false, // TODO error?
+					Ordering::Greater => (),
+				}
 			}
-		} else {
+
 			state.latest = Some(reader);
-		}
+			state.epoch += 1;
 
-		state.epoch += 1;
+			self.next = sequence + 1;
 
-		// Cache the next sequence number
-		self.next = state.latest.as_ref().unwrap().sequence + 1;
+			true
+		});
 
-		Ok(writer)
+		writer
 	}
 
 	// Build a new group with the next sequence number.
-	pub fn append_group(&mut self) -> Result<GroupWriter, Error> {
+	pub fn append_group(&mut self) -> GroupProducer {
 		self.create_group(self.next)
 	}
 
-	/// Close the segment with an error.
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		let state = self.state.lock();
-		state.closed.clone()?;
+	/// Close the track with an error.
+	pub fn close(self, err: Error) {
+		self.state.send_modify(|state| {
+			state.closed = Err(err);
+		});
+	}
 
-		let mut state = state.into_mut().ok_or(Error::Cancel)?;
-		state.closed = Err(err);
-
-		Ok(())
+	pub async fn unused(&self) {
+		self.state.closed().await
 	}
 }
 
-impl ops::Deref for TrackWriter {
+impl ops::Deref for TrackProducer {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
@@ -168,19 +170,19 @@ impl ops::Deref for TrackWriter {
 }
 
 #[derive(Clone)]
-pub struct TrackReader {
+pub struct TrackConsumer {
 	pub info: Arc<Track>,
-	state: Watch<TrackState>,
+	state: watch::Receiver<TrackState>,
 	epoch: u64,
 }
 
-impl TrackReader {
-	fn new(state: Watch<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, epoch: 0, info }
+impl TrackConsumer {
+	fn new(state: watch::Receiver<TrackState>, info: Arc<Track>) -> Self {
+		Self { state, info, epoch: 0 }
 	}
 
-	pub fn get_group(&self, sequence: u64) -> Result<GroupReader, Error> {
-		let state = self.state.lock();
+	pub fn get_group(&self, sequence: u64) -> Result<GroupConsumer, Error> {
+		let state = self.state.borrow();
 
 		// TODO support more than just the latest group
 		if let Some(latest) = &state.latest {
@@ -195,49 +197,41 @@ impl TrackReader {
 
 	// NOTE: This can return groups out of order.
 	// TODO obey order and expires
-	pub async fn next_group(&mut self) -> Result<Option<GroupReader>, Error> {
+	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>, Error> {
 		loop {
 			{
-				let state = self.state.lock();
-
-				if self.epoch != state.epoch {
-					self.epoch = state.epoch;
-					return Ok(state.latest.clone());
+				let state = self.state.borrow_and_update();
+				if let Some(latest) = state.latest.as_ref() {
+					if self.epoch != latest.sequence {
+						self.epoch = latest.sequence;
+						return Ok(Some(latest.clone()));
+					}
 				}
 
 				state.closed.clone()?;
-				match state.changed() {
-					Some(notify) => notify,
-					None => return Ok(None),
-				}
 			}
-			.await; // Try again when the state changes
+
+			if self.state.changed().await.is_err() {
+				return Ok(None);
+			}
 		}
 	}
 
 	// Returns the largest group
 	pub fn latest_group(&self) -> u64 {
-		let state = self.state.lock();
+		let state = self.state.borrow();
 		state.latest.as_ref().map(|group| group.sequence).unwrap_or_default()
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {
-		loop {
-			{
-				let state = self.state.lock();
-				state.closed.clone()?;
-
-				match state.changed() {
-					Some(notify) => notify,
-					None => return Ok(()),
-				}
-			}
-			.await;
+		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
+			Ok(state) => state.closed.clone(),
+			Err(_) => Ok(()),
 		}
 	}
 }
 
-impl ops::Deref for TrackReader {
+impl ops::Deref for TrackConsumer {
 	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {

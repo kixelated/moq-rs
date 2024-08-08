@@ -4,9 +4,8 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	message,
-	model::{Broadcast, BroadcastReader, GroupReader, RouterReader, Track, TrackReader},
-	runtime::{self, Lock},
-	util::OrClose,
+	model::{Broadcast, BroadcastConsumer, GroupConsumer, RouterConsumer, Track, TrackConsumer},
+	util::{spawn, Lock, OrClose},
 	Error,
 };
 
@@ -17,8 +16,8 @@ pub struct Publisher {
 	session: Session,
 
 	// Used to route incoming subscriptions
-	broadcasts: Lock<HashMap<String, BroadcastReader>>,
-	router: Lock<Option<RouterReader<Broadcast>>>,
+	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
+	router: Lock<Option<RouterConsumer<Broadcast>>>,
 }
 
 impl Publisher {
@@ -30,9 +29,9 @@ impl Publisher {
 		}
 	}
 
-	/// Announce a broadcast and serve tracks using the returned [BroadcastWriter].
+	/// Announce a broadcast and serve tracks using the returned [BroadcastProducer].
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
-	pub async fn announce(&mut self, broadcast: BroadcastReader) -> Result<(), Error> {
+	pub async fn announce(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
 		let announce = self.init_announce(broadcast)?;
 
 		let mut stream = self.session.open(message::Stream::Announce).await?;
@@ -40,14 +39,14 @@ impl Publisher {
 			.await
 			.or_close(&mut stream)?;
 
-		runtime::spawn(async move {
+		spawn(async move {
 			Self::run_announce(stream, announce).await.ok();
 		});
 
 		Ok(())
 	}
 
-	fn init_announce(&mut self, broadcast: BroadcastReader) -> Result<Announce, Error> {
+	fn init_announce(&mut self, broadcast: BroadcastConsumer) -> Result<Announce, Error> {
 		match self.broadcasts.lock().entry(broadcast.name.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
@@ -82,7 +81,7 @@ impl Publisher {
 	}
 
 	// Optionally send any requests for unknown broadcasts to the router
-	pub fn route(&mut self, router: RouterReader<Broadcast>) {
+	pub fn route(&mut self, router: RouterConsumer<Broadcast>) {
 		*self.router.lock() = Some(router);
 	}
 
@@ -90,7 +89,7 @@ impl Publisher {
 		&self,
 		broadcast: B,
 		track: T,
-	) -> Result<TrackReader, Error> {
+	) -> Result<TrackConsumer, Error> {
 		let broadcast = broadcast.into();
 		let track = track.into();
 
@@ -177,7 +176,7 @@ impl Publisher {
 	}
 
 	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
-	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupReader) -> Result<(), Error> {
+	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupConsumer) -> Result<(), Error> {
 		let mut stream = session.open_uni(message::StreamUni::Group).await?;
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
@@ -185,7 +184,11 @@ impl Publisher {
 			.or_close(&mut stream)
 	}
 
-	pub async fn serve_group_inner(subscribe: u64, group: &mut GroupReader, stream: &mut Writer) -> Result<(), Error> {
+	pub async fn serve_group_inner(
+		subscribe: u64,
+		group: &mut GroupConsumer,
+		stream: &mut Writer,
+	) -> Result<(), Error> {
 		let msg = message::Group {
 			subscribe,
 			sequence: group.sequence,
@@ -269,8 +272,8 @@ impl Publisher {
 }
 
 struct Announce {
-	pub broadcast: BroadcastReader,
-	broadcasts: Lock<HashMap<String, BroadcastReader>>,
+	pub broadcast: BroadcastConsumer,
+	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
 }
 
 impl Drop for Announce {

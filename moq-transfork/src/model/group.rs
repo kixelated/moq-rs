@@ -1,19 +1,19 @@
-//! A group is a stream of frames, split into a [Writer] and [Reader] handle.
+//! A group is a stream of frames, split into a [Producer] and [Consumer] handle.
 //!
-//! A [Writer] writes an ordered stream of frames.
+//! A [Producer] writes an ordered stream of frames.
 //! Frames can be written all at once, or in chunks.
 //!
-//! A [Reader] reads an ordered stream of frames.
+//! A [Consumer] reads an ordered stream of frames.
 //! The reader can be cloned, in which case each reader receives a copy of each frame. (fanout)
 //!
 //! The stream is closed with [ServeError::MoqError] when all writers or readers are dropped.
 use bytes::Bytes;
 use std::ops;
+use tokio::sync::watch;
 
-use crate::runtime::Watch;
 use crate::Error;
 
-use super::{Frame, FrameReader, FrameWriter, Produce};
+use super::{Frame, FrameConsumer, FrameProducer, Produce};
 
 /// Parameters that can be specified by the user
 #[derive(Clone, PartialEq)]
@@ -30,14 +30,14 @@ impl Group {
 }
 
 impl Produce for Group {
-	type Reader = GroupReader;
-	type Writer = GroupWriter;
+	type Consumer = GroupConsumer;
+	type Producer = GroupProducer;
 
-	fn produce(self) -> (GroupWriter, GroupReader) {
-		let state = Watch::default();
+	fn produce(self) -> (GroupProducer, GroupConsumer) {
+		let (send, recv) = watch::channel(GroupState::default());
 
-		let writer = GroupWriter::new(state.split(), self.clone());
-		let reader = GroupReader::new(state, self);
+		let writer = GroupProducer::new(send, self.clone());
+		let reader = GroupConsumer::new(recv, self);
 
 		(writer, reader)
 	}
@@ -45,7 +45,7 @@ impl Produce for Group {
 
 struct GroupState {
 	// The frames that has been written thus far
-	frames: Vec<FrameReader>,
+	frames: Vec<FrameConsumer>,
 
 	// Set when the writer or all readers are dropped.
 	closed: Result<(), Error>,
@@ -61,9 +61,9 @@ impl Default for GroupState {
 }
 
 /// Used to write data to a stream and notify readers.
-pub struct GroupWriter {
+pub struct GroupProducer {
 	// Mutable stream state.
-	state: Watch<GroupState>,
+	state: watch::Sender<GroupState>,
 
 	// Immutable stream state.
 	pub info: Group,
@@ -72,40 +72,39 @@ pub struct GroupWriter {
 	total: usize,
 }
 
-impl GroupWriter {
-	fn new(state: Watch<GroupState>, info: Group) -> Self {
+impl GroupProducer {
+	fn new(state: watch::Sender<GroupState>, info: Group) -> Self {
 		Self { state, info, total: 0 }
 	}
 
 	// Write a frame in one go
-	pub fn write_frame(&mut self, frame: bytes::Bytes) -> Result<(), Error> {
-		self.create_frame(frame.len())?.write_chunk(frame)
+	pub fn write_frame(&mut self, frame: bytes::Bytes) {
+		self.create_frame(frame.len()).write_chunk(frame);
 	}
 
 	// Create a frame with an upfront size
-	pub fn create_frame(&mut self, size: usize) -> Result<FrameWriter, Error> {
+	pub fn create_frame(&mut self, size: usize) -> FrameProducer {
 		let (writer, reader) = Frame::new(size).produce();
 
-		self.state.lock_mut().ok_or(Error::Cancel)?.frames.push(reader);
+		self.state.send_modify(|state| state.frames.push(reader));
 		self.total += 1;
 
-		Ok(writer)
-	}
-
-	/// Close the stream with an error.
-	pub fn close(&mut self, err: Error) -> Result<(), Error> {
-		let state = self.state.lock();
-		state.closed.clone()?;
-		state.into_mut().ok_or(Error::Cancel)?.closed = Err(err);
-		Ok(())
+		writer
 	}
 
 	pub fn frame_count(&self) -> usize {
 		self.total
 	}
+
+	/// Close the stream with an error.
+	pub fn close(self, err: Error) {
+		self.state.send_modify(|state| {
+			state.closed = Err(err);
+		});
+	}
 }
 
-impl ops::Deref for GroupWriter {
+impl ops::Deref for GroupProducer {
 	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {
@@ -115,9 +114,9 @@ impl ops::Deref for GroupWriter {
 
 /// Notified when a stream has new data available.
 #[derive(Clone)]
-pub struct GroupReader {
+pub struct GroupConsumer {
 	// Modify the stream state.
-	state: Watch<GroupState>,
+	state: watch::Receiver<GroupState>,
 
 	// Immutable stream state.
 	pub info: Group,
@@ -127,8 +126,8 @@ pub struct GroupReader {
 	index: usize,
 }
 
-impl GroupReader {
-	fn new(state: Watch<GroupState>, group: Group) -> Self {
+impl GroupConsumer {
+	fn new(state: watch::Receiver<GroupState>, group: Group) -> Self {
 		Self {
 			state,
 			info: group,
@@ -145,10 +144,10 @@ impl GroupReader {
 	}
 
 	// Return a reader for the next frame.
-	pub async fn next_frame(&mut self) -> Result<Option<FrameReader>, Error> {
+	pub async fn next_frame(&mut self) -> Result<Option<FrameConsumer>, Error> {
 		loop {
 			{
-				let state = self.state.lock();
+				let state = self.state.borrow_and_update();
 
 				if let Some(frame) = state.frames.get(self.index).cloned() {
 					self.index += 1;
@@ -156,12 +155,11 @@ impl GroupReader {
 				}
 
 				state.closed.clone()?;
-				match state.changed() {
-					Some(modified) => modified,
-					None => return Ok(None),
-				}
 			}
-			.await; // Try again when the state changes
+
+			if self.state.changed().await.is_err() {
+				return Ok(None);
+			}
 		}
 	}
 
@@ -172,11 +170,18 @@ impl GroupReader {
 
 	// Return the current total number of frames in the group
 	pub fn frame_count(&self) -> usize {
-		self.state.lock().frames.len()
+		self.state.borrow().frames.len()
+	}
+
+	pub async fn closed(&self) -> Result<(), Error> {
+		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
+			Ok(state) => state.closed.clone(),
+			Err(_) => Ok(()),
+		}
 	}
 }
 
-impl ops::Deref for GroupReader {
+impl ops::Deref for GroupConsumer {
 	type Target = Group;
 
 	fn deref(&self) -> &Self::Target {

@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 			.await
 			.context("failed to announce broadcast")?;
 
-		let track = writer.build_track(&config.track, 0).insert()?;
+		let track = writer.build_track(&config.track, 0).insert();
 		let clock = clock::Publisher::new(track);
 
 		clock.run().await

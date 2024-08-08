@@ -30,7 +30,7 @@ pub struct RelayConfig {
 pub struct Relay {
 	config: RelayConfig,
 	outgoing: Origins,
-	incoming: (RouterWriter<Broadcast>, RouterReader<Broadcast>),
+	incoming: (RouterProducer<Broadcast>, RouterConsumer<Broadcast>),
 	next_id: u64,
 }
 
