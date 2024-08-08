@@ -145,7 +145,7 @@ impl Producer {
 			let mut track = catalog::Track {
 				init_track: Some(self.init.name.clone()),
 				name: name.clone(),
-				namespace: Some(self.broadcast.name.clone()),
+				namespace: self.broadcast.name.clone(),
 				packaging: Some(catalog::TrackPackaging::Cmaf),
 				render_group: Some(1),
 				..Default::default()

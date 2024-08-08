@@ -4,8 +4,7 @@ use serde_with::serde_as;
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Track {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub namespace: Option<String>,
+	pub namespace: String,
 
 	pub name: String,
 
