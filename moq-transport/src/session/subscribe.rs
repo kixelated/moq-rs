@@ -2,7 +2,7 @@ use std::ops;
 
 use crate::{
 	data,
-	message::{self, SubscribeLocation, SubscribePair},
+	message::{self, FilterType, SubscribeLocation, SubscribePair},
 	serve::{self, ServeError, TrackWriter, TrackWriterMode},
 };
 
@@ -47,15 +47,16 @@ impl Subscribe {
 			track_alias: id,
 			track_namespace: track.namespace.clone(),
 			track_name: track.name.clone(),
+			filter_type: FilterType::LatestGroup,
 			// TODO add these to the publisher.
-			start: SubscribePair {
+			start: Some(SubscribePair {
 				group: SubscribeLocation::Latest(0),
 				object: SubscribeLocation::Absolute(0),
-			},
-			end: SubscribePair {
+			}),
+			end: Some(SubscribePair {
 				group: SubscribeLocation::None,
 				object: SubscribeLocation::None,
-			},
+			}),
 			params: Default::default(),
 		});
 
@@ -209,6 +210,7 @@ impl SubscribeRecv {
 			group_id: datagram.group_id,
 			object_id: datagram.object_id,
 			priority: datagram.send_order,
+			status: datagram.object_status,
 			payload: datagram.payload,
 		})?;
 

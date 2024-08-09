@@ -5,14 +5,14 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transport = { path = "../moq-transport", version = "0.5" }
+moq-transport = { path = "../moq-transport", version = "0.6" }
 web-transport = { workspace = true }
 web-transport-quinn = "0.3"
 
