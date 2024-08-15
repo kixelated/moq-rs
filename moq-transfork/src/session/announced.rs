@@ -1,11 +1,13 @@
-use indexmap::IndexMap;
+use std::collections::{HashMap, VecDeque};
 use tokio::sync::watch;
 
 use crate::BroadcastConsumer;
 
 #[derive(Default)]
 struct AnnouncedState {
-	broadcasts: IndexMap<String, Option<BroadcastConsumer>>,
+	items: VecDeque<Option<BroadcastConsumer>>,
+	index: HashMap<String, usize>,
+
 	pruned: usize,
 }
 
@@ -24,15 +26,19 @@ impl AnnouncedProducer {
 
 	pub fn insert(&self, broadcast: BroadcastConsumer) {
 		self.state.send_modify(|state| {
-			state.broadcasts.insert(broadcast.name.clone(), Some(broadcast));
+			if let Some(old) = state.index.insert(broadcast.name.clone(), state.items.len()) {
+				state.items[old - state.pruned] = None;
+			}
+
+			state.items.push_back(Some(broadcast.clone()));
 		});
 	}
 
 	pub fn remove(&self, name: &str) {
 		self.state.send_if_modified(|state| {
-			if let Some(index) = state.broadcasts.get_index_of(name) {
-				*state.broadcasts.get_index_mut(index).unwrap().1 = None;
-				if index == 0 {
+			if let Some(index) = state.index.remove(name) {
+				state.items[index - state.pruned] = None;
+				if index == state.pruned {
 					self.prune();
 				}
 			}
@@ -43,19 +49,11 @@ impl AnnouncedProducer {
 
 	// Called when we remove the first broadcast
 	fn prune(&self) {
-		let mut index = 0;
-
-		let state = self.state.borrow();
-		for i in 1..state.broadcasts.len() {
-			if state.broadcasts.get_index(i).unwrap().1.is_some() {
-				index = i;
-				break;
-			}
-		}
-
 		self.state.send_if_modified(|state| {
-			state.broadcasts.drain(..index);
-			state.pruned += index - 1;
+			while let Some(None) = state.items.front() {
+				state.items.pop_front();
+			}
+
 			false
 		});
 	}
@@ -76,13 +74,11 @@ impl Announced {
 					self.index = state.pruned;
 				}
 
-				while self.index < state.broadcasts.len() + state.pruned {
+				while self.index < state.items.len() + state.pruned {
 					let index = self.index - state.pruned;
 					self.index += 1;
 
-					let (_, reader) = state.broadcasts.get_index(index).unwrap();
-
-					if let Some(reader) = reader {
+					if let Some(reader) = &state.items[index] {
 						return Some(reader.clone());
 					}
 				}

@@ -3,12 +3,13 @@ use std::net;
 use anyhow::Context;
 use bytes::BytesMut;
 use clap::{Parser, Subcommand};
+use futures::{stream::FuturesUnordered, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::Url;
 
 use moq_native::quic;
 use moq_transfork::prelude::*;
-use moq_warp::cmaf;
+use moq_warp::fmp4;
 
 #[derive(Parser, Clone)]
 struct Cli {
@@ -61,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn publish(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
 	let (writer, reader) = broadcast.produce();
-	let mut media = cmaf::Producer::new(writer)?;
+	let mut media = fmp4::Producer::new(writer)?;
 
 	let mut publisher = client.publisher().await?;
 	publisher.announce(reader).await.context("failed to announce")?;
@@ -77,18 +78,46 @@ async fn publish(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow:
 
 async fn subscribe(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
 	let subscriber = client.subscriber().await?;
-	let broadcast = subscriber.namespace(broadcast)?;
 
-	let mut consumer = cmaf::Consumer::load(broadcast).await?;
+	let broadcast = subscriber.namespace(broadcast)?;
+	let broadcast = fmp4::BroadcastConsumer::load(broadcast).await?;
 	let mut stdout = tokio::io::stdout();
 
-	if let Some(init) = consumer.init() {
-		stdout.write_all(init).await?;
+	let catalog = broadcast.catalog.clone();
+	let mut tracks = Vec::new();
+
+	for audio in &catalog.audio {
+		let track = broadcast.subscribe(audio.track.clone()).await?;
+		tracks.push(track);
 	}
 
-	while let Some(frame) = consumer.next().await? {
-		stdout.write_all(&frame).await?;
+	for video in &catalog.video {
+		let track = broadcast.subscribe(video.track.clone()).await?;
+		tracks.push(track);
+	}
+
+	stdout.write_all(&broadcast.init.raw).await?;
+
+	while let Some(frame) = read_next(&mut tracks).await? {
+		stdout.write_all(&frame.raw).await?;
 	}
 
 	Ok(())
+}
+
+async fn read_next(tracks: &mut [fmp4::TrackConsumer]) -> anyhow::Result<Option<fmp4::Frame>> {
+	let mut futures = FuturesUnordered::new();
+
+	for track in tracks {
+		futures.push(track.read());
+	}
+
+	loop {
+		match futures.next().await {
+			Some(Err(err)) => return Err(err.into()),
+			Some(Ok(Some(next))) => return Ok(Some(next)),
+			Some(Ok(None)) => continue,
+			None => return Ok(None),
+		};
+	}
 }

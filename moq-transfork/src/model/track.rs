@@ -21,7 +21,8 @@ use crate::{Error, Produce};
 use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// Static information about a track.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
 	pub name: String,
 	pub priority: i8,
@@ -69,7 +70,7 @@ impl TrackBuilder {
 		let track = Track {
 			name: name.into(),
 			priority: 0,
-			group_order: GroupOrder::Descending,
+			group_order: GroupOrder::Desc,
 			group_expires: time::Duration::ZERO,
 		};
 

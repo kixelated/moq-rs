@@ -95,10 +95,12 @@ impl SubscribeProducer {
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
-					// TODO expose updates to application
-					// TODO use to detect gaps
-					if res?.is_none() {
-						return Ok(());
+					match res? {
+						Some(_drop) => {
+							// TODO expose updates to application
+							// TODO use to detect gaps
+						},
+						None => return Ok(()),
 					}
 				},
 				Some((group, mut stream)) = self.groups.recv() => {

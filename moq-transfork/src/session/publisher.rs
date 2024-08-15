@@ -5,7 +5,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, GroupConsumer, RouterConsumer, Track, TrackConsumer},
-	util::{spawn, Lock, OrClose},
+	util::{spawn, FuturesExt, Lock, OrClose},
 	Error,
 };
 
@@ -114,7 +114,6 @@ impl Publisher {
 
 	#[tracing::instrument("subscribed", skip_all, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
-		let broadcast = Broadcast::new(subscribe.broadcast);
 		let track = Track {
 			name: subscribe.track,
 			priority: subscribe.priority,
@@ -122,7 +121,7 @@ impl Publisher {
 			group_order: subscribe.group_order,
 		};
 
-		let mut track = self.subscribe(broadcast.clone(), track).await?;
+		let mut track = self.subscribe(subscribe.broadcast, track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest_group(),
@@ -136,19 +135,11 @@ impl Publisher {
 		tracing::info!("ok");
 
 		let mut tasks = FuturesUnordered::new();
-		let mut fin = false;
 
 		loop {
 			tokio::select! {
-				res = track.next_group(), if !fin => {
-					let mut group = match res? {
-						Some(group) => group,
-						None => {
-							fin = true;
-							continue;
-						},
-					};
-
+				Some(group) = track.next_group().transpose() => {
+					let mut group = group?;
 					let session = self.session.clone();
 
 					tasks.push(async move {
@@ -156,13 +147,12 @@ impl Publisher {
 						(group, res)
 					});
 				},
-				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => {
-					match res? {
-						Some(_update) => {
-							// TODO use it
-						},
-						None => return Ok(()),
-					}
+				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => match res? {
+					Some(_update) => {
+						// TODO use it
+					},
+					// Subscribe has completed
+					None => return Ok(()),
 				},
 				Some(res) = tasks.next() => {
 					let (group, res) = res;
@@ -177,6 +167,7 @@ impl Publisher {
 						stream.writer.encode(&drop).await?;
 					}
 				},
+				else => return Ok(()),
 			}
 		}
 	}

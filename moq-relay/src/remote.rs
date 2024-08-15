@@ -73,7 +73,7 @@ impl Remotes {
 					}
 				},
 				res = subscribe.closed() => return res.map_err(Into::into),
-				_ = tasks.next(), if !tasks.is_empty() => {},
+				Some(_) = tasks.next() => {},
 			}
 		}
 	}

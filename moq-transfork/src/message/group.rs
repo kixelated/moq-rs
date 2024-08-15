@@ -27,17 +27,21 @@ impl Encode for Group {
 	}
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GroupOrder {
-	Ascending,
-	Descending,
+	#[cfg_attr(feature = "serde", serde(rename = "asc"))]
+	Asc,
+
+	#[cfg_attr(feature = "serde", serde(rename = "desc"))]
+	Desc,
 }
 
 impl Decode for GroupOrder {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		match u64::decode(r)? {
-			0 => Ok(Self::Ascending),
-			1 => Ok(Self::Descending),
+			0 => Ok(Self::Asc),
+			1 => Ok(Self::Desc),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
@@ -46,8 +50,8 @@ impl Decode for GroupOrder {
 impl Encode for GroupOrder {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
 		let v: u64 = match self {
-			Self::Ascending => 0,
-			Self::Descending => 1,
+			Self::Asc => 0,
+			Self::Desc => 1,
 		};
 		v.encode(w)
 	}

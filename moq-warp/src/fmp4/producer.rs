@@ -1,7 +1,6 @@
 use bytes::{Buf, Bytes};
 use moq_transfork::prelude::*;
 use mp4::{self, ReadBox, TrackType};
-use std::cmp::max;
 use std::collections::HashMap;
 use std::io::Cursor;
 
@@ -15,10 +14,6 @@ pub struct Producer {
 	// The full broadcast of tracks
 	broadcast: BroadcastProducer,
 
-	// The init and catalog tracks
-	init: TrackProducer,
-	catalog: catalog::Producer,
-
 	// The ftyp and moov atoms at the start of the file.
 	ftyp: Option<Bytes>,
 	moov: Option<mp4::MoovBox>,
@@ -28,15 +23,10 @@ pub struct Producer {
 }
 
 impl Producer {
-	pub fn new(mut broadcast: BroadcastProducer) -> Result<Self, Error> {
-		let catalog = catalog::Producer::publish(&mut broadcast)?;
-		let init = broadcast.insert_track("0.mp4");
-
+	pub fn new(broadcast: BroadcastProducer) -> Result<Self, Error> {
 		Ok(Producer {
 			tracks: Default::default(),
 			broadcast,
-			catalog,
-			init,
 			ftyp: None,
 			moov: None,
 			current: None,
@@ -128,10 +118,11 @@ impl Producer {
 		let mut init = self.ftyp.clone().ok_or(Error::MissingBox("ftyp"))?.to_vec();
 		init.extend_from_slice(&raw);
 
-		// Create the catalog track with a single segment.
-		self.init.append_group().write_frame(init.into());
-
-		let mut tracks = Vec::new();
+		let mut catalog = catalog::Broadcast {
+			video: Default::default(),
+			audio: Default::default(),
+			init: HashMap::from([(catalog::Container::Fmp4, init)]),
+		};
 
 		// Produce the catalog
 		for trak in &moov.traks {
@@ -140,101 +131,157 @@ impl Producer {
 
 			let handler = (&trak.mdia.hdlr.handler_type).try_into()?;
 
-			let mut selection_params = catalog::SelectionParam::default();
-
-			let mut track = catalog::Track {
-				init_track: Some(self.init.name.clone()),
-				name: name.clone(),
-				namespace: self.broadcast.name.clone(),
-				packaging: Some(catalog::TrackPackaging::Cmaf),
-				render_group: Some(1),
-				..Default::default()
+			// I hate this mp4 library.
+			// The vast majority of boxes are NOT exported so we need to use workarounds.
+			// In this case, we're creating a Mp4Track object just to pass trak to the setup functions.
+			let trak = mp4::Mp4Track {
+				trak: trak.clone(),
+				trafs: vec![],
+				default_sample_duration: 0,
 			};
 
-			let stsd = &trak.mdia.minf.stbl.stsd;
+			match handler {
+				TrackType::Video => {
+					let video = Self::setup_video(&name, &trak)?;
 
-			if let Some(avc1) = &stsd.avc1 {
-				// avc1[.PPCCLL]
-				//
-				// let profile = 0x64;
-				// let constraints = 0x00;
-				// let level = 0x1f;
-				let profile = avc1.avcc.avc_profile_indication;
-				let constraints = avc1.avcc.profile_compatibility; // Not 100% certain here, but it's 0x00 on my current test video
-				let level = avc1.avcc.avc_level_indication;
+					let producer = self.broadcast.insert_track(video.track.clone());
+					let track = Track::new(producer, handler);
+					self.tracks.insert(id, track);
 
-				let width = avc1.width;
-				let height = avc1.height;
-
-				let codec = rfc6381_codec::Codec::avc1(profile, constraints, level);
-				let codec_str = codec.to_string();
-
-				selection_params.codec = Some(codec_str);
-				selection_params.width = Some(width.into());
-				selection_params.height = Some(height.into());
-			} else if let Some(_hev1) = &stsd.hev1 {
-				// TODO https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L106
-				return Err(Error::UnsupportedCodec("HEVC"));
-			} else if let Some(mp4a) = &stsd.mp4a {
-				let desc = &mp4a.esds.as_ref().ok_or(Error::MissingBox("esds"))?.es_desc.dec_config;
-				let codec_str = format!("mp4a.{:02x}.{}", desc.object_type_indication, desc.dec_specific.profile);
-
-				selection_params.codec = Some(codec_str);
-				selection_params.channel_config = Some(mp4a.channelcount.to_string());
-				selection_params.samplerate = Some(mp4a.samplerate.value().into());
-
-				let bitrate = max(desc.max_bitrate, desc.avg_bitrate);
-				if bitrate > 0 {
-					selection_params.bitrate = Some(bitrate);
+					catalog.video.push(video);
 				}
-			} else if let Some(vp09) = &stsd.vp09 {
-				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
-				let vpcc = &vp09.vpcc;
-				let codec_str = format!("vp09.0.{:02x}.{:02x}.{:02x}", vpcc.profile, vpcc.level, vpcc.bit_depth);
+				TrackType::Audio => {
+					let audio = Self::setup_audio(&name, &trak)?;
 
-				selection_params.codec = Some(codec_str);
-				selection_params.width = Some(vp09.width.into());
-				selection_params.height = Some(vp09.height.into());
+					let producer = self.broadcast.insert_track(audio.track.clone());
+					let track = Track::new(producer, handler);
+					self.tracks.insert(id, track);
 
-				// TODO Test if this actually works; I'm just guessing based on mp4box.js
-				return Err(Error::UnsupportedCodec("VP9"));
-			} else {
-				// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
-				return Err(Error::UnsupportedCodec("unknown"));
+					catalog.audio.push(audio);
+				}
+				TrackType::Subtitle => {
+					return Err(Error::UnsupportedTrack("subtitle"));
+				}
 			}
-
-			track.selection_params = selection_params;
-
-			tracks.push(track);
-
-			// Change the track priority based on the media type
-			let priority = match handler {
-				TrackType::Video => 3,
-				TrackType::Audio => 2,
-				TrackType::Subtitle => 1,
-			};
-
-			// Store the track publisher in a map so we can update it later.
-			let track = self.broadcast.build_track(&name).priority(priority).insert();
-
-			let track = Track::new(track, handler);
-			self.tracks.insert(id, track);
 		}
-
-		let catalog = catalog::Root {
-			version: 1,
-			streaming_format: 1,
-			streaming_format_version: "0.2".to_string(),
-			streaming_delta_updates: true,
-			tracks,
-		};
 
 		tracing::info!(?catalog);
 
-		// Create a single fragment for the segment.
-		self.catalog.write(catalog)?;
+		catalog.publish(&mut self.broadcast)?;
 
 		Ok(())
+	}
+
+	fn setup_video(name: &str, track: &mp4::Mp4Track) -> Result<catalog::Video, Error> {
+		// NOTE: mp4 does not export these box types so it's a pain in the but to refactor.
+		let stsd = &track.trak.mdia.minf.stbl.stsd;
+
+		let track = if let Some(avc1) = &stsd.avc1 {
+			let avcc = &avc1.avcc;
+			catalog::Video {
+				track: moq_transfork::Track::build(name).priority(2).into(),
+				dimensions: catalog::Dimensions {
+					width: avc1.width,
+					height: avc1.height,
+				},
+				display: Some(catalog::Dimensions {
+					width: avc1.horizresolution.value(),
+					height: avc1.vertresolution.value(),
+				}),
+				codec: catalog::H264 {
+					profile: avcc.avc_profile_indication,
+					constraints: avcc.profile_compatibility,
+					level: avcc.avc_level_indication,
+				}
+				.into(),
+				container: catalog::Container::Fmp4,
+				layers: vec![],
+				bit_rate: None,
+			}
+		} else if let Some(hev1) = &stsd.hev1 {
+			let _hvcc = &hev1.hvcc;
+
+			/*
+			catalog::Video {
+				track: moq_transfork::Track::build(name).priority(2).into(),
+				width: hev1.width,
+				height: hev1.height,
+				codec: catalog::H265 {
+					profile: hvcc.general_profile_idc,
+					level: hvcc.general_level_idc,
+					constraints: hvcc.general_constraint_indicator_flag,
+				},
+				container: catalog::Container::Fmp4,
+				layers: vec![],
+				bit_rate: None,
+			}
+			*/
+
+			// Just waiting for a release:
+			// https://github.com/alfg/mp4-rust/commit/35560e94f5e871a2b2d88bfe964013b39af131e8
+			return Err(Error::UnsupportedCodec("HEVC"));
+		} else if let Some(vp09) = &stsd.vp09 {
+			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
+			let vpcc = &vp09.vpcc;
+
+			catalog::Video {
+				track: moq_transfork::Track::build(name).priority(2).into(),
+				codec: catalog::VP9 {
+					profile: vpcc.profile,
+					level: vpcc.level,
+					bit_depth: vpcc.bit_depth,
+					chroma_subsampling: vpcc.chroma_subsampling,
+					color_primaries: vpcc.color_primaries,
+					transfer_characteristics: vpcc.transfer_characteristics,
+					matrix_coefficients: vpcc.matrix_coefficients,
+					full_range: vpcc.video_full_range_flag,
+				}
+				.into(),
+				container: catalog::Container::Fmp4,
+				dimensions: catalog::Dimensions {
+					width: vp09.width,
+					height: vp09.height,
+				},
+				display: None,
+				layers: vec![],
+				bit_rate: None,
+			}
+		} else {
+			// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
+			return Err(Error::UnsupportedCodec("unknown"));
+		};
+
+		Ok(track)
+	}
+
+	fn setup_audio(name: &str, track: &mp4::Mp4Track) -> Result<catalog::Audio, Error> {
+		// NOTE: mp4 does not export these box types so it's a pain in the but to refactor.
+		let stsd = &track.trak.mdia.minf.stbl.stsd;
+
+		let track = if let Some(mp4a) = &stsd.mp4a {
+			let desc = &mp4a.esds.as_ref().ok_or(Error::MissingBox("esds"))?.es_desc.dec_config;
+
+			// TODO Also support mp4a.67
+			if desc.object_type_indication != 0x40 {
+				return Err(Error::UnsupportedCodec("MPEG2"));
+			}
+
+			catalog::Audio {
+				track: moq_transfork::Track::build(name).priority(1).into(),
+				codec: catalog::AAC {
+					profile: desc.dec_specific.profile,
+				}
+				.into(),
+				container: catalog::Container::Fmp4,
+				sample_rate: mp4a.samplerate.value(),
+				channel_count: mp4a.channelcount,
+				bit_rate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate)),
+			}
+		} else {
+			return Err(Error::UnsupportedCodec("unknown"));
+		};
+
+		Ok(track)
 	}
 }
 
