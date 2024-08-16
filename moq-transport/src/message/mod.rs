@@ -35,13 +35,17 @@ mod announce;
 mod announce_cancel;
 mod announce_error;
 mod announce_ok;
+mod filter_type;
 mod go_away;
 mod publisher;
 mod subscribe;
 mod subscribe_done;
 mod subscribe_error;
 mod subscribe_ok;
+mod subscribe_update;
 mod subscriber;
+mod track_status;
+mod track_status_request;
 mod unannounce;
 mod unsubscribe;
 
@@ -49,13 +53,17 @@ pub use announce::*;
 pub use announce_cancel::*;
 pub use announce_error::*;
 pub use announce_ok::*;
+pub use filter_type::*;
 pub use go_away::*;
 pub use publisher::*;
 pub use subscribe::*;
 pub use subscribe_done::*;
 pub use subscribe_error::*;
 pub use subscribe_ok::*;
+pub use subscribe_update::*;
 pub use subscriber::*;
+pub use track_status::*;
+pub use track_status_request::*;
 pub use unannounce::*;
 pub use unsubscribe::*;
 
@@ -141,6 +149,7 @@ message_types! {
 	// SetupServer = 0x41
 
 	// SUBSCRIBE family, sent by subscriber
+	SubscribeUpdate = 0x2,
 	Subscribe = 0x3,
 	Unsubscribe = 0xa,
 
@@ -158,6 +167,53 @@ message_types! {
 	AnnounceError = 0x8,
 	AnnounceCancel = 0xc,
 
+	// TRACK_STATUS_REQUEST, sent by subscriber
+	TrackStatusRequest = 0xd,
+
+	// TRACK_STATUS, sent by publisher
+	TrackStatus = 0xe,
+
 	// Misc
 	GoAway = 0x10,
+}
+
+/// Track Status Codes
+/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-04.html#name-track_status
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub enum TrackStatusCode {
+	// 0x00: The track is in progress, and subsequent fields contain the highest group and object ID for that track.
+	InProgress = 0x00,
+	// 0x01: The track does not exist. Subsequent fields MUST be zero, and any other value is a malformed message.
+	DoesNotExist = 0x01,
+	// 0x02: The track has not yet begun. Subsequent fields MUST be zero. Any other value is a malformed message.
+	NotYetBegun = 0x02,
+	// 0x03: The track has finished, so there is no "live edge." Subsequent fields contain the highest Group and object ID known.
+	Finished = 0x03,
+	// 0x04: The sender is a relay that cannot obtain the current track status from upstream. Subsequent fields contain the largest group and object ID known.
+	Relay = 0x04,
+}
+
+impl Decode for TrackStatusCode {
+	fn decode<B: bytes::Buf>(r: &mut B) -> Result<Self, DecodeError> {
+		match u64::decode(r)? {
+			0x00 => Ok(Self::InProgress),
+			0x01 => Ok(Self::DoesNotExist),
+			0x02 => Ok(Self::NotYetBegun),
+			0x03 => Ok(Self::Finished),
+			0x04 => Ok(Self::Relay),
+			_ => Err(DecodeError::InvalidTrackStatusCode),
+		}
+	}
+}
+
+impl Encode for TrackStatusCode {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+		match self {
+			Self::InProgress => (0x00_u64).encode(w),
+			Self::DoesNotExist => (0x01_u64).encode(w),
+			Self::NotYetBegun => (0x02_u64).encode(w),
+			Self::Finished => (0x03_u64).encode(w),
+			Self::Relay => (0x04_u64).encode(w),
+		}
+	}
 }

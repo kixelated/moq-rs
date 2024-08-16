@@ -3,7 +3,7 @@ use std::{collections::VecDeque, ops};
 use crate::watch::State;
 use crate::{message, serve::ServeError};
 
-use super::{Publisher, Subscribed};
+use super::{Publisher, Subscribed, TrackStatusRequested};
 
 #[derive(Debug, Clone)]
 pub struct AnnounceInfo {
@@ -12,6 +12,7 @@ pub struct AnnounceInfo {
 
 struct AnnounceState {
 	subscribers: VecDeque<Subscribed>,
+	track_statuses_requested: VecDeque<TrackStatusRequested>,
 	ok: bool,
 	closed: Result<(), ServeError>,
 }
@@ -20,6 +21,7 @@ impl Default for AnnounceState {
 	fn default() -> Self {
 		Self {
 			subscribers: Default::default(),
+			track_statuses_requested: Default::default(),
 			ok: false,
 			closed: Ok(()),
 		}
@@ -81,12 +83,32 @@ impl Announce {
 		}
 	}
 
-	pub async fn subscribed(&mut self) -> Result<Option<Subscribed>, ServeError> {
+	pub async fn subscribed(&self) -> Result<Option<Subscribed>, ServeError> {
 		loop {
 			{
 				let state = self.state.lock();
 				if !state.subscribers.is_empty() {
 					return Ok(state.into_mut().and_then(|mut state| state.subscribers.pop_front()));
+				}
+
+				state.closed.clone()?;
+				match state.modified() {
+					Some(notified) => notified,
+					None => return Ok(None),
+				}
+			}
+			.await;
+		}
+	}
+
+	pub async fn track_status_requested(&self) -> Result<Option<TrackStatusRequested>, ServeError> {
+		loop {
+			{
+				let state = self.state.lock();
+				if !state.track_statuses_requested.is_empty() {
+					return Ok(state
+						.into_mut()
+						.and_then(|mut state| state.track_statuses_requested.pop_front()));
 				}
 
 				state.closed.clone()?;
@@ -170,6 +192,15 @@ impl AnnounceRecv {
 		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
 		state.subscribers.push_back(subscriber);
 
+		Ok(())
+	}
+
+	pub fn recv_track_status_requested(
+		&mut self,
+		track_status_requested: TrackStatusRequested,
+	) -> Result<(), ServeError> {
+		let mut state = self.state.lock_mut().ok_or(ServeError::Done)?;
+		state.track_statuses_requested.push_back(track_status_requested);
 		Ok(())
 	}
 }

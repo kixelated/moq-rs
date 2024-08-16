@@ -34,6 +34,18 @@ pub enum DecodeError {
 	#[error("invalid subscribe location")]
 	InvalidSubscribeLocation,
 
+	#[error("invalid filter type")]
+	InvalidFilterType,
+
+	#[error("invalid object status")]
+	InvalidObjectStatus,
+
+	#[error("invalid track status code")]
+	InvalidTrackStatusCode,
+
+	#[error("missing field")]
+	MissingField,
+
 	#[error("invalid value")]
 	InvalidValue,
 

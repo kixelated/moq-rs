@@ -1,5 +1,6 @@
 use std::{fmt, sync::Arc};
 
+use crate::data::ObjectStatus;
 use crate::watch::State;
 
 use super::{ServeError, Track};
@@ -118,6 +119,7 @@ pub struct Datagram {
 	pub group_id: u64,
 	pub object_id: u64,
 	pub priority: u64,
+	pub status: ObjectStatus,
 	pub payload: bytes::Bytes,
 }
 
@@ -127,6 +129,7 @@ impl fmt::Debug for Datagram {
 			.field("object_id", &self.object_id)
 			.field("group_id", &self.group_id)
 			.field("priority", &self.priority)
+			.field("status", &self.status)
 			.field("payload", &self.payload.len())
 			.finish()
 	}

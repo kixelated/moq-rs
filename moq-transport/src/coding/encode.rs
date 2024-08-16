@@ -28,6 +28,9 @@ pub enum EncodeError {
 	#[error("invalid value")]
 	InvalidValue,
 
+	#[error("missing field")]
+	MissingField,
+
 	#[error("i/o error: {0}")]
 	Io(sync::Arc<io::Error>),
 }

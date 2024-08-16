@@ -5,7 +5,7 @@ authors = []
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -14,8 +14,8 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transport = { path = "../moq-transport", version = "0.5" }
-moq-native = { path = "../moq-native", version = "0.3" }
+moq-transport = { path = "../moq-transport", version = "0.6" }
+moq-native = { path = "../moq-native", version = "0.4" }
 url = "2"
 
 # Async stuff

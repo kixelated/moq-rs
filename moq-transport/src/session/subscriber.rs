@@ -83,6 +83,7 @@ impl Subscriber {
 			message::Publisher::SubscribeOk(msg) => self.recv_subscribe_ok(msg),
 			message::Publisher::SubscribeError(msg) => self.recv_subscribe_error(msg),
 			message::Publisher::SubscribeDone(msg) => self.recv_subscribe_done(msg),
+			message::Publisher::TrackStatus(msg) => self.recv_track_status(msg),
 		};
 
 		if let Err(SessionError::Serve(err)) = res {
@@ -140,6 +141,13 @@ impl Subscriber {
 		if let Some(subscribe) = self.subscribes.lock().unwrap().remove(&msg.id) {
 			subscribe.error(ServeError::Closed(msg.code))?;
 		}
+
+		Ok(())
+	}
+
+	fn recv_track_status(&mut self, _msg: &message::TrackStatus) -> Result<(), SessionError> {
+		// TODO: Expose this somehow?
+		// TODO: Also add a way to sent a Track Status Request in the first place
 
 		Ok(())
 	}

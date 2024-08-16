@@ -14,6 +14,8 @@ use super::{ServeError, Track};
 use crate::watch::State;
 use bytes::Bytes;
 
+use crate::data::ObjectStatus;
+
 pub struct Objects {
 	pub track: Arc<Track>,
 }
@@ -71,6 +73,7 @@ impl ObjectsWriter {
 			group_id: object.group_id,
 			object_id: object.object_id,
 			priority: object.priority,
+			status: ObjectStatus::Object,
 		};
 
 		let (writer, reader) = object.produce();
@@ -191,6 +194,9 @@ pub struct ObjectInfo {
 
 	// The priority of the stream.
 	pub priority: u64,
+
+	// The object status
+	pub status: ObjectStatus,
 }
 
 impl Deref for ObjectInfo {
