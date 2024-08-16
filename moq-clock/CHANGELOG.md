@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.4.2...moq-clock-v0.4.3) - 2024-08-16
+
+### Other
+- Upgrade Quinn ([#165](https://github.com/kixelated/moq-rs/pull/165))
+
 ## [0.4.2](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.4.1...moq-clock-v0.4.2) - 2024-07-24
 
 ### Other

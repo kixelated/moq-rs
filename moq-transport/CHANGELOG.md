@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4](https://github.com/kixelated/moq-rs/compare/moq-transport-v0.5.3...moq-transport-v0.5.4) - 2024-08-16
+
+### Other
+- Upgrade Quinn ([#165](https://github.com/kixelated/moq-rs/pull/165))
+
 ## [0.5.3](https://github.com/kixelated/moq-rs/compare/moq-transport-v0.5.2...moq-transport-v0.5.3) - 2024-07-24
 
 ### Other

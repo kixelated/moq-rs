@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/kixelated/moq-rs/compare/moq-sub-v0.1.1...moq-sub-v0.1.2) - 2024-08-16
+
+### Other
+- Upgrade Quinn ([#165](https://github.com/kixelated/moq-rs/pull/165))
+
 ## [0.1.1](https://github.com/kixelated/moq-rs/compare/moq-sub-v0.1.0...moq-sub-v0.1.1) - 2024-07-24
 
 ### Other
