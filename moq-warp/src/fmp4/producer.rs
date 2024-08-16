@@ -196,7 +196,7 @@ impl Producer {
 				.into(),
 				container: catalog::Container::Fmp4,
 				layers: vec![],
-				bit_rate: None,
+				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
 			let _hvcc = &hev1.hvcc;
@@ -244,7 +244,7 @@ impl Producer {
 				},
 				display: None,
 				layers: vec![],
-				bit_rate: None,
+				bitrate: None,
 			}
 		} else {
 			// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
@@ -275,7 +275,7 @@ impl Producer {
 				container: catalog::Container::Fmp4,
 				sample_rate: mp4a.samplerate.value(),
 				channel_count: mp4a.channelcount,
-				bit_rate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate)),
+				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate)),
 			}
 		} else {
 			return Err(Error::UnsupportedCodec("unknown"));

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_with::DisplayFromStr;
 
 use super::{CodecError, Container, Dimensions};
 
@@ -7,18 +8,20 @@ use super::{CodecError, Container, Dimensions};
 pub struct Video {
 	pub track: moq_transfork::Track,
 	pub container: Container,
+
+	#[serde_as(as = "DisplayFromStr")]
 	pub codec: VideoCodec,
+
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub bitrate: Option<u32>,
 
 	pub dimensions: Dimensions,
 
-	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub display: Option<Dimensions>,
 
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub bit_rate: Option<u32>,
-
 	// Additional enhancement layers
-	#[serde(skip_serializing_if = "Vec::is_empty")]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub layers: Vec<VideoLayer>,
 }
 
@@ -29,17 +32,11 @@ pub struct VideoLayer {
 }
 
 macro_rules! video_codec {
-	($($name:ident),*) => {
+	{$($name:ident = $prefix:expr,)*} => {
 		#[serde_with::serde_as]
 		#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 		pub enum VideoCodec {
-			$(
-				#[serde_with(as = "DisplayFromStr")]
-				$name($name),
-			)*
-
-			// Simple, doesn't need a wrapper.
-			VP8,
+			$($name($name),)*
 
 			#[serde(untagged)]
 			Unknown(String),
@@ -59,15 +56,33 @@ macro_rules! video_codec {
 					$(
 						Self::$name(codec) => write!(f, "{}", codec),
 					)*
-					Self::VP8 => write!(f, "vp8"),
 					Self::Unknown(codec) => write!(f, "{}", codec),
 				}
+			}
+		}
+
+		impl std::str::FromStr for VideoCodec {
+			type Err = CodecError;
+
+			fn from_str(s: &str) -> Result<Self, Self::Err> {
+				$(
+					if s.starts_with($prefix) {
+						return Ok(Self::$name($name::from_str(s)?));
+					}
+				)*
+				Ok(Self::Unknown(s.into()))
 			}
 		}
 	};
 }
 
-video_codec!(H264, H265, VP9, AV1);
+video_codec! {
+	H264 = "avc1",
+	H265 = "hev1",
+	VP8 = "vp8",
+	VP9 = "vp09",
+	AV1 = "av01",
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H264 {
@@ -136,6 +151,27 @@ impl std::str::FromStr for H265 {
 			constraints: u8::from_str_radix(&part[2..4], 16)?,
 			level: u8::from_str_radix(&part[4..6], 16)?,
 		})
+	}
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct VP8;
+
+impl std::fmt::Display for VP8 {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "vp8")
+	}
+}
+
+impl std::str::FromStr for VP8 {
+	type Err = CodecError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s != "vp8" {
+			return Err(CodecError::Invalid);
+		}
+
+		Ok(Self)
 	}
 }
 

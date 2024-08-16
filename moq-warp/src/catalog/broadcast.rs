@@ -7,14 +7,14 @@ use super::{Audio, Container, Error, Result, Video};
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Broadcast {
-	#[serde(skip_serializing_if = "Vec::is_empty")]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub video: Vec<Video>,
 
-	#[serde(skip_serializing_if = "Vec::is_empty")]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub audio: Vec<Audio>,
 
-	#[serde(skip_serializing_if = "HashMap::is_empty")]
-	#[serde_with(as = "HashMap<_, serde_with::hex::Hex>")]
+	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	#[serde_as(as = "HashMap<_, serde_with::hex::Hex>")]
 	pub init: HashMap<Container, Vec<u8>>,
 }
 
@@ -88,14 +88,14 @@ mod test {
 
 	#[test]
 	fn simple() {
-		let encoded = r#"{
+		let mut encoded = r#"{
 			"video": [
 				{
 					"track": {
 						"name": "video",
-						"priority": 1,
+						"priority": 2,
 						"group_order": "desc",
-						"group_expires": 0
+						"group_expires": 0.05
 					},
 					"container": "fmp4",
 					"codec": "avc1.64001f",
@@ -107,32 +107,40 @@ mod test {
 					"display": {
 						"width": 1920,
 						"height": 1080
-					},
+					}
 				}
 			],
 			"audio": [
 				{
 					"track": {
 						"name": "audio",
-						"priority": 0,
+						"priority": 1,
 						"group_order": "desc",
-						"group_expires": 0
+						"group_expires": 0.05
 					},
 					"container": "fmp4",
 					"codec": "opus",
 					"sample_rate": 48000,
-					"channels": 2,
-					"bitrate": 128000,
+					"channel_count": 2,
+					"bitrate": 128000
 				}
 			],
 			"init": {
-				"fmp4": "000000147374797069736f6d0000020069736f6d000000086d6f6f76",
+				"fmp4": "000000147374797069736f6d0000020069736f6d000000086d6f6f76"
 			}
-		}"#;
+		}"#
+		.to_string();
+
+		encoded.retain(|c| !c.is_whitespace());
 
 		let decoded = Broadcast {
 			video: vec![Video {
-				track: "video".into(),
+				track: moq_transfork::Track {
+					name: "video".to_string(),
+					priority: 2,
+					group_order: moq_transfork::GroupOrder::Desc,
+					group_expires: std::time::Duration::from_millis(50),
+				},
 				container: Container::Fmp4,
 				codec: catalog::H264 {
 					profile: 0x64,
@@ -149,15 +157,20 @@ mod test {
 					height: 1080,
 				}),
 				layers: Default::default(),
-				bit_rate: Some(6_000_000),
+				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
-				track: "audio".into(),
+				track: moq_transfork::Track {
+					name: "audio".to_string(),
+					priority: 1,
+					group_order: moq_transfork::GroupOrder::Desc,
+					group_expires: std::time::Duration::from_millis(50),
+				},
 				container: Container::Fmp4,
 				codec: AudioCodec::Opus,
 				sample_rate: 48000,
 				channel_count: 2,
-				bit_rate: Some(128_000),
+				bitrate: Some(128_000),
 			}],
 			init: HashMap::from([(
 				Container::Fmp4,
@@ -171,7 +184,7 @@ mod test {
 		let output = Broadcast::from_str(&encoded).expect("failed to decode");
 		assert_eq!(decoded, output, "wrong decoded output");
 
-		let output = decoded.to_string_pretty().expect("failed to encode");
+		let output = decoded.to_string().expect("failed to encode");
 		assert_eq!(encoded, output, "wrong encoded output");
 	}
 }

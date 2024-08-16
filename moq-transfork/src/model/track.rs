@@ -22,11 +22,14 @@ use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// Static information about a track.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
 	pub name: String,
 	pub priority: i8,
 	pub group_order: GroupOrder,
+
+	#[cfg_attr(feature = "serde", serde_as(as = "serde_with::DurationSecondsWithFrac"))]
 	pub group_expires: time::Duration,
 }
 
