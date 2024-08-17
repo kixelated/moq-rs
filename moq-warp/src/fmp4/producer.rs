@@ -374,8 +374,8 @@ impl Track {
 		};
 
 		let mut frame = group.create_frame(mdat.len() + moof.len());
-		frame.write_chunk(moof);
-		frame.write_chunk(mdat);
+		frame.write(moof);
+		frame.write(mdat);
 
 		self.group.replace(group);
 

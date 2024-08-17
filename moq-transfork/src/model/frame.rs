@@ -60,7 +60,7 @@ impl FrameProducer {
 		Self { state, info }
 	}
 
-	pub fn write_chunk(&mut self, chunk: bytes::Bytes) {
+	pub fn write(&mut self, chunk: bytes::Bytes) {
 		self.state.send_modify(|state| state.chunks.push(chunk));
 	}
 
@@ -102,7 +102,7 @@ impl FrameConsumer {
 	}
 
 	// Return the next chunk.
-	pub async fn read_chunk(&mut self) -> Result<Option<Bytes>, Error> {
+	pub async fn read(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
 			{
 				let state = self.state.borrow_and_update();
@@ -123,7 +123,7 @@ impl FrameConsumer {
 
 	// Return all of the chunks concatenated together.
 	pub async fn read_all(&mut self) -> Result<Bytes, Error> {
-		let first = self.read_chunk().await?.unwrap_or_else(Bytes::new);
+		let first = self.read().await?.unwrap_or_else(Bytes::new);
 		if first.len() == self.size {
 			// If there's one chunk, return it without allocating.
 			return Ok(first);
@@ -132,7 +132,7 @@ impl FrameConsumer {
 		let mut buf = BytesMut::with_capacity(2 * first.len());
 		buf.extend_from_slice(&first);
 
-		while let Some(chunk) = self.read_chunk().await? {
+		while let Some(chunk) = self.read().await? {
 			buf.extend_from_slice(&chunk);
 		}
 

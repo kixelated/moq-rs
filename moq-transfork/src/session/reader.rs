@@ -63,14 +63,14 @@ impl Reader {
 		}
 	}
 
-	pub async fn read_chunk(&mut self, max: usize) -> Result<Option<Bytes>, Error> {
+	pub async fn read(&mut self, max: usize) -> Result<Option<Bytes>, Error> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());
 			let data = self.buffer.split_to(size).freeze();
 			return Ok(Some(data));
 		}
 
-		Ok(self.stream.read_chunk(max).await?)
+		Ok(self.stream.read(max).await?)
 	}
 
 	/// Wait until the stream is closed, ensuring there are no additional bytes

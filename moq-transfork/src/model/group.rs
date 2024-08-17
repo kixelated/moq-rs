@@ -79,7 +79,7 @@ impl GroupProducer {
 
 	// Write a frame in one go
 	pub fn write_frame(&mut self, frame: bytes::Bytes) {
-		self.create_frame(frame.len()).write_chunk(frame);
+		self.create_frame(frame.len()).write(frame);
 	}
 
 	// Create a frame with an upfront size

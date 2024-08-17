@@ -199,7 +199,7 @@ impl Publisher {
 
 			let mut remain = frame.size;
 
-			while let Some(chunk) = frame.read_chunk().await? {
+			while let Some(chunk) = frame.read().await? {
 				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
 				tracing::trace!(chunk = chunk.len(), remain, "chunk");
 

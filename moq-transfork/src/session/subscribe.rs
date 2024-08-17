@@ -123,12 +123,12 @@ impl SubscribeProducer {
 			let mut remain = frame.size;
 
 			while remain > 0 {
-				let chunk = stream.read_chunk(remain).await?.ok_or(Error::WrongSize)?;
+				let chunk = stream.read(remain).await?.ok_or(Error::WrongSize)?;
 
 				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
 				tracing::trace!(chunk = chunk.len(), remain, "chunk");
 
-				frame.write_chunk(chunk);
+				frame.write(chunk);
 			}
 		}
 
