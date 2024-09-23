@@ -66,8 +66,8 @@ fn moq_url(s: &str) -> Result<Url, String> {
 	let url = Url::try_from(s).map_err(|e| e.to_string())?;
 
 	// Make sure the scheme is moq
-	if url.scheme() != "https" {
-		return Err("url scheme must be https:// for WebTransport".to_string());
+	if url.scheme() != "https" && url.scheme() != "moqt" {
+		return Err("url scheme must be https:// for WebTransport & moqt:// for QUIC".to_string());
 	}
 
 	Ok(url)
