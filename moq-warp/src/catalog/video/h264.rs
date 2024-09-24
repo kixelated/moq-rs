@@ -3,8 +3,6 @@ use mp4_atom::Encode;
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 
-use super::{CodecError, Dimensions};
-
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H264 {

@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "num",

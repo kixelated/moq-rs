@@ -47,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
 
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
+
+	tracing::info!(url = %cli.url, "connecting");
 	let session = quic.client.connect(&cli.url).await?;
+
 	let client = moq_transfork::Client::new(session);
 	let broadcast = Broadcast::new(cli.broadcast);
 
@@ -57,26 +60,26 @@ async fn main() -> anyhow::Result<()> {
 	}
 }
 
+#[tracing::instrument("publish", skip_all, ret, fields(broadcast = broadcast.name))]
 async fn publish(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
-	let name = broadcast.name.clone();
 	let (writer, reader) = broadcast.produce();
+
+	let import = cmaf::Import::init(tokio::io::stdin(), writer).await?;
+	tracing::info!(catalog = ?import.catalog());
 
 	let mut publisher = client.publisher().await?;
 	publisher.announce(reader).await.context("failed to announce")?;
 
-	let import = cmaf::Import::init(tokio::io::stdin(), writer).await?;
-	tracing::info!(name, catalog = ?import.catalog(), "producing broadcast");
-
 	Ok(import.run().await?)
 }
 
+#[tracing::instrument("subscribe", skip_all, ret, fields(broadcast = broadcast.name))]
 async fn subscribe(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
-	let name = broadcast.name.clone();
 	let subscriber = client.subscriber().await?;
 	let broadcast = subscriber.namespace(broadcast)?;
 
 	let export = cmaf::Export::init(broadcast, tokio::io::stdout()).await?;
-	tracing::info!(name, catalog = ?export.catalog(), "consuming broadcast");
+	tracing::info!(catalog = ?export.catalog());
 
 	Ok(export.run().await?)
 }

@@ -1,9 +1,6 @@
-use bytes::{Bytes, BytesMut};
-use mp4_atom::Encode;
 use serde::{Deserialize, Serialize};
-use serde_with::hex::Hex;
 
-use super::{CodecError, Dimensions};
+use super::CodecError;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AV1 {

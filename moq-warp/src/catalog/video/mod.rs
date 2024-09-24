@@ -1,7 +1,5 @@
-use bytes::{Bytes, BytesMut};
-use mp4_atom::Encode;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_with::hex::Hex;
 
 use super::{CodecError, Dimensions};
 
