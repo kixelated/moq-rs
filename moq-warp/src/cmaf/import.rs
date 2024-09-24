@@ -74,13 +74,13 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				.picture_parameter_sets
 				.first()
 				.ok_or(Error::MissingBox(b"ppss".into()))?
-				.to_vec();
+				.clone();
 
 			let sps = avcc
 				.sequence_parameter_sets
 				.first()
 				.ok_or(Error::MissingBox(b"spss".into()))?
-				.to_vec();
+				.clone();
 
 			catalog::Video {
 				track: moq_transfork::Track::build(name).priority(2).into(),

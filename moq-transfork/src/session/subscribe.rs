@@ -27,7 +27,7 @@ pub fn subscribe(
 	lookup.lock().insert(id, consumer.clone());
 
 	let producer = SubscribeProducer {
-		id: 0,
+		id,
 		track: track.0,
 		groups: rx,
 

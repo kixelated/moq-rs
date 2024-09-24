@@ -3,8 +3,6 @@ use std::{
 	sync::{atomic, Arc},
 };
 
-use tracing::Instrument;
-
 use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, Produce, Router, Track, TrackConsumer},
@@ -62,12 +60,12 @@ impl Subscriber {
 			broadcasts: self.broadcasts.clone(),
 		};
 
-		let span = tracing::info_span!("announce", broadcast = broadcast.name);
-		spawn(self.clone().run_announce(announce).instrument(span));
+		spawn(self.clone().run_announce(announce));
 
 		Ok(reader)
 	}
 
+	#[tracing::instrument("announed", skip_all, fields(broadcast = announce.broadcast.name))]
 	async fn run_announce(self, mut announce: Announce) {
 		while let Some(request) = announce.router.requested().await {
 			let mut this = self.clone();
@@ -87,13 +85,17 @@ impl Subscriber {
 		broadcast: B,
 		track: T,
 	) -> Result<TrackConsumer, Error> {
-		self.subscribe_inner(broadcast.into(), track.into()).await
+		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+		self.subscribe_inner(id, broadcast.into(), track.into()).await
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(broadcast=broadcast.name, track=track.name))]
-	pub async fn subscribe_inner(&mut self, broadcast: Broadcast, track: Track) -> Result<TrackConsumer, Error> {
-		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-
+	#[tracing::instrument("subscribe", skip_all, err, fields(id, broadcast=broadcast.name, track=track.name))]
+	pub async fn subscribe_inner(
+		&mut self,
+		id: u64,
+		broadcast: Broadcast,
+		track: Track,
+	) -> Result<TrackConsumer, Error> {
 		let (mut producer, consumer) = subscribe(id, track, self.subscribes.clone());
 		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
@@ -101,8 +103,6 @@ impl Subscriber {
 		spawn(async move {
 			producer.run(&mut stream).await.or_close(&mut stream).ok();
 		});
-
-		tracing::info!("ok");
 
 		Ok(consumer.track)
 	}
@@ -112,7 +112,6 @@ impl Subscriber {
 		self.announced_run(stream, announce).await
 	}
 
-	#[tracing::instrument("announced", skip_all, ret, fields(broadcast = announce.broadcast))]
 	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
 		// Serve the broadcast and add it to the announced queue.
 		let broadcast = self.namespace(announce.broadcast)?;

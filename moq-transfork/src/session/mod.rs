@@ -81,7 +81,7 @@ impl Session {
 			let mut subscriber = subscriber.clone().ok_or(Error::RoleViolation)?;
 
 			spawn(async move {
-				match stream.decode_silent().await {
+				match stream.decode().await {
 					Ok(message::StreamUni::Group) => subscriber.recv_group(stream).await,
 					Err(err) => stream.close(err),
 				};
@@ -109,7 +109,7 @@ impl Session {
 		publisher: Option<Publisher>,
 		subscriber: Option<Subscriber>,
 	) -> Result<(), Error> {
-		let kind = stream.reader.decode_silent().await?;
+		let kind = stream.reader.decode().await?;
 		match kind {
 			message::Stream::Session => Err(Error::UnexpectedStream(kind)),
 			message::Stream::Announce => {
@@ -136,7 +136,7 @@ impl Session {
 
 		let mut writer = Writer::new(send);
 		let reader = Reader::new(recv);
-		writer.encode_silent(&typ).await?;
+		writer.encode(&typ).await?;
 
 		Ok(Stream { writer, reader })
 	}
@@ -145,7 +145,7 @@ impl Session {
 		let send = self.webtransport.open_uni().await?;
 
 		let mut writer = Writer::new(send);
-		writer.encode_silent(&typ).await?;
+		writer.encode(&typ).await?;
 
 		Ok(writer)
 	}

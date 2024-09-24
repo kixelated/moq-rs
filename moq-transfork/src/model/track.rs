@@ -114,7 +114,6 @@ impl From<TrackBuilder> for Track {
 struct TrackState {
 	latest: Option<GroupConsumer>,
 	closed: Result<(), Error>,
-	epoch: u64, // +1 each change
 }
 
 impl Default for TrackState {
@@ -122,7 +121,6 @@ impl Default for TrackState {
 		Self {
 			latest: None,
 			closed: Ok(()),
-			epoch: 0,
 		}
 	}
 }
@@ -155,8 +153,6 @@ impl TrackProducer {
 			}
 
 			state.latest = Some(reader);
-			state.epoch += 1;
-
 			self.next = sequence + 1;
 
 			true
@@ -194,12 +190,16 @@ impl ops::Deref for TrackProducer {
 pub struct TrackConsumer {
 	pub info: Arc<Track>,
 	state: watch::Receiver<TrackState>,
-	epoch: u64,
+	prev: Option<u64>, // The previous sequence number
 }
 
 impl TrackConsumer {
 	fn new(state: watch::Receiver<TrackState>, info: Arc<Track>) -> Self {
-		Self { state, info, epoch: 0 }
+		Self {
+			state,
+			info,
+			prev: None,
+		}
 	}
 
 	pub fn get_group(&self, sequence: u64) -> Result<GroupConsumer, Error> {
@@ -219,23 +219,26 @@ impl TrackConsumer {
 	// NOTE: This can return groups out of order.
 	// TODO obey order and expires
 	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>, Error> {
-		loop {
-			{
-				let state = self.state.borrow_and_update();
-				if let Some(latest) = state.latest.as_ref() {
-					if self.epoch != latest.sequence {
-						self.epoch = latest.sequence;
-						return Ok(Some(latest.clone()));
-					}
-				}
+		// Wait until there's a new latest group or the track is closed.
+		let state = match self
+			.state
+			.wait_for(|state| state.latest.as_ref().map(|latest| latest.sequence) != self.prev || state.closed.is_err())
+			.await
+		{
+			Ok(state) => state,
+			Err(_) => return Ok(None),
+		};
 
-				state.closed.clone()?;
-			}
-
-			if self.state.changed().await.is_err() {
-				return Ok(None);
+		// If there's a new latest group, return it.
+		if let Some(group) = state.latest.as_ref() {
+			if Some(group.sequence) != self.prev {
+				self.prev = Some(group.sequence);
+				return Ok(Some(group.clone()));
 			}
 		}
+
+		// Otherwise the track is closed.
+		Err(state.closed.clone().unwrap_err())
 	}
 
 	// Returns the largest group

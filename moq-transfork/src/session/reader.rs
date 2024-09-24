@@ -21,12 +21,6 @@ impl Reader {
 
 	// A separate function just to avoid an extra log line
 	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, Error> {
-		let msg = self.decode_silent().await?;
-		tracing::debug!(?msg, "decode");
-		Ok(msg)
-	}
-
-	pub async fn decode_silent<T: Decode + fmt::Debug>(&mut self) -> Result<T, Error> {
 		loop {
 			let mut cursor = io::Cursor::new(&self.buffer);
 

@@ -41,7 +41,7 @@ impl Server {
 
 	pub async fn role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
 		let mut stream = self.session.accept().await?;
-		let kind = stream.reader.decode_silent().await?;
+		let kind = stream.reader.decode().await?;
 
 		if kind != message::Stream::Session {
 			return Err(Error::UnexpectedStream(kind));

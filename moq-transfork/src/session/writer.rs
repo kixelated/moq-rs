@@ -18,12 +18,6 @@ impl Writer {
 	}
 
 	pub async fn encode<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {
-		tracing::debug!(?msg, "encode");
-		self.encode_silent(msg).await
-	}
-
-	// A separate function just to avoid an extra log line
-	pub async fn encode_silent<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {
 		self.buffer.clear();
 		msg.encode(&mut self.buffer);
 

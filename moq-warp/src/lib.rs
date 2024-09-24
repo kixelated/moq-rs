@@ -1,7 +1,5 @@
 pub mod catalog;
-pub mod media;
-
-#[cfg(feature = "cmaf")]
 pub mod cmaf;
+pub mod media;
 
 pub(crate) mod util;
