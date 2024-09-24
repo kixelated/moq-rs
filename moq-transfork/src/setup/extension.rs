@@ -31,15 +31,13 @@ impl Decode for Extensions {
 }
 
 impl Encode for Extensions {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.len().encode(w)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.0.len().encode(w);
 
 		for (kind, value) in self.0.iter() {
-			kind.encode(w)?;
-			value.encode(w)?;
+			kind.encode(w);
+			value.encode(w);
 		}
-
-		Ok(())
 	}
 }
 
@@ -54,11 +52,9 @@ impl Extensions {
 		})
 	}
 
-	pub fn set<E: Extension>(&mut self, e: E) -> Result<(), EncodeError> {
+	pub fn set<E: Extension>(&mut self, e: E) {
 		let mut value = Vec::new();
-		e.encode(&mut value)?;
+		e.encode(&mut value);
 		self.0.insert(E::id(), value);
-
-		Ok(())
 	}
 }

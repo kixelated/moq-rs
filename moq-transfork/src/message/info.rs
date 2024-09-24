@@ -12,13 +12,11 @@ pub struct Info {
 }
 
 impl Encode for Info {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.track_priority.encode(w)?;
-		self.group_order.encode(w)?;
-		self.group_expires.encode(w)?;
-		self.group_latest.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.track_priority.encode(w);
+		self.group_order.encode(w);
+		self.group_expires.encode(w);
+		self.group_latest.encode(w);
 	}
 }
 
@@ -45,11 +43,9 @@ pub struct InfoRequest {
 }
 
 impl Encode for InfoRequest {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.broadcast.encode(w)?;
-		self.track.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.broadcast.encode(w);
+		self.track.encode(w);
 	}
 }
 

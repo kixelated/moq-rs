@@ -10,14 +10,12 @@ pub struct Fetch {
 }
 
 impl Encode for Fetch {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.broadcast.encode(w)?;
-		self.track.encode(w)?;
-		self.priority.encode(w)?;
-		self.group.encode(w)?;
-		self.offset.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.broadcast.encode(w);
+		self.track.encode(w);
+		self.priority.encode(w);
+		self.group.encode(w);
+		self.offset.encode(w);
 	}
 }
 

@@ -46,9 +46,8 @@ impl Decode for Version {
 }
 
 impl Encode for Version {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.encode(w)?;
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.0.encode(w);
 	}
 }
 
@@ -79,14 +78,12 @@ impl Decode for Versions {
 
 impl Encode for Versions {
 	/// Encode the version list.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.0.len().encode(w)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.0.len().encode(w);
 
 		for v in &self.0 {
-			v.encode(w)?;
+			v.encode(w);
 		}
-
-		Ok(())
 	}
 }
 

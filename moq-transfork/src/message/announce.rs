@@ -15,9 +15,8 @@ impl Decode for Announce {
 }
 
 impl Encode for Announce {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.broadcast.encode(w)?;
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.broadcast.encode(w)
 	}
 }
 
@@ -37,8 +36,7 @@ impl Decode for AnnounceOk {
 }
 
 impl Encode for AnnounceOk {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		1u64.encode(w)?;
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		1u64.encode(w)
 	}
 }

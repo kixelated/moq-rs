@@ -8,9 +8,6 @@ pub enum Error {
 	#[error("decode error: {0}")]
 	Decode(#[from] coding::DecodeError),
 
-	#[error("encode error: {0}")]
-	Encode(#[from] coding::EncodeError),
-
 	// TODO move to a ConnectError
 	#[error("unsupported versions: client={0:?} server={1:?}")]
 	Version(setup::Versions, setup::Versions),
@@ -69,7 +66,6 @@ impl Error {
 			Self::RoleViolation => 3,
 			Self::WebTransport(_) => 4,
 			Self::Decode(_) => 5,
-			Self::Encode(_) => 6,
 			Self::Version(..) => 9,
 			Self::UnexpectedStream(_) => 10,
 			Self::BoundsExceeded(_) => 11,

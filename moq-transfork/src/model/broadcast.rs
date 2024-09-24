@@ -109,6 +109,10 @@ impl BroadcastProducer {
 		reader
 	}
 
+	pub fn has_track(&self, track: &str) -> bool {
+		self.state.borrow().tracks.contains_key(track)
+	}
+
 	pub fn close(self, err: Error) {
 		self.state.send_modify(|state| {
 			state.closed = Err(err);

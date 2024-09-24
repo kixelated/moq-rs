@@ -66,7 +66,7 @@ impl Server {
 			.ok_or(Error::RoleIncompatible(client_role, server_role))?;
 
 		let mut extensions = Extensions::default();
-		extensions.set(role)?;
+		extensions.set(role);
 
 		let server = setup::Server {
 			version: setup::Version::FORK_00,

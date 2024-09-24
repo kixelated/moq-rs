@@ -95,11 +95,14 @@ impl Publisher {
 
 		let reader = self.broadcasts.lock().get(&broadcast.name).cloned();
 		if let Some(broadcast) = reader {
+			tracing::trace!("using announced broadcast");
 			return broadcast.subscribe(track).await;
 		}
 
 		let router = self.router.lock().clone();
 		if let Some(router) = router {
+			tracing::trace!("using router");
+
 			let reader = router.subscribe(broadcast).await?;
 			return reader.subscribe(track).await;
 		}
@@ -112,7 +115,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("subscribed", skip_all, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
+	#[tracing::instrument("subscribed", skip_all, ret, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			name: subscribe.track,
@@ -132,7 +135,7 @@ impl Publisher {
 
 		stream.writer.encode(&info).await?;
 
-		tracing::info!("ok");
+		tracing::info!("serving");
 
 		let mut tasks = FuturesUnordered::new();
 
@@ -172,7 +175,7 @@ impl Publisher {
 		}
 	}
 
-	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
+	#[tracing::instrument("data", skip_all, ret, fields(group = group.sequence))]
 	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupConsumer) -> Result<(), Error> {
 		let mut stream = session.open_uni(message::StreamUni::Group).await?;
 
@@ -217,22 +220,12 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn recv_datagrams(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let subscribe = stream.reader.decode().await?;
-		self.serve_datagrams(stream, subscribe).await
-	}
-
-	#[tracing::instrument("datagrams", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, subscribe = subscribe.id))]
-	async fn serve_datagrams(&mut self, _stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
-		todo!("datagrams");
-	}
-
 	pub(super) async fn recv_fetch(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let fetch = stream.reader.decode().await?;
 		self.serve_fetch(stream, fetch).await
 	}
 
-	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
+	#[tracing::instrument("fetch", skip_all, ret, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
 		let track = Track::build(fetch.track).priority(fetch.priority);
 		let track = self.subscribe(fetch.broadcast, track).await?;
@@ -246,7 +239,7 @@ impl Publisher {
 		self.serve_info(stream, info).await
 	}
 
-	#[tracing::instrument("track", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
+	#[tracing::instrument("info", skip_all, ret, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), Error> {
 		let track = self.subscribe(info.broadcast, info.track).await?;
 

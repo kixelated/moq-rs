@@ -102,6 +102,8 @@ impl Subscriber {
 			producer.run(&mut stream).await.or_close(&mut stream).ok();
 		});
 
+		tracing::info!("ok");
+
 		Ok(consumer.track)
 	}
 
@@ -110,7 +112,7 @@ impl Subscriber {
 		self.announced_run(stream, announce).await
 	}
 
-	#[tracing::instrument("announced", skip_all, err, fields(broadcast = announce.broadcast))]
+	#[tracing::instrument("announced", skip_all, ret, fields(broadcast = announce.broadcast))]
 	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
 		// Serve the broadcast and add it to the announced queue.
 		let broadcast = self.namespace(announce.broadcast)?;

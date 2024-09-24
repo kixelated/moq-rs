@@ -13,8 +13,7 @@ impl Decode for Info {
 }
 
 impl Encode for Info {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.bitrate.encode(w)?;
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.bitrate.encode(w);
 	}
 }

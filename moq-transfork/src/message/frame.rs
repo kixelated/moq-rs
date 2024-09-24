@@ -14,8 +14,7 @@ impl Decode for Frame {
 }
 
 impl Encode for Frame {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.size.encode(w)?;
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.size.encode(w);
 	}
 }

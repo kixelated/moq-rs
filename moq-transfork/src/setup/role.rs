@@ -69,7 +69,7 @@ impl Decode for Role {
 
 impl Encode for Role {
 	/// Encode the role.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		match self {
 			Self::Publisher => 1u64,
 			Self::Subscriber => 2u64,

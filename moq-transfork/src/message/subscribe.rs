@@ -1,7 +1,7 @@
 use std::time;
 
 use crate::{
-	coding::{Decode, DecodeError, Encode, EncodeError},
+	coding::{Decode, DecodeError, Encode},
 	message::group,
 };
 
@@ -49,18 +49,16 @@ impl Decode for Subscribe {
 }
 
 impl Encode for Subscribe {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.id.encode(w)?;
-		self.broadcast.encode(w)?;
-		self.track.encode(w)?;
-		self.priority.encode(w)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.id.encode(w);
+		self.broadcast.encode(w);
+		self.track.encode(w);
+		self.priority.encode(w);
 
-		self.group_order.encode(w)?;
-		self.group_expires.encode(w)?;
-		self.group_min.encode(w)?;
-		self.group_max.encode(w)?;
-
-		Ok(())
+		self.group_order.encode(w);
+		self.group_expires.encode(w);
+		self.group_min.encode(w);
+		self.group_max.encode(w);
 	}
 }
 
@@ -93,12 +91,10 @@ impl Decode for SubscribeUpdate {
 }
 
 impl Encode for SubscribeUpdate {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.priority.encode(w)?;
-		self.group_order.encode(w)?;
-		self.group_min.encode(w)?;
-		self.group_max.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.priority.encode(w);
+		self.group_order.encode(w);
+		self.group_min.encode(w);
+		self.group_max.encode(w);
 	}
 }

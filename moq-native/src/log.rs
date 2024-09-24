@@ -26,10 +26,7 @@ impl Args {
 	}
 
 	pub fn init(&self) {
-		// Allow the user to override the log level with the RUST_LOG environment variable
-		let filter = EnvFilter::builder()
-			.with_default_directive(self.level().into())
-			.from_env_lossy();
+		let filter = EnvFilter::new(self.level().to_string()).add_directive("h2=warn".parse().unwrap());
 
 		let logger = tracing_subscriber::FmtSubscriber::builder()
 			.with_writer(std::io::stderr)

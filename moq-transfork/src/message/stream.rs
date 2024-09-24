@@ -5,7 +5,6 @@ pub enum Stream {
 	Session,
 	Announce,
 	Subscribe,
-	Datagrams,
 	Fetch,
 	Info,
 }
@@ -17,23 +16,21 @@ impl Decode for Stream {
 			0 => Ok(Self::Session),
 			1 => Ok(Self::Announce),
 			2 => Ok(Self::Subscribe),
-			3 => Ok(Self::Datagrams),
-			4 => Ok(Self::Fetch),
-			5 => Ok(Self::Info),
+			3 => Ok(Self::Fetch),
+			4 => Ok(Self::Info),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
 }
 
 impl Encode for Stream {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = match self {
 			Self::Session => 0,
 			Self::Announce => 1,
 			Self::Subscribe => 2,
-			Self::Datagrams => 3,
-			Self::Fetch => 4,
-			Self::Info => 5,
+			Self::Fetch => 3,
+			Self::Info => 4,
 		};
 		v.encode(w)
 	}
@@ -55,7 +52,7 @@ impl Decode for StreamUni {
 }
 
 impl Encode for StreamUni {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = match self {
 			Self::Group => 0,
 		};

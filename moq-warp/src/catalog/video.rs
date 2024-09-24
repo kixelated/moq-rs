@@ -1,23 +1,23 @@
 use serde::{Deserialize, Serialize};
-use serde_with::DisplayFromStr;
+use serde_with::hex::Hex;
 
-use super::{CodecError, Container, Dimensions};
+use super::{CodecError, Dimensions};
 
 #[serde_with::serde_as]
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Video {
 	pub track: moq_transfork::Track,
-	pub container: Container,
-
-	#[serde_as(as = "DisplayFromStr")]
 	pub codec: VideoCodec,
-
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub bitrate: Option<u32>,
-
 	pub dimensions: Dimensions,
 
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	// The number of units in a second
+	pub timescale: u32,
+
+	#[serde(default)]
+	pub bitrate: Option<u32>,
+
+	#[serde(default)]
 	pub display: Option<Dimensions>,
 
 	// Additional enhancement layers
@@ -32,7 +32,7 @@ pub struct VideoLayer {
 }
 
 macro_rules! video_codec {
-	{$($name:ident = $prefix:expr,)*} => {
+	{$($name:ident,)*} => {
 		#[serde_with::serde_as]
 		#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 		pub enum VideoCodec {
@@ -60,35 +60,29 @@ macro_rules! video_codec {
 				}
 			}
 		}
-
-		impl std::str::FromStr for VideoCodec {
-			type Err = CodecError;
-
-			fn from_str(s: &str) -> Result<Self, Self::Err> {
-				$(
-					if s.starts_with($prefix) {
-						return Ok(Self::$name($name::from_str(s)?));
-					}
-				)*
-				Ok(Self::Unknown(s.into()))
-			}
-		}
 	};
 }
 
 video_codec! {
-	H264 = "avc1",
-	H265 = "hev1",
-	VP8 = "vp8",
-	VP9 = "vp09",
-	AV1 = "av01",
+	H264,
+	H265,
+	VP8,
+	VP9,
+	AV1,
 }
 
+#[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H264 {
 	pub profile: u8,
 	pub constraints: u8,
 	pub level: u8,
+
+	#[serde_as(as = "Hex")]
+	pub sps: Vec<u8>,
+
+	#[serde_as(as = "Hex")]
+	pub pps: Vec<u8>,
 }
 
 impl std::fmt::Display for H264 {
@@ -115,6 +109,8 @@ impl std::str::FromStr for H264 {
 			profile: u8::from_str_radix(&part[0..2], 16)?,
 			constraints: u8::from_str_radix(&part[2..4], 16)?,
 			level: u8::from_str_radix(&part[4..6], 16)?,
+			sps: Vec::new(),
+			pps: Vec::new(),
 		})
 	}
 }
@@ -175,8 +171,6 @@ impl std::str::FromStr for VP8 {
 	}
 }
 
-// vp09.<profile>.<level>.<bitDepth>.<chromaSubsampling>.
-// <colourPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VP9 {
 	pub profile: u8,
@@ -189,6 +183,8 @@ pub struct VP9 {
 	pub full_range: bool,
 }
 
+// vp09.<profile>.<level>.<bitDepth>.<chromaSubsampling>.
+// <colourPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 impl std::fmt::Display for VP9 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "vp09.{:02}.{:02}.{:02}", self.profile, self.level, self.bit_depth)?;
@@ -269,8 +265,6 @@ impl Default for VP9 {
 	}
 }
 
-// av01.<profile>.<level><tier>.<bitDepth>.<monochrome>.<chromaSubsampling>.
-// <colorPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AV1 {
 	pub profile: u8,
@@ -285,6 +279,8 @@ pub struct AV1 {
 	pub full_range: bool,
 }
 
+// av01.<profile>.<level><tier>.<bitDepth>.<monochrome>.<chromaSubsampling>.
+// <colorPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 impl std::fmt::Display for AV1 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(
@@ -397,6 +393,8 @@ mod tests {
 			profile: 0x42,
 			constraints: 0xc0,
 			level: 0x1e,
+			sps: Vec::new(),
+			pps: Vec::new(),
 		};
 
 		let output = H264::from_str(encoded).expect("failed to parse");

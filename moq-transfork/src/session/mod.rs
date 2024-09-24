@@ -120,10 +120,6 @@ impl Session {
 				let mut publisher = publisher.ok_or(Error::RoleViolation)?;
 				publisher.recv_subscribe(stream).await
 			}
-			message::Stream::Datagrams => {
-				let mut publisher = publisher.ok_or(Error::RoleViolation)?;
-				publisher.recv_datagrams(stream).await
-			}
 			message::Stream::Fetch => {
 				let mut publisher = publisher.ok_or(Error::RoleViolation)?;
 				publisher.recv_fetch(stream).await

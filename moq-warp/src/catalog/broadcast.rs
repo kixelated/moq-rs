@@ -1,21 +1,15 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
-use super::{Audio, Container, Error, Result, Video};
+use super::{Audio, Error, Result, Video};
 
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct Broadcast {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub video: Vec<Video>,
 
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub audio: Vec<Audio>,
-
-	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
-	#[serde_as(as = "HashMap<_, serde_with::hex::Hex>")]
-	pub init: HashMap<Container, Vec<u8>>,
 }
 
 impl Broadcast {
@@ -82,9 +76,8 @@ impl Broadcast {
 
 #[cfg(test)]
 mod test {
-	use crate::catalog::{self, AudioCodec};
-
 	use super::*;
+	use crate::catalog;
 
 	#[test]
 	fn simple() {
@@ -97,8 +90,16 @@ mod test {
 						"group_order": "desc",
 						"group_expires": 0.05
 					},
-					"container": "fmp4",
-					"codec": "avc1.64001f",
+					"codec": {
+						"h264": {
+							profile: 100,
+							constraints: 0,
+							level: 31,
+							sps: "42000af841a2",
+							pps: "ce3880",
+						}
+					},
+					"timescale": 1000,
 					"bitrate": 6000000,
 					"dimensions": {
 						"width": 1280,
@@ -119,15 +120,12 @@ mod test {
 						"group_expires": 0.05
 					},
 					"container": "fmp4",
-					"codec": "opus",
+					"timescale": 48000,
 					"sample_rate": 48000,
 					"channel_count": 2,
 					"bitrate": 128000
 				}
 			],
-			"init": {
-				"fmp4": "000000147374797069736f6d0000020069736f6d000000086d6f6f76"
-			}
 		}"#
 		.to_string();
 
@@ -141,17 +139,15 @@ mod test {
 					group_order: moq_transfork::GroupOrder::Desc,
 					group_expires: std::time::Duration::from_millis(50),
 				},
-				container: Container::Fmp4,
 				codec: catalog::H264 {
 					profile: 0x64,
 					constraints: 0x00,
 					level: 0x1f,
+					pps: vec![0xce, 0x38, 0x80],
+					sps: vec![0x42, 0x00, 0x0a, 0xf8, 0x41, 0xa2],
 				}
 				.into(),
-				init: Some(vec![
-					1, 100, 0, 31, 255, 225, 0, 21, 39, 100, 0, 31, 172, 19, 20, 48, 13, 131, 222, 110, 106, 2, 2, 12,
-					15, 8, 132, 99, 32, 1, 0, 4, 40, 238, 60, 176,
-				]),
+				timescale: 1_000,
 				dimensions: catalog::Dimensions {
 					width: 1280,
 					height: 720,
@@ -170,19 +166,12 @@ mod test {
 					group_order: moq_transfork::GroupOrder::Desc,
 					group_expires: std::time::Duration::from_millis(50),
 				},
-				container: Container::Fmp4,
-				codec: AudioCodec::Opus,
+				codec: catalog::AudioCodec::Opus,
+				timescale: 48000,
 				sample_rate: 48000,
 				channel_count: 2,
 				bitrate: Some(128_000),
 			}],
-			init: HashMap::from([(
-				Container::Fmp4,
-				vec![
-					0x00, 0x00, 0x00, 0x14, 0x73, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x02, 0x00,
-					0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x00, 0x08, 0x6D, 0x6F, 0x6F, 0x76,
-				],
-			)]),
 		};
 
 		let output = Broadcast::from_str(&encoded).expect("failed to decode");

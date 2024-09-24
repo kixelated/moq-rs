@@ -25,8 +25,7 @@ impl Writer {
 	// A separate function just to avoid an extra log line
 	pub async fn encode_silent<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {
 		self.buffer.clear();
-
-		msg.encode(&mut self.buffer)?;
+		msg.encode(&mut self.buffer);
 
 		while !self.buffer.is_empty() {
 			self.stream.write_buf(&mut self.buffer).await?;

@@ -22,11 +22,9 @@ impl Decode for Server {
 }
 
 impl Encode for Server {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.version.encode(w)?;
-		self.extensions.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.version.encode(w);
+		self.extensions.encode(w);
 	}
 }
 
@@ -40,14 +38,14 @@ mod tests {
 	fn server_coding() {
 		let mut buf = BytesMut::new();
 		let mut extensions = Extensions::default();
-		extensions.set(Role::Both).unwrap();
+		extensions.set(Role::Both);
 
 		let client = Server {
 			version: Version::DRAFT_03,
 			extensions,
 		};
 
-		client.encode(&mut buf).unwrap();
+		client.encode(&mut buf);
 		assert_eq!(
 			buf.to_vec(),
 			vec![0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]

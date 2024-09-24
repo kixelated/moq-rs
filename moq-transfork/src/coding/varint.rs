@@ -7,7 +7,7 @@ use std::fmt;
 
 use thiserror::Error;
 
-use super::{Decode, DecodeError, Encode, EncodeError};
+use super::{Decode, DecodeError, Encode};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
 #[error("value out of range")]
@@ -194,32 +194,34 @@ impl Decode for VarInt {
 
 impl Encode for VarInt {
 	/// Encode a varint to the given writer.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let x = self.0;
-		if x < 2u64.pow(6) {
-			Self::encode_more(w, 1)?;
-			w.put_u8(x as u8)
-		} else if x < 2u64.pow(14) {
-			Self::encode_more(w, 2)?;
-			w.put_u16(0b01 << 14 | x as u16)
-		} else if x < 2u64.pow(30) {
-			Self::encode_more(w, 4)?;
-			w.put_u32(0b10 << 30 | x as u32)
-		} else if x < 2u64.pow(62) {
-			Self::encode_more(w, 8)?;
-			w.put_u64(0b11 << 62 | x)
-		} else {
-			return Err(EncodeError::BoundsExceeded);
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		match self.encode_size() {
+			1 => w.put_u8(self.0 as u8),
+			2 => w.put_u16(0b01 << 14 | self.0 as u16),
+			4 => w.put_u32(0b10 << 30 | self.0 as u32),
+			8 => w.put_u64(0b11 << 62 | self.0),
+			_ => unreachable!(),
 		}
+	}
 
-		Ok(())
+	fn encode_size(&self) -> usize {
+		if self.0 < 2u64.pow(6) {
+			1
+		} else if self.0 < 2u64.pow(14) {
+			2
+		} else if self.0 < 2u64.pow(30) {
+			4
+		} else {
+			8
+		}
 	}
 }
 
 impl Encode for u64 {
 	/// Encode a varint to the given writer.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let v = VarInt::try_from(*self).map_err(|_| EncodeError::BoundsExceeded)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		// TODO use VarInt everywhere instead of u64
+		let v = VarInt::try_from(*self).expect("u64 too large");
 		v.encode(w)
 	}
 }
@@ -232,8 +234,9 @@ impl Decode for u64 {
 
 impl Encode for usize {
 	/// Encode a varint to the given writer.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		let v = VarInt::try_from(*self).map_err(|_| EncodeError::BoundsExceeded)?;
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		// TODO use VarInt everywhere instead of usize
+		let v = VarInt::try_from(*self).expect("usize too large");
 		v.encode(w)
 	}
 }
@@ -245,7 +248,7 @@ impl Decode for usize {
 }
 
 impl Encode for u32 {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		VarInt::from(*self).encode(w)
 	}
 }

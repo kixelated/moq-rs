@@ -19,11 +19,9 @@ impl Decode for Group {
 }
 
 impl Encode for Group {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.subscribe.encode(w)?;
-		self.sequence.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.subscribe.encode(w);
+		self.sequence.encode(w);
 	}
 }
 
@@ -48,7 +46,7 @@ impl Decode for GroupOrder {
 }
 
 impl Encode for GroupOrder {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = match self {
 			Self::Asc => 0,
 			Self::Desc => 1,
@@ -65,12 +63,10 @@ pub struct GroupDrop {
 }
 
 impl Encode for GroupDrop {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.sequence.encode(w)?;
-		self.count.encode(w)?;
-		self.code.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.sequence.encode(w);
+		self.count.encode(w);
+		self.code.encode(w);
 	}
 }
 

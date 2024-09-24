@@ -24,7 +24,6 @@ impl Client {
 		self.role(setup::Role::Any).await
 	}
 
-	#[tracing::instrument("connect", skip_all, err)]
 	pub async fn role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
 		let mut stream = self.session.open(message::Stream::Session).await?;
 
@@ -34,7 +33,7 @@ impl Client {
 
 	async fn setup(setup: &mut Stream, client_role: setup::Role) -> Result<setup::Role, Error> {
 		let mut extensions = setup::Extensions::default();
-		extensions.set(client_role)?;
+		extensions.set(client_role);
 
 		let client = setup::Client {
 			versions: [setup::Version::FORK_00].into(),

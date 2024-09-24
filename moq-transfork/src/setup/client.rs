@@ -23,11 +23,9 @@ impl Decode for Client {
 
 impl Encode for Client {
 	/// Encode a server setup message.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) -> Result<(), EncodeError> {
-		self.versions.encode(w)?;
-		self.extensions.encode(w)?;
-
-		Ok(())
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.versions.encode(w);
+		self.extensions.encode(w);
 	}
 }
 
@@ -42,14 +40,14 @@ mod tests {
 		let mut buf = BytesMut::new();
 
 		let mut extensions = Extensions::default();
-		extensions.set(Role::Both).unwrap();
+		extensions.set(Role::Both);
 
 		let client = Client {
 			versions: [Version::DRAFT_03].into(),
 			extensions,
 		};
 
-		client.encode(&mut buf).unwrap();
+		client.encode(&mut buf);
 		assert_eq!(
 			buf.to_vec(),
 			vec![0x01, 0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]

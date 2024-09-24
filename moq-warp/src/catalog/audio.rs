@@ -1,15 +1,15 @@
-use super::{CodecError, Container};
+use super::CodecError;
 use serde::{Deserialize, Serialize};
-use serde_with::DisplayFromStr;
 
 #[serde_with::serde_as]
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Audio {
 	pub track: moq_transfork::Track,
-	pub container: Container,
-
-	#[serde_as(as = "DisplayFromStr")]
 	pub codec: AudioCodec,
+
+	// The number of units in a second
+	pub timescale: u32,
 
 	pub sample_rate: u16,
 	pub channel_count: u16,
@@ -39,21 +39,11 @@ impl std::fmt::Display for AudioCodec {
 	}
 }
 
-impl std::str::FromStr for AudioCodec {
-	type Err = CodecError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		match s {
-			"opus" => Ok(Self::Opus),
-			"aac" => Ok(AAC::from_str(s)?.into()),
-			_ => Ok(Self::Unknown(s.to_string())),
-		}
-	}
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AAC {
 	pub profile: u8,
+	// freq_index
+	// chan_conf
 }
 
 impl std::fmt::Display for AAC {
