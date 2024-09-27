@@ -122,11 +122,9 @@ impl<O: AsyncWrite + Send + Unpin + 'static> Media<O> {
 		if let TrackReaderMode::Groups(mut groups) = track.mode().await? {
 			while let Some(group) = groups.next().await? {
 				let out = out.clone();
-				tokio::task::spawn(async move {
-					if let Err(err) = Self::recv_group(group, out).await {
-						warn!("failed to receive group: {err:?}");
-					}
-				});
+				if let Err(err) = Self::recv_group(group, out).await {
+					warn!("failed to receive group: {err:?}");
+				}
 			}
 		}
 		debug!("track {name}: finish");
@@ -140,7 +138,6 @@ impl<O: AsyncWrite + Send + Unpin + 'static> Media<O> {
 			let out = out.clone();
 			let buf = Self::recv_object(object).await?;
 
-			// TODO: avoid interleaving out of order fragments
 			out.lock().await.write_all(&buf).await?;
 		}
 
