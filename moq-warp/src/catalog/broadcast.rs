@@ -119,7 +119,6 @@ mod test {
 						"group_order": "desc",
 						"group_expires": 0.05
 					},
-					"container": "fmp4",
 					"timescale": 48000,
 					"sample_rate": 48000,
 					"channel_count": 2,
@@ -143,10 +142,9 @@ mod test {
 					profile: 0x64,
 					constraints: 0x00,
 					level: 0x1f,
-					pps: vec![0xce, 0x38, 0x80].into(),
-					sps: vec![0x42, 0x00, 0x0a, 0xf8, 0x41, 0xa2].into(),
 				}
 				.into(),
+				description: vec![],
 				timescale: 1_000,
 				dimensions: catalog::Dimensions {
 					width: 1280,

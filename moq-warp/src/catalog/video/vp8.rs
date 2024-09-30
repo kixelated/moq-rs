@@ -5,6 +5,10 @@ use super::CodecError;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VP8;
 
+impl VP8 {
+	pub const PREFIX: &'static str = "vp8";
+}
+
 impl std::fmt::Display for VP8 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "vp8")

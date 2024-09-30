@@ -16,6 +16,10 @@ pub struct AV1 {
 	pub full_range: bool,
 }
 
+impl AV1 {
+	pub const PREFIX: &'static str = "av01";
+}
+
 // av01.<profile>.<level><tier>.<bitDepth>.<monochrome>.<chromaSubsampling>.
 // <colorPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 impl std::fmt::Display for AV1 {

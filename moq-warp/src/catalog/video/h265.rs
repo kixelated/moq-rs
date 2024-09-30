@@ -1,4 +1,8 @@
+use std::{fmt, str::FromStr};
+
 use serde::{Deserialize, Serialize};
+
+use crate::catalog::CodecError;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H265 {
@@ -7,14 +11,17 @@ pub struct H265 {
 	pub level: u8,
 }
 
-impl std::fmt::Display for H265 {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl H265 {
+	pub const PREFIX: &'static str = "hev1";
+}
+
+impl fmt::Display for H265 {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "hev1.{:02x}{:02x}{:02x}", self.profile, self.constraints, self.level)
 	}
 }
 
-/*
-impl std::str::FromStr for H265 {
+impl FromStr for H265 {
 	type Err = CodecError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -35,11 +42,11 @@ impl std::str::FromStr for H265 {
 		})
 	}
 }
-	*/
 
 #[cfg(test)]
 mod tests {
-	/*
+	use super::*;
+
 	#[test]
 	fn test_h265() {
 		let encoded = "hev1.42c01e";
@@ -55,5 +62,4 @@ mod tests {
 		let output = decoded.to_string();
 		assert_eq!(output, encoded);
 	}
-	*/
 }

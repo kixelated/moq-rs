@@ -14,6 +14,10 @@ pub struct VP9 {
 	pub full_range: bool,
 }
 
+impl VP9 {
+	pub const PREFIX: &'static str = "vp09";
+}
+
 // vp09.<profile>.<level>.<bitDepth>.<chromaSubsampling>.
 // <colourPrimaries>.<transferCharacteristics>.<matrixCoefficients>.<videoFullRangeFlag>
 impl std::fmt::Display for VP9 {

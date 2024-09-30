@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use mp4_atom::{Any, AsyncReadFrom, Atom, Esds, Ftyp, Moof, Moov, Trak};
 use std::collections::HashMap;
 use tokio::io::AsyncRead;
@@ -70,17 +71,9 @@ impl<R: AsyncRead + Unpin> Import<R> {
 
 		let track = if let Some(avc1) = &stsd.avc1 {
 			let avcc = &avc1.avcc;
-			let pps = avcc
-				.picture_parameter_sets
-				.first()
-				.ok_or(Error::MissingBox(b"ppss".into()))?
-				.clone();
 
-			let sps = avcc
-				.sequence_parameter_sets
-				.first()
-				.ok_or(Error::MissingBox(b"spss".into()))?
-				.clone();
+			let mut description = BytesMut::new();
+			avcc.encode_body(&mut description);
 
 			catalog::Video {
 				track: moq_transfork::Track::build(name).priority(2).into(),
@@ -96,10 +89,9 @@ impl<R: AsyncRead + Unpin> Import<R> {
 					profile: avcc.avc_profile_indication,
 					constraints: avcc.profile_compatibility,
 					level: avcc.avc_level_indication,
-					pps,
-					sps,
 				}
 				.into(),
+				description: description.to_vec(),
 				timescale,
 				layers: vec![],
 				bitrate: None,
@@ -144,6 +136,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				}
 				.into(),
 				timescale,
+				description: vec![],
 				dimensions: catalog::Dimensions {
 					width: vp09.width,
 					height: vp09.height,

@@ -1,5 +1,8 @@
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_with::{hex::Hex, DisplayFromStr};
+
+use std::fmt;
+use std::str::FromStr;
 
 use super::{CodecError, Dimensions};
 
@@ -20,7 +23,19 @@ pub use vp9::*;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Video {
 	pub track: moq_transfork::Track,
+
+	// The codec mimetype encoded as a string
+	// ex. avc1.42c01e
+	#[serde_as(as = "DisplayFromStr")]
 	pub codec: VideoCodec,
+
+	// Some codecs unfortunately aren't self-describing
+	// One of the best examples is H264, which needs the sps/pps out of band to function.
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	#[serde_as(as = "Hex")]
+	pub description: Vec<u8>,
+
+	// The encoded width/height of the media
 	pub dimensions: Dimensions,
 
 	// The number of units in a second
@@ -62,14 +77,28 @@ macro_rules! video_codec {
 			}
 		)*
 
-		impl std::fmt::Display for VideoCodec {
-			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		impl fmt::Display for VideoCodec {
+			fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 				match self {
 					$(
 						Self::$name(codec) => codec.fmt(f),
 					)*
 					Self::Unknown(codec) => codec.fmt(f),
 				}
+			}
+		}
+
+		impl FromStr for VideoCodec {
+			type Err = CodecError;
+
+			fn from_str(s: &str) -> Result<Self, Self::Err> {
+				$(
+					if s.starts_with($name::PREFIX) {
+						return $name::from_str(s).map(Into::into)
+					}
+				)*
+
+				Ok(Self::Unknown(s.to_string()))
 			}
 		}
 	};
@@ -81,22 +110,4 @@ video_codec! {
 	VP8,
 	VP9,
 	AV1,
-}
-
-macro_rules! video_description {
-	{$($name:ident,)*} => {
-		impl VideoCodec {
-			pub fn description(&self) -> Option<Bytes> {
-				match self {
-					$( Self::$name(codec) => Some(codec.description()), )*
-					_ => None,
-				}
-			}
-		}
-	}
-}
-
-// Codecs that have a description() method
-video_description! {
-	H264,
 }
