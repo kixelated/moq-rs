@@ -42,6 +42,12 @@ impl Media {
 		})
 	}
 
+	pub fn reset(&mut self) {
+		for track in self.tracks.values_mut() {
+			track.end_group();
+		}
+	}
+
 	// Parse the input buffer, reading any full atoms we can find.
 	// Keep appending more data and calling parse.
 	pub fn parse<B: Buf>(&mut self, buf: &mut B) -> anyhow::Result<()> {
@@ -61,7 +67,8 @@ impl Media {
 		match header.name {
 			mp4::BoxType::FtypBox => {
 				if self.ftyp.is_some() {
-					anyhow::bail!("multiple ftyp atoms");
+					tracing::debug!("multiple ftyp atoms");
+					return Ok(true);
 				}
 
 				// Save the ftyp atom for later.
@@ -69,7 +76,8 @@ impl Media {
 			}
 			mp4::BoxType::MoovBox => {
 				if self.moov.is_some() {
-					anyhow::bail!("multiple moov atoms");
+					tracing::debug!("multiple moov atoms");
+					return Ok(true);
 				}
 
 				// Parse the moov box so we can detect the timescales for each track.
