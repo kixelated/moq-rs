@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/kixelated/moq-rs/compare/moq-sub-v0.2.0...moq-sub-v0.2.1) - 2024-10-01
+
+### Fixed
+
+- don't interleave groups ([#188](https://github.com/kixelated/moq-rs/pull/188))
+
 ## [0.1.1](https://github.com/kixelated/moq-rs/compare/moq-sub-v0.1.0...moq-sub-v0.1.1) - 2024-07-24
 
 ### Other
