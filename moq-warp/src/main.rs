@@ -60,23 +60,23 @@ async fn main() -> anyhow::Result<()> {
 	}
 }
 
-#[tracing::instrument("publish", skip_all, ret, fields(broadcast = broadcast.name))]
+#[tracing::instrument("publish", skip_all, ret, fields(broadcast = %broadcast.name))]
 async fn publish(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
 	let (writer, reader) = broadcast.produce();
 
 	let import = cmaf::Import::init(tokio::io::stdin(), writer).await?;
 	tracing::info!(catalog = ?import.catalog());
 
-	let mut publisher = client.publisher().await?;
+	let mut publisher = client.connect_publisher().await?;
 	publisher.announce(reader).await.context("failed to announce")?;
 
 	Ok(import.run().await?)
 }
 
-#[tracing::instrument("subscribe", skip_all, ret, fields(broadcast = broadcast.name))]
+#[tracing::instrument("subscribe", skip_all, ret, fields(broadcast = %broadcast.name))]
 async fn subscribe(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
-	let subscriber = client.subscriber().await?;
-	let broadcast = subscriber.namespace(broadcast)?;
+	let subscriber = client.connect_subscriber().await?;
+	let broadcast = subscriber.subscribe(broadcast)?;
 
 	let export = cmaf::Export::init(broadcast, tokio::io::stdout()).await?;
 	tracing::info!(catalog = ?export.catalog());

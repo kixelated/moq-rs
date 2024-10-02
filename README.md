@@ -10,7 +10,6 @@ This repository contains a few crates:
 -   **moq-relay**: Accepting content from publishers and serves it to any subscribers.
 -   **moq-pub**: Publishes fMP4 broadcasts.
 -   **moq-transfork**: An implementation of the underlying MoQ protocol.
--   **moq-dir**: Aggregates announcements, used to discover broadcasts.
 -   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
 
 There's currently no way to view media with this repo; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
@@ -40,7 +39,7 @@ Notable arguments:
 -   `--bind <ADDR>` Listen on this address, default: `[::]:4443`
 -   `--tls-cert <CERT>` Use the certificate file at this path
 -   `--tls-key <KEY>` Use the private key at this path
--   `--announce <URL>` Forward all announcements to this instance, typically [moq-dir](moq-dir).
+-   `--announce <URL>` Forward all announcements to this address, typically a root relay.
 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
@@ -78,25 +77,6 @@ See the published [crate](https://crates.io/crates/moq-transfork) and [documenta
 [moq-clock](moq-clock) is a simple client that can publish or subscribe to the current time.
 It's meant to demonstate that [moq-transfork](moq-transfork) can be used for more than just media.
 
-## moq-dir
-
-[moq-dir](moq-dir) is a server that aggregates announcements.
-It produces tracks based on the prefix, which are subscribable and can be used to discover broadcasts.
-
-For example, if a client announces the broadcast `.public.room.12345.alice`, then `moq-dir` will produce the following track:
-
-```
-TRACK broadcast=. track=public.room.12345.
-OBJECT +alice
-```
-
-Use the `--announce <moq-dir-url>` flag when running the relay to forward all announcements to the instance.
-
-## moq-api
-
-This is a API server that exposes a REST API.
-It's used by relays to inserts themselves as origins when publishing, and to find the origin when subscribing.
-It's basically just a thin wrapper around redis that is only needed to run multiple relays in a (simple) cluster.
 
 # License
 

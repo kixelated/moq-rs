@@ -20,12 +20,15 @@ use crate::Error;
 /// Static information about a broadcast.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Broadcast {
-	pub name: String,
+	/// This is an Arc because we clone quite frequently.
+	pub name: Arc<String>,
 }
 
 impl Broadcast {
 	pub fn new<T: Into<String>>(name: T) -> Self {
-		Self { name: name.into() }
+		Self {
+			name: Arc::new(name.into()),
+		}
 	}
 }
 
@@ -40,11 +43,10 @@ impl Produce for Broadcast {
 	type Producer = BroadcastProducer;
 
 	fn produce(self) -> (BroadcastProducer, BroadcastConsumer) {
-		let info = Arc::new(self);
 		let (send, recv) = watch::channel(BroadcastState::default());
 
-		let writer = BroadcastProducer::new(send, info.clone());
-		let reader = BroadcastConsumer::new(recv, info);
+		let writer = BroadcastProducer::new(send, self.clone());
+		let reader = BroadcastConsumer::new(recv, self);
 
 		(writer, reader)
 	}
@@ -69,11 +71,11 @@ impl Default for BroadcastState {
 /// Publish new tracks for a broadcast by name.
 pub struct BroadcastProducer {
 	state: watch::Sender<BroadcastState>,
-	pub info: Arc<Broadcast>,
+	pub info: Broadcast,
 }
 
 impl BroadcastProducer {
-	fn new(state: watch::Sender<BroadcastState>, info: Arc<Broadcast>) -> Self {
+	fn new(state: watch::Sender<BroadcastState>, info: Broadcast) -> Self {
 		Self { state, info }
 	}
 
@@ -126,14 +128,6 @@ impl BroadcastProducer {
 
 	pub fn is_unused(&self) -> bool {
 		!self.state.is_closed()
-	}
-}
-
-impl ops::Deref for BroadcastProducer {
-	type Target = Broadcast;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }
 
@@ -190,16 +184,16 @@ impl<'a> ops::DerefMut for BroadcastTrackBuilder<'a> {
 #[derive(Clone)]
 pub struct BroadcastConsumer {
 	state: watch::Receiver<BroadcastState>,
-	pub info: Arc<Broadcast>,
+	pub info: Broadcast,
 }
 
 impl BroadcastConsumer {
-	fn new(state: watch::Receiver<BroadcastState>, info: Arc<Broadcast>) -> Self {
+	fn new(state: watch::Receiver<BroadcastState>, info: Broadcast) -> Self {
 		Self { state, info }
 	}
 
 	/// Get a track from the broadcast by name.
-	pub async fn subscribe<T: Into<Track>>(&self, track: T) -> Result<TrackConsumer, Error> {
+	pub async fn get_track<T: Into<Track>>(&self, track: T) -> Result<TrackConsumer, Error> {
 		let track = track.into();
 
 		let router = {
@@ -220,13 +214,5 @@ impl BroadcastConsumer {
 			Ok(state) => state.closed.clone(),
 			Err(_) => Ok(()),
 		}
-	}
-}
-
-impl ops::Deref for BroadcastConsumer {
-	type Target = Broadcast;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }

@@ -38,13 +38,6 @@ services:
       - "4444:443"
       - "4444:443/udp"
 
-  dir:
-    <<: *x-moq
-    entrypoint: moq-dir
-    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key
-    ports:
-      - "443/udp"
-
   install-certs:
     image: golang:latest
     working_dir: /work

@@ -37,10 +37,6 @@ pub enum Error {
 	#[error("duplicate")]
 	Duplicate,
 
-	// TODO remove
-	//#[error("internal error")]
-	//Internal,
-
 	// Cancel is returned when there are no more readers.
 	#[error("cancelled")]
 	Cancel,
@@ -54,6 +50,9 @@ pub enum Error {
 
 	#[error("wrong frame size")]
 	WrongSize,
+
+	#[error("protocol violation")]
+	ProtocolViolation,
 }
 
 impl Error {
@@ -72,6 +71,7 @@ impl Error {
 			Self::Duplicate => 12,
 			Self::NotFound => 13,
 			Self::WrongSize => 14,
+			Self::ProtocolViolation => 15,
 			Self::App(app) => *app + 64,
 		}
 	}

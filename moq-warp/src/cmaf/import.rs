@@ -73,7 +73,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 			let avcc = &avc1.avcc;
 
 			let mut description = BytesMut::new();
-			avcc.encode_body(&mut description);
+			avcc.encode_body(&mut description)?;
 
 			catalog::Video {
 				track: moq_transfork::Track::build(name).priority(2).into(),
@@ -97,7 +97,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
-			let _hvcc = &hev1.hvcc;
+			let hvcc = &hev1.hvcc;
 
 			/*
 			catalog::Video {

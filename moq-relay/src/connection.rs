@@ -1,60 +1,62 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transfork::prelude::*;
 
-use crate::Origins;
-
 pub struct Connection {
 	session: moq_transfork::Server,
-	incoming: Origins,
-	outgoing: RouterConsumer<Broadcast>,
+
+	local: AnnouncedProducer,
+	remote: AnnouncedConsumer,
 }
 
 impl Connection {
-	pub fn new(session: web_transport::Session, incoming: Origins, outgoing: RouterConsumer<Broadcast>) -> Self {
+	pub fn new(session: web_transport::Session, local: AnnouncedProducer, remote: AnnouncedConsumer) -> Self {
 		Self {
 			session: moq_transfork::Server::new(session),
-			incoming,
-			outgoing,
+			local,
+			remote,
 		}
 	}
 
-	pub async fn run(self) -> Result<(), moq_transfork::Error> {
-		let (publisher, subscriber) = self.session.any().await?;
+	pub async fn run(self) -> anyhow::Result<()> {
+		let (publisher, subscriber) = self.session.accept_any().await?;
 
 		let mut tasks = FuturesUnordered::new();
 
-		if let Some(mut publisher) = publisher {
-			publisher.route(self.outgoing);
-			tasks.push(async move { publisher.closed().await }.boxed());
+		if let Some(publisher) = publisher {
+			tasks.push(Self::run_consumer(publisher, self.local.subscribe(), self.remote).boxed());
 		}
 
 		if let Some(subscriber) = subscriber {
-			tasks.push(Self::run_producer(subscriber, self.incoming).boxed());
+			tasks.push(Self::run_producer(subscriber, self.local).boxed());
 		}
 
 		tasks.select_next_some().await
 	}
 
-	async fn run_producer(mut subscriber: Subscriber, router: Origins) -> Result<(), moq_transfork::Error> {
-		let mut tasks = FuturesUnordered::new();
-
-		let mut announced = subscriber.announced();
-
-		loop {
-			tokio::select! {
-				Some(broadcast) = announced.next() => {
-					// Announce that we're an origin for this broadcast
-					let announce = router.announce(broadcast.clone());
-
-					// Wait until the broadcast is closed to unannounce it
-					tasks.push(async move {
-						broadcast.closed().await.ok();
-						drop(announce);
-					})
-				},
-				Some(_res) = tasks.next() => {},
-				else => return Ok(()),
-			};
+	async fn run_consumer(
+		publisher: Publisher,
+		local: AnnouncedConsumer,
+		remote: AnnouncedConsumer,
+	) -> anyhow::Result<()> {
+		tokio::select! {
+			res = local.forward(publisher.clone()) => res?,
+			res = remote.forward(publisher) => res?,
 		}
+
+		Ok(())
+	}
+
+	async fn run_producer(mut subscriber: Subscriber, mut local: AnnouncedProducer) -> anyhow::Result<()> {
+		let mut announced = subscriber.announced().await?;
+
+		while let Some(broadcast) = announced.next().await {
+			let active = local.insert(broadcast.clone())?;
+			tokio::spawn(async move {
+				broadcast.closed().await.ok();
+				drop(active);
+			});
+		}
+
+		Ok(())
 	}
 }

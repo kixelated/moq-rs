@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
 	let session = moq_transfork::Client::new(session);
 
 	if config.publish {
-		let mut publisher = session.publisher().await?;
+		let mut publisher = session.connect_publisher().await?;
 
 		let (mut writer, reader) = Broadcast::new(config.broadcast).produce();
 		publisher
@@ -67,9 +67,11 @@ async fn main() -> anyhow::Result<()> {
 
 		clock.run().await
 	} else {
-		let mut subscriber = session.subscriber().await?;
+		let subscriber = session.connect_subscriber().await?;
 
-		let reader = subscriber.subscribe(config.broadcast, config.track).await?;
+		let broadcast = subscriber.subscribe(config.broadcast)?;
+		let reader = broadcast.get_track(config.track).await?;
+
 		let clock = clock::Subscriber::new(reader);
 
 		clock.run().await

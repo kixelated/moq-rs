@@ -10,14 +10,13 @@ use crate::{
 	BroadcastProducer, Error, RouterProducer,
 };
 
-use super::{subscribe, Announced, AnnouncedProducer, Reader, Session, Stream, SubscribeConsumer};
+use super::{subscribe, AnnouncedConsumer, AnnouncedProducer, Reader, Session, Stream, SubscribeConsumer};
 
 #[derive(Clone)]
 pub struct Subscriber {
 	session: Session,
-	announced: AnnouncedProducer,
 
-	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
+	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
 	subscribes: Lock<HashMap<u64, SubscribeConsumer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
@@ -26,7 +25,6 @@ impl Subscriber {
 	pub(super) fn new(session: Session) -> Self {
 		Self {
 			session,
-			announced: Default::default(),
 
 			broadcasts: Default::default(),
 			subscribes: Default::default(),
@@ -34,19 +32,64 @@ impl Subscriber {
 		}
 	}
 
-	pub fn announced(&mut self) -> Announced {
-		self.announced.subscribe()
+	/// Discover any broadcasts.
+	pub async fn announced(&mut self) -> Result<AnnouncedConsumer, Error> {
+		self.announced_prefix("").await
 	}
 
-	// TODO come up with a better name
+	/// Discover any broadcasts matching a prefix.
+	///
+	/// This function is synchronous unless the connection is blocked on flow control.
+	pub async fn announced_prefix<P: ToString>(&mut self, prefix: P) -> Result<AnnouncedConsumer, Error> {
+		let producer = AnnouncedProducer::default();
+		let consumer = producer.subscribe_prefix(prefix);
+
+		let mut stream = self.session.open(message::Stream::Announce).await?;
+		let this = self.clone();
+		spawn(async move {
+			this.run_announce(&mut stream, producer)
+				.await
+				.or_close(&mut stream)
+				.ok();
+		});
+
+		Ok(consumer)
+	}
+
+	async fn run_announce(&self, stream: &mut Stream, mut announced: AnnouncedProducer) -> Result<(), Error> {
+		// Used to toggle on each duplicate announce
+		let mut active = HashMap::new();
+
+		loop {
+			tokio::select! {
+				res = stream.reader.decode_maybe::<message::Announce>() => {
+					match res? {
+						Some(announce) => {
+							let broadcast = self.subscribe(announce.broadcast)?;
+
+							match active.entry(broadcast.info.name.clone()) {
+								hash_map::Entry::Occupied(entry) => &mut entry.remove(),
+								hash_map::Entry::Vacant(entry) => entry.insert(announced.insert(broadcast)?),
+							};
+						},
+						// Stop if the stream has been closed
+						None => return Ok(()),
+					}
+				},
+				// Stop if the consumer is no longer interested
+				_ = announced.closed() => return Ok(()),
+			}
+		}
+	}
+
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn namespace<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastConsumer, Error> {
+	pub fn subscribe<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastConsumer, Error> {
 		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
-		match self.broadcasts.lock().entry(broadcast.name.clone()) {
+		match self.broadcasts.lock().entry(broadcast.clone()) {
 			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
 			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
 		};
@@ -60,19 +103,19 @@ impl Subscriber {
 			broadcasts: self.broadcasts.clone(),
 		};
 
-		spawn(self.clone().run_announce(announce));
+		spawn(self.clone().run_router(announce));
 
 		Ok(reader)
 	}
 
-	#[tracing::instrument("announed", skip_all, fields(broadcast = announce.broadcast.name))]
-	async fn run_announce(self, mut announce: Announce) {
+	#[tracing::instrument("announed", skip_all, fields(broadcast = %announce.broadcast.info.name))]
+	async fn run_router(self, mut announce: Announce) {
 		while let Some(request) = announce.router.requested().await {
 			let mut this = self.clone();
-			let broadcast = announce.broadcast.info.as_ref().clone();
+			let broadcast = announce.broadcast.info.clone();
 
 			spawn(async move {
-				match this.subscribe(broadcast, request.info.clone()).await {
+				match this.subscribe_track(broadcast, request.info.clone()).await {
 					Ok(track) => request.serve(track),
 					Err(err) => request.close(err),
 				};
@@ -80,7 +123,7 @@ impl Subscriber {
 		}
 	}
 
-	pub async fn subscribe<B: Into<Broadcast>, T: Into<Track>>(
+	async fn subscribe_track<B: Into<Broadcast>, T: Into<Track>>(
 		&mut self,
 		broadcast: B,
 		track: T,
@@ -89,7 +132,7 @@ impl Subscriber {
 		self.subscribe_inner(id, broadcast.into(), track.into()).await
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id, broadcast=broadcast.name, track=track.name))]
+	#[tracing::instrument("subscribe", skip_all, err, fields(id, broadcast=%broadcast.name, track=track.name))]
 	pub async fn subscribe_inner(
 		&mut self,
 		id: u64,
@@ -105,33 +148,6 @@ impl Subscriber {
 		});
 
 		Ok(consumer.track)
-	}
-
-	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let announce = stream.reader.decode().await?;
-		self.announced_run(stream, announce).await
-	}
-
-	async fn announced_run(&mut self, stream: &mut Stream, announce: message::Announce) -> Result<(), Error> {
-		// Serve the broadcast and add it to the announced queue.
-		let broadcast = self.namespace(announce.broadcast)?;
-		self.announced.insert(broadcast.clone());
-
-		// Send the OK message.
-		let msg = message::AnnounceOk {};
-		stream.writer.encode(&msg).await?;
-
-		tracing::info!("ok");
-
-		// Wait until the stream is closed.
-		let res = tokio::select! {
-			res = stream.reader.closed() => res,
-			res = broadcast.closed() => res.map_err(Into::into),
-		};
-
-		self.announced.remove(&broadcast.name);
-
-		res
 	}
 
 	pub(super) async fn recv_group(&mut self, mut stream: Reader) {
@@ -162,11 +178,11 @@ impl Subscriber {
 struct Announce {
 	pub broadcast: BroadcastProducer,
 	pub router: RouterProducer<Track>,
-	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
+	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
 }
 
 impl Drop for Announce {
 	fn drop(&mut self) {
-		self.broadcasts.lock().remove(&self.broadcast.name);
+		self.broadcasts.lock().remove(&self.broadcast.info);
 	}
 }

@@ -13,18 +13,18 @@ impl Client {
 	}
 
 	/// Connect a session as both a publisher and subscriber.
-	pub async fn both(self) -> Result<(Publisher, Subscriber), Error> {
-		self.role(setup::Role::Both)
+	pub async fn connect(self) -> Result<(Publisher, Subscriber), Error> {
+		self.connect_role(setup::Role::Both)
 			.await
 			.map(|(publisher, subscriber)| (publisher.unwrap(), subscriber.unwrap()))
 	}
 
 	/// Connect a session as either a publisher, subscriber, or both, as chosen by server.
-	pub async fn any(self) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
-		self.role(setup::Role::Any).await
+	pub async fn connect_any(self) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
+		self.connect_role(setup::Role::Any).await
 	}
 
-	pub async fn role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
+	pub async fn connect_role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
 		let mut stream = self.session.open(message::Stream::Session).await?;
 
 		let role = Self::setup(&mut stream, role).await.or_close(&mut stream)?;
@@ -58,13 +58,13 @@ impl Client {
 		Ok(role)
 	}
 
-	pub async fn publisher(self) -> Result<Publisher, Error> {
-		let (publisher, _) = self.role(setup::Role::Publisher).await?;
+	pub async fn connect_publisher(self) -> Result<Publisher, Error> {
+		let (publisher, _) = self.connect_role(setup::Role::Publisher).await?;
 		Ok(publisher.unwrap())
 	}
 
-	pub async fn subscriber(self) -> Result<Subscriber, Error> {
-		let (_, subscriber) = self.role(setup::Role::Subscriber).await?;
+	pub async fn connect_subscriber(self) -> Result<Subscriber, Error> {
+		let (_, subscriber) = self.connect_role(setup::Role::Subscriber).await?;
 		Ok(subscriber.unwrap())
 	}
 }

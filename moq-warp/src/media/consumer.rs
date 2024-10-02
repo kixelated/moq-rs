@@ -47,7 +47,7 @@ impl BroadcastConsumer {
 
 		let timescale = timescale.ok_or(Error::MissingTrack)?;
 
-		let track = self.inner.subscribe(track).await?;
+		let track = self.inner.get_track(track).await?;
 		Ok(TrackConsumer::new(track, timescale))
 	}
 

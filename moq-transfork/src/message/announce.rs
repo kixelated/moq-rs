@@ -20,23 +20,22 @@ impl Encode for Announce {
 	}
 }
 
-/// Sent by the subscriber to accept an Announce.
+/// Sent by the subscriber to request ANNOUNCE messages.
 #[derive(Clone, Debug)]
-pub struct AnnounceOk {}
+pub struct AnnounceInterest {
+	/// The desired broadcast prefix
+	pub prefix: String,
+}
 
-impl Decode for AnnounceOk {
+impl Decode for AnnounceInterest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let cool = u64::decode(r)?;
-		if cool != 1 {
-			return Err(DecodeError::InvalidValue);
-		}
-
-		Ok(Self {})
+		let prefix = String::decode(r)?;
+		Ok(Self { prefix })
 	}
 }
 
-impl Encode for AnnounceOk {
+impl Encode for AnnounceInterest {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		1u64.encode(w)
+		self.prefix.encode(w)
 	}
 }

@@ -14,8 +14,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
 moq-native = { path = "../moq-native", version = "0.3" }
-moq-dir = { path = "../moq-dir", version = "0.1" }
 web-transport = { workspace = true }
+
+bytes = "1"
 
 # QUIC
 url = "2"

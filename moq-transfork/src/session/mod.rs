@@ -59,8 +59,8 @@ impl Session {
 			this.run_session(stream).await.or_close(&mut this).ok();
 		}));
 
-		spawn(async_clone!(this, publisher, subscriber, {
-			this.run_bi(publisher, subscriber).await.or_close(&mut this).ok();
+		spawn(async_clone!(this, publisher, {
+			this.run_bi(publisher).await.or_close(&mut this).ok();
 		}));
 
 		spawn(async_clone!(this, subscriber, {
@@ -89,14 +89,13 @@ impl Session {
 		}
 	}
 
-	async fn run_bi(&mut self, publisher: Option<Publisher>, subscriber: Option<Subscriber>) -> Result<(), Error> {
+	async fn run_bi(&mut self, publisher: Option<Publisher>) -> Result<(), Error> {
 		loop {
 			let mut stream = self.accept().await?;
 			let publisher = publisher.clone();
-			let subscriber = subscriber.clone();
 
 			spawn(async move {
-				Self::run_control(&mut stream, publisher, subscriber)
+				Self::run_control(&mut stream, publisher)
 					.await
 					.or_close(&mut stream)
 					.ok();
@@ -104,17 +103,13 @@ impl Session {
 		}
 	}
 
-	async fn run_control(
-		stream: &mut Stream,
-		publisher: Option<Publisher>,
-		subscriber: Option<Subscriber>,
-	) -> Result<(), Error> {
+	async fn run_control(stream: &mut Stream, publisher: Option<Publisher>) -> Result<(), Error> {
 		let kind = stream.reader.decode().await?;
 		match kind {
 			message::Stream::Session => Err(Error::UnexpectedStream(kind)),
 			message::Stream::Announce => {
-				let mut subscriber = subscriber.ok_or(Error::RoleViolation)?;
-				subscriber.recv_announce(stream).await
+				let mut publisher = publisher.ok_or(Error::RoleViolation)?;
+				publisher.recv_announce(stream).await
 			}
 			message::Stream::Subscribe => {
 				let mut publisher = publisher.ok_or(Error::RoleViolation)?;

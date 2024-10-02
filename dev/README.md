@@ -26,7 +26,6 @@ Like mentioned in the root README, the easiest way to do this is via docker comp
 make run
 ```
 
-This hosts a [moq-dir](../moq-dir) instance to serve the current announcements.
 
 ## moq-pub
 

@@ -1,23 +1,25 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::HashMap;
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	message,
-	model::{Broadcast, BroadcastConsumer, GroupConsumer, RouterConsumer, Track, TrackConsumer},
+	model::{Broadcast, BroadcastConsumer, GroupConsumer, Track, TrackConsumer},
 	util::{spawn, FuturesExt, Lock, OrClose},
 	Error,
 };
 
-use super::{Session, Stream, Writer};
+use super::{AnnouncedProducer, Session, Stream, Writer};
 
 #[derive(Clone)]
 pub struct Publisher {
 	session: Session,
 
 	// Used to route incoming subscriptions
-	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
-	router: Lock<Option<RouterConsumer<Broadcast>>>,
+	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
+
+	// Used to reply to ANNOUNCE_INTEREST requests
+	announced: AnnouncedProducer,
 }
 
 impl Publisher {
@@ -25,64 +27,49 @@ impl Publisher {
 		Self {
 			session,
 			broadcasts: Default::default(),
-			router: Default::default(),
+			announced: Default::default(),
 		}
 	}
 
-	/// Announce a broadcast and serve tracks using the returned [BroadcastProducer].
-	#[tracing::instrument("announce", skip_all, err, fields(broadcast = broadcast.name))]
+	/// Announce a broadcast.
+	#[tracing::instrument("announce", skip_all, err, fields(broadcast = %broadcast.info.name))]
 	pub async fn announce(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
-		let announce = self.init_announce(broadcast)?;
-
-		let mut stream = self.session.open(message::Stream::Announce).await?;
-		self.start_announce(&mut stream, &announce)
-			.await
-			.or_close(&mut stream)?;
+		let active = self.announced.insert(broadcast.clone())?;
 
 		spawn(async move {
-			Self::run_announce(stream, announce).await.ok();
+			broadcast.closed().await.ok();
+			drop(active);
 		});
 
 		Ok(())
 	}
 
-	fn init_announce(&mut self, broadcast: BroadcastConsumer) -> Result<Announce, Error> {
-		match self.broadcasts.lock().entry(broadcast.name.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
-		};
+	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
+		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
 
-		Ok(Announce {
-			broadcast,
-			broadcasts: self.broadcasts.clone(),
-		})
-	}
+		let mut unannounced = FuturesUnordered::new();
+		let mut announced = self.announced.subscribe_prefix(interest.prefix);
 
-	async fn start_announce(&mut self, stream: &mut Stream, announce: &Announce) -> Result<(), Error> {
-		let announce = message::Announce {
-			broadcast: announce.broadcast.name.clone(),
-		};
+		loop {
+			tokio::select! {
+				Some(broadcast) = announced.next() => {
+					stream.writer.encode(&message::Announce {
+						broadcast: broadcast.info.name.to_string(),
+					}).await?;
 
-		stream.writer.encode(&announce).await?;
-
-		let _ok = stream.reader.decode::<message::AnnounceOk>().await?;
-		tracing::info!("ok");
-
-		Ok(())
-	}
-
-	async fn run_announce(mut stream: Stream, announce: Announce) -> Result<(), Error> {
-		tokio::select! {
-			// Keep the stream open until the broadcast is closed
-			res = stream.reader.closed() => res.map_err(Error::from),
-			res = announce.broadcast.closed() => res.map_err(Error::from),
+					unannounced.push(async move {
+						broadcast.closed().await.ok();
+						broadcast
+					});
+				},
+				Some(broadcast) = unannounced.next() => {
+					stream.writer.encode(&message::Announce {
+						broadcast: broadcast.info.name.to_string(),
+					}).await?;
+				},
+				res = stream.reader.closed() => return res,
+			}
 		}
-		.or_close(&mut stream)
-	}
-
-	// Optionally send any requests for unknown broadcasts to the router
-	pub fn route(&mut self, router: RouterConsumer<Broadcast>) {
-		*self.router.lock() = Some(router);
 	}
 
 	async fn subscribe<B: Into<Broadcast>, T: Into<Track>>(
@@ -93,18 +80,9 @@ impl Publisher {
 		let broadcast = broadcast.into();
 		let track = track.into();
 
-		let reader = self.broadcasts.lock().get(&broadcast.name).cloned();
+		let reader = self.broadcasts.lock().get(&broadcast).cloned();
 		if let Some(broadcast) = reader {
-			tracing::trace!("using announced broadcast");
-			return broadcast.subscribe(track).await;
-		}
-
-		let router = self.router.lock().clone();
-		if let Some(router) = router {
-			tracing::trace!("using router");
-
-			let reader = router.subscribe(broadcast).await?;
-			return reader.subscribe(track).await;
+			return broadcast.get_track(track).await;
 		}
 
 		Err(Error::NotFound)
@@ -257,16 +235,5 @@ impl Publisher {
 
 	pub async fn closed(&self) -> Result<(), Error> {
 		self.session.closed().await
-	}
-}
-
-struct Announce {
-	pub broadcast: BroadcastConsumer,
-	broadcasts: Lock<HashMap<String, BroadcastConsumer>>,
-}
-
-impl Drop for Announce {
-	fn drop(&mut self) {
-		self.broadcasts.lock().remove(&self.broadcast.name);
 	}
 }

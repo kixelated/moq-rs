@@ -17,29 +17,29 @@ impl Server {
 		}
 	}
 
-	pub async fn publisher(self) -> Result<Publisher, Error> {
-		let (publisher, _) = self.role(setup::Role::Publisher).await?;
+	pub async fn accept_publisher(self) -> Result<Publisher, Error> {
+		let (publisher, _) = self.accept_role(setup::Role::Publisher).await?;
 		Ok(publisher.unwrap())
 	}
 
-	pub async fn subscriber(self) -> Result<Subscriber, Error> {
-		let (_, subscriber) = self.role(setup::Role::Subscriber).await?;
+	pub async fn accept_subscriber(self) -> Result<Subscriber, Error> {
+		let (_, subscriber) = self.accept_role(setup::Role::Subscriber).await?;
 		Ok(subscriber.unwrap())
 	}
 
 	/// Accept a session as both a publisher and subscriber.
-	pub async fn both(self) -> Result<(Publisher, Subscriber), Error> {
-		self.role(setup::Role::Both)
+	pub async fn accept(self) -> Result<(Publisher, Subscriber), Error> {
+		self.accept_role(setup::Role::Both)
 			.await
 			.map(|(publisher, subscriber)| (publisher.unwrap(), subscriber.unwrap()))
 	}
 
 	/// Accept a session as either a publisher, subscriber, or both, as chosen by the client.
-	pub async fn any(self) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
-		self.role(setup::Role::Any).await
+	pub async fn accept_any(self) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
+		self.accept_role(setup::Role::Any).await
 	}
 
-	pub async fn role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
+	pub async fn accept_role(mut self, role: setup::Role) -> Result<(Option<Publisher>, Option<Subscriber>), Error> {
 		let mut stream = self.session.accept().await?;
 		let kind = stream.reader.decode().await?;
 

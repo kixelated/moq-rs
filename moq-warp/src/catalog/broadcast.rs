@@ -49,7 +49,7 @@ impl Broadcast {
 			.group_expires(std::time::Duration::ZERO)
 			.into();
 
-		let mut track = broadcast.subscribe(track).await?;
+		let mut track = broadcast.get_track(track).await?;
 		let mut group = track.next_group().await?.ok_or(Error::Empty)?;
 		let frame = group.read_frame().await?.ok_or(Error::Empty)?;
 		let parsed = Self::from_slice(&frame)?;
