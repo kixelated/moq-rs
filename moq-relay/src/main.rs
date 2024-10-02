@@ -14,11 +14,8 @@ use url::Url;
 use anyhow::Context;
 
 use clap::Parser;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
 use moq_native::quic;
 use moq_transfork::prelude::*;
-use tracing::Instrument;
 
 #[derive(Parser, Clone)]
 pub struct Config {
@@ -78,7 +75,6 @@ async fn main() -> anyhow::Result<()> {
 		});
 	}
 
-	let mut tasks = FuturesUnordered::new();
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 	let mut server = quic.server.context("missing TLS certificate")?;
 
@@ -92,20 +88,16 @@ async fn main() -> anyhow::Result<()> {
 
 	tracing::info!(addr = %config.bind, "listening");
 
-	let mut next_id = 0;
+	let mut conn_id = 0;
 
-	loop {
-		tokio::select! {
-			Some(conn) = server.accept() => {
-				let session = Connection::new(conn, local.clone(), remote.subscribe());
-				let span = tracing::info_span!("session", id = next_id);
-				next_id += 1;
-				tasks.push(session.run().instrument(span));
-			},
-			Some(res) = tasks.next() => {
-				tracing::warn!(?res, "session ended");
-			}
-			else => return Ok(()),
-		}
+	while let Some(conn) = server.accept().await {
+		let session = Connection::new(conn_id, conn, local.clone(), remote.subscribe());
+		conn_id += 1;
+
+		tokio::spawn(async move {
+			session.run().await.ok();
+		});
 	}
+
+	Ok(())
 }

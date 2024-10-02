@@ -50,15 +50,11 @@ impl Cluster {
 
 		if let Some(node) = self.config.cluster_node.as_ref() {
 			let origin = Broadcast::new(format!("{prefix}{node}")).produce();
-			publisher.announce(origin.1).await?;
+			publisher.announce(origin.1)?;
 			tasks.push(Self::run_local(origin.0, self.local).boxed());
 		}
 
-		let announced = subscriber
-			.announced_prefix(prefix)
-			.await
-			.context("failed to discover announced origins")?;
-
+		let announced = subscriber.announced_prefix(prefix);
 		tasks.push(Self::run_remotes(self.remote, announced, self.client).boxed());
 
 		tasks.select_next_some().await
@@ -92,12 +88,19 @@ impl Cluster {
 		client: quic::Client,
 	) -> anyhow::Result<()> {
 		while let Some(announce) = announced.next().await {
-			let prefix = announced.prefix().to_string();
+			let prefix = announced.prefix();
+			let node = announce
+				.info
+				.name
+				.strip_prefix(prefix)
+				.context("invalid prefix")?
+				.to_string();
+
 			let client = client.clone();
 			let remote = remote.clone();
 
 			tokio::spawn(async move {
-				if let Err(err) = Self::run_remote(remote, announce, prefix, client).await {
+				if let Err(err) = Self::run_remote(remote, announce, node, client).await {
 					log::error!("failed to run remote: {:?}", err);
 				}
 			});
@@ -106,19 +109,16 @@ impl Cluster {
 		Ok(())
 	}
 
+	#[tracing::instrument("remote", skip_all, err, fields(node = %node))]
 	async fn run_remote(
 		mut remote: AnnouncedProducer,
 		announce: BroadcastConsumer,
-		prefix: String,
+		node: String,
 		client: quic::Client,
 	) -> anyhow::Result<()> {
-		let host = announce.info.name.strip_prefix(&prefix).context("invalid prefix")?;
-		let url = Url::parse(&format!("https://{}", host))?;
+		let url = Url::parse(&format!("https://{}", node))?;
 
-		let conn = client
-			.connect(&url)
-			.await
-			.context("failed to connect to announce server")?;
+		let conn = client.connect(&url).await.context("failed to connect to remote")?;
 
 		let client = moq_transfork::Client::new(conn);
 
@@ -132,10 +132,13 @@ impl Cluster {
 		let mut primary = ListingConsumer::new(primary);
 
 		while let Some(listing) = primary.next().await? {
-			let broadcast = origin.subscribe(listing.name.clone())?;
-			let active = remote.insert(broadcast)?;
+			let broadcast = origin.subscribe(listing.name.clone());
+			tracing::info!(broadcast = ?broadcast.info, "available");
+
+			let active = remote.insert(broadcast.clone())?;
 
 			tokio::spawn(async move {
+				tracing::info!(broadcast = ?broadcast.info, "unavailable");
 				listing.closed().await.ok();
 				drop(active);
 			});

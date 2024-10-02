@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use tokio::sync::watch;
 
 use crate::{Broadcast, BroadcastConsumer, Error};
@@ -7,8 +7,8 @@ use super::Publisher;
 
 #[derive(Default)]
 struct AnnouncedState {
-	items: VecDeque<Option<BroadcastConsumer>>,
-	unique: HashSet<Broadcast>,
+	order: VecDeque<Option<BroadcastConsumer>>,
+	lookup: HashMap<Broadcast, BroadcastConsumer>,
 	pruned: usize,
 }
 
@@ -23,9 +23,9 @@ impl AnnouncedProducer {
 		let mut index = 0;
 
 		let ok = self.state.send_if_modified(|state| {
-			if state.unique.insert(broadcast.info.clone()) {
-				index = state.items.len() + state.pruned;
-				state.items.push_back(Some(broadcast.clone()));
+			if state.lookup.insert(broadcast.info.clone(), broadcast.clone()).is_none() {
+				index = state.order.len() + state.pruned;
+				state.order.push_back(Some(broadcast.clone()));
 
 				true
 			} else {
@@ -44,13 +44,17 @@ impl AnnouncedProducer {
 		})
 	}
 
+	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+		self.state.borrow().lookup.get(broadcast).cloned()
+	}
+
 	fn remove(&mut self, broadcast: &Broadcast, index: usize) {
 		self.state.send_if_modified(|state| {
-			state.unique.remove(&broadcast);
-			state.items[index - state.pruned] = None;
+			state.lookup.remove(&broadcast);
+			state.order[index - state.pruned] = None;
 
-			while let Some(None) = state.items.front() {
-				state.items.pop_front();
+			while let Some(None) = state.order.front() {
+				state.order.pop_front();
 				state.pruned += 1;
 			}
 
@@ -109,11 +113,11 @@ impl AnnouncedConsumer {
 					self.index = state.pruned;
 				}
 
-				while self.index < state.items.len() + state.pruned {
+				while self.index < state.order.len() + state.pruned {
 					let index = self.index - state.pruned;
 					self.index += 1;
 
-					if let Some(announced) = &state.items[index] {
+					if let Some(announced) = &state.order[index] {
 						if announced.info.name.starts_with(&self.prefix) {
 							return Some(announced.clone());
 						}
@@ -129,7 +133,7 @@ impl AnnouncedConsumer {
 
 	pub async fn forward(mut self, mut publisher: Publisher) -> Result<(), Error> {
 		while let Some(broadcast) = self.next().await {
-			publisher.announce(broadcast).await?;
+			publisher.announce(broadcast)?;
 		}
 
 		Ok(())

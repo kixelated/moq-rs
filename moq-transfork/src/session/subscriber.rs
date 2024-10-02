@@ -33,39 +33,58 @@ impl Subscriber {
 	}
 
 	/// Discover any broadcasts.
-	pub async fn announced(&mut self) -> Result<AnnouncedConsumer, Error> {
-		self.announced_prefix("").await
+	pub fn announced(&mut self) -> AnnouncedConsumer {
+		self.announced_prefix("")
 	}
 
 	/// Discover any broadcasts matching a prefix.
 	///
 	/// This function is synchronous unless the connection is blocked on flow control.
-	pub async fn announced_prefix<P: ToString>(&mut self, prefix: P) -> Result<AnnouncedConsumer, Error> {
+	#[tracing::instrument("announced", skip_all, fields(prefix = %prefix.to_string()))]
+	pub fn announced_prefix<P: ToString>(&mut self, prefix: P) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
-		let consumer = producer.subscribe_prefix(prefix);
+		let prefix = prefix.to_string();
+		let consumer = producer.subscribe_prefix(prefix.clone());
 
-		let mut stream = self.session.open(message::Stream::Announce).await?;
-		let this = self.clone();
+		let mut this = self.clone();
 		spawn(async move {
-			this.run_announce(&mut stream, producer)
+			let mut stream = match this.session.open(message::Stream::Announce).await {
+				Ok(stream) => stream,
+				Err(err) => {
+					tracing::warn!(?err, "failed to open announce stream");
+					return;
+				}
+			};
+
+			this.run_announce(&mut stream, prefix, producer)
 				.await
 				.or_close(&mut stream)
 				.ok();
 		});
 
-		Ok(consumer)
+		consumer
 	}
 
-	async fn run_announce(&self, stream: &mut Stream, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announce(
+		&self,
+		stream: &mut Stream,
+		prefix: String,
+		mut announced: AnnouncedProducer,
+	) -> Result<(), Error> {
 		// Used to toggle on each duplicate announce
 		let mut active = HashMap::new();
+
+		stream.writer.encode(&message::AnnounceInterest { prefix }).await?;
+
+		tracing::debug!("waiting for announces");
 
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
 						Some(announce) => {
-							let broadcast = self.subscribe(announce.broadcast)?;
+							tracing::debug!(?announce);
+							let broadcast = self.subscribe(announce.broadcast);
 
 							match active.entry(broadcast.info.name.clone()) {
 								hash_map::Entry::Occupied(entry) => &mut entry.remove(),
@@ -85,12 +104,12 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn subscribe<T: Into<Broadcast>>(&self, broadcast: T) -> Result<BroadcastConsumer, Error> {
+	pub fn subscribe<T: Into<Broadcast>>(&self, broadcast: T) -> BroadcastConsumer {
 		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
 		match self.broadcasts.lock().entry(broadcast.clone()) {
-			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
+			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
 			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
 		};
 
@@ -105,12 +124,13 @@ impl Subscriber {
 
 		spawn(self.clone().run_router(announce));
 
-		Ok(reader)
+		reader
 	}
 
-	#[tracing::instrument("announed", skip_all, fields(broadcast = %announce.broadcast.info.name))]
+	#[tracing::instrument("announced", skip_all, fields(broadcast = %announce.broadcast.info.name))]
 	async fn run_router(self, mut announce: Announce) {
 		while let Some(request) = announce.router.requested().await {
+			println!("request: {:?}", request.info);
 			let mut this = self.clone();
 			let broadcast = announce.broadcast.info.clone();
 
@@ -142,7 +162,15 @@ impl Subscriber {
 		let (mut producer, consumer) = subscribe(id, track, self.subscribes.clone());
 		let mut stream = self.session.open(message::Stream::Subscribe).await?;
 
-		producer.start(&mut stream, &broadcast).await.or_close(&mut stream)?; // wait for an OK before returning
+		if let Err(err) = producer.start(&mut stream, &broadcast).await {
+			tracing::warn!(?err, "failed");
+
+			stream.close(err.clone());
+			return Err(err);
+		}
+
+		tracing::info!("active");
+
 		spawn(async move {
 			producer.run(&mut stream).await.or_close(&mut stream).ok();
 		});

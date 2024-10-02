@@ -57,10 +57,7 @@ async fn main() -> anyhow::Result<()> {
 		let mut publisher = session.connect_publisher().await?;
 
 		let (mut writer, reader) = Broadcast::new(config.broadcast).produce();
-		publisher
-			.announce(reader)
-			.await
-			.context("failed to announce broadcast")?;
+		publisher.announce(reader).context("failed to announce broadcast")?;
 
 		let track = writer.insert_track(&config.track);
 		let clock = clock::Publisher::new(track);
@@ -69,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 	} else {
 		let subscriber = session.connect_subscriber().await?;
 
-		let broadcast = subscriber.subscribe(config.broadcast)?;
+		let broadcast = subscriber.subscribe(config.broadcast);
 		let reader = broadcast.get_track(config.track).await?;
 
 		let clock = clock::Subscriber::new(reader);

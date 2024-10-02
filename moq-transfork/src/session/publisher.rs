@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, GroupConsumer, Track, TrackConsumer},
-	util::{spawn, FuturesExt, Lock, OrClose},
+	util::{spawn, FuturesExt, OrClose},
 	Error,
 };
 
@@ -15,9 +13,6 @@ use super::{AnnouncedProducer, Session, Stream, Writer};
 pub struct Publisher {
 	session: Session,
 
-	// Used to route incoming subscriptions
-	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
-
 	// Used to reply to ANNOUNCE_INTEREST requests
 	announced: AnnouncedProducer,
 }
@@ -26,14 +21,13 @@ impl Publisher {
 	pub(crate) fn new(session: Session) -> Self {
 		Self {
 			session,
-			broadcasts: Default::default(),
 			announced: Default::default(),
 		}
 	}
 
 	/// Announce a broadcast.
 	#[tracing::instrument("announce", skip_all, err, fields(broadcast = %broadcast.info.name))]
-	pub async fn announce(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
+	pub fn announce(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
 		let active = self.announced.insert(broadcast.clone())?;
 
 		spawn(async move {
@@ -46,6 +40,7 @@ impl Publisher {
 
 	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
+		tracing::debug!(prefix = ?interest.prefix, "announced interest");
 
 		let mut unannounced = FuturesUnordered::new();
 		let mut announced = self.announced.subscribe_prefix(interest.prefix);
@@ -53,6 +48,8 @@ impl Publisher {
 		loop {
 			tokio::select! {
 				Some(broadcast) = announced.next() => {
+					tracing::debug!(announced = ?broadcast.info);
+
 					stream.writer.encode(&message::Announce {
 						broadcast: broadcast.info.name.to_string(),
 					}).await?;
@@ -63,6 +60,8 @@ impl Publisher {
 					});
 				},
 				Some(broadcast) = unannounced.next() => {
+					tracing::debug!(unannounced = ?broadcast.info);
+
 					stream.writer.encode(&message::Announce {
 						broadcast: broadcast.info.name.to_string(),
 					}).await?;
@@ -80,7 +79,7 @@ impl Publisher {
 		let broadcast = broadcast.into();
 		let track = track.into();
 
-		let reader = self.broadcasts.lock().get(&broadcast).cloned();
+		let reader = self.announced.get(&broadcast);
 		if let Some(broadcast) = reader {
 			return broadcast.get_track(track).await;
 		}
@@ -153,7 +152,7 @@ impl Publisher {
 		}
 	}
 
-	#[tracing::instrument("data", skip_all, ret, fields(group = group.sequence))]
+	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
 	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupConsumer) -> Result<(), Error> {
 		let mut stream = session.open_uni(message::StreamUni::Group).await?;
 
@@ -174,6 +173,8 @@ impl Publisher {
 
 		stream.encode(&msg).await?;
 
+		let mut frames = 0;
+
 		while let Some(mut frame) = group.next_frame().await? {
 			let header = message::Frame { size: frame.size };
 			stream.encode(&header).await?;
@@ -190,7 +191,11 @@ impl Publisher {
 			if remain > 0 {
 				return Err(Error::WrongSize);
 			}
+
+			frames += 1;
 		}
+
+		tracing::debug!(frames, "served");
 
 		// TODO block until all bytes have been acknowledged so we can still reset
 		// writer.finish().await?;

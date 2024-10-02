@@ -91,7 +91,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 					level: avcc.avc_level_indication,
 				}
 				.into(),
-				description: description.to_vec(),
+				description: description.freeze(),
 				timescale,
 				layers: vec![],
 				bitrate: None,
@@ -136,7 +136,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				}
 				.into(),
 				timescale,
-				description: vec![],
+				description: Default::default(),
 				dimensions: catalog::Dimensions {
 					width: vp09.width,
 					height: vp09.height,

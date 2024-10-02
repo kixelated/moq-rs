@@ -1,4 +1,4 @@
-use std::{ops, sync};
+use std::{fmt, ops, sync};
 
 // It's just a cosmetic wrapper around Arc/Mutex
 pub struct Lock<T> {
@@ -48,5 +48,11 @@ impl<'a, T> ops::Deref for LockGuard<'a, T> {
 impl<'a, T> ops::DerefMut for LockGuard<'a, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner
+	}
+}
+
+impl<'a, T: fmt::Debug> fmt::Debug for LockGuard<'a, T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
 	}
 }

@@ -2,6 +2,7 @@ use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transfork::prelude::*;
 
 pub struct Connection {
+	id: u64,
 	session: moq_transfork::Server,
 
 	local: AnnouncedProducer,
@@ -9,14 +10,16 @@ pub struct Connection {
 }
 
 impl Connection {
-	pub fn new(session: web_transport::Session, local: AnnouncedProducer, remote: AnnouncedConsumer) -> Self {
+	pub fn new(id: u64, session: web_transport::Session, local: AnnouncedProducer, remote: AnnouncedConsumer) -> Self {
 		Self {
+			id,
 			session: moq_transfork::Server::new(session),
 			local,
 			remote,
 		}
 	}
 
+	#[tracing::instrument("connection", skip_all, err, fields(id = self.id))]
 	pub async fn run(self) -> anyhow::Result<()> {
 		let (publisher, subscriber) = self.session.accept_any().await?;
 
@@ -47,10 +50,12 @@ impl Connection {
 	}
 
 	async fn run_producer(mut subscriber: Subscriber, mut local: AnnouncedProducer) -> anyhow::Result<()> {
-		let mut announced = subscriber.announced().await?;
+		let mut announced = subscriber.announced();
 
 		while let Some(broadcast) = announced.next().await {
+			tracing::info!(broadcast = ?broadcast.info, "local");
 			let active = local.insert(broadcast.clone())?;
+
 			tokio::spawn(async move {
 				broadcast.closed().await.ok();
 				drop(active);

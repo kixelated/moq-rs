@@ -144,7 +144,7 @@ mod test {
 					level: 0x1f,
 				}
 				.into(),
-				description: vec![],
+				description: Default::default(),
 				timescale: 1_000,
 				dimensions: catalog::Dimensions {
 					width: 1280,

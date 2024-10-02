@@ -65,7 +65,7 @@ impl TrackProducer {
 	pub fn keyframe(&mut self) {
 		// The take() is important, it means we'll create a new group on the next write.
 		if let Some(group) = self.group.take() {
-			tracing::debug!(sequence = group.sequence, frames = group.frame_count(), "group end");
+			tracing::debug!(sequence = group.sequence, frames = group.frame_count(), "keyframe");
 		}
 	}
 

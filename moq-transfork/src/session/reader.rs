@@ -34,6 +34,8 @@ impl Reader {
 				Err(err) => return Err(err.into()),
 			};
 
+			tracing::trace!(required, "more data needed");
+
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
 			loop {

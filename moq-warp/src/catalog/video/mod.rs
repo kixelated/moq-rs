@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
@@ -31,9 +32,9 @@ pub struct Video {
 
 	// Some codecs unfortunately aren't self-describing
 	// One of the best examples is H264, which needs the sps/pps out of band to function.
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	#[serde(default, skip_serializing_if = "Bytes::is_empty")]
 	#[serde_as(as = "Hex")]
-	pub description: Vec<u8>,
+	pub description: Bytes,
 
 	// The encoded width/height of the media
 	pub dimensions: Dimensions,
