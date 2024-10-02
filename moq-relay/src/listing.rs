@@ -130,12 +130,17 @@ impl ListingConsumer {
 			None => return Ok(false),
 		};
 
+		let snapshot = group.read_frame().await?.context("missing snapshot")?;
+
+		if snapshot.is_empty() {
+			self.active.drain();
+			self.group = Some(group);
+			return Ok(true);
+		}
+
 		let mut active = HashMap::new();
 
-		for name in group
-			.read_frame()
-			.await?
-			.context("missing snapshot")?
+		for name in snapshot
 			.split(|&b| b == b'\n')
 			.map(|s| String::from_utf8_lossy(s).to_string())
 		{

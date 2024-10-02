@@ -8,10 +8,8 @@ pub use connection::*;
 pub use listing::*;
 pub use web::*;
 
-use std::net;
-use url::Url;
-
 use anyhow::Context;
+use std::net;
 
 use clap::Parser;
 use moq_native::quic;
@@ -31,20 +29,9 @@ pub struct Config {
 	#[command(flatten)]
 	pub log: moq_native::log::Args,
 
-	/// Announce our tracks and discover other origins via this server.
-	/// If not provided, then clustering is disabled.
-	#[arg(long)]
-	pub cluster_root: Option<Url>,
-
-	/// Use the provided prefix to discover other origins.
-	/// If not provided, then the default is "origin.".
-	#[arg(long)]
-	pub cluster_prefix: Option<String>,
-
-	/// Our unique name which we advertise to other origins.
-	/// If not provided, then we are a read-only member of the cluster.
-	#[arg(long)]
-	pub cluster_node: Option<String>,
+	/// Cluster configuration.
+	#[command(flatten)]
+	pub cluster: ClusterConfig,
 
 	/// Run a web server for debugging purposes.
 	#[arg(long)]
@@ -81,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
 	let local = AnnouncedProducer::default();
 	let remote = AnnouncedProducer::default();
 
-	let cluster = Cluster::new(config.clone(), quic.client, local.subscribe(), remote.clone());
+	let cluster = Cluster::new(config.cluster.clone(), quic.client, local.subscribe(), remote.clone());
 	tokio::spawn(async move {
 		cluster.run().await.expect("failed to run cluster");
 	});

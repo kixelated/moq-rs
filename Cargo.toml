@@ -4,7 +4,8 @@ resolver = "2"
 
 [workspace.dependencies]
 # Make it easy to test web-transport changes
-web-transport = { path = "../web-transport-rs/web-transport", version = "0.6" }
+#web-transport = { path = "../web-transport-rs/web-transport" }
+web-transport = "0.6"
 
 # TODO finish switching to tracing
 env_logger = "0.11"

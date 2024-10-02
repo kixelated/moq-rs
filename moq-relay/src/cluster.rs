@@ -1,16 +1,39 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
+use clap::Parser;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_native::quic;
 use moq_transfork::{AnnouncedConsumer, AnnouncedProducer, Broadcast, BroadcastConsumer, BroadcastProducer, Produce};
 use url::Url;
 
-use crate::{Config, ListingConsumer, ListingProducer};
+use crate::{ListingConsumer, ListingProducer};
+
+#[derive(Clone, Parser)]
+pub struct ClusterConfig {
+	/// Announce our tracks and discover other origins via this server.
+	/// If not provided, then clustering is disabled.
+	///
+	/// Peers will connect to use via this hostname.
+	#[arg(long)]
+	pub cluster_root: Option<String>,
+
+	/// Use the provided prefix to discover other origins.
+	/// If not provided, then the default is "origin.".
+	#[arg(long)]
+	pub cluster_prefix: Option<String>,
+
+	/// Our unique name which we advertise to other origins.
+	/// If not provided, then we are a read-only member of the cluster.
+	///
+	/// Peers will connect to use via this hostname.
+	#[arg(long)]
+	pub cluster_node: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct Cluster {
-	config: Config,
+	config: ClusterConfig,
 	client: quic::Client,
 
 	local: AnnouncedConsumer,
@@ -18,7 +41,12 @@ pub struct Cluster {
 }
 
 impl Cluster {
-	pub fn new(config: Config, client: quic::Client, local: AnnouncedConsumer, remote: AnnouncedProducer) -> Self {
+	pub fn new(
+		config: ClusterConfig,
+		client: quic::Client,
+		local: AnnouncedConsumer,
+		remote: AnnouncedProducer,
+	) -> Self {
 		Cluster {
 			config,
 			client,
@@ -33,15 +61,18 @@ impl Cluster {
 			None => return Ok(()),
 		};
 
-		let prefix = self.config.cluster_prefix.unwrap_or("origin.".to_string());
+		let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
 
-		let url = Url::parse(&format!("https://{root}"))?;
+		let prefix = self.config.cluster_prefix.unwrap_or("origin.".to_string());
+		let node = self.config.cluster_node.as_ref().map(|node| node.to_string());
+
+		tracing::info!(%root, ?prefix, ?node, "initializing cluster");
 
 		let conn = self
 			.client
-			.connect(&url)
+			.connect(&root)
 			.await
-			.context("failed to connect to announce server")?;
+			.context("failed to connect to origin")?;
 
 		let client = moq_transfork::Client::new(conn);
 		let (mut publisher, mut subscriber) = client.connect().await.context("failed to establish root session")?;
@@ -55,7 +86,7 @@ impl Cluster {
 		}
 
 		let announced = subscriber.announced_prefix(prefix);
-		tasks.push(Self::run_remotes(self.remote, announced, self.client).boxed());
+		tasks.push(Self::run_remotes(self.remote, announced, self.client, node).boxed());
 
 		tasks.select_next_some().await
 	}
@@ -86,6 +117,7 @@ impl Cluster {
 		remote: AnnouncedProducer,
 		mut announced: AnnouncedConsumer,
 		client: quic::Client,
+		myself: Option<String>,
 	) -> anyhow::Result<()> {
 		while let Some(announce) = announced.next().await {
 			let prefix = announced.prefix();
@@ -95,6 +127,10 @@ impl Cluster {
 				.strip_prefix(prefix)
 				.context("invalid prefix")?
 				.to_string();
+
+			if Some(&node) == myself.as_ref() {
+				continue;
+			}
 
 			let client = client.clone();
 			let remote = remote.clone();
@@ -109,15 +145,14 @@ impl Cluster {
 		Ok(())
 	}
 
-	#[tracing::instrument("remote", skip_all, err, fields(node = %node))]
+	#[tracing::instrument("remote", skip_all, err, fields(%node))]
 	async fn run_remote(
 		mut remote: AnnouncedProducer,
 		announce: BroadcastConsumer,
 		node: String,
 		client: quic::Client,
 	) -> anyhow::Result<()> {
-		let url = Url::parse(&format!("https://{}", node))?;
-
+		let url = Url::parse(&format!("https://{}", node)).context("invalid node URL")?;
 		let conn = client.connect(&url).await.context("failed to connect to remote")?;
 
 		let client = moq_transfork::Client::new(conn);

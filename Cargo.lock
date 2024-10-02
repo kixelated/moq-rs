@@ -1086,7 +1086,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "web-transport",
- "web-transport-quinn 0.3.1",
+ "web-transport-quinn",
  "webpki",
 ]
 
@@ -1155,7 +1155,9 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02aae0c963c59df86da4a54da446ced1d7cbd023c3895fe7b06cbb24beaf2f0f"
 dependencies = [
  "bytes",
  "num",
@@ -2267,10 +2269,12 @@ dependencies = [
 [[package]]
 name = "web-transport"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53100610a4947ed2262bbb64809e45ce6942331f1e6a683decefc05192cd7890"
 dependencies = [
  "bytes",
  "thiserror",
- "web-transport-quinn 0.3.3",
+ "web-transport-quinn",
  "web-transport-wasm",
 ]
 
@@ -2279,16 +2283,6 @@ name = "web-transport-proto"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf2d29e3ff6c61fc42439219501cde3ea962b3091759c756efe0aa68e2623e5"
-dependencies = [
- "bytes",
- "http",
- "thiserror",
- "url",
-]
-
-[[package]]
-name = "web-transport-proto"
-version = "0.2.3"
 dependencies = [
  "bytes",
  "http",
@@ -2311,28 +2305,14 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "web-transport-proto 0.2.1",
-]
-
-[[package]]
-name = "web-transport-quinn"
-version = "0.3.3"
-dependencies = [
- "bytes",
- "futures",
- "http",
- "log",
- "quinn",
- "quinn-proto",
- "thiserror",
- "tokio",
- "url",
- "web-transport-proto 0.2.3",
+ "web-transport-proto",
 ]
 
 [[package]]
 name = "web-transport-wasm"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ee39d2ed2def31d7d9cbc4489ccfd56320c35b4194a25ebba328070ff98e0f"
 dependencies = [
  "bytes",
  "js-sys",

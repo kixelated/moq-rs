@@ -40,7 +40,6 @@ impl Subscriber {
 	/// Discover any broadcasts matching a prefix.
 	///
 	/// This function is synchronous unless the connection is blocked on flow control.
-	#[tracing::instrument("announced", skip_all, fields(prefix = %prefix.to_string()))]
 	pub fn announced_prefix<P: ToString>(&mut self, prefix: P) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let prefix = prefix.to_string();
@@ -127,10 +126,8 @@ impl Subscriber {
 		reader
 	}
 
-	#[tracing::instrument("announced", skip_all, fields(broadcast = %announce.broadcast.info.name))]
 	async fn run_router(self, mut announce: Announce) {
 		while let Some(request) = announce.router.requested().await {
-			println!("request: {:?}", request.info);
 			let mut this = self.clone();
 			let broadcast = announce.broadcast.info.clone();
 
