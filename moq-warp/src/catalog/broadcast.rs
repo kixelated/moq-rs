@@ -146,7 +146,7 @@ mod test {
 				.into(),
 				description: Default::default(),
 				timescale: 1_000,
-				dimensions: catalog::Dimensions {
+				resolution: catalog::Dimensions {
 					width: 1280,
 					height: 720,
 				},

@@ -77,7 +77,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 
 			catalog::Video {
 				track: moq_transfork::Track::build(name).priority(2).into(),
-				dimensions: catalog::Dimensions {
+				resolution: catalog::Dimensions {
 					width: avc1.width,
 					height: avc1.height,
 				},
@@ -137,7 +137,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				.into(),
 				timescale,
 				description: Default::default(),
-				dimensions: catalog::Dimensions {
+				resolution: catalog::Dimensions {
 					width: vp09.width,
 					height: vp09.height,
 				},

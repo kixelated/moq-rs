@@ -18,10 +18,10 @@ use super::{Group, GroupConsumer, GroupProducer};
 pub use crate::message::GroupOrder;
 use crate::{Error, Produce};
 
-use std::{cmp::Ordering, ops, sync::Arc, time};
+use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
 
 /// Static information about a track.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
@@ -46,6 +46,12 @@ impl Track {
 impl<T: Into<String>> From<T> for Track {
 	fn from(name: T) -> Self {
 		Self::new(name)
+	}
+}
+
+impl fmt::Debug for Track {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.name.fmt(f)
 	}
 }
 
@@ -260,5 +266,11 @@ impl ops::Deref for TrackConsumer {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
+	}
+}
+
+impl fmt::Debug for TrackConsumer {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.info.name.fmt(f)
 	}
 }

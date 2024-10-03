@@ -2,6 +2,7 @@ use anyhow::Context;
 
 use chrono::prelude::*;
 use moq_transfork::prelude::*;
+use tracing::Instrument;
 
 pub struct Publisher {
 	track: TrackProducer,
@@ -24,11 +25,14 @@ impl Publisher {
 
 			sequence += 1;
 
-			tokio::spawn(async move {
-				if let Err(err) = Self::send_segment(segment, now).await {
-					log::warn!("failed to send minute: {:?}", err);
+			tokio::spawn(
+				async move {
+					if let Err(err) = Self::send_segment(segment, now).await {
+						log::warn!("failed to send minute: {:?}", err);
+					}
 				}
-			});
+				.in_current_span(),
+			);
 
 			let next = now + chrono::Duration::try_minutes(1).unwrap();
 			let next = next.with_second(0).unwrap().with_nanosecond(0).unwrap();

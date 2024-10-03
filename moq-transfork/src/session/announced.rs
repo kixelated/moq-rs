@@ -50,7 +50,7 @@ impl AnnouncedProducer {
 
 	fn remove(&mut self, broadcast: &Broadcast, index: usize) {
 		self.state.send_if_modified(|state| {
-			state.lookup.remove(&broadcast);
+			state.lookup.remove(&broadcast).expect("broadcast not found");
 			state.order[index - state.pruned] = None;
 
 			while let Some(None) = state.order.front() {
@@ -133,7 +133,7 @@ impl AnnouncedConsumer {
 
 	pub async fn forward(mut self, mut publisher: Publisher) -> Result<(), Error> {
 		while let Some(broadcast) = self.next().await {
-			publisher.announce(broadcast)?;
+			publisher.publish(broadcast)?;
 		}
 
 		Ok(())

@@ -26,8 +26,8 @@ impl Publisher {
 	}
 
 	/// Announce a broadcast.
-	#[tracing::instrument("announce", skip_all, err, fields(broadcast = %broadcast.info.name))]
-	pub fn announce(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
+	#[tracing::instrument("publish", skip_all, err, fields(?broadcast))]
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
 		let active = self.announced.insert(broadcast.clone())?;
 
 		spawn(async move {
@@ -92,7 +92,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("subscribed", skip_all, ret, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
+	#[tracing::instrument("publish", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			name: subscribe.track,
@@ -112,9 +112,10 @@ impl Publisher {
 
 		stream.writer.encode(&info).await?;
 
-		tracing::info!("serving");
+		tracing::info!("active");
 
 		let mut tasks = FuturesUnordered::new();
+		let mut complete = false;
 
 		loop {
 			tokio::select! {
@@ -127,12 +128,14 @@ impl Publisher {
 						(group, res)
 					});
 				},
-				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => match res? {
+				res = stream.reader.decode_maybe::<message::SubscribeUpdate>(), if !complete => match res? {
 					Some(_update) => {
 						// TODO use it
 					},
 					// Subscribe has completed
-					None => return Ok(()),
+					None => {
+						complete = true;
+					}
 				},
 				Some(res) = tasks.next() => {
 					let (group, res) = res;
@@ -147,12 +150,16 @@ impl Publisher {
 						stream.writer.encode(&drop).await?;
 					}
 				},
-				else => return Ok(()),
+				else => break,
 			}
 		}
+
+		tracing::info!("done");
+
+		Ok(())
 	}
 
-	#[tracing::instrument("data", skip_all, err, fields(group = group.sequence))]
+	#[tracing::instrument("data", skip_all, err, fields(?subscribe, group = group.sequence))]
 	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupConsumer) -> Result<(), Error> {
 		let mut stream = session.open_uni(message::StreamUni::Group).await?;
 
@@ -208,7 +215,7 @@ impl Publisher {
 		self.serve_fetch(stream, fetch).await
 	}
 
-	#[tracing::instrument("fetch", skip_all, ret, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
+	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
 		let track = Track::build(fetch.track).priority(fetch.priority);
 		let track = self.subscribe(fetch.broadcast, track).await?;
@@ -222,7 +229,7 @@ impl Publisher {
 		self.serve_info(stream, info).await
 	}
 
-	#[tracing::instrument("info", skip_all, ret, fields(broadcast = info.broadcast, track = info.track))]
+	#[tracing::instrument("info", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), Error> {
 		let track = self.subscribe(info.broadcast, info.track).await?;
 

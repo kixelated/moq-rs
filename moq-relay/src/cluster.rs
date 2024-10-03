@@ -5,6 +5,7 @@ use clap::Parser;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_native::quic;
 use moq_transfork::{AnnouncedConsumer, AnnouncedProducer, Broadcast, BroadcastConsumer, BroadcastProducer, Produce};
+use tracing::Instrument;
 use url::Url;
 
 use crate::{ListingConsumer, ListingProducer};
@@ -81,16 +82,17 @@ impl Cluster {
 
 		if let Some(node) = self.config.cluster_node.as_ref() {
 			let origin = Broadcast::new(format!("{prefix}{node}")).produce();
-			publisher.announce(origin.1)?;
+			publisher.publish(origin.1)?;
 			tasks.push(Self::run_local(origin.0, self.local).boxed());
 		}
 
-		let announced = subscriber.announced_prefix(prefix);
+		let announced = subscriber.broadcasts_prefix(prefix);
 		tasks.push(Self::run_remotes(self.remote, announced, self.client, node).boxed());
 
 		tasks.select_next_some().await
 	}
 
+	#[tracing::instrument("local", skip_all)]
 	async fn run_local(mut origin: BroadcastProducer, mut local: AnnouncedConsumer) -> anyhow::Result<()> {
 		let primary = origin.insert_track("primary");
 		let primary = ListingProducer::new(primary);
@@ -99,15 +101,20 @@ impl Cluster {
 		while let Some(broadcast) = local.next().await {
 			primary.lock().unwrap().insert(broadcast.info.name.to_string())?;
 
+			tracing::info!(broadcast = ?broadcast.info);
+
 			let primary = primary.clone();
-			tokio::spawn(async move {
-				broadcast.closed().await.ok();
-				primary
-					.lock()
-					.unwrap()
-					.remove(&broadcast.info.name)
-					.expect("cleanup failed");
-			});
+			tokio::spawn(
+				async move {
+					broadcast.closed().await.ok();
+					primary
+						.lock()
+						.unwrap()
+						.remove(&broadcast.info.name)
+						.expect("cleanup failed");
+				}
+				.in_current_span(),
+			);
 		}
 
 		Ok(())
@@ -135,11 +142,7 @@ impl Cluster {
 			let client = client.clone();
 			let remote = remote.clone();
 
-			tokio::spawn(async move {
-				if let Err(err) = Self::run_remote(remote, announce, node, client).await {
-					log::error!("failed to run remote: {:?}", err);
-				}
-			});
+			tokio::spawn(Self::run_remote(remote, announce, node, client).in_current_span());
 		}
 
 		Ok(())
@@ -167,17 +170,22 @@ impl Cluster {
 		let mut primary = ListingConsumer::new(primary);
 
 		while let Some(listing) = primary.next().await? {
-			let broadcast = origin.subscribe(listing.name.clone());
+			let broadcast = origin.broadcast(listing.name.clone());
 			tracing::info!(broadcast = ?broadcast.info, "available");
 
 			let active = remote.insert(broadcast.clone())?;
 
-			tokio::spawn(async move {
-				tracing::info!(broadcast = ?broadcast.info, "unavailable");
-				listing.closed().await.ok();
-				drop(active);
-			});
+			tokio::spawn(
+				async move {
+					listing.closed().await.ok();
+					tracing::info!(broadcast = ?broadcast.info, "unavailable");
+					drop(active);
+				}
+				.in_current_span(),
+			);
 		}
+
+		tracing::info!("done");
 
 		Ok(())
 	}

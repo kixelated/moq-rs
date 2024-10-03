@@ -37,7 +37,7 @@ pub struct Video {
 	pub description: Bytes,
 
 	// The encoded width/height of the media
-	pub dimensions: Dimensions,
+	pub resolution: Dimensions,
 
 	// The number of units in a second
 	pub timescale: u32,

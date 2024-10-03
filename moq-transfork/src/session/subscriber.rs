@@ -33,14 +33,14 @@ impl Subscriber {
 	}
 
 	/// Discover any broadcasts.
-	pub fn announced(&mut self) -> AnnouncedConsumer {
-		self.announced_prefix("")
+	pub fn broadcasts(&mut self) -> AnnouncedConsumer {
+		self.broadcasts_prefix("")
 	}
 
 	/// Discover any broadcasts matching a prefix.
 	///
 	/// This function is synchronous unless the connection is blocked on flow control.
-	pub fn announced_prefix<P: ToString>(&mut self, prefix: P) -> AnnouncedConsumer {
+	pub fn broadcasts_prefix<P: ToString>(&mut self, prefix: P) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let prefix = prefix.to_string();
 		let consumer = producer.subscribe_prefix(prefix.clone());
@@ -83,7 +83,7 @@ impl Subscriber {
 					match res? {
 						Some(announce) => {
 							tracing::debug!(?announce);
-							let broadcast = self.subscribe(announce.broadcast);
+							let broadcast = self.broadcast(announce.broadcast);
 
 							match active.entry(broadcast.info.name.clone()) {
 								hash_map::Entry::Occupied(entry) => &mut entry.remove(),
@@ -103,7 +103,7 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn subscribe<T: Into<Broadcast>>(&self, broadcast: T) -> BroadcastConsumer {
+	pub fn broadcast<T: Into<Broadcast>>(&self, broadcast: T) -> BroadcastConsumer {
 		let broadcast = broadcast.into();
 		let (mut writer, reader) = broadcast.clone().produce();
 
@@ -130,9 +130,10 @@ impl Subscriber {
 		while let Some(request) = announce.router.requested().await {
 			let mut this = self.clone();
 			let broadcast = announce.broadcast.info.clone();
+			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 			spawn(async move {
-				match this.subscribe_track(broadcast, request.info.clone()).await {
+				match this.subscribe_track(id, broadcast, request.info.clone()).await {
 					Ok(track) => request.serve(track),
 					Err(err) => request.close(err),
 				};
@@ -140,17 +141,8 @@ impl Subscriber {
 		}
 	}
 
-	async fn subscribe_track<B: Into<Broadcast>, T: Into<Track>>(
-		&mut self,
-		broadcast: B,
-		track: T,
-	) -> Result<TrackConsumer, Error> {
-		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-		self.subscribe_inner(id, broadcast.into(), track.into()).await
-	}
-
-	#[tracing::instrument("subscribe", skip_all, err, fields(id, broadcast=%broadcast.name, track=track.name))]
-	pub async fn subscribe_inner(
+	#[tracing::instrument("subscribe", skip_all, err, fields(id, ?broadcast, ?track))]
+	pub async fn subscribe_track(
 		&mut self,
 		id: u64,
 		broadcast: Broadcast,
@@ -165,8 +157,6 @@ impl Subscriber {
 			stream.close(err.clone());
 			return Err(err);
 		}
-
-		tracing::info!("active");
 
 		spawn(async move {
 			producer.run(&mut stream).await.or_close(&mut stream).ok();

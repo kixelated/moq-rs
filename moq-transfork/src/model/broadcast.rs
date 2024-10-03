@@ -10,7 +10,7 @@
 //! A [Consumer] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Producer] is dropped, or all [Consumer]s are dropped.
-use std::{collections::HashMap, ops, sync::Arc, time};
+use std::{collections::HashMap, fmt, ops, time};
 
 use tokio::sync::watch;
 
@@ -18,23 +18,26 @@ use super::{GroupOrder, Produce, RouterConsumer, Track, TrackBuilder, TrackConsu
 use crate::Error;
 
 /// Static information about a broadcast.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Broadcast {
-	/// This is an Arc because we clone quite frequently.
-	pub name: Arc<String>,
+	pub name: String,
 }
 
 impl Broadcast {
 	pub fn new<T: Into<String>>(name: T) -> Self {
-		Self {
-			name: Arc::new(name.into()),
-		}
+		Self { name: name.into() }
 	}
 }
 
 impl<T: Into<String>> From<T> for Broadcast {
 	fn from(name: T) -> Self {
 		Self::new(name)
+	}
+}
+
+impl fmt::Debug for Broadcast {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.name.fmt(f)
 	}
 }
 
@@ -214,5 +217,11 @@ impl BroadcastConsumer {
 			Ok(state) => state.closed.clone(),
 			Err(_) => Ok(()),
 		}
+	}
+}
+
+impl fmt::Debug for BroadcastConsumer {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.info.name.fmt(f)
 	}
 }

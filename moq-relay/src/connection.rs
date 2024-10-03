@@ -1,5 +1,6 @@
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_transfork::prelude::*;
+use tracing::Instrument;
 
 pub struct Connection {
 	id: u64,
@@ -50,16 +51,18 @@ impl Connection {
 	}
 
 	async fn run_producer(mut subscriber: Subscriber, mut local: AnnouncedProducer) -> anyhow::Result<()> {
-		let mut announced = subscriber.announced();
+		let mut announced = subscriber.broadcasts();
 
 		while let Some(broadcast) = announced.next().await {
-			tracing::info!(broadcast = ?broadcast.info, "local");
 			let active = local.insert(broadcast.clone())?;
 
-			tokio::spawn(async move {
-				broadcast.closed().await.ok();
-				drop(active);
-			});
+			tokio::spawn(
+				async move {
+					broadcast.closed().await.ok();
+					drop(active);
+				}
+				.in_current_span(),
+			);
 		}
 
 		Ok(())
