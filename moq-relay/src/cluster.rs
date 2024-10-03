@@ -75,18 +75,19 @@ impl Cluster {
 			.await
 			.context("failed to connect to origin")?;
 
-		let client = moq_transfork::Client::new(conn);
-		let (mut publisher, mut subscriber) = client.connect().await.context("failed to establish root session")?;
+		let mut session = moq_transfork::Session::connect(conn)
+			.await
+			.context("failed to establish root session")?;
 
 		let mut tasks = FuturesUnordered::new();
 
 		if let Some(node) = self.config.cluster_node.as_ref() {
 			let origin = Broadcast::new(format!("{prefix}{node}")).produce();
-			publisher.publish(origin.1)?;
+			session.publish(origin.1)?;
 			tasks.push(Self::run_local(origin.0, self.local).boxed());
 		}
 
-		let announced = subscriber.broadcasts_prefix(prefix);
+		let announced = session.announced_prefix(prefix);
 		tasks.push(Self::run_remotes(self.remote, announced, self.client, node).boxed());
 
 		tasks.select_next_some().await
@@ -150,7 +151,7 @@ impl Cluster {
 
 	#[tracing::instrument("remote", skip_all, err, fields(%node))]
 	async fn run_remote(
-		mut remote: AnnouncedProducer,
+		remote: AnnouncedProducer,
 		announce: BroadcastConsumer,
 		node: String,
 		client: quic::Client,
@@ -158,10 +159,7 @@ impl Cluster {
 		let url = Url::parse(&format!("https://{}", node)).context("invalid node URL")?;
 		let conn = client.connect(&url).await.context("failed to connect to remote")?;
 
-		let client = moq_transfork::Client::new(conn);
-
-		let origin = client
-			.connect_subscriber()
+		let session = moq_transfork::Session::connect(conn)
 			.await
 			.context("failed to establish session")?;
 
@@ -170,7 +168,7 @@ impl Cluster {
 		let mut primary = ListingConsumer::new(primary);
 
 		while let Some(listing) = primary.next().await? {
-			let broadcast = origin.broadcast(listing.name.clone());
+			let broadcast = session.subscribe(listing.name.clone());
 			tracing::info!(broadcast = ?broadcast.info, "available");
 
 			let active = remote.insert(broadcast.clone())?;

@@ -1,10 +1,10 @@
 use std::fmt;
 
-use crate::coding::*;
 use crate::util::Close;
 use crate::Error;
+use crate::{coding::*, message};
 
-pub struct Writer {
+pub(super) struct Writer {
 	stream: web_transport::SendStream,
 	buffer: bytes::BytesMut,
 }
@@ -15,6 +15,15 @@ impl Writer {
 			stream,
 			buffer: Default::default(),
 		}
+	}
+
+	pub async fn open(session: &mut web_transport::Session, typ: message::StreamUni) -> Result<Self, Error> {
+		let send = session.open_uni().await?;
+
+		let mut writer = Self::new(send);
+		writer.encode(&typ).await?;
+
+		Ok(writer)
 	}
 
 	pub async fn encode<T: Encode + fmt::Debug>(&mut self, msg: &T) -> Result<(), Error> {

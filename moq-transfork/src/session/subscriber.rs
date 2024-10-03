@@ -7,22 +7,22 @@ use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, Produce, Router, Track, TrackConsumer},
 	util::{spawn, Close, Lock, OrClose},
-	BroadcastProducer, Error, RouterProducer,
+	AnnouncedProducer, BroadcastProducer, Error, RouterProducer,
 };
 
-use super::{subscribe, AnnouncedConsumer, AnnouncedProducer, Reader, Session, Stream, SubscribeConsumer};
+use super::{subscribe, AnnouncedConsumer, Reader, Stream, SubscribeConsumer};
 
 #[derive(Clone)]
-pub struct Subscriber {
-	session: Session,
+pub(super) struct Subscriber {
+	session: web_transport::Session,
 
-	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
+	broadcasts: AnnouncedProducer,
 	subscribes: Lock<HashMap<u64, SubscribeConsumer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
 
 impl Subscriber {
-	pub(super) fn new(session: Session) -> Self {
+	pub fn new(session: web_transport::Session) -> Self {
 		Self {
 			session,
 
@@ -32,22 +32,15 @@ impl Subscriber {
 		}
 	}
 
-	/// Discover any broadcasts.
-	pub fn broadcasts(&mut self) -> AnnouncedConsumer {
-		self.broadcasts_prefix("")
-	}
-
 	/// Discover any broadcasts matching a prefix.
-	///
-	/// This function is synchronous unless the connection is blocked on flow control.
-	pub fn broadcasts_prefix<P: ToString>(&mut self, prefix: P) -> AnnouncedConsumer {
+	pub fn broadcasts<P: ToString>(&self, prefix: P) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let prefix = prefix.to_string();
 		let consumer = producer.subscribe_prefix(prefix.clone());
 
 		let mut this = self.clone();
 		spawn(async move {
-			let mut stream = match this.session.open(message::Stream::Announce).await {
+			let mut stream = match Stream::open(&mut this.session, message::Stream::Announce).await {
 				Ok(stream) => stream,
 				Err(err) => {
 					tracing::warn!(?err, "failed to open announce stream");
@@ -68,7 +61,7 @@ impl Subscriber {
 		&self,
 		stream: &mut Stream,
 		prefix: String,
-		mut announced: AnnouncedProducer,
+		announced: AnnouncedProducer,
 	) -> Result<(), Error> {
 		// Used to toggle on each duplicate announce
 		let mut active = HashMap::new();
@@ -83,7 +76,7 @@ impl Subscriber {
 					match res? {
 						Some(announce) => {
 							tracing::debug!(?announce);
-							let broadcast = self.broadcast(announce.broadcast);
+							let broadcast = self.broadcast(announce.broadcast.into());
 
 							match active.entry(broadcast.info.name.clone()) {
 								hash_map::Entry::Occupied(entry) => &mut entry.remove(),
@@ -103,33 +96,35 @@ impl Subscriber {
 	/// Subscribe to tracks from a given broadcast.
 	///
 	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	pub fn broadcast<T: Into<Broadcast>>(&self, broadcast: T) -> BroadcastConsumer {
-		let broadcast = broadcast.into();
-		let (mut writer, reader) = broadcast.clone().produce();
+	#[tracing::instrument("subscribe", skip_all, fields(?broadcast))]
+	pub fn broadcast(&self, broadcast: Broadcast) -> BroadcastConsumer {
+		if let Some(broadcast) = self.broadcasts.get(&broadcast) {
+			return broadcast;
+		}
 
-		match self.broadcasts.lock().entry(broadcast.clone()) {
-			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
-			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
-		};
+		let (mut writer, reader) = broadcast.clone().produce();
+		let served = self
+			.broadcasts
+			.insert(reader.clone())
+			.expect("race I'm too lazy to handle");
 
 		let router = Router::produce();
 		writer.route_tracks(router.1);
 
-		let announce = Announce {
-			broadcast: writer,
-			router: router.0,
-			broadcasts: self.broadcasts.clone(),
-		};
+		let this = self.clone();
 
-		spawn(self.clone().run_router(announce));
+		spawn(async move {
+			this.run_router(writer, router.0).await;
+			drop(served);
+		});
 
 		reader
 	}
 
-	async fn run_router(self, mut announce: Announce) {
-		while let Some(request) = announce.router.requested().await {
+	async fn run_router(self, broadcast: BroadcastProducer, mut router: RouterProducer<Track>) {
+		while let Some(request) = router.requested().await {
 			let mut this = self.clone();
-			let broadcast = announce.broadcast.info.clone();
+			let broadcast = broadcast.info.clone();
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 			spawn(async move {
@@ -149,7 +144,7 @@ impl Subscriber {
 		track: Track,
 	) -> Result<TrackConsumer, Error> {
 		let (mut producer, consumer) = subscribe(id, track, self.subscribes.clone());
-		let mut stream = self.session.open(message::Stream::Subscribe).await?;
+		let mut stream = Stream::open(&mut self.session, message::Stream::Subscribe).await?;
 
 		if let Err(err) = producer.start(&mut stream, &broadcast).await {
 			tracing::warn!(?err, "failed");
@@ -165,7 +160,7 @@ impl Subscriber {
 		Ok(consumer.track)
 	}
 
-	pub(super) async fn recv_group(&mut self, mut stream: Reader) {
+	pub async fn recv_group(&mut self, mut stream: Reader) {
 		match self.find_subscribe(&mut stream).await {
 			Ok((group, subscribe)) => subscribe.serve(group, stream).await,
 			Err(err) => stream.close(err),
@@ -183,21 +178,5 @@ impl Subscriber {
 			.ok_or(Error::NotFound)?;
 
 		Ok((group, subscribe))
-	}
-
-	pub async fn closed(&self) -> Result<(), Error> {
-		self.session.closed().await
-	}
-}
-
-struct Announce {
-	pub broadcast: BroadcastProducer,
-	pub router: RouterProducer<Track>,
-	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
-}
-
-impl Drop for Announce {
-	fn drop(&mut self) {
-		self.broadcasts.lock().remove(&self.broadcast.info);
 	}
 }

@@ -1,10 +1,10 @@
 use crate::Error;
 
-pub(crate) trait Close {
+pub trait Close {
 	fn close(&mut self, err: Error);
 }
 
-pub(crate) trait OrClose<S: Close, V> {
+pub trait OrClose<S: Close, V> {
 	fn or_close(self, stream: &mut S) -> Result<V, Error>;
 }
 

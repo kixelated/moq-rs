@@ -4,21 +4,19 @@ use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, GroupConsumer, Track, TrackConsumer},
 	util::{spawn, FuturesExt, OrClose},
-	Error,
+	AnnouncedProducer, Error,
 };
 
-use super::{AnnouncedProducer, Session, Stream, Writer};
+use super::{Stream, Writer};
 
 #[derive(Clone)]
-pub struct Publisher {
-	session: Session,
-
-	// Used to reply to ANNOUNCE_INTEREST requests
+pub(super) struct Publisher {
+	session: web_transport::Session,
 	announced: AnnouncedProducer,
 }
 
 impl Publisher {
-	pub(crate) fn new(session: Session) -> Self {
+	pub fn new(session: web_transport::Session) -> Self {
 		Self {
 			session,
 			announced: Default::default(),
@@ -38,7 +36,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
 		tracing::debug!(prefix = ?interest.prefix, "announced interest");
 
@@ -87,7 +85,7 @@ impl Publisher {
 		Err(Error::NotFound)
 	}
 
-	pub(super) async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let subscribe = stream.reader.decode().await?;
 		self.serve_subscribe(stream, subscribe).await
 	}
@@ -160,8 +158,12 @@ impl Publisher {
 	}
 
 	#[tracing::instrument("data", skip_all, err, fields(?subscribe, group = group.sequence))]
-	pub async fn serve_group(mut session: Session, subscribe: u64, group: &mut GroupConsumer) -> Result<(), Error> {
-		let mut stream = session.open_uni(message::StreamUni::Group).await?;
+	pub async fn serve_group(
+		mut session: web_transport::Session,
+		subscribe: u64,
+		group: &mut GroupConsumer,
+	) -> Result<(), Error> {
+		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await
@@ -210,7 +212,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub(super) async fn recv_fetch(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_fetch(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let fetch = stream.reader.decode().await?;
 		self.serve_fetch(stream, fetch).await
 	}
@@ -224,7 +226,7 @@ impl Publisher {
 		unimplemented!("TODO fetch");
 	}
 
-	pub(super) async fn recv_info(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_info(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let info = stream.reader.decode().await?;
 		self.serve_info(stream, info).await
 	}
@@ -243,9 +245,5 @@ impl Publisher {
 		stream.writer.encode(&info).await?;
 
 		Ok(())
-	}
-
-	pub async fn closed(&self) -> Result<(), Error> {
-		self.session.closed().await
 	}
 }

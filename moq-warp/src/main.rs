@@ -50,33 +50,31 @@ async fn main() -> anyhow::Result<()> {
 
 	tracing::info!(url = %cli.url, "connecting");
 	let session = quic.client.connect(&cli.url).await?;
+	let session = moq_transfork::Session::connect(session).await?;
 
-	let client = moq_transfork::Client::new(session);
 	let broadcast = Broadcast::new(cli.broadcast);
 
 	match cli.command {
-		Command::Subscribe => subscribe(client, broadcast).await,
-		Command::Publish => publish(client, broadcast).await,
+		Command::Subscribe => subscribe(session, broadcast).await,
+		Command::Publish => publish(session, broadcast).await,
 	}
 }
 
 #[tracing::instrument("publish", skip_all, err, fields(?broadcast))]
-async fn publish(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
+async fn publish(mut session: moq_transfork::Session, broadcast: Broadcast) -> anyhow::Result<()> {
 	let (writer, reader) = broadcast.produce();
 
 	let import = cmaf::Import::init(tokio::io::stdin(), writer).await?;
 	tracing::info!(catalog = ?import.catalog());
 
-	let mut publisher = client.connect_publisher().await?;
-	publisher.publish(reader).context("failed to announce")?;
+	session.publish(reader).context("failed to announce")?;
 
 	Ok(import.run().await?)
 }
 
 #[tracing::instrument("subscribe", skip_all, err, fields(?broadcast))]
-async fn subscribe(client: moq_transfork::Client, broadcast: Broadcast) -> anyhow::Result<()> {
-	let subscriber = client.connect_subscriber().await?;
-	let broadcast = subscriber.broadcast(broadcast);
+async fn subscribe(session: moq_transfork::Session, broadcast: Broadcast) -> anyhow::Result<()> {
+	let broadcast = session.subscribe(broadcast);
 
 	let export = cmaf::Export::init(broadcast, tokio::io::stdout()).await?;
 	tracing::info!(catalog = ?export.catalog());

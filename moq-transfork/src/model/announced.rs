@@ -3,8 +3,6 @@ use tokio::sync::watch;
 
 use crate::{Broadcast, BroadcastConsumer, Error};
 
-use super::Publisher;
-
 #[derive(Default)]
 struct AnnouncedState {
 	order: VecDeque<Option<BroadcastConsumer>>,
@@ -19,7 +17,7 @@ pub struct AnnouncedProducer {
 
 impl AnnouncedProducer {
 	#[must_use = "removed on drop"]
-	pub fn insert(&mut self, broadcast: BroadcastConsumer) -> Result<AnnouncedActive, Error> {
+	pub fn insert(&self, broadcast: BroadcastConsumer) -> Result<AnnouncedActive, Error> {
 		let mut index = 0;
 
 		let ok = self.state.send_if_modified(|state| {
@@ -48,7 +46,7 @@ impl AnnouncedProducer {
 		self.state.borrow().lookup.get(broadcast).cloned()
 	}
 
-	fn remove(&mut self, broadcast: &Broadcast, index: usize) {
+	fn remove(&self, broadcast: &Broadcast, index: usize) {
 		self.state.send_if_modified(|state| {
 			state.lookup.remove(&broadcast).expect("broadcast not found");
 			state.order[index - state.pruned] = None;
@@ -129,14 +127,6 @@ impl AnnouncedConsumer {
 				return None;
 			}
 		}
-	}
-
-	pub async fn forward(mut self, mut publisher: Publisher) -> Result<(), Error> {
-		while let Some(broadcast) = self.next().await {
-			publisher.publish(broadcast)?;
-		}
-
-		Ok(())
 	}
 
 	pub fn prefix(&self) -> &str {

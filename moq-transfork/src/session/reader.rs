@@ -19,7 +19,11 @@ impl Reader {
 		}
 	}
 
-	// A separate function just to avoid an extra log line
+	pub async fn accept(session: &mut web_transport::Session) -> Result<Self, Error> {
+		let stream = session.accept_uni().await?;
+		Ok(Self::new(stream))
+	}
+
 	pub async fn decode<T: Decode + fmt::Debug>(&mut self) -> Result<T, Error> {
 		loop {
 			let mut cursor = io::Cursor::new(&self.buffer);

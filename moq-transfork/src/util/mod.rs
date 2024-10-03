@@ -1,4 +1,3 @@
-mod async_clone;
 mod close;
 mod futures;
 mod lock;

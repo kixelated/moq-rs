@@ -51,22 +51,18 @@ async fn main() -> anyhow::Result<()> {
 	log::info!("connecting to server: url={}", config.url);
 
 	let session = quic.client.connect(&config.url).await?;
-	let session = moq_transfork::Client::new(session);
+	let mut session = moq_transfork::Session::connect(session).await?;
 
 	if config.publish {
-		let mut publisher = session.connect_publisher().await?;
-
 		let (mut writer, reader) = Broadcast::new(config.broadcast).produce();
-		publisher.publish(reader).context("failed to announce broadcast")?;
+		session.publish(reader).context("failed to announce broadcast")?;
 
 		let track = writer.insert_track(&config.track);
 		let clock = clock::Publisher::new(track);
 
 		clock.run().await
 	} else {
-		let subscriber = session.connect_subscriber().await?;
-
-		let broadcast = subscriber.broadcast(config.broadcast);
+		let broadcast = session.subscribe(config.broadcast);
 		let reader = broadcast.get_track(config.track).await?;
 
 		let clock = clock::Subscriber::new(reader);
