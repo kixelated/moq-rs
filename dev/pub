@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Defaults to "single" track if no argument is passed, else pass "multi" for 3 video track FFmpeg CLI
+mode="${1:-single}"
+
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
@@ -39,10 +42,145 @@ INPUT="${INPUT:-dev/bbb.fmp4}"
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
+# ==== Commence of building config paramters for mutlitrack FFmpeg CLI ====
+
+#Default values for video resolutions and bitrates, defaults to be used , if no arguments are passed
+default_res1_bitrate1="${2:-1920x1080:6000K:60}"
+default_res2_bitrate2="${3:-1280x720:5000K:30}"
+default_res3_bitrate3="${4:-640x480:4000K:25}"
+
+#Common param
+videofps=25
+gopduration=1
+
+# Extract resolution and bitrate from the first argument and calculate other related parameters
+video_res1="${default_res1_bitrate1%%:*}"		# Extracts the resolution
+temp="${default_res1_bitrate1#*:}"			# Removes resolution to extract bitrate & fps
+video_bitrate1="${temp%:*}"				# Extracts the bitrate by removing FPS
+video_fps1="${temp##*:}"				# Extracts the FPS
+keyframeinterval1=$((gopduration * video_fps1))	# GOP duration times video fps
+maxrate1=$(( ${video_bitrate1%K} + (${video_bitrate1%K} / 10) ))K	# 10% higher than video bitrate
+minrate1=$(( ${video_bitrate1%K} - (${video_bitrate1%K} / 10) ))K	# 10% lower than video bitrate
+bufsize1=$((2 * ${video_bitrate1%K}))K			# 2 times video bitrate
+gopsize1=$((gopduration * video_fps1))			# GOP duration times video fps
+
+# Extract resolution and bitrate from the second argument and calculate other related parameters
+video_res2="${default_res2_bitrate2%%:*}"
+temp="${default_res2_bitrate2#*:}"
+video_bitrate2="${temp%:*}"
+video_fps2="${temp##*:}"
+keyframeinterval2=$((gopduration * video_fps2))
+maxrate2=$(( ${video_bitrate2%K} + (${video_bitrate2%K} / 10) ))K
+minrate2=$(( ${video_bitrate2%K} - (${video_bitrate2%K} / 10) ))K
+bufsize2=$((2 * ${video_bitrate2%K}))K
+gopsize2=$((gopduration * video_fps2))
+
+# Extract resolution and bitrate from the third argument and calculate other related parameters
+video_res3="${default_res3_bitrate3%%:*}"
+temp="${default_res3_bitrate3#*:}"
+video_bitrate3="${temp%:*}"
+video_fps3="${temp##*:}"
+keyframeinterval3=$((gopduration * video_fps3))
+maxrate3=$(( ${video_bitrate3%K} + (${video_bitrate3%K} / 10) ))K
+minrate3=$(( ${video_bitrate3%K} - (${video_bitrate3%K} / 10) ))K
+bufsize3=$((2 * ${video_bitrate3%K}))K
+gopsize3=$((gopduration * video_fps3))
+		
+#Watermark the video resolution and bitrate for ease of identification of the track
+res1_text=$(echo "$video_res1" | sed 's/x.*//')p
+res2_text=$(echo "$video_res2" | sed 's/x.*//')p
+res3_text=$(echo "$video_res3" | sed 's/x.*//')p
+
+#Watermark/overlay display settings
+drawtext_base="fontsize=30:box=1:boxcolor=black@0.75:fontcolor=white"
+drawtext_time="${drawtext_base}:text='%{localtime}.%{eif\\:1M*t-1K*trunc(t*1K)\\:d}'"
+
+# Define common video filter settings
+common_settings="settb=AVTB,setpts='trunc(PTS/1K)*1K+st(1,trunc(RTCTIME/1K))-1K*trunc(ld(1)/1K)'"
+
+# Build the filter complex for each video stream
+
+scaling_alg=bicubic
+
+filter_v0="
+	[v0]fps=${video_fps1},
+	${common_settings},
+	drawtext=${drawtext_time},
+	drawtext=text='${res1_text}-${video_bitrate1}':x=w-tw:y=h-th:${drawtext_base},
+	scale=${video_res1}:flags=${scaling_alg}[v0final]"
+
+filter_v1="
+	[v1]fps=${video_fps2},
+	${common_settings},
+	drawtext=${drawtext_time},
+	drawtext=text='${res2_text}-${video_bitrate2}':x=w-tw:y=h-th:${drawtext_base},
+	scale=${video_res2}:flags=${scaling_alg}[v1final]"
+
+filter_v2="
+	[v2]fps=${video_fps3},
+	${common_settings},
+	drawtext=${drawtext_time},
+	drawtext=text='${res3_text}-${video_bitrate3}':x=w-tw:y=h-th:${drawtext_base},
+	scale=${video_res3}:flags=${scaling_alg}[v2final]"
+
+filter_complex="${filter_v0}; ${filter_v1}; ${filter_v2}"
+
+# Build the codec settings for each video stream
+
+COMMON_X264_PARAMS="libx264 -profile:v high -preset veryfast -tune zerolatency"
+
+codec_v0="-c:v:0 $COMMON_X264_PARAMS \
+	-b:v ${video_bitrate1} \
+	-maxrate ${maxrate1} \
+	-minrate ${minrate1} \
+	-bufsize ${bufsize1} \
+	-keyint_min ${keyframeinterval1} \
+	-g ${gopsize1} \
+	-x264-params \"keyint=${keyframeinterval1}:scenecut=0:bframes=0\""
+
+codec_v1="-c:v:1 $COMMON_X264_PARAMS \
+	-b:v ${video_bitrate2} \
+	-maxrate ${maxrate2} \
+	-minrate ${minrate2} \
+	-bufsize ${bufsize2} \
+	-keyint_min ${keyframeinterval2} \
+	-g ${gopsize2} \
+	-x264-params \"keyint=${keyframeinterval2}:scenecut=0:bframes=0\""
+
+codec_v2="-c:v:2 $COMMON_X264_PARAMS \
+	-b:v ${video_bitrate3} \
+	-maxrate ${maxrate3} \
+	-minrate ${minrate3} \
+	-bufsize ${bufsize3} \
+	-keyint_min ${keyframeinterval3} \
+	-g ${gopsize3} \
+	-x264-params \"keyint=${keyframeinterval3}:scenecut=0:bframes=0\""
+
+# ==== Done building config paramters for mutlitrack FFmpeg CLI ====
+
 # Run ffmpeg and pipe the output to moq-pub
-ffmpeg -hide_banner -v quiet \
-	-stream_loop -1 -re \
-	-i "$INPUT" \
-	-c copy \
-	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"
+
+if [ "$mode" == "multi" ]; then
+	#Creates 3 video tracks simulating realtime live stream and an audio track with server clock
+	#overlayed at top left corner and video resolution-bitrate overlayed at bottom right corner
+
+	ffmpeg -hide_banner -v quiet \
+		-stream_loop -1 -re \
+		-i "$INPUT" -r ${videofps} \
+		-filter_complex "[0:v]split=3[v0][v1][v2]; ${filter_complex}" \
+		-map "[v0final]" -map "[v1final]" -map "[v2final]" -map 0:a \
+		$codec_v0 \
+		$codec_v1 \
+		$codec_v2 \
+		-c:a copy \
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		- | cargo run --bin moq-pub -- --name "$NAME" "$URL"
+else
+	ffmpeg -hide_banner -v quiet \
+		-stream_loop -1 -re \
+		-i "$INPUT" \
+		-c copy \
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		- | cargo run --bin moq-pub -- --name "$NAME" "$URL"
+
+fi
