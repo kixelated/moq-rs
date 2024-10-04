@@ -12,10 +12,6 @@ pub enum Error {
 	#[error("unsupported versions: client={0:?} server={1:?}")]
 	Version(setup::Versions, setup::Versions),
 
-	// TODO move to a ConnectError
-	#[error("incompatible roles: client={0:?} server={1:?}")]
-	RoleIncompatible(setup::Role, setup::Role),
-
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation")]
 	RoleViolation,
@@ -61,7 +57,6 @@ impl Error {
 		match self {
 			Self::Cancel => 0,
 			Self::RequiredExtension(_) => 1,
-			Self::RoleIncompatible(..) => 2,
 			Self::RoleViolation => 3,
 			Self::WebTransport(_) => 4,
 			Self::Decode(_) => 5,

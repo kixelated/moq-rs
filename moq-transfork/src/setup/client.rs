@@ -28,39 +28,3 @@ impl Encode for Client {
 		self.extensions.encode(w);
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::setup::{Role, Version};
-	use bytes::BytesMut;
-
-	#[test]
-	fn client_coding() {
-		let mut buf = BytesMut::new();
-
-		let mut extensions = Extensions::default();
-		extensions.set(Role::Both);
-
-		let client = Client {
-			versions: [Version::DRAFT_03].into(),
-			extensions,
-		};
-
-		client.encode(&mut buf);
-		assert_eq!(
-			buf.to_vec(),
-			vec![0x01, 0xC0, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x01, 0x00, 0x01, 0x03]
-		);
-
-		let decoded = Client::decode(&mut buf).unwrap();
-		assert_eq!(decoded.versions, client.versions);
-
-		let role = decoded
-			.extensions
-			.get::<Role>()
-			.expect("no extension found")
-			.expect("failed to decode");
-		assert_eq!(Role::Both, role);
-	}
-}
