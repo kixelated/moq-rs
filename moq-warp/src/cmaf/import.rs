@@ -81,10 +81,6 @@ impl<R: AsyncRead + Unpin> Import<R> {
 					width: avc1.width,
 					height: avc1.height,
 				},
-				display: Some(catalog::Dimensions {
-					width: avc1.horizresolution.integer(),
-					height: avc1.vertresolution.integer(),
-				}),
 				codec: catalog::H264 {
 					profile: avcc.avc_profile_indication,
 					constraints: avcc.profile_compatibility,
@@ -141,7 +137,6 @@ impl<R: AsyncRead + Unpin> Import<R> {
 					width: vp09.width,
 					height: vp09.height,
 				},
-				display: None,
 				layers: vec![],
 				bitrate: None,
 			}

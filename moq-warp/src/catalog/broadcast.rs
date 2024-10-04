@@ -101,14 +101,10 @@ mod test {
 					},
 					"timescale": 1000,
 					"bitrate": 6000000,
-					"dimensions": {
+					"resolution": {
 						"width": 1280,
 						"height": 720
 					},
-					"display": {
-						"width": 1920,
-						"height": 1080
-					}
 				}
 			],
 			"audio": [
@@ -150,10 +146,6 @@ mod test {
 					width: 1280,
 					height: 720,
 				},
-				display: Some(catalog::Dimensions {
-					width: 1920,
-					height: 1080,
-				}),
 				layers: Default::default(),
 				bitrate: Some(6_000_000),
 			}],
