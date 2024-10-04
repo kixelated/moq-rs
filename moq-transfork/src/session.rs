@@ -61,7 +61,7 @@ impl Session {
 
 	async fn connect_setup(setup: &mut Stream) -> Result<(), Error> {
 		let client = setup::Client {
-			versions: [setup::Version::FORK_00].into(),
+			versions: [setup::Version::CURRENT].into(),
 			extensions: Default::default(),
 		};
 
@@ -89,12 +89,12 @@ impl Session {
 	async fn accept_setup(control: &mut Stream) -> Result<(), Error> {
 		let client: setup::Client = control.reader.decode().await?;
 
-		if !client.versions.contains(&setup::Version::FORK_00) {
-			return Err(Error::Version(client.versions, [setup::Version::FORK_00].into()));
+		if !client.versions.contains(&setup::Version::CURRENT) {
+			return Err(Error::Version(client.versions, [setup::Version::CURRENT].into()));
 		}
 
 		let server = setup::Server {
-			version: setup::Version::FORK_00,
+			version: setup::Version::CURRENT,
 			extensions: Default::default(),
 		};
 
