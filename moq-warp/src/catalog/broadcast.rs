@@ -90,21 +90,13 @@ mod test {
 						"group_order": "desc",
 						"group_expires": 0.05
 					},
-					"codec": {
-						"h264": {
-							profile: 100,
-							constraints: 0,
-							level: 31,
-							sps: "42000af841a2",
-							pps: "ce3880",
-						}
-					},
-					"timescale": 1000,
-					"bitrate": 6000000,
+					"codec": "avc1.64001f",
 					"resolution": {
 						"width": 1280,
 						"height": 720
 					},
+					"timescale": 1000,
+					"bitrate": 6000000
 				}
 			],
 			"audio": [
@@ -115,12 +107,13 @@ mod test {
 						"group_order": "desc",
 						"group_expires": 0.05
 					},
+					"codec": "opus",
 					"timescale": 48000,
 					"sample_rate": 48000,
 					"channel_count": 2,
 					"bitrate": 128000
 				}
-			],
+			]
 		}"#
 		.to_string();
 

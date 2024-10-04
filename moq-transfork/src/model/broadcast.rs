@@ -10,7 +10,7 @@
 //! A [Consumer] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Producer] is dropped, or all [Consumer]s are dropped.
-use std::{collections::HashMap, fmt, ops, time};
+use std::{collections::HashMap, fmt, ops, str::FromStr, time};
 
 use tokio::sync::watch;
 
@@ -32,6 +32,14 @@ impl Broadcast {
 impl<T: Into<String>> From<T> for Broadcast {
 	fn from(name: T) -> Self {
 		Self::new(name)
+	}
+}
+
+impl FromStr for Broadcast {
+	type Err = Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(Self::new(s))
 	}
 }
 
