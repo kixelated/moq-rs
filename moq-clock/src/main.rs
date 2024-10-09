@@ -6,7 +6,7 @@ use anyhow::Context;
 use clap::Parser;
 
 mod clock;
-use moq_transfork::prelude::*;
+use moq_transfork::*;
 
 #[derive(Parser, Clone)]
 pub struct Config {

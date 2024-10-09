@@ -1,16 +1,16 @@
-//! A track is a collection of semi-reliable and semi-ordered streams, split into a [Producer] and [Consumer] handle.
+//! A track is a collection of semi-reliable and semi-ordered streams, split into a [TrackProducer] and [TrackConsumer] handle.
 //!
-//! A [Producer] creates streams with a sequence number and priority.
+//! A [TrackProducer] creates streams with a sequence number and priority.
 //! The sequest number is used to determine the order of streams, while the priority is used to determine which stream to transmit first.
 //! This may seem counter-intuitive, but is designed for live streaming where the newest streams may be higher priority.
 //! A cloned [Producer] can be used to create streams in parallel, but will error if a duplicate sequence number is used.
 //!
-//! A [Consumer] may not receive all streams in order or at all.
+//! A [TrackConsumer] may not receive all streams in order or at all.
 //! These streams are meant to be transmitted over congested networks and the key to MoQ Tranport is to not block on them.
 //! streams will be cached for a potentially limited duration added to the unreliable nature.
 //! A cloned [Consumer] will receive a copy of all new stream going forward (fanout).
 //!
-//! The track is closed with [Error::Error] when all writers or readers are dropped.
+//! The track is closed with [Error] when all writers or readers are dropped.
 
 use tokio::sync::watch;
 

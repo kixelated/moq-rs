@@ -1,5 +1,5 @@
 use crate::{
-	message, setup,
+	message,
 	util::{spawn, Close, OrClose},
 	AnnouncedConsumer, Broadcast, BroadcastConsumer, Error,
 };
@@ -60,13 +60,13 @@ impl Session {
 	}
 
 	async fn connect_setup(setup: &mut Stream) -> Result<(), Error> {
-		let client = setup::Client {
-			versions: [setup::Version::CURRENT].into(),
+		let client = message::ClientSetup {
+			versions: [message::Version::CURRENT].into(),
 			extensions: Default::default(),
 		};
 
 		setup.writer.encode(&client).await?;
-		let server: setup::Server = setup.reader.decode().await?;
+		let server: message::ServerSetup = setup.reader.decode().await?;
 
 		tracing::info!(version = ?server.version, "connected");
 
@@ -87,14 +87,14 @@ impl Session {
 	}
 
 	async fn accept_setup(control: &mut Stream) -> Result<(), Error> {
-		let client: setup::Client = control.reader.decode().await?;
+		let client: message::ClientSetup = control.reader.decode().await?;
 
-		if !client.versions.contains(&setup::Version::CURRENT) {
-			return Err(Error::Version(client.versions, [setup::Version::CURRENT].into()));
+		if !client.versions.contains(&message::Version::CURRENT) {
+			return Err(Error::Version(client.versions, [message::Version::CURRENT].into()));
 		}
 
-		let server = setup::Server {
-			version: setup::Version::CURRENT,
+		let server = message::ServerSetup {
+			version: message::Version::CURRENT,
 			extensions: Default::default(),
 		};
 
@@ -106,7 +106,7 @@ impl Session {
 	}
 
 	async fn run_session(mut stream: Stream) -> Result<(), Error> {
-		while let Some(_info) = stream.reader.decode_maybe::<setup::Info>().await? {}
+		while let Some(_info) = stream.reader.decode_maybe::<message::Info>().await? {}
 		Err(Error::Cancel)
 	}
 

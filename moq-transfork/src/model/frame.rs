@@ -4,6 +4,7 @@ use tokio::sync::watch;
 
 use crate::{Error, Produce};
 
+/// A frame of data with an upfront size.
 #[derive(Clone, PartialEq)]
 pub struct Frame {
 	pub size: usize,
@@ -46,7 +47,7 @@ impl Default for FrameState {
 	}
 }
 
-/// Used to write data to a stream and notify readers.
+/// Used to write a frame's worth of data in chunks.
 pub struct FrameProducer {
 	// Mutable stream state.
 	state: watch::Sender<FrameState>,
@@ -78,7 +79,7 @@ impl ops::Deref for FrameProducer {
 	}
 }
 
-/// Notified when a stream has new data available.
+/// Used to consume a frame's worth of data in chunks.
 #[derive(Clone)]
 pub struct FrameConsumer {
 	// Modify the stream state.

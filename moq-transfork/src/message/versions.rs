@@ -2,8 +2,6 @@ use crate::coding::*;
 
 use std::{fmt, ops::Deref};
 
-pub const ALPN: &[u8] = b"moqf-00";
-
 /// A version number negotiated during the setup.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version(u64);

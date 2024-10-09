@@ -10,12 +10,14 @@ struct AnnouncedState {
 	pruned: usize,
 }
 
+/// Announces broadcasts to consumers over the network.
 #[derive(Default, Clone)]
 pub struct AnnouncedProducer {
 	state: watch::Sender<AnnouncedState>,
 }
 
 impl AnnouncedProducer {
+	/// Announce a broadcast, returning a guard that will remove it when dropped.
 	#[must_use = "removed on drop"]
 	pub fn insert(&self, broadcast: BroadcastConsumer) -> Result<AnnouncedActive, Error> {
 		let mut index = 0;
@@ -42,6 +44,7 @@ impl AnnouncedProducer {
 		})
 	}
 
+	/// Returns a broadcast by name.
 	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
 		self.state.borrow().lookup.get(broadcast).cloned()
 	}
@@ -60,11 +63,12 @@ impl AnnouncedProducer {
 		});
 	}
 
-	// Resolves when there are no subscribers
+	/// Resolves when there are no subscribers
 	pub async fn closed(&self) {
 		self.state.closed().await
 	}
 
+	/// Subscribe to all announced broadcasts, including those already active.
 	pub fn subscribe(&self) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
@@ -73,6 +77,7 @@ impl AnnouncedProducer {
 		}
 	}
 
+	/// Subscribe to all announced broadcasts based on a prefix, including those already active.
 	pub fn subscribe_prefix<P: ToString>(&self, prefix: P) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
@@ -82,6 +87,7 @@ impl AnnouncedProducer {
 	}
 }
 
+/// An announced broadcast, active until dropped.
 pub struct AnnouncedActive {
 	producer: AnnouncedProducer,
 	broadcast: BroadcastConsumer,
@@ -94,6 +100,7 @@ impl Drop for AnnouncedActive {
 	}
 }
 
+/// Consumes announced broadcasts over the network matching an optional prefix.
 #[derive(Clone)]
 pub struct AnnouncedConsumer {
 	state: watch::Receiver<AnnouncedState>,
@@ -102,6 +109,7 @@ pub struct AnnouncedConsumer {
 }
 
 impl AnnouncedConsumer {
+	/// Returns the next announced broadcast.
 	pub async fn next(&mut self) -> Option<BroadcastConsumer> {
 		loop {
 			{
@@ -129,6 +137,12 @@ impl AnnouncedConsumer {
 		}
 	}
 
+	/// Returns a broadcast by name.
+	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+		self.state.borrow().lookup.get(broadcast).cloned()
+	}
+
+	/// Returns the prefix in use.
 	pub fn prefix(&self) -> &str {
 		&self.prefix
 	}

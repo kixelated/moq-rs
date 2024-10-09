@@ -1,4 +1,4 @@
-use crate::{coding, message, setup};
+use crate::{coding, message};
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
@@ -10,7 +10,7 @@ pub enum Error {
 
 	// TODO move to a ConnectError
 	#[error("unsupported versions: client={0:?} server={1:?}")]
-	Version(setup::Versions, setup::Versions),
+	Version(message::Versions, message::Versions),
 
 	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
 	#[error("role violation")]

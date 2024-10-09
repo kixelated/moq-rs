@@ -15,7 +15,7 @@ use crate::Error;
 
 use super::{Frame, FrameConsumer, FrameProducer, Produce};
 
-/// Parameters that can be specified by the user
+/// An independent group of frames.
 #[derive(Clone, PartialEq)]
 pub struct Group {
 	// The sequence number of the group within the track.
@@ -60,7 +60,7 @@ impl Default for GroupState {
 	}
 }
 
-/// Used to write data to a stream and notify readers.
+/// Create a group, frame-by-frame.
 pub struct GroupProducer {
 	// Mutable stream state.
 	state: watch::Sender<GroupState>,
@@ -112,7 +112,7 @@ impl ops::Deref for GroupProducer {
 	}
 }
 
-/// Notified when a stream has new data available.
+/// Consume a group, frame-by-frame.
 #[derive(Clone)]
 pub struct GroupConsumer {
 	// Modify the stream state.

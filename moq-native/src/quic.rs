@@ -60,7 +60,7 @@ impl Endpoint {
 		let mut server_config = None;
 
 		if let Some(mut config) = config.tls.server {
-			config.alpn_protocols = vec![web_transport::quinn::ALPN.to_vec(), moq_transfork::setup::ALPN.to_vec()];
+			config.alpn_protocols = vec![web_transport::quinn::ALPN.to_vec(), moq_transfork::ALPN.to_vec()];
 			config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
@@ -151,7 +151,7 @@ impl Server {
 					.context("failed to respond to WebTransport request")?
 			}
 			// A bit of a hack to pretend like we're a WebTransport session
-			moq_transfork::setup::ALPN => conn.into(),
+			moq_transfork::ALPN => conn.into(),
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
@@ -176,7 +176,7 @@ impl Client {
 
 		let alpn = match url.scheme() {
 			"https" => web_transport::quinn::ALPN,
-			"moqf" => moq_transfork::setup::ALPN,
+			"moqf" => moq_transfork::ALPN,
 			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
 		};
 

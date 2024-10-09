@@ -63,7 +63,7 @@ impl Produce for Broadcast {
 	}
 }
 
-pub struct BroadcastState {
+struct BroadcastState {
 	tracks: HashMap<String, TrackConsumer>,
 	router: Option<RouterConsumer<Track>>,
 	closed: Result<(), Error>,
@@ -142,6 +142,7 @@ impl BroadcastProducer {
 	}
 }
 
+/// A builder to create a new track for a broadcast.
 pub struct BroadcastTrackBuilder<'a> {
 	broadcast: &'a mut BroadcastProducer,
 	track: TrackBuilder,

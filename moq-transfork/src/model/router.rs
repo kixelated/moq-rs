@@ -4,6 +4,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{Error, Produce};
 
+/// Used to respond to arbitrary broadcast/track requests.
 pub struct Router<T: Produce> {
 	_marker: std::marker::PhantomData<T>,
 }
@@ -19,6 +20,7 @@ impl<T: Produce> Router<T> {
 	}
 }
 
+/// Receive broadcast/track requests and return if we can fulfill them.
 pub struct RouterProducer<T: Produce> {
 	queue: mpsc::Receiver<RouterRequest<T>>,
 }
@@ -33,6 +35,7 @@ impl<T: Produce> RouterProducer<T> {
 	}
 }
 
+/// Subscribe to abitrary broadcast/tracks.
 #[derive(Clone)]
 pub struct RouterConsumer<T: Produce> {
 	queue: mpsc::Sender<RouterRequest<T>>,

@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use url::Url;
 
 use moq_native::quic;
-use moq_transfork::prelude::*;
+use moq_transfork::*;
 use moq_warp::cmaf;
 
 #[derive(Parser, Clone)]

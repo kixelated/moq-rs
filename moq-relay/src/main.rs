@@ -13,7 +13,7 @@ use std::net;
 
 use clap::Parser;
 use moq_native::quic;
-use moq_transfork::prelude::*;
+use moq_transfork::*;
 
 #[derive(Parser, Clone)]
 pub struct Config {
