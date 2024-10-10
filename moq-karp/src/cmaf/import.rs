@@ -6,7 +6,7 @@ use tokio::io::AsyncRead;
 use super::{util, Error, Result};
 use crate::{catalog, media};
 
-/// Converts fMP4 -> Warp
+/// Converts fMP4 -> Karp
 pub struct Import<R: AsyncRead + Unpin> {
 	// The input file
 	input: R,

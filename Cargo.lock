@@ -1067,6 +1067,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-karp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "futures",
+ "hex",
+ "lazy_static",
+ "moq-native",
+ "moq-transfork",
+ "mp4-atom",
+ "paste",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "moq-native"
 version = "0.3.0"
 dependencies = [
@@ -1127,30 +1151,6 @@ dependencies = [
  "tracing",
  "wasm-bindgen-futures",
  "web-transport",
-]
-
-[[package]]
-name = "moq-warp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "clap",
- "futures",
- "hex",
- "lazy_static",
- "moq-native",
- "moq-transfork",
- "mp4-atom",
- "paste",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror",
- "tokio",
- "tracing",
- "url",
 ]
 
 [[package]]

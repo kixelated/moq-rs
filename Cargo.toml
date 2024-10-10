@@ -1,5 +1,5 @@
 [workspace]
-members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-warp"]
+members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-karp"]
 resolver = "2"
 
 [workspace.dependencies]

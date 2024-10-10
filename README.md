@@ -7,17 +7,19 @@ See [quic.video](https://quic.video) for more information.
 
 This repository contains a few crates:
 
--   **moq-relay**: Accepting content from publishers and serves it to any subscribers.
--   **moq-pub**: Publishes fMP4 broadcasts.
--   **moq-transfork**: An implementation of the underlying MoQ protocol.
+-   **moq-relay**: Forwards content from publishers to any interested subscribers.
+-   **moq-karp**: A simple media layer and CLI, powered by moq-transfork.
+-   **moq-transfork**: The implementation of the underlying MoQ protocol.
 -   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
+-   **moq-native**: Helpers to configure MoQ CLIs.
 
 There's currently no way to view media with this repo; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
 A hosted version is available at [quic.video](https://quic.video) and accepts the `?host=localhost:4443` query parameter.
 
 # Development
+For quick iteration cycles, use the [dev helper scripts](dev/README.md).
 
-Launch a basic cluster, including provisioning certs and deploying root certificates:
+To launch a full cluster, including provisioning certs and deploying root certificates, you can use docker-compose via:
 
 ```
 make run
@@ -25,7 +27,6 @@ make run
 
 Then, visit https://quic.video/publish/?server=localhost:4443.
 
-For more control, use the [dev helper scripts](dev/README.md).
 
 # Usage
 
@@ -44,30 +45,24 @@ Notable arguments:
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
 
-## moq-pub
+## moq-karp
 
-A client that publishes a fMP4 stream over MoQ, with a few restrictions.
+[moq-karp](moq-karp) is a simple media layer on top of MoQ.
+The crate includes a binary that accepts fMP4 with a few restrictions:
 
 -   `separate_moof`: Each fragment must contain a single track.
 -   `frag_keyframe`: A keyframe must be at the start of each keyframe.
 -   `fragment_per_frame`: (optional) Each frame should be a separate fragment to minimize latency.
 
-This client can currently be used in conjuction with either ffmpeg or gstreamer.
-
-### ffmpeg
-
-moq-pub can be run as a binary, accepting a stream (from ffmpeg via stdin) and publishing it to the given relay.
+This can be used in conjunction with ffmpeg to publish media to a MoQ relay.
 See [dev/pub](dev/pub) for the required ffmpeg flags.
 
-### gstreamer
-
-moq-pub can also be run as a library, currently used for a [gstreamer plugin](https://github.com/kixelated/moq-gst).
+Alternatively, see [moq-gst](https://github.com/kixelated/moq-gst) for a gstreamer plugin.
 This is in a separate repository to avoid gstreamer being a hard requirement.
-See [run](https://github.com/kixelated/moq-gst/blob/main/run) for an example pipeline.
 
 ## moq-transfork
 
-A media-agnostic library used by [moq-relay](moq-relay) and [moq-pub](moq-pub) to serve the underlying subscriptions.
+A media-agnostic library used by [moq-relay](moq-relay) and [moq-karp](moq-karp) to serve the underlying subscriptions.
 It has caching/deduplication built-in, so your application is oblivious to the number of connections under the hood.
 
 See the published [crate](https://crates.io/crates/moq-transfork) and [documentation](https://docs.rs/moq-transfork/latest/moq_transfork/).

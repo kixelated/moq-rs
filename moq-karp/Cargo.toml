@@ -1,5 +1,5 @@
 [package]
-name = "moq-warp"
+name = "moq-karp"
 description = "Media over QUIC"
 authors = []
 repository = "https://github.com/kixelated/moq-rs"
@@ -47,5 +47,5 @@ cli = ["moq-native", "tokio/full", "clap", "anyhow"]
 default = ["cli"]
 
 [[bin]]
-name = "moq-warp"
+name = "moq-karp"
 required-features = ["cli"]

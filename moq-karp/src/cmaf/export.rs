@@ -3,7 +3,7 @@ use tokio::io::AsyncWrite;
 
 use crate::{catalog, media};
 
-// Converts Warp -> fMP4
+// Converts Karp -> fMP4
 pub struct Export<W: AsyncWrite + Unpin> {
 	output: W,
 	broadcast: media::BroadcastConsumer,
