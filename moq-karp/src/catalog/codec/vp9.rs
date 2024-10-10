@@ -55,7 +55,7 @@ impl std::str::FromStr for VP9 {
 			.strip_prefix("vp09.")
 			.ok_or(CodecError::Invalid)?
 			.split('.')
-			.map(|part| u8::from_str(part))
+			.map(u8::from_str)
 			.collect::<Result<Vec<_>, _>>()?;
 
 		if parts.len() < 3 {

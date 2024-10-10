@@ -51,7 +51,7 @@ impl AnnouncedProducer {
 
 	fn remove(&self, broadcast: &Broadcast, index: usize) {
 		self.state.send_if_modified(|state| {
-			state.lookup.remove(&broadcast).expect("broadcast not found");
+			state.lookup.remove(broadcast).expect("broadcast not found");
 			state.order[index - state.pruned] = None;
 
 			while let Some(None) = state.order.front() {

@@ -84,7 +84,7 @@ impl Reader {
 
 	/// Wait until the stream is closed, ignoring any unread bytes
 	pub async fn closed(&mut self) -> Result<(), Error> {
-		while let Some(_) = self.stream.read_buf(&mut self.buffer).await? {}
+		while self.stream.read_buf(&mut self.buffer).await?.is_some() {}
 		Ok(())
 	}
 }

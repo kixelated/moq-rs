@@ -16,7 +16,7 @@ impl<W: AsyncWrite + Unpin> Export<W> {
 		Ok(Self { broadcast, output })
 	}
 
-	pub async fn run(mut self) -> Result<()> {
+	pub async fn run(self) -> Result<()> {
 		todo!();
 		Ok(())
 	}

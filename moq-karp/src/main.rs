@@ -37,7 +37,7 @@ struct Cli {
 #[derive(Subcommand, Clone)]
 pub enum Command {
 	Publish,
-	Subscribe,
+	//Subscribe,
 }
 
 #[tokio::main]
@@ -55,8 +55,8 @@ async fn main() -> anyhow::Result<()> {
 	let broadcast = Broadcast::new(cli.broadcast);
 
 	match cli.command {
-		Command::Subscribe => subscribe(session, broadcast).await,
 		Command::Publish => publish(session, broadcast).await,
+		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
@@ -72,6 +72,7 @@ async fn publish(mut session: moq_transfork::Session, broadcast: Broadcast) -> a
 	Ok(import.run().await?)
 }
 
+/*
 #[tracing::instrument("subscribe", skip_all, err, fields(?broadcast))]
 async fn subscribe(session: moq_transfork::Session, broadcast: Broadcast) -> anyhow::Result<()> {
 	let broadcast = session.subscribe(broadcast);
@@ -81,3 +82,4 @@ async fn subscribe(session: moq_transfork::Session, broadcast: Broadcast) -> any
 
 	Ok(export.run().await?)
 }
+*/

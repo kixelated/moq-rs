@@ -69,7 +69,7 @@ lazy_static::lazy_static! {
 			\.(?<matrix>\d{2})
 			\.(?<full>[01])
 		)?
-		$"#.replace("\n", "").replace(" ", "").replace("\t", "")
+		$"#.replace(['\n', ' ', '\t'], "")
 	).unwrap();
 }
 

@@ -39,11 +39,11 @@ impl<R: AsyncRead + Unpin> Import<R> {
 
 			let track = match handler.as_ref() {
 				b"vide" => {
-					let track = Self::init_video(&trak)?;
+					let track = Self::init_video(trak)?;
 					broadcast.create_video(track)?
 				}
 				b"soun" => {
-					let track = Self::init_audio(&trak)?;
+					let track = Self::init_audio(trak)?;
 					broadcast.create_audio(track)?
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
@@ -93,7 +93,7 @@ impl<R: AsyncRead + Unpin> Import<R> {
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
-			let hvcc = &hev1.hvcc;
+			let _hvcc = &hev1.hvcc;
 
 			/*
 			catalog::Video {
