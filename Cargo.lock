@@ -1051,7 +1051,7 @@ checksum = "c9be0862c1b3f26a88803c4a49de6889c10e608b3ee9344e6ef5b45fb37ad3d1"
 
 [[package]]
 name = "moq-clock"
-version = "0.4.2"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1092,7 +1092,7 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "moq-relay"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "axum",
