@@ -41,9 +41,5 @@ LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
 COPY --from=builder /usr/local/cargo/bin/moq-* /usr/local/bin
 
-# Entrypoint to load relay TLS config in Fly
-# TODO remove this; it should be specific to the fly deployment.
-COPY deploy/fly-relay.sh .
-
 # Default to moq-relay
 CMD ["moq-relay"]
