@@ -26,10 +26,8 @@ tokio = { version = "1", features = ["full"] }
 # CLI, logging, error handling
 clap = { version = "4", features = ["derive"] }
 log = { workspace = true }
-env_logger = { workspace = true }
 anyhow = { version = "1", features = ["backtrace"] }
 tracing = "0.1"
-tracing-subscriber = "0.3"
 
 # CLOCK STUFF
 chrono = "0.4"

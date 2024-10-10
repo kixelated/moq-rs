@@ -14,7 +14,6 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.1" }
 web-transport = { workspace = true }
-web-transport-quinn = "0.3"
 
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
@@ -33,4 +32,3 @@ anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-log = { version = "0.4", features = ["std"] }
