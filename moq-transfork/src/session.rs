@@ -18,6 +18,7 @@ use subscribe::*;
 use subscriber::*;
 use writer::*;
 
+/// A MoqTransfork session, used to publish and/or subscribe to broadcasts.
 #[derive(Clone)]
 pub struct Session {
 	webtransport: web_transport::Session,

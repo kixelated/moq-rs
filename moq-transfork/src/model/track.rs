@@ -20,15 +20,21 @@ use crate::{Error, Produce};
 
 use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
 
-/// Static information about a track.
+/// A track, a collection of indepedent groups (streams) with a specified order/priority.
 #[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
+	/// The name of the track.
 	pub name: String,
+
+	/// The priority of the track, relative to other tracks in the same session/broadcast.
 	pub priority: i8,
+
+	/// The preferred order to deliver groups in the track.
 	pub group_order: GroupOrder,
 
+	/// The duration after which a group is considered expired.
 	#[cfg_attr(feature = "serde", serde_as(as = "serde_with::DurationSecondsWithFrac"))]
 	pub group_expires: time::Duration,
 }
@@ -70,6 +76,7 @@ impl Produce for Track {
 	}
 }
 
+/// Build a track with optional parameters.
 pub struct TrackBuilder {
 	track: Track,
 }
@@ -131,6 +138,7 @@ impl Default for TrackState {
 	}
 }
 
+/// A producer for a track, used to create new groups.
 pub struct TrackProducer {
 	pub info: Arc<Track>,
 	state: watch::Sender<TrackState>,
@@ -192,6 +200,7 @@ impl ops::Deref for TrackProducer {
 	}
 }
 
+/// A consumer for a track, used to read groups.
 #[derive(Clone)]
 pub struct TrackConsumer {
 	pub info: Arc<Track>,

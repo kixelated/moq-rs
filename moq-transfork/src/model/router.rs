@@ -58,6 +58,7 @@ impl<T: Produce> RouterConsumer<T> {
 	}
 }
 
+/// An outstanding request for a broadcast/track.
 pub struct RouterRequest<T: Produce> {
 	pub info: T,
 	reply: oneshot::Sender<Result<T::Consumer, Error>>,

@@ -25,6 +25,7 @@ impl Encode for Group {
 	}
 }
 
+/// Indicates if groups should be delivered in ascending or descending order.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GroupOrder {

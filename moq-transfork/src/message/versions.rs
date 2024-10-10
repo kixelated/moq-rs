@@ -7,25 +7,25 @@ use std::{fmt, ops::Deref};
 pub struct Version(u64);
 
 impl Version {
-	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html
+	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html>
 	pub const DRAFT_00: Version = Version(0xff000000);
 
-	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html
+	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-01.html>
 	pub const DRAFT_01: Version = Version(0xff000001);
 
-	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-02.html
+	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-02.html>
 	pub const DRAFT_02: Version = Version(0xff000002);
 
-	/// https://www.ietf.org/archive/id/draft-ietf-moq-transport-03.html
+	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-03.html>
 	pub const DRAFT_03: Version = Version(0xff000003);
 
-	// https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-00.html
+	/// <https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-00.html>
 	pub const FORK_00: Version = Version(0xff0bad00);
 
-	// https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-01.html
+	/// <https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-01.html>
 	pub const FORK_01: Version = Version(0xff0bad01);
 
-	// https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-02.html
+	/// <https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-02.html>
 	pub const FORK_02: Version = Version(0xff0bad02);
 
 	pub const CURRENT: Version = Version::FORK_02;

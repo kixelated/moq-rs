@@ -1,5 +1,6 @@
 use crate::{coding, message};
 
+/// A list of possible errors that can occur during the session.
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
 	#[error("webtransport error: {0}")]
@@ -11,10 +12,6 @@ pub enum Error {
 	// TODO move to a ConnectError
 	#[error("unsupported versions: client={0:?} server={1:?}")]
 	Version(message::Versions, message::Versions),
-
-	/// The role negiotiated in the handshake was violated. For example, a publisher sent a SUBSCRIBE, or a subscriber sent an OBJECT.
-	#[error("role violation")]
-	RoleViolation,
 
 	/// A required extension was not present
 	#[error("extension required: {0}")]
@@ -57,7 +54,6 @@ impl Error {
 		match self {
 			Self::Cancel => 0,
 			Self::RequiredExtension(_) => 1,
-			Self::RoleViolation => 3,
 			Self::WebTransport(_) => 4,
 			Self::Decode(_) => 5,
 			Self::Version(..) => 9,
