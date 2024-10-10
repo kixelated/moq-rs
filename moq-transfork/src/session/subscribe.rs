@@ -20,7 +20,6 @@ pub fn subscribe(
 	let (tx, rx) = mpsc::channel(1);
 
 	let consumer = SubscribeConsumer {
-		id,
 		groups: tx,
 		track: track.1,
 	};
@@ -39,9 +38,7 @@ pub fn subscribe(
 
 #[derive(Clone)]
 pub struct SubscribeConsumer {
-	pub id: u64,
 	pub track: TrackConsumer,
-
 	groups: mpsc::Sender<(message::Group, Reader)>,
 }
 
