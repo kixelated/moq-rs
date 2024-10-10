@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
-	log::info!("connecting to server: url={}", config.url);
+	tracing::info!("connecting to server: url={}", config.url);
 
 	let session = quic.client.connect(&config.url).await?;
 	let mut session = moq_transfork::Session::connect(session).await?;

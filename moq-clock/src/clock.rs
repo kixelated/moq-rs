@@ -28,7 +28,7 @@ impl Publisher {
 			tokio::spawn(
 				async move {
 					if let Err(err) = Self::send_segment(segment, now).await {
-						log::warn!("failed to send minute: {:?}", err);
+						tracing::warn!("failed to send minute: {:?}", err);
 					}
 				}
 				.in_current_span(),

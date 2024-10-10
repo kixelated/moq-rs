@@ -38,6 +38,4 @@ anyhow = { version = "1", features = ["backtrace"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 
-
-log = { workspace = true }
 tracing = "0.1"

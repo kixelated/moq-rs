@@ -25,7 +25,6 @@ tokio = { version = "1", features = ["full"] }
 
 # CLI, logging, error handling
 clap = { version = "4", features = ["derive"] }
-log = { workspace = true }
 anyhow = { version = "1", features = ["backtrace"] }
 tracing = "0.1"
 
