@@ -1,28 +1,22 @@
-use clap::Parser;
-
-mod api;
-mod consumer;
-mod local;
-mod producer;
-mod relay;
-mod remote;
-mod session;
+mod cluster;
+mod connection;
+mod listing;
 mod web;
 
-pub use api::*;
-pub use consumer::*;
-pub use local::*;
-pub use producer::*;
-pub use relay::*;
-pub use remote::*;
-pub use session::*;
+pub use cluster::*;
+pub use connection::*;
+pub use listing::*;
 pub use web::*;
 
+use anyhow::Context;
 use std::net;
-use url::Url;
+
+use clap::Parser;
+use moq_native::quic;
+use moq_transfork::*;
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Config {
 	/// Listen on this address
 	#[arg(long, default_value = "[::]:443")]
 	pub bind: net::SocketAddr,
@@ -31,62 +25,66 @@ pub struct Cli {
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
 
-	/// Forward all announces to the provided server for authentication/routing.
-	/// If not provided, the relay accepts every unique announce.
-	#[arg(long)]
-	pub announce: Option<Url>,
+	/// Log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 
-	/// The URL of the moq-api server in order to run a cluster.
-	/// Must be used in conjunction with --node to advertise the origin
-	#[arg(long)]
-	pub api: Option<Url>,
+	/// Cluster configuration.
+	#[command(flatten)]
+	pub cluster: ClusterConfig,
 
-	/// The hostname that we advertise to other origins.
-	/// The provided certificate must be valid for this address.
-	#[arg(long)]
-	pub node: Option<Url>,
-
-	/// Enable development mode.
-	/// This hosts a HTTPS web server via TCP to serve the fingerprint of the certificate.
+	/// Run a web server for debugging purposes.
 	#[arg(long)]
 	pub dev: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	env_logger::init();
+	let config = Config::parse();
+	config.log.init();
 
-	// Disable tracing so we don't get a bunch of Quinn spam.
-	let tracer = tracing_subscriber::FmtSubscriber::builder()
-		.with_max_level(tracing::Level::WARN)
-		.finish();
-	tracing::subscriber::set_global_default(tracer).unwrap();
-
-	let cli = Cli::parse();
-	let tls = cli.tls.load()?;
+	let tls = config.tls.load()?;
 
 	if tls.server.is_none() {
 		anyhow::bail!("missing TLS certificates");
 	}
 
-	// Create a QUIC server for media.
-	let relay = Relay::new(RelayConfig {
-		tls: tls.clone(),
-		bind: cli.bind,
-		node: cli.node,
-		api: cli.api,
-		announce: cli.announce,
-	})?;
-
-	if cli.dev {
+	if config.dev {
 		// Create a web server too.
 		// Currently this only contains the certificate fingerprint (for development only).
-		let web = Web::new(WebConfig { bind: cli.bind, tls });
+		let web = Web::new(WebConfig {
+			bind: config.bind,
+			tls: tls.clone(),
+		});
 
 		tokio::spawn(async move {
 			web.run().await.expect("failed to run web server");
 		});
 	}
 
-	relay.run().await
+	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
+	let mut server = quic.server.context("missing TLS certificate")?;
+
+	let local = AnnouncedProducer::default();
+	let remote = AnnouncedProducer::default();
+
+	let cluster = Cluster::new(config.cluster.clone(), quic.client, local.subscribe(), remote.clone());
+	tokio::spawn(async move {
+		cluster.run().await.expect("failed to run cluster");
+	});
+
+	tracing::info!(addr = %config.bind, "listening");
+
+	let mut conn_id = 0;
+
+	while let Some(conn) = server.accept().await {
+		let session = Connection::new(conn_id, conn, local.clone(), remote.subscribe());
+		conn_id += 1;
+
+		tokio::spawn(async move {
+			session.run().await.ok();
+		});
+	}
+
+	Ok(())
 }

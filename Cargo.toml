@@ -1,21 +1,11 @@
 [workspace]
-members = [
-	"moq-transport",
-	"moq-relay",
-	"moq-pub",
-	"moq-sub",
-	"moq-api",
-	"moq-clock",
-	"moq-dir",
-	"moq-native",
-	"moq-catalog",
-]
+members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-karp"]
 resolver = "2"
 
 [workspace.dependencies]
-web-transport = "0.3"
-env_logger = "0.11"
-log = { version = "0.4", features = ["std"] }
+# Make it easy to test web-transport changes
+#web-transport = { path = "../web-transport-rs/web-transport" }
+web-transport = "0.6"
 
 # Use debug symbols in production until things are more stable
 [profile.release]

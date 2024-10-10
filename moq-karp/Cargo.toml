@@ -1,0 +1,50 @@
+[package]
+name = "moq-karp"
+description = "Media over QUIC"
+authors = []
+repository = "https://github.com/kixelated/moq-rs"
+license = "MIT OR Apache-2.0"
+
+version = "0.1.0"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+moq-transfork = { path = "../moq-transfork", version = "0.1", features = [
+	"serde",
+] }
+
+url = "2"
+futures = "0.3"
+bytes = "1"
+hex = "0.4"
+
+mp4-atom = { version = "0.2", features = ["tokio"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_with = { version = "3", features = ["hex"] }
+
+thiserror = "1"
+tracing = "0.1"
+lazy_static = "1"
+regex = "1"
+
+tokio = { version = "1.39", features = ["macros"] }
+
+# CLI only dependencies
+moq-native = { path = "../moq-native", version = "0.4", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+anyhow = { version = "1", features = ["backtrace"], optional = true }
+
+[features]
+cli = ["moq-native", "tokio/full", "clap", "anyhow"]
+default = ["cli"]
+
+[[bin]]
+name = "moq-karp"
+required-features = ["cli"]

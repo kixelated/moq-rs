@@ -6,14 +6,10 @@ use anyhow::Context;
 use clap::Parser;
 
 mod clock;
-
-use moq_transport::{
-	serve,
-	session::{Publisher, Subscriber},
-};
+use moq_transfork::*;
 
 #[derive(Parser, Clone)]
-pub struct Cli {
+pub struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
@@ -32,65 +28,45 @@ pub struct Cli {
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "clock")]
-	pub namespace: String,
+	pub broadcast: String,
 
 	/// The name of the clock track.
 	#[arg(long, default_value = "now")]
 	pub track: String,
+
+	/// The log configuration.
+	#[command(flatten)]
+	pub log: moq_native::log::Args,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	env_logger::init();
+	let config = Config::parse();
+	config.log.init();
 
-	// Disable tracing so we don't get a bunch of Quinn spam.
-	let tracer = tracing_subscriber::FmtSubscriber::builder()
-		.with_max_level(tracing::Level::WARN)
-		.finish();
-	tracing::subscriber::set_global_default(tracer).unwrap();
-
-	let config = Cli::parse();
 	let tls = config.tls.load()?;
 
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
-	log::info!("connecting to server: url={}", config.url);
+	tracing::info!("connecting to server: url={}", config.url);
 
 	let session = quic.client.connect(&config.url).await?;
+	let mut session = moq_transfork::Session::connect(session).await?;
 
 	if config.publish {
-		let (session, mut publisher) = Publisher::connect(session)
-			.await
-			.context("failed to create MoQ Transport session")?;
+		let (mut writer, reader) = Broadcast::new(config.broadcast).produce();
+		session.publish(reader).context("failed to announce broadcast")?;
 
-		let (mut writer, _, reader) = serve::Tracks {
-			namespace: config.namespace.clone(),
-		}
-		.produce();
+		let track = writer.insert_track(&config.track);
+		let clock = clock::Publisher::new(track);
 
-		let track = writer.create(&config.track).unwrap();
-		let clock = clock::Publisher::new(track.groups()?);
-
-		tokio::select! {
-			res = session.run() => res.context("session error")?,
-			res = clock.run() => res.context("clock error")?,
-			res = publisher.announce(reader) => res.context("failed to serve tracks")?,
-		}
+		clock.run().await
 	} else {
-		let (session, mut subscriber) = Subscriber::connect(session)
-			.await
-			.context("failed to create MoQ Transport session")?;
+		let broadcast = session.subscribe(config.broadcast);
+		let reader = broadcast.get_track(config.track).await?;
 
-		let (prod, sub) = serve::Track::new(config.namespace, config.track).produce();
+		let clock = clock::Subscriber::new(reader);
 
-		let clock = clock::Subscriber::new(sub);
-
-		tokio::select! {
-			res = session.run() => res.context("session error")?,
-			res = clock.run() => res.context("clock error")?,
-			res = subscriber.subscribe(prod) => res.context("failed to subscribe to track")?,
-		}
+		clock.run().await
 	}
-
-	Ok(())
 }

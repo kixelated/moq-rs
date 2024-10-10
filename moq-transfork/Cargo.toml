@@ -1,0 +1,32 @@
+[package]
+name = "moq-transfork"
+description = "Media over QUIC"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq-rs"
+license = "MIT OR Apache-2.0"
+
+version = "0.1.0"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+[features]
+serde = ["dep:serde", "dep:serde_with", "dep:cfg_eval"]
+
+[dependencies]
+bytes = "1"
+thiserror = "1"
+tracing = "0.1"
+
+tokio = { version = "1.39", features = ["macros", "io-util", "sync"] }
+
+web-transport = { workspace = true }
+futures = "0.3"
+
+serde = { version = "1", features = ["derive"], optional = true }
+serde_with = { version = "3", optional = true }
+cfg_eval = { version = "0.1", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
