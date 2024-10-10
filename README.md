@@ -2,21 +2,31 @@
 	<img height="128px" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg" alt="Media over QUIC">
 </p>
 
-Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC streams.
+Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC.
+It's a client-server model (not peer-to-peer) that is designed to scale to enormous viewership via clustered relay servers (aka a CDN).
+The application determines the trade-off between latency and quality, potentially on a per viewer-basis.
+
 See [quic.video](https://quic.video) for more information.
+Note: this project uses a forked implementation of the IETF standardization effort.
 
-This repository contains a few crates:
+The project is split into a few crates:
 
--   **moq-relay**: Forwards content from publishers to any interested subscribers.
--   **moq-karp**: A simple media layer and CLI, powered by moq-transfork.
--   **moq-transfork**: The implementation of the underlying MoQ protocol.
--   **moq-clock**: A dumb clock client/server just to prove MoQ is more than media.
--   **moq-native**: Helpers to configure MoQ CLIs.
+-   [moq-transfork](moq-transfork): The underlying network protocol. It's designed for media-like applications that need real-time and scale.
+-   [moq-relay](moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
+- [moq-karp](moq-karp): A simple media layer powered by moq-transfork, intended as a HLS/DASH/SDP replacement. It includes a CLI for converting between formats.
+-   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
+-   [moq-native](moq-native): Helpers to configure the native MoQ tools.
 
-There's currently no way to view media with this repo; you'll need to use [moq-js](https://github.com/kixelated/moq-js) for that.
-A hosted version is available at [quic.video](https://quic.video) and accepts the `?host=localhost:4443` query parameter.
+There are additional components that have been split into other repositories for development reasons:
 
-# Development
+- [moq-gst](https://github.com/kixelated/moq-gst): A gstreamer plugin for producing Karp broadcasts.
+- [moq-wasm](https://github.com/kixelated/moq-wasm): A web client utilizing Rust and WASM.
+- [moq-js](https://github.com/kixelated/moq-js): A web client utilizing Typescript.
+
+At the moment [moq-js](https://github.com/kixelated/moq-js) contains the only mature player.
+A hosted version is available at [quic.video](https://quic.video) and you can use the `?host=localhost:4443` query parameter to target a local moq-relay.
+
+# Usage
 For quick iteration cycles, use the [dev helper scripts](dev/README.md).
 
 To launch a full cluster, including provisioning certs and deploying root certificates, you can use docker-compose via:
@@ -26,7 +36,6 @@ make run
 ```
 
 Then, visit https://quic.video/publish/?server=localhost:4443.
-
 
 # Usage
 
