@@ -5,6 +5,7 @@ use crate::catalog;
 
 pub struct BroadcastProducer {
 	catalog: catalog::Broadcast,
+	catalog_track: Option<moq_transfork::TrackProducer>,
 	inner: moq_transfork::BroadcastProducer,
 }
 
@@ -13,6 +14,7 @@ impl BroadcastProducer {
 		Self {
 			inner: broadcast,
 			catalog: catalog::Broadcast::default(),
+			catalog_track: None,
 		}
 	}
 
@@ -47,7 +49,11 @@ impl BroadcastProducer {
 	}
 
 	pub fn publish(&mut self) -> Result<(), Error> {
-		self.catalog.publish(&mut self.inner)?;
+		match self.catalog_track.as_mut() {
+			Some(mut track) => self.catalog.update(&mut track)?,
+			None => self.catalog_track = self.catalog.publish(&mut self.inner)?.into(),
+		};
+
 		Ok(())
 	}
 }

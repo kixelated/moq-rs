@@ -63,13 +63,15 @@ async fn main() -> anyhow::Result<()> {
 #[tracing::instrument("publish", skip_all, err, fields(?broadcast))]
 async fn publish(mut session: moq_transfork::Session, broadcast: Broadcast) -> anyhow::Result<()> {
 	let (writer, reader) = broadcast.produce();
+	let mut input = tokio::io::stdin();
 
-	let import = cmaf::Import::init(tokio::io::stdin(), writer).await?;
+	let mut import = cmaf::Import::new(writer);
+	import.init_from(&mut input).await.context("failed to initialize")?;
+
 	tracing::info!(catalog = ?import.catalog());
-
 	session.publish(reader).context("failed to announce")?;
 
-	Ok(import.run().await?)
+	Ok(import.read_from(&mut input).await?)
 }
 
 /*
