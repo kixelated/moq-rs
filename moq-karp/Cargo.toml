@@ -37,7 +37,7 @@ regex = "1"
 tokio = { version = "1.39", features = ["macros"] }
 
 # CLI only dependencies
-moq-native = { path = "../moq-native", version = "0.4", optional = true }
+moq-native = { path = "../moq-native", version = "0.5", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
 
