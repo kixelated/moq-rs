@@ -26,8 +26,6 @@ Like mentioned in the root README, the easiest way to do this is via docker comp
 make run
 ```
 
-This hosts a Redis instance and [moq-api](../moq-api) instance to store the list of origins.
-It also hosts a [moq-dir](../moq-dir) instance to serve the current announcements.
 
 ## moq-pub
 
@@ -51,11 +49,11 @@ The [run](https://github.com/kixelated/moq-gst/blob/main/run) script does the ex
 You can use `moq-sub` to subscribe to media streams from a MoQ relay and pipe them to the standard output.
 By piping the command to a video player, e.g. `ffplay` or `mpv`, you can play a MoQ broadcast natively.
 
-Currently, `moq-sub` simply dumps all received segments of the first video and the first audio track 
+Currently, `moq-sub` simply dumps all received segments of the first video and the first audio track
 directly to `stdout`.
 
 The following command subscribes to a stream from a MoQ relay and plays it with `ffplay`.
-By default, the URL is `https://localhost:4433/dev`, so it will play the stream published with `dev/pub` 
+By default, the URL is `https://localhost:4433/dev`, so it will play the stream published with `dev/pub`
 to the relay started with `dev/relay`. You can change the broadcast name by setting the `NAME` env var.
 
 ```bash

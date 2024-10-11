@@ -60,7 +60,7 @@ impl Endpoint {
 		let mut server_config = None;
 
 		if let Some(mut config) = config.tls.server {
-			config.alpn_protocols = vec![web_transport_quinn::ALPN.to_vec(), moq_transport::setup::ALPN.to_vec()];
+			config.alpn_protocols = vec![web_transport::quinn::ALPN.to_vec(), moq_transfork::ALPN.to_vec()];
 			config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
@@ -107,10 +107,9 @@ impl Server {
 					let conn = res?;
 					self.accept.push(Self::accept_session(conn).boxed());
 				}
-				res = self.accept.next(), if !self.accept.is_empty() => {
-					match res.unwrap() {
-						Ok(session) => return Some(session),
-						Err(err) => log::warn!("failed to accept QUIC connection: {}", err),
+				Some(res) = self.accept.next() => {
+					if let Ok(session) = res {
+						return Some(session)
 					}
 				}
 			}
@@ -127,31 +126,21 @@ impl Server {
 			.unwrap();
 
 		let alpn = handshake.protocol.context("missing ALPN")?;
-		let alpn = String::from_utf8_lossy(&alpn);
-		let server_name = handshake.server_name.unwrap_or_default();
+		let alpn = String::from_utf8(alpn).context("failed to decode ALPN")?;
+		let host = handshake.server_name.unwrap_or_default();
 
-		log::debug!(
-			"received QUIC handshake: ip={} alpn={} server={}",
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
+		tracing::debug!(%host, ip = %conn.remote_address(), %alpn, "connecting");
 
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;
 
-		log::debug!(
-			"established QUIC connection: id={} ip={} alpn={} server={}",
-			conn.stable_id(),
-			conn.remote_address(),
-			alpn,
-			server_name,
-		);
+		let span = tracing::Span::current();
+		span.record("id", conn.stable_id()); // TODO can we get this earlier?
 
 		let session = match alpn.as_bytes() {
-			web_transport_quinn::ALPN => {
+			web_transport::quinn::ALPN => {
 				// Wait for the CONNECT request.
-				let request = web_transport_quinn::accept(conn)
+				let request = web_transport::quinn::accept(conn)
 					.await
 					.context("failed to receive WebTransport request")?;
 
@@ -162,7 +151,7 @@ impl Server {
 					.context("failed to respond to WebTransport request")?
 			}
 			// A bit of a hack to pretend like we're a WebTransport session
-			moq_transport::setup::ALPN => conn.into(),
+			moq_transfork::ALPN => conn.into(),
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
@@ -185,12 +174,14 @@ impl Client {
 	pub async fn connect(&self, url: &Url) -> anyhow::Result<web_transport::Session> {
 		let mut config = self.config.clone();
 
+		let alpn = match url.scheme() {
+			"https" => web_transport::quinn::ALPN,
+			"moqf" => moq_transfork::ALPN,
+			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
+		};
+
 		// TODO support connecting to both ALPNs at the same time
-		config.alpn_protocols = vec![match url.scheme() {
-			"https" => web_transport_quinn::ALPN.to_vec(),
-			"moqt" => moq_transport::setup::ALPN.to_vec(),
-			_ => anyhow::bail!("url scheme must be 'https' or 'moqt'"),
-		}];
+		config.alpn_protocols = vec![alpn.to_vec()];
 
 		config.key_log = Arc::new(rustls::KeyLogFile::new());
 
@@ -202,17 +193,20 @@ impl Client {
 		let port = url.port().unwrap_or(443);
 
 		// Look up the DNS entry.
-		let addr = tokio::net::lookup_host((host.clone(), port))
+		let ip = tokio::net::lookup_host((host.clone(), port))
 			.await
 			.context("failed DNS lookup")?
 			.next()
 			.context("no DNS entries")?;
 
-		let connection = self.quic.connect_with(config, addr, &host)?.await?;
+		tracing::debug!(%url, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
+
+		let connection = self.quic.connect_with(config, ip, &host)?.await?;
+		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
-			"https" => web_transport_quinn::connect_with(connection, url).await?,
-			"moqt" => connection.into(),
+			"https" => web_transport::quinn::connect_with(connection, url).await?,
+			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};
 

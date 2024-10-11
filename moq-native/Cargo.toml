@@ -12,9 +12,8 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transport = { path = "../moq-transport", version = "0.6" }
+moq-transfork = { path = "../moq-transfork", version = "0.1" }
 web-transport = { workspace = true }
-web-transport-quinn = "0.3"
 
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
@@ -31,4 +30,5 @@ futures = "0.3"
 
 anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
-log = { version = "0.4", features = ["std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -18,9 +18,6 @@ if [ ! -f dev/bbb.fmp4 ]; then
 		dev/bbb.fmp4
 fi
 
-# Use debug logging by default
-export RUST_LOG="${RUST_LOG:-debug}"
-
 # Connect to localhost by default.
 HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
@@ -44,5 +41,6 @@ ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
 	-i "$INPUT" \
 	-c copy \
+	-an \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | cargo run --bin moq-pub -- --name "$NAME" "$URL" "$@"
+	- | cargo run --bin moq-karp -- --url "$URL" --broadcast "$NAME" "$@" publish
