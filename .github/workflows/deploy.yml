@@ -7,7 +7,6 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE: kixelated/moq-rs
-  SERVICE: api # Restart the API service TODO and relays
 
 jobs:
   deploy:
@@ -51,14 +50,3 @@ jobs:
           target: moq-pub
           tags: ${{env.REGISTRY}}/kixelated/moq-pub
           platforms: linux/amd64,linux/arm64
-
-      # Log in to GCP
-      - uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-
-      # Deploy to cloud run
-      - uses: google-github-actions/deploy-cloudrun@v1
-        with:
-          service: ${{env.SERVICE}}
-          image: ${{env.REGISTRY}}/${{env.IMAGE}}
