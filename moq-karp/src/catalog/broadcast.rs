@@ -57,7 +57,7 @@ impl Broadcast {
 		Ok(parsed)
 	}
 
-	pub fn publish(&self, broadcast: &mut moq_transfork::BroadcastProducer) -> Result<()> {
+	pub fn publish(&self, broadcast: &mut moq_transfork::BroadcastProducer) -> Result<moq_transfork::TrackProducer> {
 		let track = moq_transfork::Track::build("catalog.json")
 			.priority(-1)
 			.group_order(moq_transfork::GroupOrder::Desc)
@@ -65,8 +65,12 @@ impl Broadcast {
 			.into();
 
 		let mut track = broadcast.insert_track(track);
-		let mut group = track.append_group();
+		self.update(&mut track)?;
+		Ok(track)
+	}
 
+	pub fn update(&self, track: &mut moq_transfork::TrackProducer) -> Result<()> {
+		let mut group = track.append_group();
 		let frame = self.to_string()?;
 		group.write_frame(frame.into());
 

@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use mp4_atom::{Any, AsyncReadFrom, Atom, Esds, Ftyp, Moof, Moov, Trak};
+use mp4_atom::{Any, AsyncReadFrom, Atom, Decode, Esds, Moof, Moov, Trak};
 use std::collections::HashMap;
 use tokio::io::AsyncRead;
 
@@ -7,9 +7,9 @@ use super::{util, Error, Result};
 use crate::{catalog, media};
 
 /// Converts fMP4 -> Karp
-pub struct Import<R: AsyncRead + Unpin> {
-	// The input file
-	input: R,
+pub struct Import {
+	// Any partial data in the input buffer
+	buffer: BytesMut,
 
 	// The broadcast being produced
 	broadcast: media::BroadcastProducer,
@@ -18,20 +18,36 @@ pub struct Import<R: AsyncRead + Unpin> {
 	tracks: HashMap<u32, media::TrackProducer>,
 
 	// The moov atom at the start of the file.
-	moov: Moov,
+	moov: Option<Moov>,
 
 	// The latest moof header
 	moof: Option<Moof>,
 }
 
-impl<R: AsyncRead + Unpin> Import<R> {
-	pub async fn init(mut input: R, output: moq_transfork::BroadcastProducer) -> Result<Self> {
-		let _ = Ftyp::read_from(&mut input).await?;
-		let moov = Moov::read_from(&mut input).await?;
+impl Import {
+	pub fn new(broadcast: moq_transfork::BroadcastProducer) -> Self {
+		Self {
+			buffer: BytesMut::new(),
+			broadcast: media::BroadcastProducer::new(broadcast),
+			tracks: HashMap::default(),
+			moov: None,
+			moof: None,
+		}
+	}
 
-		let mut broadcast = media::BroadcastProducer::new(output);
-		let mut tracks = HashMap::default();
+	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
+		self.buffer.extend_from_slice(data);
+		let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new()).freeze();
 
+		while let Some(atom) = Option::<mp4_atom::Any>::decode(&mut buffer)? {
+			self.process(atom)?;
+		}
+
+		self.buffer = buffer.try_into_mut().unwrap();
+		Ok(())
+	}
+
+	fn init(&mut self, moov: Moov) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
 			let track_id = trak.tkhd.track_id;
@@ -40,28 +56,23 @@ impl<R: AsyncRead + Unpin> Import<R> {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					broadcast.create_video(track)?
+					self.broadcast.create_video(track)?
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					broadcast.create_audio(track)?
+					self.broadcast.create_audio(track)?
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			tracks.insert(track_id, track);
+			self.tracks.insert(track_id, track);
 		}
 
-		broadcast.publish()?;
+		self.broadcast.publish()?;
+		self.moov = Some(moov);
 
-		Ok(Import {
-			input,
-			broadcast,
-			tracks,
-			moov,
-			moof: None,
-		})
+		Ok(())
 	}
 
 	fn init_video(trak: &Trak) -> Result<catalog::Video> {
@@ -184,9 +195,16 @@ impl<R: AsyncRead + Unpin> Import<R> {
 		Ok(track)
 	}
 
+	// Read the media from a stream until processing the moov atom.
+	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
+		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
+		let moov = Moov::read_from(input).await?;
+		self.init(moov)
+	}
+
 	// Read the media from a stream, processing moof and mdat atoms.
-	pub async fn run(mut self) -> Result<()> {
-		while let Some(atom) = Option::<mp4_atom::Any>::read_from(&mut self.input).await? {
+	pub async fn read_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
+		while let Some(atom) = Option::<mp4_atom::Any>::read_from(input).await? {
 			self.process(atom)?;
 		}
 
@@ -196,18 +214,19 @@ impl<R: AsyncRead + Unpin> Import<R> {
 	fn process(&mut self, atom: mp4_atom::Any) -> Result<()> {
 		match atom {
 			Any::Ftyp(_) => {
-				return Err(Error::DuplicateBox(Ftyp::KIND));
+				// Skip
 			}
-			Any::Moov(_) => {
-				return Err(Error::DuplicateBox(Moov::KIND));
+			Any::Moov(moov) => {
+				// Create the broadcast.
+				self.init(moov)?;
 			}
 			Any::Moof(moof) => {
 				let track_id = util::frame_track_id(&moof)?;
 				let keyframe = util::frame_is_key(&moof);
 
 				if keyframe {
-					let trak = self
-						.moov
+					let moov = self.moov.as_ref().ok_or(Error::MissingBox(Moov::KIND))?;
+					let trak = moov
 						.trak
 						.iter()
 						.find(|trak| trak.tkhd.track_id == track_id)
