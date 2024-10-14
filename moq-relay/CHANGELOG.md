@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.1...moq-relay-v0.6.2) - 2024-10-14
+
+### Other
+
+- Actually fix it again lul.
+- Support regular root nodes. ([#194](https://github.com/kixelated/moq-rs/pull/194))
+- Bump moq-native
+- Transfork - Full rewrite  ([#191](https://github.com/kixelated/moq-rs/pull/191))
+
 ## [0.6.1](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.0...moq-relay-v0.6.1) - 2024-10-01
 
 ### Other
