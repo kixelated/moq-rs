@@ -77,30 +77,33 @@ impl Cluster {
 		};
 
 		// If we're using a root node, then we have to connect to it.
-		if let Some(root) = root {
-			let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
+		match root.as_ref() {
+			Some(root) if Some(root) != node.as_ref() => {
+				let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
 
-			let conn = self
-				.client
-				.connect(&root)
-				.await
-				.context("failed to connect to origin")?;
+				let conn = self
+					.client
+					.connect(&root)
+					.await
+					.context("failed to connect to origin")?;
 
-			let mut session = moq_transfork::Session::connect(conn)
-				.await
-				.context("failed to establish root session")?;
+				let mut session = moq_transfork::Session::connect(conn)
+					.await
+					.context("failed to establish root session")?;
 
-			// Publish our broadcast track.
-			if let Some(origin) = origin {
-				session.publish(origin)?;
+				// Publish our broadcast track.
+				if let Some(origin) = origin {
+					session.publish(origin)?;
+				}
+
+				// Subscribe to the list of broadcasts being produced.
+				let announced = session.announced_prefix(&prefix);
+				tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
 			}
-
-			// Subscribe to the list of broadcasts being produced.
-			let announced = session.announced_prefix(&prefix);
-			tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
-		} else {
 			// Otherwise, we're the root node but we still want to connect to other nodes.
-			tasks.push(Self::run_remotes(self.remote, self.local, self.client, node, prefix).boxed());
+			_ => {
+				tasks.push(Self::run_remotes(self.remote, self.local, self.client, node, prefix).boxed());
+			}
 		}
 
 		tasks.select_next_some().await
