@@ -81,11 +81,7 @@ impl Cluster {
 			Some(root) if Some(root) != node.as_ref() => {
 				let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
 
-				let conn = self
-					.client
-					.connect(&root)
-					.await
-					.context("failed to connect to origin")?;
+				let conn = self.client.connect(&root).await.context("failed to connect to root")?;
 
 				let mut session = moq_transfork::Session::connect(conn)
 					.await
