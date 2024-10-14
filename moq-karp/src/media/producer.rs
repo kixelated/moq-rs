@@ -50,7 +50,7 @@ impl BroadcastProducer {
 
 	pub fn publish(&mut self) -> Result<(), Error> {
 		match self.catalog_track.as_mut() {
-			Some(mut track) => self.catalog.update(&mut track)?,
+			Some(track) => self.catalog.update(track)?,
 			None => self.catalog_track = self.catalog.publish(&mut self.inner)?.into(),
 		};
 
