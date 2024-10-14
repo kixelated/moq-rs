@@ -20,14 +20,14 @@ This is called *clustering*, where the goal is that a user connects to the close
 This is both dog-fooding and a surprisingly ueeful way to distribute live metadata at scale.
 
 We currently use a single "root" node that is used to discover members of the cluster and what broadcasts they offer.
-This is a normal moq-relay instance, unaware of the fact that it's in charge of other relays.
+This is a normal moq-relay instance, potentially serving public traffic, unaware of the fact that it's in charge of other relays.
 
 The other moq-relay instances accept internet traffic and consult the root for routing.
 They can then advertise their internal ip/hostname to other instances when publishing a broadcast.
 
 Cluster arguments:
 
--   `--cluster-root <HOST>`: The hostname/ip of the root node. If missing, clustering is disabled.
+-   `--cluster-root <HOST>`: The hostname/ip of the root node. If missing, this node is a root.
 -   `--cluster-node <HOST>`: The hostname/ip of this instance. There needs to be a corresponding valid TLS certificate, potentially self-signed. If missing, published broadcasts will only be available on this specific relay.
 
 ## Authentication 

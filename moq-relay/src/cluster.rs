@@ -57,38 +57,54 @@ impl Cluster {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let root = match self.config.cluster_root {
-			Some(root) => root,
-			None => return Ok(()),
-		};
-
-		let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
-
+		let root = self.config.cluster_root;
 		let prefix = self.config.cluster_prefix.unwrap_or("origin.".to_string());
 		let node = self.config.cluster_node.as_ref().map(|node| node.to_string());
 
-		tracing::info!(%root, ?prefix, ?node, "initializing cluster");
-
-		let conn = self
-			.client
-			.connect(&root)
-			.await
-			.context("failed to connect to origin")?;
-
-		let mut session = moq_transfork::Session::connect(conn)
-			.await
-			.context("failed to establish root session")?;
+		tracing::info!(?root, ?prefix, ?node, "initializing cluster");
 
 		let mut tasks = FuturesUnordered::new();
 
-		if let Some(node) = self.config.cluster_node.as_ref() {
-			let origin = Broadcast::new(format!("{prefix}{node}")).produce();
-			session.publish(origin.1)?;
-			tasks.push(Self::run_local(origin.0, self.local).boxed());
-		}
+		// If we're a node, then we need to announce our presence.
+		let origin = match self.config.cluster_node.as_ref() {
+			Some(node) => {
+				// Create a broadcast that will list our tracks.
+				let origin = Broadcast::new(format!("{prefix}{node}")).produce();
+				tasks.push(Self::run_local(origin.0, self.local.clone()).boxed());
+				Some(origin.1)
+			}
+			None => None,
+		};
 
-		let announced = session.announced_prefix(prefix);
-		tasks.push(Self::run_remotes(self.remote, announced, self.client, node).boxed());
+		// If we're using a root node, then we have to connect to it.
+		match root.as_ref() {
+			Some(root) if Some(root) != node.as_ref() => {
+				let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
+
+				let conn = self
+					.client
+					.connect(&root)
+					.await
+					.context("failed to connect to origin")?;
+
+				let mut session = moq_transfork::Session::connect(conn)
+					.await
+					.context("failed to establish root session")?;
+
+				// Publish our broadcast track.
+				if let Some(origin) = origin {
+					session.publish(origin)?;
+				}
+
+				// Subscribe to the list of broadcasts being produced.
+				let announced = session.announced_prefix(&prefix);
+				tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
+			}
+			// Otherwise, we're the root node but we still want to connect to other nodes.
+			_ => {
+				tasks.push(Self::run_remotes(self.remote, self.local, self.client, node, prefix).boxed());
+			}
+		}
 
 		tasks.select_next_some().await
 	}
@@ -126,13 +142,13 @@ impl Cluster {
 		mut announced: AnnouncedConsumer,
 		client: quic::Client,
 		myself: Option<String>,
+		prefix: String,
 	) -> anyhow::Result<()> {
 		while let Some(announce) = announced.next().await {
-			let prefix = announced.prefix();
 			let node = announce
 				.info
 				.name
-				.strip_prefix(prefix)
+				.strip_prefix(&prefix)
 				.context("invalid prefix")?
 				.to_string();
 
