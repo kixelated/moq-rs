@@ -133,11 +133,11 @@ impl BroadcastProducer {
 	}
 
 	// Returns when there are no references to the consumer
-	pub async fn unused(&self) {
+	pub async fn closed(&self) {
 		self.state.closed().await
 	}
 
-	pub fn is_unused(&self) -> bool {
+	pub fn is_closed(&self) -> bool {
 		!self.state.is_closed()
 	}
 }

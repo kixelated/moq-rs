@@ -50,6 +50,9 @@ pub enum Error {
 	#[error("trailing data")]
 	TrailingData,
 
+	#[error("closed")]
+	Closed,
+
 	#[error("unsupported track: {0}")]
 	UnsupportedTrack(&'static str),
 

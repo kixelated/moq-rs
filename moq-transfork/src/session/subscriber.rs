@@ -112,9 +112,14 @@ impl Subscriber {
 		writer.route_tracks(router.1);
 
 		let this = self.clone();
+		let session = self.session.clone();
 
 		spawn(async move {
-			this.run_router(writer, router.0).await;
+			tokio::select! {
+				_ = this.run_router(writer, router.0) => (),
+				_ = session.closed() => (),
+			};
+
 			drop(served);
 		});
 
