@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.2.0...moq-karp-v0.3.0) - 2024-10-18
+
+### Other
+
+- Support closing broadcasts. ([#199](https://github.com/kixelated/moq-rs/pull/199))
+- Upgrade MP4 ([#196](https://github.com/kixelated/moq-rs/pull/196))
+
 ## [0.2.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.1.0...moq-karp-v0.2.0) - 2024-10-14
 
 ### Other
