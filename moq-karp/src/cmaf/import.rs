@@ -36,7 +36,7 @@ impl Import {
 	}
 
 	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
-		if self.buffer.len() > 0 {
+		if !self.buffer.is_empty() {
 			let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new());
 			buffer.extend_from_slice(data);
 			let n = self.parse_inner(&buffer)?;
@@ -52,11 +52,8 @@ impl Import {
 	fn parse_inner<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize> {
 		let mut cursor = std::io::Cursor::new(data);
 
-		loop {
-			match mp4_atom::Any::decode_maybe(&mut cursor)? {
-				Some(atom) => self.process(atom)?,
-				None => break,
-			};
+		while let Some(atom) = mp4_atom::Any::decode_maybe(&mut cursor)? {
+			self.process(atom)?;
 		}
 
 		// Return the number of bytes consumed
