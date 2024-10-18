@@ -98,7 +98,8 @@ impl Cluster {
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
-				tasks.push(Self::run_remotes(self.remote, self.local, self.client, node, prefix).boxed());
+				let announced = self.local.with_prefix(&prefix);
+				tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
 			}
 		}
 
