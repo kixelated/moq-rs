@@ -56,6 +56,14 @@ impl BroadcastProducer {
 
 		Ok(())
 	}
+
+	pub async fn closed(&self) {
+		self.inner.closed().await
+	}
+
+	pub fn is_closed(&self) -> bool {
+		self.inner.is_closed()
+	}
 }
 
 pub struct TrackProducer {

@@ -27,9 +27,13 @@ impl Publisher {
 	#[tracing::instrument("publish", skip_all, err, fields(?broadcast))]
 	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
 		let active = self.announced.insert(broadcast.clone())?;
+		let session = self.session.clone();
 
 		spawn(async move {
-			broadcast.closed().await.ok();
+			tokio::select! {
+				_ = broadcast.closed() => (),
+				_ = session.closed() => (),
+			}
 			drop(active);
 		});
 
