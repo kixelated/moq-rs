@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.2...moq-relay-v0.6.3) - 2024-10-18
+
+### Other
+
+- Fix the invalid prefix error. ([#197](https://github.com/kixelated/moq-rs/pull/197))
+
 ## [0.6.2](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.1...moq-relay-v0.6.2) - 2024-10-14
 
 ### Other
