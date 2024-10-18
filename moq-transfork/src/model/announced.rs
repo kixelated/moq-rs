@@ -146,4 +146,13 @@ impl AnnouncedConsumer {
 	pub fn prefix(&self) -> &str {
 		&self.prefix
 	}
+
+	/// Make a new consumer with a different prefix.
+	pub fn with_prefix(&self, prefix: &str) -> Self {
+		Self {
+			state: self.state.clone(),
+			prefix: prefix.to_string(),
+			index: 0,
+		}
+	}
 }
