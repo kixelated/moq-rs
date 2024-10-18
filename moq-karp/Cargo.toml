@@ -23,7 +23,10 @@ futures = "0.3"
 bytes = "1.7"
 hex = "0.4"
 
-mp4-atom = { version = "0.2", features = ["tokio"] }
+mp4-atom = { version = "0.3", features = [
+	"tokio",
+	"bytes",
+] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

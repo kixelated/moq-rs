@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use mp4_atom::{Any, AsyncReadFrom, Atom, Decode, Esds, Moof, Moov, Trak};
+use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Moof, Moov, Trak};
 use std::collections::HashMap;
 use tokio::io::AsyncRead;
 
@@ -36,22 +36,35 @@ impl Import {
 	}
 
 	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
-		self.buffer.extend_from_slice(data);
-		let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new()).freeze();
+		if !self.buffer.is_empty() {
+			let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new());
+			buffer.extend_from_slice(data);
+			let n = self.parse_inner(&buffer)?;
+			self.buffer = buffer.split_off(n);
+		} else {
+			let n = self.parse_inner(data)?;
+			self.buffer = data[n..].into();
+		}
 
-		while let Some(atom) = Option::<mp4_atom::Any>::decode(&mut buffer)? {
+		Ok(())
+	}
+
+	fn parse_inner<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize> {
+		let mut cursor = std::io::Cursor::new(data);
+
+		while let Some(atom) = mp4_atom::Any::decode_maybe(&mut cursor)? {
 			self.process(atom)?;
 		}
 
-		self.buffer = buffer.try_into_mut().unwrap();
-		Ok(())
+		// Return the number of bytes consumed
+		Ok(cursor.position() as usize)
 	}
 
 	fn init(&mut self, moov: Moov) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
 			let track_id = trak.tkhd.track_id;
-			let handler = &trak.mdia.hdlr.handler_type;
+			let handler = &trak.mdia.hdlr.handler;
 
 			let track = match handler.as_ref() {
 				b"vide" => {
@@ -213,7 +226,7 @@ impl Import {
 
 	fn process(&mut self, atom: mp4_atom::Any) -> Result<()> {
 		match atom {
-			Any::Ftyp(_) => {
+			Any::Ftyp(_) | Any::Styp(_) => {
 				// Skip
 			}
 			Any::Moov(moov) => {
@@ -233,7 +246,7 @@ impl Import {
 						.ok_or(Error::UnknownTrack)?;
 
 					// If this is a video track, start a new group for the keyframe.
-					if trak.mdia.hdlr.handler_type == b"vide".into() {
+					if trak.mdia.hdlr.handler == b"vide".into() {
 						// Start a new group for the keyframe.
 						for track in self.tracks.values_mut() {
 							track.keyframe();
@@ -242,6 +255,7 @@ impl Import {
 				}
 
 				if self.moof.is_some() {
+					// Two moof boxes in a row.
 					return Err(Error::DuplicateBox(Moof::KIND));
 				}
 
@@ -254,7 +268,7 @@ impl Import {
 				let timestamp = util::frame_timestamp(&moof)?;
 
 				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
-				track.write(timestamp, mdat.data);
+				track.write(timestamp, mdat.data.into());
 			}
 
 			_ => {
