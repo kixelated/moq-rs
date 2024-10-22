@@ -4,7 +4,9 @@ use anyhow::Context;
 use clap::Parser;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use moq_native::quic;
-use moq_transfork::{AnnouncedConsumer, AnnouncedProducer, Broadcast, BroadcastConsumer, BroadcastProducer, Produce};
+use moq_transfork::{
+	AnnouncedConsumer, AnnouncedProducer, Broadcast, BroadcastConsumer, BroadcastProducer, Path, Produce,
+};
 use tracing::Instrument;
 use url::Url;
 
@@ -18,11 +20,6 @@ pub struct ClusterConfig {
 	/// Peers will connect to use via this hostname.
 	#[arg(long)]
 	pub cluster_root: Option<String>,
-
-	/// Use the provided prefix to discover other origins.
-	/// If not provided, then the default is "origin.".
-	#[arg(long)]
-	pub cluster_prefix: Option<String>,
 
 	/// Our unique name which we advertise to other origins.
 	/// If not provided, then we are a read-only member of the cluster.
@@ -57,8 +54,9 @@ impl Cluster {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
+		let prefix = Path::default().push("cluster");
+
 		let root = self.config.cluster_root;
-		let prefix = self.config.cluster_prefix.unwrap_or("origin.".to_string());
 		let node = self.config.cluster_node.as_ref().map(|node| node.to_string());
 
 		tracing::info!(?root, ?prefix, ?node, "initializing cluster");
@@ -68,8 +66,10 @@ impl Cluster {
 		// If we're a node, then we need to announce our presence.
 		let origin = match self.config.cluster_node.as_ref() {
 			Some(node) => {
+				let path = prefix.clone().push(node);
+
 				// Create a broadcast that will list our tracks.
-				let origin = Broadcast::new(format!("{prefix}{node}")).produce();
+				let origin = Broadcast::new(path).produce();
 				tasks.push(Self::run_local(origin.0, self.local.clone()).boxed());
 				Some(origin.1)
 			}
@@ -93,12 +93,12 @@ impl Cluster {
 				}
 
 				// Subscribe to the list of broadcasts being produced.
-				let announced = session.announced_prefix(&prefix);
+				let announced = session.announced_prefix(prefix.clone());
 				tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
-				let announced = self.local.with_prefix(&prefix);
+				let announced = self.local.with_prefix(prefix.clone());
 				tasks.push(Self::run_remotes(self.remote, announced, self.client, node, prefix).boxed());
 			}
 		}
@@ -113,7 +113,7 @@ impl Cluster {
 		let primary = Arc::new(Mutex::new(primary));
 
 		while let Some(broadcast) = local.next().await {
-			primary.lock().unwrap().insert(broadcast.info.name.to_string())?;
+			primary.lock().unwrap().insert(broadcast.info.path.clone());
 
 			tracing::info!(broadcast = ?broadcast.info);
 
@@ -121,11 +121,7 @@ impl Cluster {
 			tokio::spawn(
 				async move {
 					broadcast.closed().await.ok();
-					primary
-						.lock()
-						.unwrap()
-						.remove(&broadcast.info.name)
-						.expect("cleanup failed");
+					primary.lock().unwrap().remove(&broadcast.info.path);
 				}
 				.in_current_span(),
 			);
@@ -139,16 +135,17 @@ impl Cluster {
 		mut announced: AnnouncedConsumer,
 		client: quic::Client,
 		myself: Option<String>,
-		prefix: String,
+		prefix: Path,
 	) -> anyhow::Result<()> {
 		while let Some(announce) = announced.next().await {
-			let node = announce
+			let path = announce
 				.info
-				.name
+				.path
+				.clone()
 				.strip_prefix(&prefix)
-				.context("invalid prefix")?
-				.to_string();
+				.context("incorrect prefix")?;
 
+			let node = path.part(0).context("missing node")?.to_string();
 			if Some(&node) == myself.as_ref() {
 				continue;
 			}
@@ -181,7 +178,7 @@ impl Cluster {
 		let mut primary = ListingConsumer::new(primary);
 
 		while let Some(listing) = primary.next().await? {
-			let broadcast = session.subscribe(listing.name.clone());
+			let broadcast = session.subscribe(listing.path.clone());
 			tracing::info!(broadcast = ?broadcast.info, "available");
 
 			let active = remote.insert(broadcast.clone())?;

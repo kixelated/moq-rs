@@ -1,4 +1,4 @@
-use std::{cmp, string::FromUtf8Error, time};
+use std::{string::FromUtf8Error, time};
 use thiserror::Error;
 
 pub trait Decode: Sized {
@@ -81,29 +81,22 @@ impl Decode for String {
 	}
 }
 
-impl Decode for Vec<u8> {
+impl<T: Decode> Decode for Vec<T> {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
 		let size = usize::decode(buf)?;
-		Self::decode_cap(buf, size)?;
 
-		// Don't allocate the entire requested size to avoid a possible attack
-		// Instead, we allocate up to 1024 and keep appending as we read further.
-		let mut v = vec![0; cmp::min(1024, size)];
-		buf.copy_to_slice(&mut v);
+		// Don't allocate more than 1024 elements upfront
+		let mut v = Vec::with_capacity(size.min(1024));
+
+		for _ in 0..size {
+			v.push(T::decode(buf)?);
+		}
 
 		Ok(v)
 	}
 }
 
-impl Decode for Option<u64> {
-	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		Ok(match u64::decode(r)? {
-			0 => None,
-			v => Some(v - 1),
-		})
-	}
-}
-
+/*
 impl Decode for Option<usize> {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(match usize::decode(r)? {
@@ -112,6 +105,7 @@ impl Decode for Option<usize> {
 		})
 	}
 }
+	*/
 
 impl Decode for time::Duration {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
@@ -126,5 +120,13 @@ impl Decode for i8 {
 		// i8 doesn't exist in the draft, but we use it instead of u8 for priority.
 		// A default of 0 is more ergonomic for the user than a default of 128.
 		Ok(((r.get_u8() as i16) - 128) as i8)
+	}
+}
+
+impl Decode for bytes::Bytes {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let len = usize::decode(r)?;
+		let bytes = r.copy_to_bytes(len);
+		Ok(bytes)
 	}
 }

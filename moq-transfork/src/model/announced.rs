@@ -3,6 +3,8 @@ use tokio::sync::watch;
 
 use crate::{Broadcast, BroadcastConsumer, Error};
 
+use super::Path;
+
 #[derive(Default)]
 struct AnnouncedState {
 	order: VecDeque<Option<BroadcastConsumer>>,
@@ -72,16 +74,16 @@ impl AnnouncedProducer {
 	pub fn subscribe(&self) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
-			prefix: "".to_string(),
+			prefix: Path::default(),
 			index: 0,
 		}
 	}
 
 	/// Subscribe to all announced broadcasts based on a prefix, including those already active.
-	pub fn subscribe_prefix<P: ToString>(&self, prefix: P) -> AnnouncedConsumer {
+	pub fn subscribe_prefix(&self, prefix: Path) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
-			prefix: prefix.to_string(),
+			prefix,
 			index: 0,
 		}
 	}
@@ -104,7 +106,7 @@ impl Drop for AnnouncedActive {
 #[derive(Clone)]
 pub struct AnnouncedConsumer {
 	state: watch::Receiver<AnnouncedState>,
-	prefix: String,
+	prefix: Path,
 	index: usize,
 }
 
@@ -124,7 +126,7 @@ impl AnnouncedConsumer {
 					self.index += 1;
 
 					if let Some(announced) = &state.order[index] {
-						if announced.info.name.starts_with(&self.prefix) {
+						if announced.info.path.has_prefix(&self.prefix) {
 							return Some(announced.clone());
 						}
 					}
@@ -143,15 +145,15 @@ impl AnnouncedConsumer {
 	}
 
 	/// Returns the prefix in use.
-	pub fn prefix(&self) -> &str {
+	pub fn prefix(&self) -> &Path {
 		&self.prefix
 	}
 
 	/// Make a new consumer with a different prefix.
-	pub fn with_prefix(&self, prefix: &str) -> Self {
+	pub fn with_prefix(&self, prefix: Path) -> Self {
 		Self {
 			state: self.state.clone(),
-			prefix: prefix.to_string(),
+			prefix,
 			index: 0,
 		}
 	}

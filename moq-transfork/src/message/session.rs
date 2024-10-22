@@ -7,13 +7,17 @@ pub struct SessionInfo {
 
 impl Decode for SessionInfo {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let bitrate = Option::<u64>::decode(r)?;
+		let bitrate = match u64::decode(r)? {
+			0 => None,
+			bitrate => Some(bitrate),
+		};
+
 		Ok(Self { bitrate })
 	}
 }
 
 impl Encode for SessionInfo {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.bitrate.encode(w);
+		self.bitrate.unwrap_or(0).encode(w);
 	}
 }

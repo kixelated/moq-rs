@@ -1,5 +1,5 @@
 use std::{
-	collections::{hash_map, HashMap},
+	collections::HashMap,
 	sync::{atomic, Arc},
 };
 
@@ -7,7 +7,7 @@ use crate::{
 	message,
 	model::{Broadcast, BroadcastConsumer, Produce, Router, Track, TrackConsumer},
 	util::{spawn, Close, Lock, OrClose},
-	AnnouncedProducer, BroadcastProducer, Error, RouterProducer,
+	AnnouncedProducer, BroadcastProducer, Error, Path, RouterProducer,
 };
 
 use super::{subscribe, AnnouncedConsumer, Reader, Stream, SubscribeConsumer};
@@ -33,9 +33,8 @@ impl Subscriber {
 	}
 
 	/// Discover any broadcasts matching a prefix.
-	pub fn broadcasts<P: ToString>(&self, prefix: P) -> AnnouncedConsumer {
+	pub fn broadcasts(&self, prefix: Path) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
-		let prefix = prefix.to_string();
 		let consumer = producer.subscribe_prefix(prefix.clone());
 
 		let mut this = self.clone();
@@ -57,16 +56,16 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(
-		&self,
-		stream: &mut Stream,
-		prefix: String,
-		announced: AnnouncedProducer,
-	) -> Result<(), Error> {
-		// Used to toggle on each duplicate announce
+	async fn run_announce(&self, stream: &mut Stream, prefix: Path, announced: AnnouncedProducer) -> Result<(), Error> {
+		// Used to remove broadcasts on ended
 		let mut active = HashMap::new();
 
-		stream.writer.encode(&message::AnnounceInterest { prefix }).await?;
+		stream
+			.writer
+			.encode(&message::AnnounceInterest {
+				prefix: prefix.clone().into(),
+			})
+			.await?;
 
 		tracing::debug!("waiting for announces");
 
@@ -74,14 +73,30 @@ impl Subscriber {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
+						// Handle the announce
 						Some(announce) => {
 							tracing::debug!(?announce);
-							let broadcast = self.broadcast(announce.broadcast.into());
 
-							match active.entry(broadcast.info.name.clone()) {
-								hash_map::Entry::Occupied(entry) => &mut entry.remove(),
-								hash_map::Entry::Vacant(entry) => entry.insert(announced.insert(broadcast)?),
-							};
+							let suffix = announce.suffix;
+
+							match announce.status {
+								message::AnnounceStatus::Active => {
+									if active.contains_key(&suffix) {
+										return Err(Error::Duplicate);
+									}
+
+									let path = prefix.clone().append(&suffix);
+									let broadcast = self.broadcast(Broadcast::new(path));
+									let broadcast = announced.insert(broadcast)?;
+
+									active.insert(suffix, broadcast);
+								},
+								message::AnnounceStatus::Ended => {
+									if active.remove(&suffix).is_none() {
+										return Err(Error::NotFound);
+									}
+								},
+							}
 						},
 						// Stop if the stream has been closed
 						None => return Ok(()),

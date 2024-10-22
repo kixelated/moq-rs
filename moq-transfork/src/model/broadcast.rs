@@ -10,42 +10,28 @@
 //! A [Consumer] can be cloned to create multiple subscriptions.
 //!
 //! The broadcast is automatically closed with [ServeError::Done] when [Producer] is dropped, or all [Consumer]s are dropped.
-use std::{collections::HashMap, fmt, ops, str::FromStr, time};
+use std::{collections::HashMap, fmt, ops, time};
 
 use tokio::sync::watch;
 
-use super::{GroupOrder, Produce, RouterConsumer, Track, TrackBuilder, TrackConsumer, TrackProducer};
+use super::{GroupOrder, Path, Produce, RouterConsumer, Track, TrackBuilder, TrackConsumer, TrackProducer};
 use crate::Error;
 
 /// Static information about a broadcast.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
 pub struct Broadcast {
-	pub name: String,
+	pub path: Path,
 }
 
 impl Broadcast {
-	pub fn new<T: Into<String>>(name: T) -> Self {
-		Self { name: name.into() }
+	pub fn new(path: Path) -> Self {
+		Self { path }
 	}
 }
 
-impl<T: Into<String>> From<T> for Broadcast {
-	fn from(name: T) -> Self {
-		Self::new(name)
-	}
-}
-
-impl FromStr for Broadcast {
-	type Err = Error;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Ok(Self::new(s))
-	}
-}
-
-impl fmt::Debug for Broadcast {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.name.fmt(f)
+impl From<Path> for Broadcast {
+	fn from(path: Path) -> Self {
+		Self::new(path)
 	}
 }
 
@@ -60,6 +46,22 @@ impl Produce for Broadcast {
 		let reader = BroadcastConsumer::new(recv, self);
 
 		(writer, reader)
+	}
+}
+
+#[derive(Default)]
+pub struct BroadcastBuilder {
+	pub broadcast: Broadcast,
+}
+
+impl BroadcastBuilder {
+	pub fn path<T: ToString>(mut self, path: T) -> Self {
+		self.broadcast.path = self.broadcast.path.push(path);
+		self
+	}
+
+	pub fn done(self) -> Broadcast {
+		self.broadcast
 	}
 }
 
@@ -231,6 +233,6 @@ impl BroadcastConsumer {
 
 impl fmt::Debug for BroadcastConsumer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.info.name.fmt(f)
+		self.info.fmt(f)
 	}
 }

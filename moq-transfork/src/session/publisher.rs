@@ -42,18 +42,22 @@ impl Publisher {
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
-		tracing::debug!(prefix = ?interest.prefix, "announced interest");
+		let prefix = interest.prefix;
+		tracing::debug!(?prefix, "announced interest");
 
 		let mut unannounced = FuturesUnordered::new();
-		let mut announced = self.announced.subscribe_prefix(interest.prefix);
+		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
 		loop {
 			tokio::select! {
 				Some(broadcast) = announced.next() => {
 					tracing::debug!(announced = ?broadcast.info);
 
+					let suffix = broadcast.info.path.clone().strip_prefix(&prefix).expect("prefix mismatch");
+
 					stream.writer.encode(&message::Announce {
-						broadcast: broadcast.info.name.to_string(),
+						status: message::AnnounceStatus::Active,
+						suffix,
 					}).await?;
 
 					unannounced.push(async move {
@@ -64,8 +68,11 @@ impl Publisher {
 				Some(broadcast) = unannounced.next() => {
 					tracing::debug!(unannounced = ?broadcast.info);
 
+					let suffix = broadcast.info.path.strip_prefix(&prefix).expect("prefix mismatch");
+
 					stream.writer.encode(&message::Announce {
-						broadcast: broadcast.info.name.to_string(),
+						status: message::AnnounceStatus::Ended,
+						suffix,
 					}).await?;
 				},
 				res = stream.reader.closed() => return res,
@@ -94,7 +101,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("publish", skip_all, err, fields(broadcast = subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
+	#[tracing::instrument("publish", skip_all, err, fields(broadcast = ?subscribe.broadcast, track = subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			name: subscribe.track,
@@ -103,7 +110,8 @@ impl Publisher {
 			group_order: subscribe.group_order,
 		};
 
-		let mut track = self.subscribe(subscribe.broadcast, track).await?;
+		let broadcast = Broadcast::new(subscribe.broadcast);
+		let mut track = self.subscribe(broadcast, track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest_group(),
@@ -221,7 +229,7 @@ impl Publisher {
 		self.serve_fetch(stream, fetch).await
 	}
 
-	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
+	#[tracing::instrument("fetch", skip_all, err, fields(broadcast = ?fetch.broadcast, track = fetch.track, group = fetch.group, offset = fetch.offset))]
 	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
 		let track = Track::build(fetch.track).priority(fetch.priority);
 		let track = self.subscribe(fetch.broadcast, track).await?;
@@ -235,7 +243,7 @@ impl Publisher {
 		self.serve_info(stream, info).await
 	}
 
-	#[tracing::instrument("info", skip_all, err, fields(broadcast = info.broadcast, track = info.track))]
+	#[tracing::instrument("info", skip_all, err, fields(broadcast = ?info.broadcast, track = info.track))]
 	async fn serve_info(&mut self, stream: &mut Stream, info: message::InfoRequest) -> Result<(), Error> {
 		let track = self.subscribe(info.broadcast, info.track).await?;
 

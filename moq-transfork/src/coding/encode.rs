@@ -1,4 +1,4 @@
-use std::time;
+use std::{sync::Arc, time};
 
 use super::Sizer;
 
@@ -35,27 +35,6 @@ impl Encode for &str {
 	}
 }
 
-impl Encode for Vec<u8> {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.len().encode(w);
-		w.put_slice(self);
-	}
-}
-
-impl Encode for Option<u64> {
-	/// Encode a varint to the given writer.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.map(|v| v + 1).unwrap_or(0).encode(w)
-	}
-}
-
-impl Encode for Option<usize> {
-	/// Encode a varint to the given writer.
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.map(|v| v + 1).unwrap_or(0).encode(w)
-	}
-}
-
 impl Encode for time::Duration {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = self.as_millis().try_into().expect("duration too large");
@@ -69,5 +48,36 @@ impl Encode for i8 {
 		// i8 doesn't exist in the draft, but we use it instead of u8 for priority.
 		// A default of 0 is more ergonomic for the user than a default of 128.
 		w.put_u8(((*self as i16) + 128) as u8);
+	}
+}
+
+impl<T: Encode> Encode for &[T] {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.len().encode(w);
+		for item in self.iter() {
+			item.encode(w);
+		}
+	}
+}
+
+impl<T: Encode> Encode for Vec<T> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.len().encode(w);
+		for item in self.iter() {
+			item.encode(w);
+		}
+	}
+}
+
+impl Encode for bytes::Bytes {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.len().encode(w);
+		w.put_slice(self);
+	}
+}
+
+impl<T: Encode> Encode for Arc<T> {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		(**self).encode(w);
 	}
 }

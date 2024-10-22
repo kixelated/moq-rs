@@ -2,6 +2,7 @@ use std::time;
 
 use super::GroupOrder;
 use crate::coding::*;
+use crate::Path;
 
 #[derive(Clone, Debug)]
 pub struct Info {
@@ -38,7 +39,7 @@ impl Decode for Info {
 
 #[derive(Clone, Debug)]
 pub struct InfoRequest {
-	pub broadcast: String,
+	pub broadcast: Path,
 	pub track: String,
 }
 
@@ -51,7 +52,7 @@ impl Encode for InfoRequest {
 
 impl Decode for InfoRequest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let broadcast = String::decode_more(r, 1)?;
+		let broadcast = Path::decode_more(r, 1)?;
 		let track = String::decode(r)?;
 
 		Ok(Self { broadcast, track })

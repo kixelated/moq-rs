@@ -1,5 +1,6 @@
 use anyhow::Context;
 use bytes::{Bytes, BytesMut};
+use coding::{Decode, Encode};
 use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::oneshot;
 
@@ -8,7 +9,7 @@ use moq_transfork::*;
 pub struct ListingProducer {
 	track: TrackProducer,
 	group: GroupProducer,
-	current: HashSet<String>,
+	current: HashSet<Path>,
 }
 
 impl ListingProducer {
@@ -23,49 +24,61 @@ impl ListingProducer {
 		}
 	}
 
-	pub fn insert(&mut self, name: String) -> anyhow::Result<()> {
-		if !self.current.insert(name.clone()) {
-			anyhow::bail!("duplicate");
+	pub fn insert(&mut self, path: Path) -> bool {
+		if !self.current.insert(path.clone()) {
+			return false;
 		}
 
 		// Create a delta if the current group is small enough.
 		if self.current.len() < 2 * self.group.frame_count() {
-			let msg = format!("+{}", name);
-			self.group.write_frame(msg.into());
+			self.delta(message::Announce {
+				status: message::AnnounceStatus::Active,
+				suffix: path,
+			});
 		} else {
 			// Otherwise create a snapshot with every element.
 			self.snapshot();
 		}
 
-		Ok(())
+		true
 	}
 
-	pub fn remove(&mut self, name: &str) -> anyhow::Result<()> {
-		if !self.current.remove(name) {
-			anyhow::bail!("missing");
+	pub fn remove(&mut self, path: &Path) {
+		if !self.current.remove(path) {
+			return;
 		}
 
 		// Create a delta if the current group is small enough.
 		if self.current.len() < 2 * self.group.frame_count() {
-			let msg = format!("-{}", name);
-			self.group.write_frame(msg.into());
+			self.delta(message::Announce {
+				status: message::AnnounceStatus::Ended,
+				suffix: path.clone(),
+			});
 		} else {
 			self.snapshot();
 		}
-
-		Ok(())
 	}
 
 	fn snapshot(&mut self) {
 		self.group = self.track.append_group();
 
-		let mut msg = BytesMut::new();
+		let mut buffer = BytesMut::new();
 		for name in &self.current {
-			msg.extend_from_slice(name.as_bytes());
-			msg.extend_from_slice(b"\n");
+			let msg = message::Announce {
+				status: message::AnnounceStatus::Active,
+				suffix: name.clone(),
+			};
+
+			msg.encode(&mut buffer);
 		}
 
-		self.group.write_frame(msg.freeze());
+		self.group.write_frame(buffer.freeze());
+	}
+
+	fn delta(&mut self, msg: message::Announce) {
+		let mut buffer = BytesMut::new();
+		msg.encode(&mut buffer);
+		self.group.write_frame(buffer.freeze());
 	}
 
 	pub fn len(&self) -> usize {
@@ -90,7 +103,7 @@ pub struct ListingConsumer {
 	group: Option<GroupConsumer>,
 
 	// Active listings, along with a channel to signal when they are closed.
-	active: HashMap<String, oneshot::Sender<()>>,
+	active: HashMap<Path, oneshot::Sender<()>>,
 
 	// A list of listings we need to return
 	pending: VecDeque<Listing>,
@@ -130,30 +143,24 @@ impl ListingConsumer {
 			None => return Ok(false),
 		};
 
-		let snapshot = group.read_frame().await?.context("missing snapshot")?;
-
-		if snapshot.is_empty() {
-			self.active.drain();
-			self.group = Some(group);
-			return Ok(true);
-		}
-
+		let mut snapshot = group.read_frame().await?.context("missing snapshot")?;
 		let mut active = HashMap::new();
 
-		for name in snapshot
-			.split(|&b| b == b'\n')
-			.map(|s| String::from_utf8_lossy(s).to_string())
-		{
-			match self.active.remove(&name) {
+		while !snapshot.is_empty() {
+			let announce = message::Announce::decode(&mut snapshot)?;
+			assert!(matches!(announce.status, message::AnnounceStatus::Active));
+			let path = announce.suffix;
+
+			match self.active.remove(&path) {
 				Some(tx) => {
 					// Existing listing
-					active.insert(name, tx);
+					active.insert(path, tx);
 				}
 				None => {
 					// New listing
 					let (tx, rx) = oneshot::channel();
-					active.insert(name.clone(), tx);
-					self.pending.push_back(Listing { name, closed: rx });
+					active.insert(path.clone(), tx);
+					self.pending.push_back(Listing { path, closed: rx });
 				}
 			}
 		}
@@ -168,28 +175,23 @@ impl ListingConsumer {
 	async fn delta(&mut self) -> anyhow::Result<Option<Listing>> {
 		let group = self.group.as_mut().unwrap();
 
-		while let Some(payload) = group.read_frame().await? {
-			if payload.is_empty() {
-				anyhow::bail!("empty payload");
-			}
+		while let Some(mut payload) = group.read_frame().await? {
+			let msg = message::Announce::decode(&mut payload)?;
+			let path = msg.suffix;
 
-			let (delta, name) = payload.split_at(1);
-			let name = String::from_utf8_lossy(name).to_string();
-
-			match delta[0] {
-				b'+' => {
+			match msg.status {
+				message::AnnounceStatus::Active => {
 					// New listing
 					let (tx, rx) = oneshot::channel();
-					if self.active.insert(name.clone(), tx).is_some() {
+					if self.active.insert(path.clone(), tx).is_some() {
 						anyhow::bail!("duplicate listing");
 					}
-					return Ok(Some(Listing { name, closed: rx }));
+					return Ok(Some(Listing { path, closed: rx }));
 				}
-				b'-' => {
+				message::AnnounceStatus::Ended => {
 					// Removed listing
-					self.active.remove(&name).context("non-existent listing")?;
+					self.active.remove(&path).context("non-existent listing")?;
 				}
-				_ => anyhow::bail!("invalid delta"),
 			}
 		}
 
@@ -203,7 +205,7 @@ impl ListingConsumer {
 }
 
 pub struct Listing {
-	pub name: String,
+	pub path: Path,
 	closed: oneshot::Receiver<()>,
 }
 

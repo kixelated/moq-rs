@@ -63,7 +63,7 @@ impl SubscribeProducer {
 	pub async fn start(&mut self, stream: &mut Stream, broadcast: &Broadcast) -> Result<(), Error> {
 		let request = message::Subscribe {
 			id: self.id,
-			broadcast: broadcast.name.to_string(),
+			broadcast: broadcast.path.clone().into(),
 
 			track: self.track.name.clone(),
 			priority: self.track.priority,
