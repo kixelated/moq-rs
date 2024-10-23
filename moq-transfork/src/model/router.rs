@@ -2,16 +2,17 @@ use std::ops;
 
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{Error, Produce};
+use crate::{Error, Track, TrackConsumer, TrackProducer};
 
-/// Used to respond to arbitrary broadcast/track requests.
-pub struct Router<T: Produce> {
-	_marker: std::marker::PhantomData<T>,
+/// Used to respond to arbitrary track requests.
+pub struct Router {
+	/// The maximum number of requests that can be queued before blocking.
+	pub capacity: usize,
 }
 
-impl<T: Produce> Router<T> {
-	pub fn produce() -> (RouterProducer<T>, RouterConsumer<T>) {
-		let (send, recv) = mpsc::channel(16);
+impl Router {
+	pub fn produce(&self) -> (RouterProducer, RouterConsumer) {
+		let (send, recv) = mpsc::channel(self.capacity);
 
 		let writer = RouterProducer::new(recv);
 		let reader = RouterConsumer::new(send);
@@ -20,35 +21,41 @@ impl<T: Produce> Router<T> {
 	}
 }
 
-/// Receive broadcast/track requests and return if we can fulfill them.
-pub struct RouterProducer<T: Produce> {
-	queue: mpsc::Receiver<RouterRequest<T>>,
+impl Default for Router {
+	fn default() -> Self {
+		Self { capacity: 32 }
+	}
 }
 
-impl<T: Produce> RouterProducer<T> {
-	fn new(queue: mpsc::Receiver<RouterRequest<T>>) -> Self {
+/// Receive broadcast/track requests and return if we can fulfill them.
+pub struct RouterProducer {
+	queue: mpsc::Receiver<RouterRequest>,
+}
+
+impl RouterProducer {
+	fn new(queue: mpsc::Receiver<RouterRequest>) -> Self {
 		Self { queue }
 	}
 
-	pub async fn requested(&mut self) -> Option<RouterRequest<T>> {
+	pub async fn requested(&mut self) -> Option<RouterRequest> {
 		self.queue.recv().await
 	}
 }
 
 /// Subscribe to abitrary broadcast/tracks.
 #[derive(Clone)]
-pub struct RouterConsumer<T: Produce> {
-	queue: mpsc::Sender<RouterRequest<T>>,
+pub struct RouterConsumer {
+	queue: mpsc::Sender<RouterRequest>,
 }
 
-impl<T: Produce> RouterConsumer<T> {
-	fn new(queue: mpsc::Sender<RouterRequest<T>>) -> Self {
+impl RouterConsumer {
+	fn new(queue: mpsc::Sender<RouterRequest>) -> Self {
 		Self { queue }
 	}
 
-	pub async fn subscribe(&self, info: T) -> Result<T::Consumer, Error> {
+	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
 		let (send, recv) = oneshot::channel();
-		let request = RouterRequest { info, reply: send };
+		let request = RouterRequest { track, reply: send };
 
 		if self.queue.send(request).await.is_err() {
 			return Err(Error::Cancel);
@@ -58,19 +65,19 @@ impl<T: Produce> RouterConsumer<T> {
 	}
 }
 
-/// An outstanding request for a broadcast/track.
-pub struct RouterRequest<T: Produce> {
-	pub info: T,
-	reply: oneshot::Sender<Result<T::Consumer, Error>>,
+/// An outstanding request for a path.
+pub struct RouterRequest {
+	pub track: Track,
+	reply: oneshot::Sender<Result<TrackConsumer, Error>>,
 }
 
-impl<T: Produce> RouterRequest<T> {
-	pub fn serve(self, reader: T::Consumer) {
+impl RouterRequest {
+	pub fn serve(self, reader: TrackConsumer) {
 		self.reply.send(Ok(reader)).ok();
 	}
 
-	pub fn produce(self) -> T::Producer {
-		let (writer, reader) = self.info.produce();
+	pub fn produce(self) -> TrackProducer {
+		let (writer, reader) = self.track.produce();
 		self.reply.send(Ok(reader)).ok();
 		writer
 	}
@@ -80,10 +87,10 @@ impl<T: Produce> RouterRequest<T> {
 	}
 }
 
-impl<T: Produce> ops::Deref for RouterRequest<T> {
-	type Target = T;
+impl ops::Deref for RouterRequest {
+	type Target = Track;
 
 	fn deref(&self) -> &Self::Target {
-		&self.info
+		&self.track
 	}
 }

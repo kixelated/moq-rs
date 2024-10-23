@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Audio {
-	pub track: moq_transfork::Track,
-	pub codec: AudioCodec,
+	/// The name of the track, relative to the broadcast path.
+	pub name: String,
 
-	// The number of units in a second
-	pub timescale: u32,
+	/// The priority of the track, relative to other tracks in the same broadcast.
+	pub priority: i8,
+
+	pub codec: AudioCodec,
 
 	pub sample_rate: u16,
 	pub channel_count: u16,

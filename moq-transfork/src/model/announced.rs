@@ -1,33 +1,39 @@
 use std::collections::{HashMap, VecDeque};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
-use crate::{Broadcast, BroadcastConsumer, Error};
+use crate::Error;
 
 use super::Path;
 
 #[derive(Default)]
 struct AnnouncedState {
-	order: VecDeque<Option<BroadcastConsumer>>,
-	lookup: HashMap<Broadcast, BroadcastConsumer>,
+	order: VecDeque<Option<AnnouncedActive>>,
+	active: HashMap<Path, mpsc::Receiver<()>>,
 	pruned: usize,
 }
 
-/// Announces broadcasts to consumers over the network.
+/// Announces tracks to consumers over the network.
 #[derive(Default, Clone)]
 pub struct AnnouncedProducer {
 	state: watch::Sender<AnnouncedState>,
 }
 
 impl AnnouncedProducer {
-	/// Announce a broadcast, returning a guard that will remove it when dropped.
+	/// Announce a track, returning a guard that will remove it when dropped.
 	#[must_use = "removed on drop"]
-	pub fn insert(&self, broadcast: BroadcastConsumer) -> Result<AnnouncedActive, Error> {
+	pub fn insert(&self, path: Path) -> Result<AnnouncedGuard, Error> {
 		let mut index = 0;
 
+		let (tx, rx) = mpsc::channel(1);
+		let active = AnnouncedActive {
+			path: path.clone(),
+			closed: tx,
+		};
+
 		let ok = self.state.send_if_modified(|state| {
-			if state.lookup.insert(broadcast.info.clone(), broadcast.clone()).is_none() {
+			if state.active.insert(path.clone(), rx).is_none() {
 				index = state.order.len() + state.pruned;
-				state.order.push_back(Some(broadcast.clone()));
+				state.order.push_back(Some(active));
 
 				true
 			} else {
@@ -39,21 +45,16 @@ impl AnnouncedProducer {
 			return Err(Error::Duplicate);
 		}
 
-		Ok(AnnouncedActive {
+		Ok(AnnouncedGuard {
 			producer: self.clone(),
-			broadcast,
+			path,
 			index,
 		})
 	}
 
-	/// Returns a broadcast by name.
-	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
-		self.state.borrow().lookup.get(broadcast).cloned()
-	}
-
-	fn remove(&self, broadcast: &Broadcast, index: usize) {
+	fn remove(&self, path: &Path, index: usize) {
 		self.state.send_if_modified(|state| {
-			state.lookup.remove(broadcast).expect("broadcast not found");
+			state.active.remove(path);
 			state.order[index - state.pruned] = None;
 
 			while let Some(None) = state.order.front() {
@@ -70,7 +71,7 @@ impl AnnouncedProducer {
 		self.state.closed().await
 	}
 
-	/// Subscribe to all announced broadcasts, including those already active.
+	/// Subscribe to all announced tracks, including those already active.
 	pub fn subscribe(&self) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
@@ -79,7 +80,7 @@ impl AnnouncedProducer {
 		}
 	}
 
-	/// Subscribe to all announced broadcasts based on a prefix, including those already active.
+	/// Subscribe to all announced tracks based on a prefix, including those already active.
 	pub fn subscribe_prefix(&self, prefix: Path) -> AnnouncedConsumer {
 		AnnouncedConsumer {
 			state: self.state.subscribe(),
@@ -89,20 +90,20 @@ impl AnnouncedProducer {
 	}
 }
 
-/// An announced broadcast, active until dropped.
-pub struct AnnouncedActive {
+/// An announced track, active until dropped.
+pub struct AnnouncedGuard {
 	producer: AnnouncedProducer,
-	broadcast: BroadcastConsumer,
+	path: Path,
 	index: usize,
 }
 
-impl Drop for AnnouncedActive {
+impl Drop for AnnouncedGuard {
 	fn drop(&mut self) {
-		self.producer.remove(&self.broadcast.info, self.index);
+		self.producer.remove(&self.path, self.index);
 	}
 }
 
-/// Consumes announced broadcasts over the network matching an optional prefix.
+/// Consumes announced tracks over the network matching an optional prefix.
 #[derive(Clone)]
 pub struct AnnouncedConsumer {
 	state: watch::Receiver<AnnouncedState>,
@@ -111,8 +112,8 @@ pub struct AnnouncedConsumer {
 }
 
 impl AnnouncedConsumer {
-	/// Returns the next announced broadcast.
-	pub async fn next(&mut self) -> Option<BroadcastConsumer> {
+	/// Returns the next announced track.
+	pub async fn next(&mut self) -> Option<AnnouncedActive> {
 		loop {
 			{
 				let state = self.state.borrow_and_update();
@@ -126,7 +127,7 @@ impl AnnouncedConsumer {
 					self.index += 1;
 
 					if let Some(announced) = &state.order[index] {
-						if announced.info.path.has_prefix(&self.prefix) {
+						if announced.path.has_prefix(&self.prefix) {
 							return Some(announced.clone());
 						}
 					}
@@ -137,11 +138,6 @@ impl AnnouncedConsumer {
 				return None;
 			}
 		}
-	}
-
-	/// Returns a broadcast by name.
-	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
-		self.state.borrow().lookup.get(broadcast).cloned()
 	}
 
 	/// Returns the prefix in use.
@@ -156,5 +152,17 @@ impl AnnouncedConsumer {
 			prefix,
 			index: 0,
 		}
+	}
+}
+
+#[derive(Clone)]
+pub struct AnnouncedActive {
+	pub path: Path,
+	closed: mpsc::Sender<()>,
+}
+
+impl AnnouncedActive {
+	pub async fn closed(&self) {
+		self.closed.closed().await
 	}
 }

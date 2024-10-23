@@ -11,7 +11,6 @@ use std::net;
 
 use clap::Parser;
 use moq_native::quic;
-use moq_transfork::*;
 
 #[derive(Parser, Clone)]
 pub struct Config {
@@ -63,20 +62,14 @@ async fn main() -> anyhow::Result<()> {
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 	let mut server = quic.server.context("missing TLS certificate")?;
 
-	let local = AnnouncedProducer::default();
-	let remote = AnnouncedProducer::default();
-
-	let cluster = Cluster::new(config.cluster.clone(), quic.client, local.subscribe(), remote.clone());
-	tokio::spawn(async move {
-		cluster.run().await.expect("failed to run cluster");
-	});
+	let cluster = Cluster::new(config.cluster.clone(), quic.client);
 
 	tracing::info!(addr = %config.bind, "listening");
 
 	let mut conn_id = 0;
 
 	while let Some(conn) = server.accept().await {
-		let session = Connection::new(conn_id, conn, local.clone(), remote.subscribe());
+		let session = Connection::new(conn_id, conn, cluster.clone());
 		conn_id += 1;
 
 		tokio::spawn(async move {

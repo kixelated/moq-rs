@@ -1,54 +1,71 @@
 use crate::catalog;
 
-use crate::{
-	media::{Frame, Timestamp},
-	util::FuturesExt,
-};
+use crate::{media::Frame, util::FuturesExt};
 
-use super::Error;
+use super::{Error, Timestamp};
 
-use moq_transfork::coding::*;
+use moq_transfork::{coding::*, Path, Session};
 
 #[derive(Clone)]
 pub struct BroadcastConsumer {
 	catalog: catalog::Broadcast,
-	inner: moq_transfork::BroadcastConsumer,
+	session: Session,
+	path: Path,
 }
 
 impl BroadcastConsumer {
-	pub async fn load(broadcast: moq_transfork::BroadcastConsumer) -> Result<Self, Error> {
-		let catalog = catalog::Broadcast::fetch(broadcast.clone()).await?;
+	pub async fn load(mut session: Session, path: Path) -> Result<Self, Error> {
+		let catalog = path.clone().push("catalog.json");
+		let catalog = catalog::Broadcast::fetch(&mut session, catalog).await?;
 
-		Ok(Self {
-			inner: broadcast,
-			catalog,
-		})
+		Ok(Self { session, catalog, path })
 	}
 
 	// This API could be improved
-	pub async fn subscribe<T: Into<moq_transfork::Track>>(&self, track: T) -> Result<TrackConsumer, Error> {
-		let track = track.into();
+	pub async fn video(&self, name: &str) -> Result<TrackConsumer, Error> {
+		let info = self.find_video(name)?;
 
-		// Make sure the track exists in the catalog.
-		// We need it for the timescale.
-		let mut timescale = None;
+		let track = moq_transfork::Track {
+			path: self.path.clone().push(name),
+			priority: info.priority,
+			..Default::default()
+		};
+		let track = self.session.subscribe(track).await?;
 
+		Ok(TrackConsumer::new(track))
+	}
+
+	pub async fn audio(&self, name: &str) -> Result<TrackConsumer, Error> {
+		let info = self.find_audio(name)?;
+
+		let track = moq_transfork::Track {
+			path: self.path.clone().push(name),
+			priority: info.priority,
+			..Default::default()
+		};
+		let track = self.session.subscribe(track).await?;
+
+		Ok(TrackConsumer::new(track))
+	}
+
+	fn find_audio(&self, name: &str) -> Result<&catalog::Audio, Error> {
 		for audio in &self.catalog.audio {
-			if audio.track == track {
-				timescale = Some(audio.timescale);
+			if audio.name == name {
+				return Ok(audio);
 			}
 		}
 
+		Err(Error::MissingTrack)
+	}
+
+	fn find_video(&self, name: &str) -> Result<&catalog::Video, Error> {
 		for video in &self.catalog.video {
-			if video.track == track {
-				timescale = Some(video.timescale);
+			if video.name == name {
+				return Ok(video);
 			}
 		}
 
-		let timescale = timescale.ok_or(Error::MissingTrack)?;
-
-		let track = self.inner.get_track(track).await?;
-		Ok(TrackConsumer::new(track, timescale))
+		Err(Error::MissingTrack)
 	}
 
 	pub fn catalog(&self) -> &catalog::Broadcast {
@@ -58,18 +75,12 @@ impl BroadcastConsumer {
 
 pub struct TrackConsumer {
 	track: moq_transfork::TrackConsumer,
-	timescale: u32,
-
 	group: Option<moq_transfork::GroupConsumer>,
 }
 
 impl TrackConsumer {
-	fn new(track: moq_transfork::TrackConsumer, timescale: u32) -> Self {
-		Self {
-			track,
-			timescale,
-			group: None,
-		}
+	fn new(track: moq_transfork::TrackConsumer) -> Self {
+		Self { track, group: None }
 	}
 
 	pub async fn read(&mut self) -> Result<Option<Frame>, Error> {
@@ -110,8 +121,8 @@ impl TrackConsumer {
 	}
 
 	fn decode_frame(&self, mut payload: Bytes, keyframe: bool) -> Result<Frame, Error> {
-		let base = u64::decode(&mut payload)?;
-		let timestamp = Timestamp::from_scale(base, self.timescale as _);
+		let micros = u64::decode(&mut payload)?;
+		let timestamp = Timestamp::from_micros(micros);
 
 		let frame = Frame {
 			keyframe,

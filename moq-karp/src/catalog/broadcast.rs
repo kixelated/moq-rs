@@ -1,3 +1,4 @@
+use moq_transfork::Path;
 use serde::{Deserialize, Serialize};
 
 use super::{Audio, Error, Result, Video};
@@ -42,14 +43,15 @@ impl Broadcast {
 		Ok(serde_json::to_writer(writer, self)?)
 	}
 
-	pub async fn fetch(broadcast: moq_transfork::BroadcastConsumer) -> Result<Self> {
-		let track = moq_transfork::Track::build("catalog.json")
-			.priority(-1)
-			.group_order(moq_transfork::GroupOrder::Desc)
-			.group_expires(std::time::Duration::ZERO)
-			.into();
+	pub async fn fetch(session: &mut moq_transfork::Session, path: Path) -> Result<Self> {
+		let track = moq_transfork::Track {
+			path,
+			priority: -1,
+			group_order: moq_transfork::GroupOrder::Desc,
+			group_expires: std::time::Duration::ZERO,
+		};
 
-		let mut track = broadcast.get_track(track).await?;
+		let mut track = session.subscribe(track).await?;
 		let mut group = track.next_group().await?.ok_or(Error::Empty)?;
 		let frame = group.read_frame().await?.ok_or(Error::Empty)?;
 		let parsed = Self::from_slice(&frame)?;
@@ -57,16 +59,18 @@ impl Broadcast {
 		Ok(parsed)
 	}
 
-	pub fn publish(&self, broadcast: &mut moq_transfork::BroadcastProducer) -> Result<moq_transfork::TrackProducer> {
-		let track = moq_transfork::Track::build("catalog.json")
-			.priority(-1)
-			.group_order(moq_transfork::GroupOrder::Desc)
-			.group_expires(std::time::Duration::ZERO)
-			.into();
+	pub fn publish(&self, session: &mut moq_transfork::Session, path: Path) -> Result<moq_transfork::TrackProducer> {
+		let (mut writer, reader) = moq_transfork::Track {
+			path: path.push("catalog.json"),
+			priority: -1,
+			group_order: moq_transfork::GroupOrder::Desc,
+			group_expires: std::time::Duration::ZERO,
+		}
+		.produce();
 
-		let mut track = broadcast.insert_track(track);
-		self.update(&mut track)?;
-		Ok(track)
+		session.publish(reader)?;
+		self.update(&mut writer)?;
+		Ok(writer)
 	}
 
 	pub fn update(&self, track: &mut moq_transfork::TrackProducer) -> Result<()> {
@@ -88,31 +92,23 @@ mod test {
 		let mut encoded = r#"{
 			"video": [
 				{
-					"track": {
-						"name": "video",
-						"priority": 2,
-						"group_order": "desc",
-						"group_expires": 0.05
-					},
+					"name": "video",
+					"priority": 2,
+					"timescale": 1000,
 					"codec": "avc1.64001f",
 					"resolution": {
 						"width": 1280,
 						"height": 720
 					},
-					"timescale": 1000,
 					"bitrate": 6000000
 				}
 			],
 			"audio": [
 				{
-					"track": {
-						"name": "audio",
-						"priority": 1,
-						"group_order": "desc",
-						"group_expires": 0.05
-					},
-					"codec": "opus",
+					"name": "audio",
+					"priority": 1,
 					"timescale": 48000,
+					"codec": "opus",
 					"sample_rate": 48000,
 					"channel_count": 2,
 					"bitrate": 128000
@@ -125,12 +121,8 @@ mod test {
 
 		let decoded = Broadcast {
 			video: vec![Video {
-				track: moq_transfork::Track {
-					name: "video".to_string(),
-					priority: 2,
-					group_order: moq_transfork::GroupOrder::Desc,
-					group_expires: std::time::Duration::from_millis(50),
-				},
+				name: "video".to_string(),
+				priority: 2,
 				codec: catalog::H264 {
 					profile: 0x64,
 					constraints: 0x00,
@@ -138,7 +130,6 @@ mod test {
 				}
 				.into(),
 				description: Default::default(),
-				timescale: 1_000,
 				resolution: catalog::Dimensions {
 					width: 1280,
 					height: 720,
@@ -147,15 +138,10 @@ mod test {
 				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
-				track: moq_transfork::Track {
-					name: "audio".to_string(),
-					priority: 1,
-					group_order: moq_transfork::GroupOrder::Desc,
-					group_expires: std::time::Duration::from_millis(50),
-				},
+				name: "audio".to_string(),
+				priority: 1,
 				codec: catalog::AudioCodec::Opus,
-				timescale: 48000,
-				sample_rate: 48000,
+				sample_rate: 48_000,
 				channel_count: 2,
 				bitrate: Some(128_000),
 			}],

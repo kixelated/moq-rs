@@ -1,44 +1,50 @@
-use moq_transfork::coding::*;
+use moq_transfork::{coding::*, Path, Session};
 
-use super::Error;
+use super::{Error, Timestamp};
 use crate::catalog;
 
 pub struct BroadcastProducer {
 	catalog: catalog::Broadcast,
 	catalog_track: Option<moq_transfork::TrackProducer>,
-	inner: moq_transfork::BroadcastProducer,
+	session: Session,
+	path: Path,
 }
 
 impl BroadcastProducer {
-	pub fn new(broadcast: moq_transfork::BroadcastProducer) -> Self {
+	pub fn new(session: Session, path: Path) -> Self {
 		Self {
-			inner: broadcast,
+			session,
+			path,
 			catalog: catalog::Broadcast::default(),
 			catalog_track: None,
 		}
 	}
 
 	pub fn create_video(&mut self, info: catalog::Video) -> Result<TrackProducer, Error> {
-		let track = info.track.clone();
-		if self.inner.has_track(&track.name) {
-			return Err(Error::DuplicateTrack);
+		let (producer, consumer) = moq_transfork::Track {
+			path: self.path.clone().push(&info.name),
+			priority: info.priority,
+			..Default::default()
 		}
+		.produce();
 
-		let track = self.inner.insert_track(track);
-		let track = TrackProducer::new(track);
+		self.session.publish(consumer)?;
+		let track = TrackProducer::new(producer);
 
 		self.catalog.video.push(info);
 		Ok(track)
 	}
 
 	pub fn create_audio(&mut self, info: catalog::Audio) -> Result<TrackProducer, Error> {
-		let track = info.track.clone();
-		if self.inner.has_track(&track.name) {
-			return Err(Error::DuplicateTrack);
+		let (producer, consumer) = moq_transfork::Track {
+			path: self.path.clone().push(&info.name),
+			priority: info.priority,
+			..Default::default()
 		}
+		.produce();
 
-		let track = self.inner.insert_track(track);
-		let track = TrackProducer::new(track);
+		self.session.publish(consumer)?;
+		let track = TrackProducer::new(producer);
 
 		self.catalog.audio.push(info);
 		Ok(track)
@@ -49,20 +55,18 @@ impl BroadcastProducer {
 	}
 
 	pub fn publish(&mut self) -> Result<(), Error> {
-		match self.catalog_track.as_mut() {
-			Some(track) => self.catalog.update(track)?,
-			None => self.catalog_track = self.catalog.publish(&mut self.inner)?.into(),
-		};
+		if let Some(track) = self.catalog_track.as_mut() {
+			return Ok(self.catalog.update(track)?);
+		}
+
+		let path = self.path.clone().push("catalog.json");
+		self.catalog_track = self.catalog.publish(&mut self.session, path)?.into();
 
 		Ok(())
 	}
 
 	pub async fn closed(&self) {
-		self.inner.closed().await
-	}
-
-	pub fn is_closed(&self) -> bool {
-		self.inner.is_closed()
+		self.session.closed().await;
 	}
 }
 
@@ -83,7 +87,8 @@ impl TrackProducer {
 		}
 	}
 
-	pub fn write(&mut self, timestamp: u64, payload: Bytes) {
+	pub fn write(&mut self, timestamp: Timestamp, payload: Bytes) {
+		let timestamp = timestamp.as_micros();
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
 		timestamp.encode(&mut header);
 

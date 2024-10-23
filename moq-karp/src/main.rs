@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use url::Url;
 
-use moq_karp::cmaf;
+use moq_karp::{cmaf, media};
 use moq_native::quic;
 use moq_transfork::*;
 
@@ -26,9 +26,10 @@ struct Cli {
 	#[arg(long, default_value = "https://relay.quic.video")]
 	pub url: Url,
 
-	/// The name of the broadcast
+	/// The path of the broadcast
+	/// Use multiple times to create a nested path.
 	#[arg(long)]
-	pub broadcast: String,
+	pub path: Vec<String>,
 
 	#[command(subcommand)]
 	pub command: Command,
@@ -52,25 +53,23 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(&cli.url).await?;
 	let session = moq_transfork::Session::connect(session).await?;
 
-	let path = Path::default().push(cli.broadcast);
-	let broadcast = Broadcast::new(path);
+	let path = Path::new(cli.path);
 
 	match cli.command {
-		Command::Publish => publish(session, broadcast).await,
+		Command::Publish => publish(session, path).await,
 		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
-#[tracing::instrument("publish", skip_all, err, fields(?broadcast))]
-async fn publish(mut session: moq_transfork::Session, broadcast: Broadcast) -> anyhow::Result<()> {
-	let (writer, reader) = broadcast.produce();
+#[tracing::instrument("publish", skip_all, err, fields(?path))]
+async fn publish(session: moq_transfork::Session, path: Path) -> anyhow::Result<()> {
+	let producer = media::BroadcastProducer::new(session, path);
 	let mut input = tokio::io::stdin();
 
-	let mut import = cmaf::Import::new(writer);
+	let mut import = cmaf::Import::new(producer);
 	import.init_from(&mut input).await.context("failed to initialize")?;
 
 	tracing::info!(catalog = ?import.catalog());
-	session.publish(reader).context("failed to announce")?;
 
 	Ok(import.read_from(&mut input).await?)
 }

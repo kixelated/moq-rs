@@ -1,20 +1,18 @@
 use crate::{
 	message,
 	util::{spawn, Close, OrClose},
-	AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Path,
+	AnnouncedConsumer, AnnouncedGuard, Error, Path, RouterConsumer, Track, TrackConsumer,
 };
 
 mod publisher;
 mod reader;
 mod stream;
-mod subscribe;
 mod subscriber;
 mod writer;
 
 use publisher::*;
 use reader::*;
 use stream::*;
-use subscribe::*;
 use subscriber::*;
 use writer::*;
 
@@ -114,14 +112,18 @@ impl Session {
 	async fn run_uni(mut session: web_transport::Session, subscriber: Subscriber) -> Result<(), Error> {
 		loop {
 			let mut stream = Reader::accept(&mut session).await?;
-			let mut subscriber = subscriber.clone();
+			let subscriber = subscriber.clone();
 
 			spawn(async move {
-				match stream.decode().await {
-					Ok(message::StreamUni::Group) => subscriber.recv_group(stream).await,
-					Err(err) => stream.close(err),
-				};
+				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
 			});
+		}
+	}
+
+	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
+		let kind = stream.decode().await?;
+		match kind {
+			message::StreamUni::Group => subscriber.recv_group(stream).await,
 		}
 	}
 
@@ -150,26 +152,34 @@ impl Session {
 		}
 	}
 
-	/// Publish a broadcast.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
-		self.publisher.publish(broadcast)
+	/// Announce a path, returning a guard that will remove it when dropped.
+	pub fn announce(&mut self, path: Path) -> Result<AnnouncedGuard, Error> {
+		self.publisher.announce(path)
 	}
 
-	/// Subscribe to a broadcast.
-	///
-	/// NOTE: Nothing flows over the network until an individual track is requested.
-	pub fn subscribe<T: Into<Broadcast>>(&self, broadcast: T) -> BroadcastConsumer {
-		self.subscriber.broadcast(broadcast.into())
+	/// Publish a track, automatically announcing and serving it.
+	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
+		self.publisher.publish(track)
 	}
 
-	/// Discover any broadcasts.
+	/// Optionally support unknown tracks via a router.
+	pub fn route(&mut self, router: Option<RouterConsumer>) {
+		self.publisher.route(router)
+	}
+
+	/// Subscribe to a track.
+	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
+		self.subscriber.subscribe(track).await
+	}
+
+	/// Discover any tracks by path.
 	pub fn announced(&self) -> AnnouncedConsumer {
 		self.announced_prefix(Path::default())
 	}
 
-	/// Discover any broadcasts matching a prefix.
+	/// Discover any tracks matching a prefix.
 	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		self.subscriber.broadcasts(prefix)
+		self.subscriber.announced(prefix)
 	}
 
 	pub fn close(mut self, err: Error) {

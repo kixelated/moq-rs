@@ -1,6 +1,7 @@
 use std::{fmt, sync::Arc};
 
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Path {
 	parts: Vec<Arc<String>>,
 }
