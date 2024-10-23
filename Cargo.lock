@@ -1085,7 +1085,6 @@ version = "0.6.2"
 dependencies = [
  "anyhow",
  "axum",
- "bytes",
  "clap",
  "futures",
  "hyper-serve",
