@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
-#[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Path {
 	parts: Vec<Arc<String>>,
 }
@@ -71,5 +71,18 @@ impl Path {
 
 	pub fn len(&self) -> usize {
 		self.parts.len()
+	}
+}
+
+impl fmt::Debug for Path {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "Path(")?;
+		for (i, part) in self.parts.iter().enumerate() {
+			if i > 0 {
+				write!(f, ", ")?;
+			}
+			write!(f, "{:?}", part)?;
+		}
+		write!(f, ")")
 	}
 }
