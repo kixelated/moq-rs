@@ -23,7 +23,7 @@ struct Cli {
 	pub tls: moq_native::tls::Args,
 
 	/// Connect to the given URL starting with https://
-	#[arg(long)]
+	#[arg(long, default_value = "https://relay.quic.video")]
 	pub url: Url,
 
 	/// The name of the broadcast

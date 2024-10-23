@@ -1,4 +1,4 @@
-FROM rust:bookworm as builder
+FROM rust:bookworm AS builder
 
 # Create a build directory and copy over all of the files
 WORKDIR /build
@@ -14,31 +14,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
 # Create a pub image that also contains ffmpeg and a helper script
-FROM debian:bookworm-slim as moq-pub
+FROM debian:bookworm-slim
 
 # Install required utilities and ffmpeg
 RUN apt-get update && \
     apt-get install -y ffmpeg wget
 
 # Copy the publish script into the image
-COPY ./deploy/publish /usr/local/bin/publish
+COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
 
 # Copy over the built binaries.
-COPY --from=builder /usr/local/cargo/bin/moq-* /usr/local/bin
-
-# Use our publish script
-CMD [ "publish" ]
-
-# Create an image with just the binaries
-FROM debian:bookworm-slim
-
-RUN apt-get update && \
-	apt-get install -y --no-install-recommends ca-certificates curl libssl3 && \
-	rm -rf /var/lib/apt/lists/*
-
-LABEL org.opencontainers.image.source=https://github.com/kixelated/moq-rs
-LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
-
 COPY --from=builder /usr/local/cargo/bin/moq-* /usr/local/bin
 
 # Default to moq-relay

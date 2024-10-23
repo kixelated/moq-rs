@@ -1,19 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-ADDR=${ADDR:-"https://relay.quic.video"}
-NAME=${NAME:-"bbb"}
 URL=${URL:-"http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"}
-REGION=${REGION:-"server"}
+REGION=${REGION:-"now"}
 
 # Download the funny bunny
 wget -nv "${URL}" -O "tmp.mp4"
 
 # Properly fragment the file
-ffmpeg -i tmp.mp4 \
+ffmpeg -y -i tmp.mp4 \
 	-c copy \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	"${NAME}.mp4"
+	"fragmented.mp4"
 
 rm tmp.mp4
 
@@ -39,7 +37,7 @@ ffmpeg \
 	-hide_banner \
 	-v quiet \
 	-re \
-    -i "${NAME}.mp4" \
+    -i "fragmented.mp4" \
 	-vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf:text='${REGION}\: %{gmtime\: %H\\\\\:%M\\\\\:%S.%3N}':x=(W-tw)-24:y=24:fontsize=48:fontcolor=white:box=1:boxcolor=black@0.5" \
 	-an \
 	-b:v 3M \
@@ -47,4 +45,4 @@ ffmpeg \
 	-tune zerolatency \
     -f mp4 \
 	-movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | moq-karp --url "${ADDR}" --broadcast "${NAME}" publish
+	- | moq-karp "$@" publish
