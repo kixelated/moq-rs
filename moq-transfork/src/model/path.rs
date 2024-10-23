@@ -60,21 +60,13 @@ impl Path {
 		self.parts.drain(self.parts.len() - suffix.parts.len()..);
 		Some(self)
 	}
+}
 
-	pub fn part(&self, index: usize) -> Option<&str> {
-		self.parts.get(index).map(|s| s.as_str())
-	}
+impl std::ops::Deref for Path {
+	type Target = [Arc<String>];
 
-	pub fn parts(&self) -> &[Arc<String>] {
+	fn deref(&self) -> &Self::Target {
 		&self.parts
-	}
-
-	pub fn len(&self) -> usize {
-		self.parts.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.parts.is_empty()
 	}
 }
 

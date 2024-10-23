@@ -62,9 +62,7 @@ impl Subscriber {
 
 		stream
 			.writer
-			.encode(&message::AnnounceInterest {
-				prefix: prefix.clone(),
-			})
+			.encode(&message::AnnounceInterest { prefix: prefix.clone() })
 			.await?;
 
 		tracing::debug!("waiting for announces");

@@ -5,7 +5,7 @@ use super::{Decode, DecodeError, Encode};
 impl Encode for Path {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		self.len().encode(w);
-		for part in self.parts() {
+		for part in self.as_ref() {
 			part.encode(w);
 		}
 	}
