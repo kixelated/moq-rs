@@ -72,6 +72,10 @@ impl Path {
 	pub fn len(&self) -> usize {
 		self.parts.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.parts.is_empty()
+	}
 }
 
 impl fmt::Debug for Path {

@@ -63,7 +63,7 @@ impl Subscriber {
 		stream
 			.writer
 			.encode(&message::AnnounceInterest {
-				prefix: prefix.clone().into(),
+				prefix: prefix.clone(),
 			})
 			.await?;
 
