@@ -1,7 +1,7 @@
 use crate::{
 	message,
 	util::{spawn, Close, OrClose},
-	AnnouncedConsumer, Broadcast, BroadcastConsumer, Error,
+	AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Path,
 };
 
 mod publisher;
@@ -164,11 +164,11 @@ impl Session {
 
 	/// Discover any broadcasts.
 	pub fn announced(&self) -> AnnouncedConsumer {
-		self.announced_prefix("")
+		self.announced_prefix(Path::default())
 	}
 
 	/// Discover any broadcasts matching a prefix.
-	pub fn announced_prefix<P: ToString>(&self, prefix: P) -> AnnouncedConsumer {
+	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
 		self.subscriber.broadcasts(prefix)
 	}
 

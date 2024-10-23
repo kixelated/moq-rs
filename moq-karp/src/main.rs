@@ -52,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(&cli.url).await?;
 	let session = moq_transfork::Session::connect(session).await?;
 
-	let broadcast = Broadcast::new(cli.broadcast);
+	let path = Path::default().push(cli.broadcast);
+	let broadcast = Broadcast::new(path);
 
 	match cli.command {
 		Command::Publish => publish(session, broadcast).await,

@@ -3,6 +3,7 @@ use std::time;
 use crate::{
 	coding::{Decode, DecodeError, Encode},
 	message::group,
+	Path,
 };
 
 /// Sent by the subscriber to request all future objects for the given track.
@@ -11,7 +12,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Subscribe {
 	pub id: u64,
-	pub broadcast: String,
+	pub broadcast: Path,
 
 	pub track: String,
 	pub priority: i8,
@@ -25,14 +26,20 @@ pub struct Subscribe {
 impl Decode for Subscribe {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = u64::decode_more(r, 6)?;
-		let broadcast = String::decode_more(r, 5)?;
+		let broadcast = Path::decode_more(r, 5)?;
 		let track = String::decode_more(r, 4)?;
 		let priority = i8::decode_more(r, 4)?;
 
 		let group_order = group::GroupOrder::decode_more(r, 3)?;
 		let group_expires = time::Duration::decode_more(r, 2)?;
-		let group_min = Option::<u64>::decode_more(r, 1)?;
-		let group_max = Option::<u64>::decode(r)?;
+		let group_min = match u64::decode_more(r, 1)? {
+			0 => None,
+			n => Some(n - 1),
+		};
+		let group_max = match u64::decode(r)? {
+			0 => None,
+			n => Some(n - 1),
+		};
 
 		Ok(Self {
 			id,
@@ -57,8 +64,8 @@ impl Encode for Subscribe {
 
 		self.group_order.encode(w);
 		self.group_expires.encode(w);
-		self.group_min.encode(w);
-		self.group_max.encode(w);
+		self.group_min.map(|v| v + 1).unwrap_or(0).encode(w);
+		self.group_max.map(|v| v + 1).unwrap_or(0).encode(w);
 	}
 }
 
@@ -77,8 +84,14 @@ impl Decode for SubscribeUpdate {
 		let priority = u64::decode_more(r, 4)?;
 		let group_order = group::GroupOrder::decode_more(r, 3)?;
 		let group_expires = time::Duration::decode_more(r, 2)?;
-		let group_min = Option::<u64>::decode_more(r, 1)?;
-		let group_max = Option::<u64>::decode(r)?;
+		let group_min = match u64::decode_more(r, 1)? {
+			0 => None,
+			n => Some(n - 1),
+		};
+		let group_max = match u64::decode(r)? {
+			0 => None,
+			n => Some(n - 1),
+		};
 
 		Ok(Self {
 			priority,
@@ -94,7 +107,7 @@ impl Encode for SubscribeUpdate {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		self.priority.encode(w);
 		self.group_order.encode(w);
-		self.group_min.encode(w);
-		self.group_max.encode(w);
+		self.group_min.map(|v| v + 1).unwrap_or(0).encode(w);
+		self.group_max.map(|v| v + 1).unwrap_or(0).encode(w);
 	}
 }

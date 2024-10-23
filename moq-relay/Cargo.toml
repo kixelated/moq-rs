@@ -16,8 +16,6 @@ moq-transfork = { path = "../moq-transfork", version = "0.2" }
 moq-native = { path = "../moq-native", version = "0.5" }
 web-transport = { workspace = true }
 
-bytes = "1"
-
 # QUIC
 url = "2"
 
