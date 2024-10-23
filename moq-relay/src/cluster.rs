@@ -147,7 +147,7 @@ impl Cluster {
 				.context("incorrect prefix")?;
 
 			// Extract the hostname from the first part of the path.
-			let host = path.get(0).context("missing node")?.to_string();
+			let host = path.first().context("missing node")?.to_string();
 			if Some(&host) == myself.as_ref() {
 				continue;
 			}
