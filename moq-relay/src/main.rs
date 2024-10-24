@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
 	let mut server = quic.server.context("missing TLS certificate")?;
 
 	let cluster = Cluster::new(config.cluster.clone(), quic.client);
+	tokio::spawn(cluster.clone().run());
 
 	tracing::info!(addr = %config.bind, "listening");
 

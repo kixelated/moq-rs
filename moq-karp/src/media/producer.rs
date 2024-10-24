@@ -22,8 +22,8 @@ impl BroadcastProducer {
 
 	pub fn create_video(&mut self, info: catalog::Video) -> Result<TrackProducer, Error> {
 		let (producer, consumer) = moq_transfork::Track {
-			path: self.path.clone().push(&info.name),
-			priority: info.priority,
+			path: self.path.clone().push(&info.track.name),
+			priority: info.track.priority,
 			..Default::default()
 		}
 		.produce();
@@ -37,8 +37,8 @@ impl BroadcastProducer {
 
 	pub fn create_audio(&mut self, info: catalog::Audio) -> Result<TrackProducer, Error> {
 		let (producer, consumer) = moq_transfork::Track {
-			path: self.path.clone().push(&info.name),
-			priority: info.priority,
+			path: self.path.clone().push(&info.track.name),
+			priority: info.track.priority,
 			..Default::default()
 		}
 		.produce();

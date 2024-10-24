@@ -102,8 +102,7 @@ impl Import {
 			avcc.encode_body(&mut description)?;
 
 			catalog::Video {
-				name,
-				priority: 2,
+				track: catalog::Track { name, priority: 2 },
 				resolution: catalog::Dimensions {
 					width: avc1.width,
 					height: avc1.height,
@@ -145,8 +144,7 @@ impl Import {
 			let vpcc = &vp09.vpcc;
 
 			catalog::Video {
-				name,
-				priority: 2,
+				track: catalog::Track { name, priority: 2 },
 				codec: catalog::VP9 {
 					profile: vpcc.profile,
 					level: vpcc.level,
@@ -192,8 +190,7 @@ impl Import {
 			}
 
 			catalog::Audio {
-				name,
-				priority: 1,
+				track: catalog::Track { name, priority: 1 },
 				codec: catalog::AAC {
 					profile: desc.dec_specific.profile,
 				}

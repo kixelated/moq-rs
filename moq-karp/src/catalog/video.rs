@@ -2,17 +2,14 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
-use super::{Dimensions, VideoCodec};
+use super::{Dimensions, Track, VideoCodec};
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Video {
-	/// The name of the track, relative to the broadcast path.
-	pub name: String,
-
-	/// The priority of the track, relative to other tracks in the same broadcast.
-	pub priority: i8,
+	// Generic information about the track
+	pub track: Track,
 
 	// The codec mimetype encoded as a string
 	// ex. avc1.42c01e

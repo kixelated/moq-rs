@@ -1,15 +1,12 @@
-use super::CodecError;
+use super::{CodecError, Track};
 use serde::{Deserialize, Serialize};
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Audio {
-	/// The name of the track, relative to the broadcast path.
-	pub name: String,
-
-	/// The priority of the track, relative to other tracks in the same broadcast.
-	pub priority: i8,
+	// Generic information about the track
+	pub track: Track,
 
 	pub codec: AudioCodec,
 

@@ -27,7 +27,7 @@ impl BroadcastConsumer {
 
 		let track = moq_transfork::Track {
 			path: self.path.clone().push(name),
-			priority: info.priority,
+			priority: info.track.priority,
 			..Default::default()
 		};
 		let track = self.session.subscribe(track).await?;
@@ -40,7 +40,7 @@ impl BroadcastConsumer {
 
 		let track = moq_transfork::Track {
 			path: self.path.clone().push(name),
-			priority: info.priority,
+			priority: info.track.priority,
 			..Default::default()
 		};
 		let track = self.session.subscribe(track).await?;
@@ -50,7 +50,7 @@ impl BroadcastConsumer {
 
 	fn find_audio(&self, name: &str) -> Result<&catalog::Audio, Error> {
 		for audio in &self.catalog.audio {
-			if audio.name == name {
+			if audio.track.name == name {
 				return Ok(audio);
 			}
 		}
@@ -60,7 +60,7 @@ impl BroadcastConsumer {
 
 	fn find_video(&self, name: &str) -> Result<&catalog::Video, Error> {
 		for video in &self.catalog.video {
-			if video.name == name {
+			if video.track.name == name {
 				return Ok(video);
 			}
 		}

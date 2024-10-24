@@ -121,8 +121,10 @@ mod test {
 
 		let decoded = Broadcast {
 			video: vec![Video {
-				name: "video".to_string(),
-				priority: 2,
+				track: catalog::Track {
+					name: "video".to_string(),
+					priority: 2,
+				},
 				codec: catalog::H264 {
 					profile: 0x64,
 					constraints: 0x00,
@@ -138,8 +140,10 @@ mod test {
 				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
-				name: "audio".to_string(),
-				priority: 1,
+				track: catalog::Track {
+					name: "audio".to_string(),
+					priority: 1,
+				},
 				codec: catalog::AudioCodec::Opus,
 				sample_rate: 48_000,
 				channel_count: 2,
