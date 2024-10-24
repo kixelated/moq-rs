@@ -61,7 +61,7 @@ impl Broadcast {
 
 	pub fn publish(&self, session: &mut moq_transfork::Session, path: Path) -> Result<moq_transfork::TrackProducer> {
 		let (mut writer, reader) = moq_transfork::Track {
-			path: path.push("catalog.json"),
+			path,
 			priority: -1,
 			group_order: moq_transfork::GroupOrder::Desc,
 			group_expires: std::time::Duration::ZERO,

@@ -24,6 +24,7 @@ impl Connection {
 		loop {
 			tokio::select! {
 				Some(announced) = upstream.next() => {
+					tracing::debug!(path = ?announced.path, "discovered track");
 					match session.announce(announced.path.clone()) {
 						Ok(active) => {
 							tokio::spawn(async move {
@@ -35,6 +36,7 @@ impl Connection {
 					};
 				},
 				Some(announced) = downstream.next() => {
+					tracing::info!(path = ?announced.path, "announced track");
 					if let Err(err) = self.cluster.announce(announced, session.clone()) {
 						tracing::warn!(?err, "failed announce from downstream");
 					}
