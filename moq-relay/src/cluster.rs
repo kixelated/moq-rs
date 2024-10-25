@@ -1,5 +1,5 @@
 use std::{
-	collections::{hash_map, HashMap},
+	collections::HashMap,
 	sync::{Arc, Mutex},
 };
 
@@ -7,8 +7,8 @@ use anyhow::Context;
 use clap::Parser;
 use moq_native::quic;
 use moq_transfork::{
-	AnnouncedActive, AnnouncedConsumer, AnnouncedProducer, Error, Path, Router, RouterConsumer, RouterProducer,
-	Session, Track,
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, Router, RouterConsumer, RouterProducer, Session,
+	Track,
 };
 use tracing::Instrument;
 use url::Url;
@@ -66,29 +66,29 @@ impl Cluster {
 	}
 
 	// For each received announce, add the session to the routing table.
-	pub fn announce(&mut self, announced: AnnouncedActive, session: moq_transfork::Session) -> anyhow::Result<()> {
-		match self.routes.lock().unwrap().entry(announced.path.clone()) {
-			hash_map::Entry::Occupied(_) => anyhow::bail!("duplicate route"),
-			hash_map::Entry::Vacant(entry) => entry.insert(session),
-		};
-
-		let active = self.announced.insert(announced.path.clone())?;
+	pub fn announce(&mut self, mut announced: AnnouncedConsumer, session: moq_transfork::Session) {
 		let routes = self.routes.clone();
 
 		tokio::spawn(async move {
-			announced.closed().await;
-
-			drop(active);
-			routes.lock().unwrap().remove(&announced.path);
+			while let Some(announced) = announced.next().await {
+				// TODO handle conflicts
+				match announced {
+					Announced::Active(path) => {
+						routes.lock().unwrap().insert(path, session.clone());
+					}
+					Announced::Ended(path) => {
+						routes.lock().unwrap().remove(&path);
+					}
+				}
+			}
 		});
-
-		Ok(())
 	}
 
 	// This is the GUTS of the entire relay.
 	// We route any incoming track requests to the appropriate session.
 	async fn run_router(self, mut router: RouterProducer) {
 		while let Some(req) = router.requested().await {
+			tracing::debug!(path = ?req.path, "received request");
 			match self.routes.lock().unwrap().get(&req.track.path).cloned() {
 				Some(session) => {
 					tokio::spawn(async move {
@@ -153,51 +153,41 @@ impl Cluster {
 
 		// Discover other origins.
 		while let Some(announce) = announced.next().await {
-			let path = announce
-				.path
-				.clone()
-				.strip_prefix(&origins)
-				.context("incorrect prefix")?;
+			// TODO handle Ended?
+			if let Announced::Active(path) = &announce {
+				tracing::info!(?path, "discovered origin");
 
-			// Extract the hostname from the first part of the path.
-			let host = path.first().context("missing node")?.to_string();
-			if Some(&host) == node.as_ref() {
-				continue;
+				let path = path.clone().strip_prefix(&origins).context("incorrect prefix")?;
+
+				// Extract the hostname from the first part of the path.
+				let host = path.first().context("missing node")?.to_string();
+				if Some(&host) == node.as_ref() {
+					continue;
+				}
+
+				tracing::info!(%host, "discovered origin");
+
+				tokio::spawn(self.clone().run_remote(host).in_current_span());
 			}
-
-			tracing::info!(%host, "discovered origin");
-
-			//tokio::spawn(self.clone().run_remote(host).in_current_span());
 		}
 
 		Ok(())
 	}
 
-	/*
 	#[tracing::instrument("remote", skip_all, err, fields(%host))]
-	async fn run_remote(self, host: String) -> anyhow::Result<()> {
+	async fn run_remote(mut self, host: String) -> anyhow::Result<()> {
 		// Connect to the remote node.
 		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
 		let conn = self.client.connect(&url).await.context("failed to connect to remote")?;
 
-		let session = moq_transfork::Session::connect(conn)
+		let mut session = moq_transfork::Session::connect(conn)
 			.await
 			.context("failed to establish session")?;
 
-		// Each origin advertises its broadcasts under this prefix plus their name.
-		// These are not actually announced to the root node, so we need to connect directly.
-		let origin = Path::default().push("internal").push("origin").push(host);
-		let mut listings = session.announced_prefix(origin);
-
-		while let Some(listing) = listings.next().await {
-			// It's kind of gross, but this `origin` is a fake broadcast.
-			// We get the name of the real broadcast by removing the prefix.
-			let path = listing.path.clone().strip_prefix(listings.prefix()).unwrap();
-		}
-
-		tracing::info!("done");
+		session.route(self.router());
+		session.announce(self.announced.subscribe());
+		self.announce(session.announced(), session);
 
 		Ok(())
 	}
-	*/
 }

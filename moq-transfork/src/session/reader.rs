@@ -82,11 +82,13 @@ impl Reader {
 		Err(DecodeError::ExpectedEnd.into())
 	}
 
+	/*
 	/// Wait until the stream is closed, ignoring any unread bytes
 	pub async fn closed(&mut self) -> Result<(), Error> {
 		while self.stream.read_buf(&mut self.buffer).await?.is_some() {}
 		Ok(())
 	}
+	*/
 }
 
 impl Close for Reader {

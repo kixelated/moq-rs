@@ -1,7 +1,7 @@
 use crate::{
 	message,
 	util::{spawn, Close, OrClose},
-	AnnouncedConsumer, AnnouncedGuard, Error, Path, RouterConsumer, Track, TrackConsumer,
+	AnnouncedConsumer, Error, Path, RouterConsumer, Track, TrackConsumer,
 };
 
 mod publisher;
@@ -152,9 +152,8 @@ impl Session {
 		}
 	}
 
-	/// Announce a path, returning a guard that will remove it when dropped.
-	pub fn announce(&mut self, path: Path) -> Result<AnnouncedGuard, Error> {
-		self.publisher.announce(path)
+	pub fn announce(&mut self, announced: AnnouncedConsumer) {
+		self.publisher.announce(announced);
 	}
 
 	/// Publish a track, automatically announcing and serving it.
@@ -163,8 +162,8 @@ impl Session {
 	}
 
 	/// Optionally support unknown tracks via a router.
-	pub fn route(&mut self, router: Option<RouterConsumer>) {
-		self.publisher.route(router)
+	pub fn route(&mut self, router: RouterConsumer) {
+		self.publisher.route(router);
 	}
 
 	/// Subscribe to a track.

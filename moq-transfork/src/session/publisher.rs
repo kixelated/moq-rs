@@ -6,7 +6,7 @@ use crate::{
 	message,
 	model::{GroupConsumer, Track, TrackConsumer},
 	util::{spawn, FuturesExt, Lock, OrClose},
-	AnnouncedGuard, AnnouncedProducer, Error, Path, RouterConsumer,
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, RouterConsumer,
 };
 
 use super::{Stream, Writer};
@@ -29,21 +29,19 @@ impl Publisher {
 		}
 	}
 
-	/// Manually announce a path
-	pub fn announce(&self, path: Path) -> Result<AnnouncedGuard, Error> {
-		self.announced.insert(path)
-	}
-
 	/// Publish a track.
 	#[tracing::instrument("publish", skip_all, err, fields(?track))]
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
+		if !self.announced.insert(track.path.clone()) {
+			return Err(Error::Duplicate);
+		}
+
 		match self.tracks.lock().entry(track.path.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
 			hash_map::Entry::Vacant(entry) => entry.insert(track.clone()),
 		};
 
-		let active = self.announced.insert(track.path.clone())?;
-		let this = self.clone();
+		let mut this = self.clone();
 
 		spawn(async move {
 			tokio::select! {
@@ -51,16 +49,37 @@ impl Publisher {
 				_ = this.session.closed() => (),
 			}
 			this.tracks.lock().remove(&track.path);
-			drop(active);
+			this.announced.remove(&track.path);
 		});
 
 		Ok(())
 	}
 
+	/// Announce the given tracks.
+	/// This is an advanced API for producing tracks dynamically.
+	/// NOTE: You may want to call [Self::route] to process any subscriptions for these paths.
+	pub fn announce(&mut self, mut announced: AnnouncedConsumer) {
+		let mut downstream = self.announced.clone();
+
+		tokio::spawn(async move {
+			while let Some(announced) = announced.next().await {
+				match announced {
+					Announced::Active(path) => downstream.insert(path.clone()),
+					Announced::Ended(path) => downstream.remove(&path),
+				};
+			}
+		});
+	}
+
 	/// Optionally support requests for arbitrary paths using the provided router.
-	/// This is useful when producing tracks dynamically.
-	pub fn route(&mut self, router: Option<RouterConsumer>) {
-		self.router = router;
+	/// This is an advanced API for producing tracks dynamically.
+	/// NOTE: You may want to call [Self::announce] to advertise these paths.
+	pub fn route(&mut self, router: RouterConsumer) {
+		if self.router.is_some() {
+			unimplemented!("TODO multiple routers");
+		}
+
+		self.router = Some(router.clone());
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -68,39 +87,35 @@ impl Publisher {
 		let prefix = interest.prefix;
 		tracing::debug!(?prefix, "announced interest");
 
-		let mut unannounced = FuturesUnordered::new();
 		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
-		loop {
-			tokio::select! {
-				Some(announced) = announced.next() => {
-					tracing::debug!(announced = ?announced.path);
+		while let Some(announced) = announced.next().await {
+			match announced {
+				Announced::Active(path) => {
+					tracing::debug!(?path, "announced");
 
-					let suffix = announced.path.clone().strip_prefix(&prefix).expect("prefix mismatch");
-
-					stream.writer.encode(&message::Announce {
-						status: message::AnnounceStatus::Active,
-						suffix,
-					}).await?;
-
-					unannounced.push(async move {
-						announced.closed().await;
-						announced.path
-					});
-				},
-				Some(path) = unannounced.next() => {
-					tracing::debug!(unannounced = ?path);
-
-					let suffix = path.clone().strip_prefix(&prefix).expect("prefix mismatch");
-
-					stream.writer.encode(&message::Announce {
-						status: message::AnnounceStatus::Ended,
-						suffix,
-					}).await?;
-				},
-				res = stream.reader.closed() => return res,
+					stream
+						.writer
+						.encode(&message::Announce {
+							status: message::AnnounceStatus::Active,
+							suffix: path.clone().strip_prefix(&prefix).expect("prefix mismatch"),
+						})
+						.await?;
+				}
+				Announced::Ended(path) => {
+					tracing::debug!(?path, "unannounced");
+					stream
+						.writer
+						.encode(&message::Announce {
+							status: message::AnnounceStatus::Ended,
+							suffix: path.clone().strip_prefix(&prefix).expect("prefix mismatch"),
+						})
+						.await?;
+				}
 			}
 		}
+
+		Ok(())
 	}
 
 	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {

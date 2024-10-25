@@ -56,10 +56,12 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(&self, stream: &mut Stream, prefix: Path, announced: AnnouncedProducer) -> Result<(), Error> {
-		// Used to remove tracks on ended
-		let mut active = HashMap::new();
-
+	async fn run_announce(
+		&self,
+		stream: &mut Stream,
+		prefix: Path,
+		mut announced: AnnouncedProducer,
+	) -> Result<(), Error> {
 		stream
 			.writer
 			.encode(&message::AnnounceInterest { prefix: prefix.clone() })
@@ -72,22 +74,16 @@ impl Subscriber {
 						// Handle the announce
 						Some(announce) => {
 							tracing::debug!(?announce);
-
-							let suffix = announce.suffix;
+							let path = prefix.clone().append(&announce.suffix);
 
 							match announce.status {
 								message::AnnounceStatus::Active => {
-									if active.contains_key(&suffix) {
+									if !announced.insert(path) {
 										return Err(Error::Duplicate);
 									}
-
-									let path = prefix.clone().append(&suffix);
-									let track = announced.insert(path)?;
-
-									active.insert(suffix, track);
 								},
 								message::AnnounceStatus::Ended => {
-									if active.remove(&suffix).is_none() {
+									if !announced.remove(&path) {
 										return Err(Error::NotFound);
 									}
 								},

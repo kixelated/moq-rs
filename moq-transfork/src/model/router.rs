@@ -63,6 +63,10 @@ impl RouterConsumer {
 
 		recv.await.map_err(|_| Error::Cancel)?
 	}
+
+	pub async fn closed(&self) {
+		self.queue.closed().await;
+	}
 }
 
 /// An outstanding request for a path.

@@ -16,33 +16,12 @@ impl Connection {
 		let mut session = moq_transfork::Session::accept(self.session).await?;
 
 		// Route any subscriptions to the cluster
-		session.route(Some(self.cluster.router()));
+		session.route(self.cluster.router());
+		session.announce(self.cluster.announced());
+		self.cluster.announce(session.announced(), session.clone());
 
-		let mut upstream = self.cluster.announced();
-		let mut downstream = session.announced();
+		session.closed().await;
 
-		loop {
-			tokio::select! {
-				Some(announced) = upstream.next() => {
-					tracing::debug!(path = ?announced.path, "discovered track");
-					match session.announce(announced.path.clone()) {
-						Ok(active) => {
-							tokio::spawn(async move {
-								announced.closed().await;
-								drop(active);
-							});
-						}
-						Err(err) => tracing::warn!(?err, "failed announce from upstream"),
-					};
-				},
-				Some(announced) = downstream.next() => {
-					tracing::info!(path = ?announced.path, "announced track");
-					if let Err(err) = self.cluster.announce(announced, session.clone()) {
-						tracing::warn!(?err, "failed announce from downstream");
-					}
-				},
-				_ = session.closed() => return Ok(()),
-			}
-		}
+		Ok(())
 	}
 }
