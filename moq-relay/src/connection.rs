@@ -16,11 +16,13 @@ impl Connection {
 		let mut session = moq_transfork::Session::accept(self.session).await?;
 
 		// Route any subscriptions to the cluster
-		session.route(self.cluster.router());
-		session.announce(self.cluster.announced());
-		self.cluster.announce(session.announced(), session.clone());
+		session.route(self.cluster.router);
 
-		session.closed().await;
+		// TODO things will get weird if locals and remotes announce the same path.
+		session.announce(self.cluster.locals.announced());
+		session.announce(self.cluster.remotes.announced());
+
+		self.cluster.locals.publish(session).await;
 
 		Ok(())
 	}

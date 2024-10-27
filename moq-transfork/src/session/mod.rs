@@ -167,8 +167,8 @@ impl Session {
 	}
 
 	/// Subscribe to a track.
-	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
-		self.subscriber.subscribe(track).await
+	pub fn subscribe(&self, track: Track) -> TrackConsumer {
+		self.subscriber.subscribe(track)
 	}
 
 	/// Discover any tracks by path.
@@ -189,3 +189,11 @@ impl Session {
 		self.webtransport.closed().await.into()
 	}
 }
+
+impl PartialEq for Session {
+	fn eq(&self, other: &Self) -> bool {
+		self.webtransport == other.webtransport
+	}
+}
+
+impl Eq for Session {}

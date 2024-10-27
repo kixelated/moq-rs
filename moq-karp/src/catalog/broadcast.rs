@@ -51,7 +51,7 @@ impl Broadcast {
 			group_expires: std::time::Duration::ZERO,
 		};
 
-		let mut track = session.subscribe(track).await?;
+		let mut track = session.subscribe(track);
 		let mut group = track.next_group().await?.ok_or(Error::Empty)?;
 		let frame = group.read_frame().await?.ok_or(Error::Empty)?;
 		let parsed = Self::from_slice(&frame)?;

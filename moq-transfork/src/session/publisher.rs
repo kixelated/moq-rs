@@ -16,7 +16,7 @@ pub(super) struct Publisher {
 	session: web_transport::Session,
 	announced: AnnouncedProducer,
 	tracks: Lock<HashMap<Path, TrackConsumer>>,
-	router: Option<RouterConsumer>,
+	router: Lock<Option<RouterConsumer>>,
 }
 
 impl Publisher {
@@ -32,7 +32,7 @@ impl Publisher {
 	/// Publish a track.
 	#[tracing::instrument("publish", skip_all, err, fields(?track))]
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
-		if !self.announced.insert(track.path.clone()) {
+		if !self.announced.announce(track.path.clone()) {
 			return Err(Error::Duplicate);
 		}
 
@@ -49,7 +49,7 @@ impl Publisher {
 				_ = this.session.closed() => (),
 			}
 			this.tracks.lock().remove(&track.path);
-			this.announced.remove(&track.path);
+			this.announced.unannounce(&track.path);
 		});
 
 		Ok(())
@@ -64,8 +64,8 @@ impl Publisher {
 		tokio::spawn(async move {
 			while let Some(announced) = announced.next().await {
 				match announced {
-					Announced::Active(path) => downstream.insert(path.clone()),
-					Announced::Ended(path) => downstream.remove(&path),
+					Announced::Active(path) => downstream.announce(path.clone()),
+					Announced::Ended(path) => downstream.unannounce(&path),
 				};
 			}
 		});
@@ -75,11 +75,8 @@ impl Publisher {
 	/// This is an advanced API for producing tracks dynamically.
 	/// NOTE: You may want to call [Self::announce] to advertise these paths.
 	pub fn route(&mut self, router: RouterConsumer) {
-		if self.router.is_some() {
-			unimplemented!("TODO multiple routers");
-		}
-
-		self.router = Some(router.clone());
+		// TODO support multiple routers?
+		self.router.lock().replace(router);
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -294,10 +291,10 @@ impl Publisher {
 			return Ok(track.clone());
 		}
 
-		if let Some(router) = &self.router {
-			return router.subscribe(track).await;
+		let router = self.router.lock().clone();
+		match router {
+			Some(router) => router.subscribe(track).await,
+			None => Err(Error::NotFound),
 		}
-
-		Err(Error::NotFound)
 	}
 }

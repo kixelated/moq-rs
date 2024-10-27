@@ -1,4 +1,5 @@
 mod close;
+pub mod closed;
 mod futures;
 mod lock;
 mod spawn;

@@ -78,12 +78,12 @@ impl Subscriber {
 
 							match announce.status {
 								message::AnnounceStatus::Active => {
-									if !announced.insert(path) {
+									if !announced.announce(path) {
 										return Err(Error::Duplicate);
 									}
 								},
 								message::AnnounceStatus::Ended => {
-									if !announced.remove(&path) {
+									if !announced.unannounce(&path) {
 										return Err(Error::NotFound);
 									}
 								},
@@ -100,14 +100,13 @@ impl Subscriber {
 	}
 
 	/// Subscribe to a given track.
-	// TODO block until we get track info
-	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
+	pub fn subscribe(&self, track: Track) -> TrackConsumer {
 		let path = track.path.clone();
 		let (writer, reader) = track.clone().produce();
 
 		// Check if we can deduplicate this subscription
 		match self.tracks.lock().entry(path.clone()) {
-			hash_map::Entry::Occupied(entry) => return Ok(entry.get().clone()),
+			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
 			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
 		};
 
@@ -126,10 +125,10 @@ impl Subscriber {
 			this.tracks.lock().remove(&path);
 		});
 
-		Ok(reader)
+		reader
 	}
 
-	#[tracing::instrument("subscribe", skip_all, fields(?id, ?track.info))]
+	#[tracing::instrument("subscribe", skip_all, fields(?id, track = ?track.path))]
 	async fn run_subscribe(&mut self, id: u64, track: TrackProducer, stream: &mut Stream) -> Result<(), Error> {
 		let request = message::Subscribe {
 			id,

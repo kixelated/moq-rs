@@ -30,7 +30,7 @@ impl BroadcastConsumer {
 			priority: info.track.priority,
 			..Default::default()
 		};
-		let track = self.session.subscribe(track).await?;
+		let track = self.session.subscribe(track);
 
 		Ok(TrackConsumer::new(track))
 	}
@@ -43,7 +43,7 @@ impl BroadcastConsumer {
 			priority: info.track.priority,
 			..Default::default()
 		};
-		let track = self.session.subscribe(track).await?;
+		let track = self.session.subscribe(track);
 
 		Ok(TrackConsumer::new(track))
 	}

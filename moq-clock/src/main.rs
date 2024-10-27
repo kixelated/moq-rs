@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
 
 		clock.run().await
 	} else {
-		let reader = session.subscribe(track).await?;
+		let reader = session.subscribe(track);
 		let clock = clock::Subscriber::new(reader);
 
 		clock.run().await

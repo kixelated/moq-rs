@@ -1,17 +1,11 @@
-use std::{
-	collections::HashMap,
-	sync::{Arc, Mutex},
-};
-
 use anyhow::Context;
 use clap::Parser;
 use moq_native::quic;
-use moq_transfork::{
-	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, Router, RouterConsumer, RouterProducer, Session,
-	Track,
-};
+use moq_transfork::{Announced, Error, Path, Router, RouterConsumer, RouterProducer, Track};
 use tracing::Instrument;
 use url::Url;
+
+use crate::Origins;
 
 #[derive(Clone, Parser)]
 pub struct ClusterConfig {
@@ -35,9 +29,14 @@ pub struct Cluster {
 	config: ClusterConfig,
 	client: quic::Client,
 
-	announced: AnnouncedProducer,
-	routes: Arc<Mutex<HashMap<Path, Session>>>,
-	router: RouterConsumer,
+	// Tracks announced by local clients (users).
+	pub locals: Origins,
+
+	// Tracks announced by remote servers (cluster).
+	pub remotes: Origins,
+
+	// Used to route incoming requests to the origins above.
+	pub router: RouterConsumer,
 }
 
 impl Cluster {
@@ -47,9 +46,9 @@ impl Cluster {
 		let this = Cluster {
 			config,
 			client,
-			routes: Default::default(),
 			router: consumer,
-			announced: Default::default(),
+			locals: Origins::new(),
+			remotes: Origins::new(),
 		};
 
 		tokio::spawn(this.clone().run_router(producer).in_current_span());
@@ -57,51 +56,21 @@ impl Cluster {
 		this
 	}
 
-	pub fn router(&self) -> RouterConsumer {
-		self.router.clone()
-	}
-
-	pub fn announced(&self) -> AnnouncedConsumer {
-		self.announced.subscribe()
-	}
-
-	// For each received announce, add the session to the routing table.
-	pub fn announce(&mut self, mut announced: AnnouncedConsumer, session: moq_transfork::Session) {
-		let routes = self.routes.clone();
-
-		tokio::spawn(async move {
-			while let Some(announced) = announced.next().await {
-				// TODO handle conflicts
-				match announced {
-					Announced::Active(path) => {
-						routes.lock().unwrap().insert(path, session.clone());
-					}
-					Announced::Ended(path) => {
-						routes.lock().unwrap().remove(&path);
-					}
-				}
-			}
-		});
-	}
-
 	// This is the GUTS of the entire relay.
 	// We route any incoming track requests to the appropriate session.
 	async fn run_router(self, mut router: RouterProducer) {
 		while let Some(req) = router.requested().await {
-			tracing::debug!(path = ?req.path, "received request");
-			match self.routes.lock().unwrap().get(&req.track.path).cloned() {
-				Some(session) => {
-					tokio::spawn(async move {
-						match session.subscribe(req.track.clone()).await {
-							Ok(track) => req.serve(track),
-							Err(err) => req.close(err.into()),
-						}
-					});
-				}
-				None => {
-					req.close(Error::NotFound.into());
-				}
-			}
+			let origin = if let Some(origin) = self.locals.route(&req.track.path).clone() {
+				origin
+			} else if let Some(origin) = self.remotes.route(&req.track.path).clone() {
+				origin
+			} else {
+				req.close(Error::NotFound.into());
+				continue;
+			};
+
+			let track = origin.subscribe(req.track.clone());
+			req.serve(track)
 		}
 	}
 
@@ -147,7 +116,7 @@ impl Cluster {
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
 				// Subscribe to the available origins.
-				self.announced.subscribe_prefix(origins.clone())
+				self.locals.announced_prefix(origins.clone())
 			}
 		};
 
@@ -184,9 +153,12 @@ impl Cluster {
 			.await
 			.context("failed to establish session")?;
 
-		session.route(self.router());
-		session.announce(self.announced.subscribe());
-		self.announce(session.announced(), session);
+		session.route(self.router);
+
+		// NOTE: we don't announce remotes to remotes
+		session.announce(self.locals.announced());
+
+		self.remotes.publish(session).await;
 
 		Ok(())
 	}
