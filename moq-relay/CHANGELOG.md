@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.3...moq-relay-v0.6.4) - 2024-10-27
+
+### Other
+
+- Remove broadcasts from moq-transfork; tracks have a path instead ([#204](https://github.com/kixelated/moq-rs/pull/204))
+- Use a path instead of name for Broadcasts ([#200](https://github.com/kixelated/moq-rs/pull/200))
+
 ## [0.6.3](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.2...moq-relay-v0.6.3) - 2024-10-18
 
 ### Other
