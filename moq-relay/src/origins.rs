@@ -64,11 +64,11 @@ impl Origins {
 	}
 
 	pub fn route(&self, path: &Path) -> Option<Session> {
-		// Return the session that first announced the path.
+		// Return the session that most recently announced the path.
 		self.routes
 			.lock()
 			.unwrap()
 			.get(path)
-			.map(|list| list.first().cloned().unwrap())
+			.map(|list| list.last().cloned().unwrap())
 	}
 }
