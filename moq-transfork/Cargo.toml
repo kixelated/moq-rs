@@ -21,9 +21,5 @@ tokio = { version = "1.39", features = ["macros", "io-util", "sync"] }
 web-transport = { workspace = true }
 futures = "0.3"
 
-serde = { version = "1", features = ["derive", "rc"], optional = true }
-serde_with = { version = "3", optional = true }
-cfg_eval = { version = "0.1", optional = true }
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
