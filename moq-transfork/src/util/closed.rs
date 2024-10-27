@@ -56,11 +56,13 @@ impl Consumer {
 		Self { state }
 	}
 
+	/* TODO uncomment when needed
 	pub async fn closed(&self) {
 		while self.state.producers.load(atomic::Ordering::Relaxed) > 0 {
 			self.state.notify.notified().await;
 		}
 	}
+	*/
 }
 
 impl Clone for Consumer {

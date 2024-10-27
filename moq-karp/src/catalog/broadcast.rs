@@ -92,9 +92,10 @@ mod test {
 		let mut encoded = r#"{
 			"video": [
 				{
-					"name": "video",
-					"priority": 2,
-					"timescale": 1000,
+					"track": {
+						"name": "video",
+						"priority": 2
+					},
 					"codec": "avc1.64001f",
 					"resolution": {
 						"width": 1280,
@@ -105,9 +106,10 @@ mod test {
 			],
 			"audio": [
 				{
-					"name": "audio",
-					"priority": 1,
-					"timescale": 48000,
+					"track": {
+						"name": "audio",
+						"priority": 1
+					},
 					"codec": "opus",
 					"sample_rate": 48000,
 					"channel_count": 2,

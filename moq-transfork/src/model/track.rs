@@ -80,6 +80,12 @@ pub struct TrackBuilder {
 	track: Track,
 }
 
+impl Default for TrackBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TrackBuilder {
 	pub fn new() -> Self {
 		Self {

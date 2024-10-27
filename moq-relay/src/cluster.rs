@@ -65,7 +65,7 @@ impl Cluster {
 			} else if let Some(origin) = self.remotes.route(&req.track.path).clone() {
 				origin
 			} else {
-				req.close(Error::NotFound.into());
+				req.close(Error::NotFound);
 				continue;
 			};
 

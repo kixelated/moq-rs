@@ -14,6 +14,12 @@ pub struct Origins {
 	routes: Arc<Mutex<HashMap<Path, Vec<Session>>>>,
 }
 
+impl Default for Origins {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Origins {
 	pub fn new() -> Self {
 		Self {

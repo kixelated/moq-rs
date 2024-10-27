@@ -136,11 +136,11 @@ impl AnnouncedConsumer {
 	pub async fn next(&mut self) -> Option<Announced> {
 		loop {
 			// Remove any pending updates first.
-			while let Some(announced) = self.pending.pop_front() {
+			if let Some(announced) = self.pending.pop_front() {
 				// Keep track of the fact that we returned this path.
 				match &announced {
 					Announced::Active(path) => self.tracked.insert(path.clone()),
-					Announced::Ended(path) => self.tracked.remove(&path),
+					Announced::Ended(path) => self.tracked.remove(path),
 				};
 
 				return Some(announced);
@@ -161,7 +161,7 @@ impl AnnouncedConsumer {
 							self.tracked.insert(path.clone());
 						}
 						Announced::Ended(path) => {
-							if !self.tracked.remove(&path) {
+							if !self.tracked.remove(path) {
 								// We don't care about this path (ex. wrong prefix)
 								continue;
 							}
