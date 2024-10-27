@@ -10,7 +10,7 @@ env:
 
 jobs:
   deploy-relay:
-    if: startsWith(github.event.release.tag_name, 'moq-relay-v')
+    if: startsWith(github.ref_name, 'moq-relay-v')
 
     name: Publish moq-relay Docker Image
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
 
       # Extract version from the tag
       - id: version
-        run: echo "version=${GITHUB_REF_NAME##moq-relay-v}" >> $GITHUB_OUTPUT
+        run: echo "version=${github.ref_name##moq-relay-v}" >> $GITHUB_OUTPUT
 
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
@@ -48,7 +48,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   deploy-karp:
-    if: startsWith(github.event.release.tag_name, 'moq-karp-v')
+    if: startsWith(github.ref_name, 'moq-karp-v')
 
     name: Publish moq-bbb Docker Image
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
 
       # Extract version from the tag
       - id: version
-        run: echo "version=${GITHUB_REF_NAME##moq-karp-v}" >> $GITHUB_OUTPUT
+        run: echo "version=${github.ref_name##moq-karp-v}" >> $GITHUB_OUTPUT
 
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
