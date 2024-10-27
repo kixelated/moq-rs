@@ -1,160 +1,219 @@
-use std::collections::{HashMap, VecDeque};
-use tokio::sync::watch;
+use std::{
+	collections::{HashSet, VecDeque},
+	sync::{Arc, Mutex},
+};
+use tokio::sync::broadcast;
 
-use crate::{Broadcast, BroadcastConsumer, Error};
+use crate::util::closed;
 
 use super::Path;
 
-#[derive(Default)]
-struct AnnouncedState {
-	order: VecDeque<Option<BroadcastConsumer>>,
-	lookup: HashMap<Broadcast, BroadcastConsumer>,
-	pruned: usize,
+#[derive(Clone)]
+pub enum Announced {
+	Active(Path),
+	Ended(Path),
 }
 
-/// Announces broadcasts to consumers over the network.
-#[derive(Default, Clone)]
+/// Announces tracks to consumers over the network.
+#[derive(Clone)]
 pub struct AnnouncedProducer {
-	state: watch::Sender<AnnouncedState>,
+	updates: broadcast::Sender<Announced>,
+	active: Arc<Mutex<HashSet<Path>>>,
+	closed: closed::Producer,
 }
 
 impl AnnouncedProducer {
-	/// Announce a broadcast, returning a guard that will remove it when dropped.
-	#[must_use = "removed on drop"]
-	pub fn insert(&self, broadcast: BroadcastConsumer) -> Result<AnnouncedActive, Error> {
-		let mut index = 0;
-
-		let ok = self.state.send_if_modified(|state| {
-			if state.lookup.insert(broadcast.info.clone(), broadcast.clone()).is_none() {
-				index = state.order.len() + state.pruned;
-				state.order.push_back(Some(broadcast.clone()));
-
-				true
-			} else {
-				false
-			}
-		});
-
-		if !ok {
-			return Err(Error::Duplicate);
+	pub fn new(capacity: usize) -> Self {
+		let (tx, _) = broadcast::channel(capacity);
+		Self {
+			updates: tx,
+			active: Default::default(),
+			closed: Default::default(),
 		}
-
-		Ok(AnnouncedActive {
-			producer: self.clone(),
-			broadcast,
-			index,
-		})
 	}
 
-	/// Returns a broadcast by name.
-	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
-		self.state.borrow().lookup.get(broadcast).cloned()
-	}
-
-	fn remove(&self, broadcast: &Broadcast, index: usize) {
-		self.state.send_if_modified(|state| {
-			state.lookup.remove(broadcast).expect("broadcast not found");
-			state.order[index - state.pruned] = None;
-
-			while let Some(None) = state.order.front() {
-				state.order.pop_front();
-				state.pruned += 1;
-			}
-
+	/// Announce a track, returning true if it's new.
+	pub fn announce(&mut self, path: Path) -> bool {
+		if self.active.lock().unwrap().insert(path.clone()) {
+			let announced = Announced::Active(path);
+			self.updates.send(announced).ok();
+			true
+		} else {
 			false
-		});
+		}
 	}
 
-	/// Resolves when there are no subscribers
-	pub async fn closed(&self) {
-		self.state.closed().await
+	/// Stop announcing a track, returning true if it was active.
+	pub fn unannounce(&mut self, path: &Path) -> bool {
+		if self.active.lock().unwrap().remove(path) {
+			let announced = Announced::Ended(path.clone());
+			self.updates.send(announced).ok();
+			true
+		} else {
+			false
+		}
 	}
 
-	/// Subscribe to all announced broadcasts, including those already active.
+	pub fn is_active(&self, path: &Path) -> bool {
+		self.active.lock().unwrap().contains(path)
+	}
+
+	/// Subscribe to all announced tracks, including those already active.
 	pub fn subscribe(&self) -> AnnouncedConsumer {
-		AnnouncedConsumer {
-			state: self.state.subscribe(),
-			prefix: Path::default(),
-			index: 0,
-		}
+		self.subscribe_prefix(Path::default())
 	}
 
-	/// Subscribe to all announced broadcasts based on a prefix, including those already active.
+	/// Subscribe to all announced tracks based on a prefix, including those already active.
 	pub fn subscribe_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		AnnouncedConsumer {
-			state: self.state.subscribe(),
+		AnnouncedConsumer::new(
 			prefix,
-			index: 0,
-		}
+			self.active.clone(),
+			self.updates.subscribe(),
+			self.closed.subscribe(),
+		)
+	}
+
+	pub async fn closed(&self) {
+		self.closed.unused().await
 	}
 }
 
-/// An announced broadcast, active until dropped.
-pub struct AnnouncedActive {
-	producer: AnnouncedProducer,
-	broadcast: BroadcastConsumer,
-	index: usize,
-}
-
-impl Drop for AnnouncedActive {
-	fn drop(&mut self) {
-		self.producer.remove(&self.broadcast.info, self.index);
+impl Default for AnnouncedProducer {
+	fn default() -> Self {
+		Self::new(32)
 	}
 }
 
-/// Consumes announced broadcasts over the network matching an optional prefix.
-#[derive(Clone)]
+/// Consumes announced tracks over the network matching an optional prefix.
 pub struct AnnouncedConsumer {
-	state: watch::Receiver<AnnouncedState>,
+	// The official list of active paths.
+	active: Arc<Mutex<HashSet<Path>>>,
+
+	// A set of updates that we haven't consumed yet.
+	pending: VecDeque<Announced>,
+
+	// A set of paths that we have consumed and must keep track of.
+	tracked: HashSet<Path>,
+
+	// New updates.
+	updates: broadcast::Receiver<Announced>,
+
+	// Only consume paths with this prefix.
 	prefix: Path,
-	index: usize,
+
+	// Used to notify the producer that there are no more consumers.
+	// This would be a good thing to add to `broadcast::Sender` itself.
+	_closed: closed::Consumer,
 }
 
 impl AnnouncedConsumer {
-	/// Returns the next announced broadcast.
-	pub async fn next(&mut self) -> Option<BroadcastConsumer> {
-		loop {
-			{
-				let state = self.state.borrow_and_update();
+	fn new(
+		prefix: Path,
+		active: Arc<Mutex<HashSet<Path>>>,
+		updates: broadcast::Receiver<Announced>,
+		closed: closed::Consumer,
+	) -> Self {
+		let pending = active
+			.lock()
+			.unwrap()
+			.iter()
+			.filter(|path| path.has_prefix(&prefix))
+			.cloned()
+			.map(Announced::Active)
+			.collect();
 
-				if self.index < state.pruned {
-					self.index = state.pruned;
-				}
-
-				while self.index < state.order.len() + state.pruned {
-					let index = self.index - state.pruned;
-					self.index += 1;
-
-					if let Some(announced) = &state.order[index] {
-						if announced.info.path.has_prefix(&self.prefix) {
-							return Some(announced.clone());
-						}
-					}
-				}
-			}
-
-			if self.state.changed().await.is_err() {
-				return None;
-			}
+		Self {
+			active,
+			pending,
+			updates,
+			prefix,
+			tracked: HashSet::new(),
+			_closed: closed,
 		}
 	}
 
-	/// Returns a broadcast by name.
-	pub fn get(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
-		self.state.borrow().lookup.get(broadcast).cloned()
+	/// Returns the next update.
+	pub async fn next(&mut self) -> Option<Announced> {
+		loop {
+			// Remove any pending updates first.
+			if let Some(announced) = self.pending.pop_front() {
+				// Keep track of the fact that we returned this path.
+				match &announced {
+					Announced::Active(path) => self.tracked.insert(path.clone()),
+					Announced::Ended(path) => self.tracked.remove(path),
+				};
+
+				return Some(announced);
+			}
+
+			// Get any new updates.
+			match self.updates.recv().await {
+				// We got a new update, but they're not filtered based on prefix.
+				Ok(announced) => {
+					match &announced {
+						Announced::Active(path) => {
+							if !path.has_prefix(&self.prefix) {
+								// Wrong prefix.
+								continue;
+							}
+
+							// Keep track of the fact that we returned this path.
+							self.tracked.insert(path.clone());
+						}
+						Announced::Ended(path) => {
+							if !self.tracked.remove(path) {
+								// We don't care about this path (ex. wrong prefix)
+								continue;
+							}
+						}
+					};
+
+					return Some(announced);
+				}
+				Err(broadcast::error::RecvError::Closed) => {
+					// The producer has been closed, so we need to return Ended for all active paths.
+					return match self.tracked.iter().next().cloned() {
+						Some(path) => {
+							self.tracked.remove(&path);
+							Some(Announced::Ended(path))
+						}
+						None => None,
+					};
+				}
+				Err(broadcast::error::RecvError::Lagged(_)) => {
+					// We skipped a bunch of updates, so we need to resync.
+					// Resubscribe to get the latest updates.
+					self.updates.resubscribe();
+
+					// Get the current list of active paths.
+					let active: HashSet<Path> = self
+						.active
+						.lock()
+						.unwrap()
+						.iter()
+						.filter(|path| path.has_prefix(&self.prefix))
+						.cloned()
+						.collect();
+
+					// Figure out the deltas we need to apply to reach it.
+					self.pending.clear();
+
+					// Queue up any paths that we need to remove.
+					for removed in self.tracked.difference(&active) {
+						self.pending.push_back(Announced::Ended(removed.clone()));
+					}
+
+					// Queue up any paths that we need to add.
+					for added in active.difference(&self.tracked) {
+						self.pending.push_back(Announced::Active(added.clone()));
+					}
+				}
+			}
+		}
 	}
 
 	/// Returns the prefix in use.
 	pub fn prefix(&self) -> &Path {
 		&self.prefix
-	}
-
-	/// Make a new consumer with a different prefix.
-	pub fn with_prefix(&self, prefix: Path) -> Self {
-		Self {
-			state: self.state.clone(),
-			prefix,
-			index: 0,
-		}
 	}
 }

@@ -26,13 +26,9 @@ pub struct Config {
 	#[arg(long)]
 	pub publish: bool,
 
-	/// The name of the clock track.
+	/// The path of the clock track.
 	#[arg(long, default_value = "clock")]
-	pub broadcast: String,
-
-	/// The name of the clock track.
-	#[arg(long, default_value = "now")]
-	pub track: String,
+	pub path: Vec<String>,
 
 	/// The log configuration.
 	#[command(flatten)]
@@ -53,20 +49,18 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(&config.url).await?;
 	let mut session = moq_transfork::Session::connect(session).await?;
 
-	let path = Path::default().push(config.broadcast);
+	let path = Path::new(config.path);
+	let track = Track::new(path);
 
 	if config.publish {
-		let (mut writer, reader) = Broadcast::new(path).produce();
+		let (writer, reader) = track.produce();
 		session.publish(reader).context("failed to announce broadcast")?;
 
-		let track = writer.insert_track(&config.track);
-		let clock = clock::Publisher::new(track);
+		let clock = clock::Publisher::new(writer);
 
 		clock.run().await
 	} else {
-		let broadcast = session.subscribe(path);
-		let reader = broadcast.get_track(config.track).await?;
-
+		let reader = session.subscribe(track);
 		let clock = clock::Subscriber::new(reader);
 
 		clock.run().await

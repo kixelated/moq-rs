@@ -1,23 +1,23 @@
 use std::{
-	collections::HashMap,
+	collections::{hash_map, HashMap},
 	sync::{atomic, Arc},
 };
 
 use crate::{
 	message,
-	model::{Broadcast, BroadcastConsumer, Produce, Router, Track, TrackConsumer},
-	util::{spawn, Close, Lock, OrClose},
-	AnnouncedProducer, BroadcastProducer, Error, Path, RouterProducer,
+	model::{Track, TrackConsumer},
+	util::{spawn, Lock, OrClose},
+	AnnouncedProducer, Error, Path, TrackProducer,
 };
 
-use super::{subscribe, AnnouncedConsumer, Reader, Stream, SubscribeConsumer};
+use super::{AnnouncedConsumer, Reader, Stream};
 
 #[derive(Clone)]
 pub(super) struct Subscriber {
 	session: web_transport::Session,
 
-	broadcasts: AnnouncedProducer,
-	subscribes: Lock<HashMap<u64, SubscribeConsumer>>,
+	tracks: Lock<HashMap<Path, TrackConsumer>>,
+	subscribes: Lock<HashMap<u64, TrackProducer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
 
@@ -26,14 +26,14 @@ impl Subscriber {
 		Self {
 			session,
 
-			broadcasts: Default::default(),
+			tracks: Default::default(),
 			subscribes: Default::default(),
 			next_id: Default::default(),
 		}
 	}
 
-	/// Discover any broadcasts matching a prefix.
-	pub fn broadcasts(&self, prefix: Path) -> AnnouncedConsumer {
+	/// Discover any tracks matching a prefix.
+	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.subscribe_prefix(prefix.clone());
 
@@ -56,16 +56,16 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(&self, stream: &mut Stream, prefix: Path, announced: AnnouncedProducer) -> Result<(), Error> {
-		// Used to remove broadcasts on ended
-		let mut active = HashMap::new();
-
+	async fn run_announce(
+		&self,
+		stream: &mut Stream,
+		prefix: Path,
+		mut announced: AnnouncedProducer,
+	) -> Result<(), Error> {
 		stream
 			.writer
 			.encode(&message::AnnounceInterest { prefix: prefix.clone() })
 			.await?;
-
-		tracing::debug!("waiting for announces");
 
 		loop {
 			tokio::select! {
@@ -74,23 +74,16 @@ impl Subscriber {
 						// Handle the announce
 						Some(announce) => {
 							tracing::debug!(?announce);
-
-							let suffix = announce.suffix;
+							let path = prefix.clone().append(&announce.suffix);
 
 							match announce.status {
 								message::AnnounceStatus::Active => {
-									if active.contains_key(&suffix) {
+									if !announced.announce(path) {
 										return Err(Error::Duplicate);
 									}
-
-									let path = prefix.clone().append(&suffix);
-									let broadcast = self.broadcast(Broadcast::new(path));
-									let broadcast = announced.insert(broadcast)?;
-
-									active.insert(suffix, broadcast);
 								},
 								message::AnnounceStatus::Ended => {
-									if active.remove(&suffix).is_none() {
+									if !announced.unannounce(&path) {
 										return Err(Error::NotFound);
 									}
 								},
@@ -106,95 +99,102 @@ impl Subscriber {
 		}
 	}
 
-	/// Subscribe to tracks from a given broadcast.
-	///
-	/// This is a helper method to avoid waiting for an (optional) [Self::announced] or cloning the [Broadcast] for each [Self::subscribe].
-	#[tracing::instrument("subscribe", skip_all, fields(?broadcast))]
-	pub fn broadcast(&self, broadcast: Broadcast) -> BroadcastConsumer {
-		if let Some(broadcast) = self.broadcasts.get(&broadcast) {
-			return broadcast;
-		}
+	/// Subscribe to a given track.
+	pub fn subscribe(&self, track: Track) -> TrackConsumer {
+		let path = track.path.clone();
+		let (writer, reader) = track.clone().produce();
 
-		let (mut writer, reader) = broadcast.clone().produce();
-		let served = self
-			.broadcasts
-			.insert(reader.clone())
-			.expect("race I'm too lazy to handle");
+		// Check if we can deduplicate this subscription
+		match self.tracks.lock().entry(path.clone()) {
+			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
+			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
+		};
 
-		let router = Router::produce();
-		writer.route_tracks(router.1);
-
-		let this = self.clone();
-		let session = self.session.clone();
+		let mut this = self.clone();
+		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 		spawn(async move {
-			tokio::select! {
-				_ = this.run_router(writer, router.0) => (),
-				_ = session.closed() => (),
-			};
+			if let Ok(mut stream) = Stream::open(&mut this.session, message::Stream::Subscribe).await {
+				this.run_subscribe(id, writer, &mut stream)
+					.await
+					.or_close(&mut stream)
+					.ok();
+			}
 
-			drop(served);
+			this.subscribes.lock().remove(&id);
+			this.tracks.lock().remove(&path);
 		});
 
 		reader
 	}
 
-	async fn run_router(self, broadcast: BroadcastProducer, mut router: RouterProducer<Track>) {
-		while let Some(request) = router.requested().await {
-			let mut this = self.clone();
-			let broadcast = broadcast.info.clone();
-			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+	#[tracing::instrument("subscribe", skip_all, fields(?id, track = ?track.path))]
+	async fn run_subscribe(&mut self, id: u64, track: TrackProducer, stream: &mut Stream) -> Result<(), Error> {
+		let request = message::Subscribe {
+			id,
+			path: track.path.clone(),
+			priority: track.priority,
 
-			spawn(async move {
-				match this.subscribe_track(id, broadcast, request.info.clone()).await {
-					Ok(track) => request.serve(track),
-					Err(err) => request.close(err),
-				};
-			});
+			group_order: track.group_order,
+			group_expires: track.group_expires,
+
+			// TODO
+			group_min: None,
+			group_max: None,
+		};
+
+		stream.writer.encode(&request).await?;
+
+		// TODO use the response to correctly populate the track info
+		let _response: message::Info = stream.reader.decode().await?;
+
+		tracing::info!("ok");
+
+		self.subscribes.lock().insert(id, track.clone());
+
+		loop {
+			tokio::select! {
+				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
+					match res? {
+						Some(drop) => {
+							tracing::info!(?drop, "dropped");
+							// TODO expose updates to application
+							// TODO use to detect gaps
+						},
+						None => break,
+					}
+				}
+				// Close when there are no more subscribers
+				_ = track.unused() => break
+			};
 		}
+
+		Ok(())
 	}
 
-	#[tracing::instrument("subscribe", skip_all, err, fields(id, ?broadcast, ?track))]
-	pub async fn subscribe_track(
-		&mut self,
-		id: u64,
-		broadcast: Broadcast,
-		track: Track,
-	) -> Result<TrackConsumer, Error> {
-		let (mut producer, consumer) = subscribe(id, track, self.subscribes.clone());
-		let mut stream = Stream::open(&mut self.session, message::Stream::Subscribe).await?;
-
-		if let Err(err) = producer.start(&mut stream, &broadcast).await {
-			tracing::warn!(?err, "failed");
-
-			stream.close(err.clone());
-			return Err(err);
-		}
-
-		spawn(async move {
-			producer.run(&mut stream).await.or_close(&mut stream).ok();
-		});
-
-		Ok(consumer.track)
-	}
-
-	pub async fn recv_group(&mut self, mut stream: Reader) {
-		match self.find_subscribe(&mut stream).await {
-			Ok((group, subscribe)) => subscribe.serve(group, stream).await,
-			Err(err) => stream.close(err),
-		}
-	}
-
-	async fn find_subscribe(&mut self, stream: &mut Reader) -> Result<(message::Group, SubscribeConsumer), Error> {
+	pub async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
 		let group: message::Group = stream.decode().await?;
 
-		let subscribe = self
-			.subscribes
-			.lock()
-			.get(&group.subscribe)
-			.cloned()
-			.ok_or(Error::NotFound)?;
+		let mut group = {
+			let mut subs = self.subscribes.lock();
+			let track = subs.get_mut(&group.subscribe).ok_or(Error::NotFound)?;
+			track.create_group(group.sequence)
+		};
 
-		Ok((group, subscribe))
+		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
+			let mut frame = group.create_frame(frame.size);
+			let mut remain = frame.size;
+
+			while remain > 0 {
+				let chunk = stream.read(remain).await?.ok_or(Error::WrongSize)?;
+
+				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
+				tracing::trace!(chunk = chunk.len(), remain, "chunk");
+
+				frame.write(chunk);
+			}
+		}
+
+		Ok(())
 	}
 }

@@ -2,7 +2,7 @@ use bytes::{Bytes, BytesMut};
 use std::ops;
 use tokio::sync::watch;
 
-use crate::{Error, Produce};
+use crate::Error;
 
 /// A frame of data with an upfront size.
 #[derive(Clone, PartialEq)]
@@ -14,13 +14,8 @@ impl Frame {
 	pub fn new(size: usize) -> Frame {
 		Self { size }
 	}
-}
 
-impl Produce for Frame {
-	type Consumer = FrameConsumer;
-	type Producer = FrameProducer;
-
-	fn produce(self) -> (FrameProducer, FrameConsumer) {
+	pub fn produce(self) -> (FrameProducer, FrameConsumer) {
 		let (send, recv) = watch::channel(FrameState::default());
 
 		let writer = FrameProducer::new(send, self.clone());
@@ -48,6 +43,7 @@ impl Default for FrameState {
 }
 
 /// Used to write a frame's worth of data in chunks.
+#[derive(Clone)]
 pub struct FrameProducer {
 	// Mutable stream state.
 	state: watch::Sender<FrameState>,
