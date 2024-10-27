@@ -15,9 +15,9 @@ pub struct Origins {
 }
 
 impl Default for Origins {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl Origins {
