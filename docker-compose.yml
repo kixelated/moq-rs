@@ -1,5 +1,4 @@
 x-moq: &x-moq
-  build: .
   volumes:
     - ./dev/localhost.crt:/etc/tls/cert:ro
     - ./dev/localhost.key:/etc/tls/key:ro
@@ -11,7 +10,10 @@ x-moq: &x-moq
 services:
   relay1:
     <<: *x-moq
-    entrypoint: moq-relay
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: moq-relay
     command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --cluster-node relay1 --cluster-root relay1 --dev
     ports:
       - "4443:443"
@@ -19,7 +21,10 @@ services:
 
   relay2:
     <<: *x-moq
-    entrypoint: moq-relay
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: moq-relay
     command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --cluster-node relay2 --cluster-root relay1 --dev
     depends_on:
       - relay1
@@ -29,7 +34,10 @@ services:
 
   pub:
     <<: *x-moq
-    entrypoint: moq-bbb
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: moq-bbb
     # Change to relay1 if you don't want to test clustering
     command: --tls-disable-verify --path bbb --url https://relay2
     depends_on:
