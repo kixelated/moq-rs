@@ -14,19 +14,17 @@
 
 use tokio::sync::watch;
 
-use super::{Group, GroupConsumer, GroupProducer};
+use super::{Group, GroupConsumer, GroupProducer, Path};
 pub use crate::message::GroupOrder;
-use crate::{Error, Produce};
+use crate::Error;
 
 use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
 
 /// A track, a collection of indepedent groups (streams) with a specified order/priority.
 #[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", cfg_eval::cfg_eval, serde_with::serde_as)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
-	/// The name of the track.
-	pub name: String,
+	/// The path of the track.
+	pub path: Path,
 
 	/// The priority of the track, relative to other tracks in the same session/broadcast.
 	pub priority: i8,
@@ -35,37 +33,22 @@ pub struct Track {
 	pub group_order: GroupOrder,
 
 	/// The duration after which a group is considered expired.
-	#[cfg_attr(feature = "serde", serde_as(as = "serde_with::DurationSecondsWithFrac"))]
 	pub group_expires: time::Duration,
 }
 
 impl Track {
-	pub fn new<T: Into<String>>(name: T) -> Self {
-		Self::build(name).into()
+	pub fn new(path: Path) -> Self {
+		Self {
+			path,
+			..Default::default()
+		}
 	}
 
-	pub fn build<T: Into<String>>(name: T) -> TrackBuilder {
-		TrackBuilder::new(name)
+	pub fn build() -> TrackBuilder {
+		TrackBuilder::new()
 	}
-}
 
-impl<T: Into<String>> From<T> for Track {
-	fn from(name: T) -> Self {
-		Self::new(name)
-	}
-}
-
-impl fmt::Debug for Track {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.name.fmt(f)
-	}
-}
-
-impl Produce for Track {
-	type Consumer = TrackConsumer;
-	type Producer = TrackProducer;
-
-	fn produce(self) -> (TrackProducer, TrackConsumer) {
+	pub fn produce(self) -> (TrackProducer, TrackConsumer) {
 		let (send, recv) = watch::channel(TrackState::default());
 		let info = Arc::new(self);
 
@@ -76,21 +59,43 @@ impl Produce for Track {
 	}
 }
 
+impl fmt::Debug for Track {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.path.fmt(f)
+	}
+}
+impl Default for Track {
+	fn default() -> Self {
+		Self {
+			path: Default::default(),
+			priority: 0,
+			group_order: GroupOrder::Desc,
+			group_expires: time::Duration::ZERO,
+		}
+	}
+}
+
 /// Build a track with optional parameters.
 pub struct TrackBuilder {
 	track: Track,
 }
 
-impl TrackBuilder {
-	pub fn new<T: Into<String>>(name: T) -> Self {
-		let track = Track {
-			name: name.into(),
-			priority: 0,
-			group_order: GroupOrder::Desc,
-			group_expires: time::Duration::ZERO,
-		};
+impl Default for TrackBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
-		Self { track }
+impl TrackBuilder {
+	pub fn new() -> Self {
+		Self {
+			track: Default::default(),
+		}
+	}
+
+	pub fn path<T: ToString>(mut self, part: T) -> Self {
+		self.track.path = self.track.path.push(part);
+		self
 	}
 
 	pub fn priority(mut self, priority: i8) -> Self {
@@ -139,27 +144,25 @@ impl Default for TrackState {
 }
 
 /// A producer for a track, used to create new groups.
+#[derive(Clone)]
 pub struct TrackProducer {
 	pub info: Arc<Track>,
 	state: watch::Sender<TrackState>,
-
-	// Cache the next sequence number to use
-	next: u64,
 }
 
 impl TrackProducer {
 	fn new(state: watch::Sender<TrackState>, info: Arc<Track>) -> Self {
-		Self { info, state, next: 0 }
+		Self { info, state }
 	}
 
-	// Build a new group with the given sequence number.
+	/// Build a new group with the given sequence number.
 	pub fn create_group(&mut self, sequence: u64) -> GroupProducer {
 		let group = Group::new(sequence);
 		let (writer, reader) = group.produce();
 
 		self.state.send_if_modified(|state| {
 			if let Some(latest) = &state.latest {
-				match writer.sequence.cmp(&latest.sequence) {
+				match reader.sequence.cmp(&latest.sequence) {
 					Ordering::Less => return false,  // Not modified,
 					Ordering::Equal => return false, // TODO error?
 					Ordering::Greater => (),
@@ -167,17 +170,23 @@ impl TrackProducer {
 			}
 
 			state.latest = Some(reader);
-			self.next = sequence + 1;
-
 			true
 		});
 
 		writer
 	}
 
-	// Build a new group with the next sequence number.
+	/// Build a new group with the next sequence number.
 	pub fn append_group(&mut self) -> GroupProducer {
-		self.create_group(self.next)
+		// TODO remove this extra lock
+		let sequence = self
+			.state
+			.borrow()
+			.latest
+			.as_ref()
+			.map_or(0, |group| group.sequence + 1);
+
+		self.create_group(sequence)
 	}
 
 	/// Close the track with an error.
@@ -280,6 +289,6 @@ impl ops::Deref for TrackConsumer {
 
 impl fmt::Debug for TrackConsumer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.info.name.fmt(f)
+		self.info.path.fmt(f)
 	}
 }

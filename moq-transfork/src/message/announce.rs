@@ -1,10 +1,10 @@
 use crate::coding::*;
 use crate::Path;
 
-/// Sent by the publisher to announce the availability of a group of tracks.
+/// Sent by the publisher to announce the availability of a track.
 #[derive(Clone, Debug)]
 pub struct Announce {
-	/// The broadcast status, either active or ended
+	/// The track status, either active or ended
 	pub status: AnnounceStatus,
 
 	/// The path suffix
@@ -29,7 +29,7 @@ impl Encode for Announce {
 /// Sent by the subscriber to request ANNOUNCE messages.
 #[derive(Clone, Debug)]
 pub struct AnnounceInterest {
-	/// The desired broadcast prefix
+	/// The desired track prefix
 	pub prefix: Path,
 }
 

@@ -1,15 +1,14 @@
-use super::CodecError;
+use super::{CodecError, Track};
 use serde::{Deserialize, Serialize};
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Audio {
-	pub track: moq_transfork::Track,
-	pub codec: AudioCodec,
+	// Generic information about the track
+	pub track: Track,
 
-	// The number of units in a second
-	pub timescale: u32,
+	pub codec: AudioCodec,
 
 	pub sample_rate: u16,
 	pub channel_count: u16,

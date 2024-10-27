@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use tokio::io::AsyncRead;
 
 use super::{util, Error, Result};
-use crate::{catalog, media};
+use crate::{
+	catalog,
+	media::{self, Timestamp},
+};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -25,10 +28,10 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new(broadcast: moq_transfork::BroadcastProducer) -> Self {
+	pub fn new(broadcast: media::BroadcastProducer) -> Self {
 		Self {
 			buffer: BytesMut::new(),
-			broadcast: media::BroadcastProducer::new(broadcast),
+			broadcast,
 			tracks: HashMap::default(),
 			moov: None,
 			moof: None,
@@ -36,10 +39,6 @@ impl Import {
 	}
 
 	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
-		if self.broadcast.is_closed() {
-			return Err(Error::Closed);
-		}
-
 		if !self.buffer.is_empty() {
 			let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new());
 			buffer.extend_from_slice(data);
@@ -95,7 +94,6 @@ impl Import {
 	fn init_video(trak: &Trak) -> Result<catalog::Video> {
 		let name = trak.tkhd.track_id.to_string();
 		let stsd = &trak.mdia.minf.stbl.stsd;
-		let timescale = trak.mdia.mdhd.timescale;
 
 		let track = if let Some(avc1) = &stsd.avc1 {
 			let avcc = &avc1.avcc;
@@ -104,7 +102,7 @@ impl Import {
 			avcc.encode_body(&mut description)?;
 
 			catalog::Video {
-				track: moq_transfork::Track::build(name).priority(2).into(),
+				track: catalog::Track { name, priority: 2 },
 				resolution: catalog::Dimensions {
 					width: avc1.width,
 					height: avc1.height,
@@ -116,7 +114,6 @@ impl Import {
 				}
 				.into(),
 				description: description.freeze(),
-				timescale,
 				layers: vec![],
 				bitrate: None,
 			}
@@ -147,7 +144,7 @@ impl Import {
 			let vpcc = &vp09.vpcc;
 
 			catalog::Video {
-				track: moq_transfork::Track::build(name).priority(2).into(),
+				track: catalog::Track { name, priority: 2 },
 				codec: catalog::VP9 {
 					profile: vpcc.profile,
 					level: vpcc.level,
@@ -159,7 +156,6 @@ impl Import {
 					full_range: vpcc.video_full_range_flag,
 				}
 				.into(),
-				timescale,
 				description: Default::default(),
 				resolution: catalog::Dimensions {
 					width: vp09.width,
@@ -179,7 +175,6 @@ impl Import {
 	fn init_audio(trak: &Trak) -> Result<catalog::Audio> {
 		let name = trak.tkhd.track_id.to_string();
 		let stsd = &trak.mdia.minf.stbl.stsd;
-		let timescale = trak.mdia.mdhd.timescale;
 
 		let track = if let Some(mp4a) = &stsd.mp4a {
 			let desc = &mp4a
@@ -195,12 +190,11 @@ impl Import {
 			}
 
 			catalog::Audio {
-				track: moq_transfork::Track::build(name).priority(1).into(),
+				track: catalog::Track { name, priority: 1 },
 				codec: catalog::AAC {
 					profile: desc.dec_specific.profile,
 				}
 				.into(),
-				timescale,
 				sample_rate: mp4a.samplerate.integer(),
 				channel_count: mp4a.channelcount,
 				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate)),
@@ -275,8 +269,12 @@ impl Import {
 			Any::Mdat(mdat) => {
 				// Get the track ID from the previous moof.
 				let moof = self.moof.take().ok_or(Error::MissingBox(Moof::KIND))?;
+				let moov = self.moov.as_ref().ok_or(Error::MissingBox(Moov::KIND))?;
 				let track_id = util::frame_track_id(&moof)?;
 				let timestamp = util::frame_timestamp(&moof)?;
+				let timescale = util::frame_timescale(moov, &moof)?;
+
+				let timestamp = Timestamp::from_scale(timestamp, timescale as _);
 
 				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
 				track.write(timestamp, mdat.data.into());

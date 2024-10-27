@@ -72,13 +72,13 @@ impl std::ops::Deref for Path {
 
 impl fmt::Debug for Path {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "Path(")?;
+		write!(f, "[")?;
 		for (i, part) in self.parts.iter().enumerate() {
 			if i > 0 {
 				write!(f, ", ")?;
 			}
 			write!(f, "{:?}", part)?;
 		}
-		write!(f, ")")
+		write!(f, "]")
 	}
 }

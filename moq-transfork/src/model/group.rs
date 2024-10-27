@@ -13,7 +13,7 @@ use tokio::sync::watch;
 
 use crate::Error;
 
-use super::{Frame, FrameConsumer, FrameProducer, Produce};
+use super::{Frame, FrameConsumer, FrameProducer};
 
 /// An independent group of frames.
 #[derive(Clone, PartialEq)]
@@ -27,13 +27,8 @@ impl Group {
 	pub fn new(sequence: u64) -> Group {
 		Self { sequence }
 	}
-}
 
-impl Produce for Group {
-	type Consumer = GroupConsumer;
-	type Producer = GroupProducer;
-
-	fn produce(self) -> (GroupProducer, GroupConsumer) {
+	pub fn produce(self) -> (GroupProducer, GroupConsumer) {
 		let (send, recv) = watch::channel(GroupState::default());
 
 		let writer = GroupProducer::new(send, self.clone());
@@ -61,20 +56,18 @@ impl Default for GroupState {
 }
 
 /// Create a group, frame-by-frame.
+#[derive(Clone)]
 pub struct GroupProducer {
 	// Mutable stream state.
 	state: watch::Sender<GroupState>,
 
 	// Immutable stream state.
 	pub info: Group,
-
-	// Cache the number of frames we've written to avoid a mutex
-	total: usize,
 }
 
 impl GroupProducer {
 	fn new(state: watch::Sender<GroupState>, info: Group) -> Self {
-		Self { state, info, total: 0 }
+		Self { state, info }
 	}
 
 	// Write a frame in one go
@@ -85,15 +78,12 @@ impl GroupProducer {
 	// Create a frame with an upfront size
 	pub fn create_frame(&mut self, size: usize) -> FrameProducer {
 		let (writer, reader) = Frame::new(size).produce();
-
 		self.state.send_modify(|state| state.frames.push(reader));
-		self.total += 1;
-
 		writer
 	}
 
 	pub fn frame_count(&self) -> usize {
-		self.total
+		self.state.borrow().frames.len()
 	}
 
 	/// Close the stream with an error.

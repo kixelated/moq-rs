@@ -1,4 +1,4 @@
-use mp4_atom::{Atom, Moof, Tfdt, Traf};
+use mp4_atom::{Atom, Moof, Moov, Tfdt, Traf, Trak};
 
 use super::Error;
 
@@ -47,4 +47,16 @@ pub fn frame_track_id(moof: &Moof) -> Result<u32, Error> {
 
 	let track_id = traf.tfhd.track_id;
 	Ok(track_id)
+}
+
+pub fn frame_timescale(moov: &Moov, moof: &Moof) -> Result<u32, Error> {
+	Ok(frame_trak(moov, moof)?.mdia.mdhd.timescale)
+}
+
+pub fn frame_trak<'a>(moov: &'a Moov, moof: &Moof) -> Result<&'a Trak, Error> {
+	let track_id = frame_track_id(moof)?;
+	moov.trak
+		.iter()
+		.find(|trak| trak.tkhd.track_id == track_id)
+		.ok_or(Error::UnknownTrack)
 }

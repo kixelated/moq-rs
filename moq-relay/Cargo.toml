@@ -21,7 +21,6 @@ url = "2"
 
 # Async stuff
 tokio = { version = "1", features = ["full"] }
-futures = "0.3"
 
 # Web server to serve the fingerprint
 axum = { version = "0.7", features = ["tokio"] }

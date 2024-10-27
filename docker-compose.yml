@@ -30,9 +30,10 @@ services:
   pub:
     <<: *x-moq
     entrypoint: moq-bbb
-    command: --tls-disable-verify --broadcast bbb --url https://relay1
+    # Change to relay1 if you don't want to test clustering
+    command: --tls-disable-verify --path bbb --url https://relay2
     depends_on:
-      - relay1
+      - relay2
 
   install-certs:
     image: golang:latest

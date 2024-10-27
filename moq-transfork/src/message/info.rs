@@ -39,22 +39,18 @@ impl Decode for Info {
 
 #[derive(Clone, Debug)]
 pub struct InfoRequest {
-	pub broadcast: Path,
-	pub track: String,
+	pub path: Path,
 }
 
 impl Encode for InfoRequest {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.broadcast.encode(w);
-		self.track.encode(w);
+		self.path.encode(w);
 	}
 }
 
 impl Decode for InfoRequest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let broadcast = Path::decode_more(r, 1)?;
-		let track = String::decode(r)?;
-
-		Ok(Self { broadcast, track })
+		let path = Path::decode(r)?;
+		Ok(Self { path })
 	}
 }

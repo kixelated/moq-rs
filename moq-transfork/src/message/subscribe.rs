@@ -12,9 +12,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Subscribe {
 	pub id: u64,
-	pub broadcast: Path,
-
-	pub track: String,
+	pub path: Path,
 	pub priority: i8,
 
 	pub group_order: group::GroupOrder,
@@ -26,8 +24,7 @@ pub struct Subscribe {
 impl Decode for Subscribe {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = u64::decode_more(r, 6)?;
-		let broadcast = Path::decode_more(r, 5)?;
-		let track = String::decode_more(r, 4)?;
+		let path = Path::decode_more(r, 5)?;
 		let priority = i8::decode_more(r, 4)?;
 
 		let group_order = group::GroupOrder::decode_more(r, 3)?;
@@ -43,8 +40,7 @@ impl Decode for Subscribe {
 
 		Ok(Self {
 			id,
-			broadcast,
-			track,
+			path,
 			priority,
 
 			group_order,
@@ -58,8 +54,7 @@ impl Decode for Subscribe {
 impl Encode for Subscribe {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		self.id.encode(w);
-		self.broadcast.encode(w);
-		self.track.encode(w);
+		self.path.encode(w);
 		self.priority.encode(w);
 
 		self.group_order.encode(w);
