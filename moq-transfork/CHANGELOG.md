@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.3.1...moq-transfork-v0.3.2) - 2024-10-28
+
+### Other
+
+- Oops formatting.
+
 ## [0.3.1](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.3.0...moq-transfork-v0.3.1) - 2024-10-28
 
 ### Other
