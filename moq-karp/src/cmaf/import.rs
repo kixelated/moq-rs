@@ -4,10 +4,7 @@ use std::collections::HashMap;
 use tokio::io::AsyncRead;
 
 use super::{util, Error, Result};
-use crate::{
-	catalog,
-	media::{self, Timestamp},
-};
+use crate::{catalog, media::Timestamp, produce};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -15,10 +12,11 @@ pub struct Import {
 	buffer: BytesMut,
 
 	// The broadcast being produced
-	broadcast: media::BroadcastProducer,
+	broadcast: produce::Broadcast,
 
 	// A lookup to tracks in the broadcast
-	tracks: HashMap<u32, media::TrackProducer>,
+	audio: HashMap<u32, produce::Audio>,
+	video: HashMap<u32, produce::Video>,
 
 	// The moov atom at the start of the file.
 	moov: Option<Moov>,
@@ -28,11 +26,12 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new(broadcast: media::BroadcastProducer) -> Self {
+	pub fn new(broadcast: produce::Broadcast) -> Self {
 		Self {
 			buffer: BytesMut::new(),
 			broadcast,
-			tracks: HashMap::default(),
+			audio: HashMap::default(),
+			video: HashMap::default(),
 			moov: None,
 			moof: None,
 		}
@@ -69,23 +68,22 @@ impl Import {
 			let track_id = trak.tkhd.track_id;
 			let handler = &trak.mdia.hdlr.handler;
 
-			let track = match handler.as_ref() {
+			match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.create_video(track)?
+					let video = self.broadcast.create_video(track)?;
+					self.video.insert(track_id, video);
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.create_audio(track)?
+					let audio = self.broadcast.create_audio(track)?;
+					self.audio.insert(track_id, audio);
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
-
-			self.tracks.insert(track_id, track);
 		}
 
-		self.broadcast.publish()?;
 		self.moov = Some(moov);
 
 		Ok(())
@@ -253,8 +251,12 @@ impl Import {
 					// If this is a video track, start a new group for the keyframe.
 					if trak.mdia.hdlr.handler == b"vide".into() {
 						// Start a new group for the keyframe.
-						for track in self.tracks.values_mut() {
+						for track in self.video.values_mut() {
 							track.keyframe();
+						}
+
+						for track in self.audio.values_mut() {
+							track.segment();
 						}
 					}
 				}
@@ -276,8 +278,13 @@ impl Import {
 
 				let timestamp = Timestamp::from_scale(timestamp, timescale as _);
 
-				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
-				track.write(timestamp, mdat.data.into());
+				if let Some(video) = self.video.get_mut(&track_id) {
+					video.write(timestamp, mdat.data.into());
+				} else if let Some(audio) = self.audio.get_mut(&track_id) {
+					audio.write(timestamp, mdat.data.into());
+				} else {
+					return Err(Error::UnknownTrack);
+				}
 			}
 
 			_ => {

@@ -16,4 +16,7 @@ pub enum Error {
 
 	#[error("missing track")]
 	MissingTrack,
+
+	#[error("invalid session ID")]
+	InvalidSession,
 }

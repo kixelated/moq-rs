@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use url::Url;
 
-use moq_karp::{cmaf, media};
+use moq_karp::{cmaf, produce};
 use moq_native::quic;
 use moq_transfork::*;
 
@@ -63,10 +63,12 @@ async fn main() -> anyhow::Result<()> {
 
 #[tracing::instrument("publish", skip_all, err, fields(?path))]
 async fn publish(session: moq_transfork::Session, path: Path) -> anyhow::Result<()> {
-	let producer = media::BroadcastProducer::new(session, path);
+	let producer = produce::Resumable::new(session, path);
+	let broadcast = producer.broadcast();
+
 	let mut input = tokio::io::stdin();
 
-	let mut import = cmaf::Import::new(producer);
+	let mut import = cmaf::Import::new(broadcast);
 	import.init_from(&mut input).await.context("failed to initialize")?;
 
 	tracing::info!(catalog = ?import.catalog());
