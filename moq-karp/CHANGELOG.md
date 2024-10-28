@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.2...moq-karp-v0.5.0) - 2024-10-28
+
+### Other
+
+- Add support for resumable broadcasts ([#213](https://github.com/kixelated/moq-rs/pull/213))
+
 ## [0.4.2](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.1...moq-karp-v0.4.2) - 2024-10-28
 
 ### Other
