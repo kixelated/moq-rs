@@ -71,7 +71,8 @@ impl GroupProducer {
 	}
 
 	// Write a frame in one go
-	pub fn write_frame(&mut self, frame: bytes::Bytes) {
+	pub fn write_frame<B: Into<Bytes>>(&mut self, frame: B) {
+		let frame = frame.into();
 		self.create_frame(frame.len()).write(frame);
 	}
 

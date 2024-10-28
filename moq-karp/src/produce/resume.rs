@@ -1,17 +1,16 @@
 use std::time;
 
-use moq_transfork::{Path, Session};
+use moq_transfork::Path;
 
 use super::Broadcast;
 
 pub struct Resumable {
-	session: Session,
 	path: Path,
 }
 
 impl Resumable {
-	pub fn new(session: Session, path: Path) -> Self {
-		Self { session, path }
+	pub fn new(path: Path) -> Self {
+		Self { path }
 	}
 
 	/// Produce a broadcast using the current time as the ID.
@@ -23,6 +22,6 @@ impl Resumable {
 			.as_secs();
 
 		let path = self.path.clone().push(id.to_string());
-		Broadcast::new(self.session.clone(), path)
+		Broadcast::new(path)
 	}
 }
