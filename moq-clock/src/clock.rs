@@ -54,8 +54,6 @@ impl Publisher {
 			let delta = now.format("%S").to_string();
 			segment.write_frame(delta.clone().into());
 
-			println!("{}{}", base, delta);
-
 			let next = now + chrono::Duration::try_seconds(1).unwrap();
 			let next = next.with_nanosecond(0).unwrap();
 
