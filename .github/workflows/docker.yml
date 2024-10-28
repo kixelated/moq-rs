@@ -45,10 +45,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Extract version from the tag
-      - id: version
-        run: echo "version=${GITHUB_REF##refs/tags/moq-relay-v}" >> $GITHUB_OUTPUT
-
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
         with:
@@ -57,6 +53,6 @@ jobs:
           push: true
           target: ${{ steps.parse.outputs.target }}
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.parse.outputs.target }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.parse.outputs.target }}:${{ steps.parse.outputs.version }}
             ${{ env.REGISTRY }}/${{ steps.parse.outputs.target }}:latest
           platforms: linux/amd64,linux/arm64
