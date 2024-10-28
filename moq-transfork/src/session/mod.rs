@@ -154,7 +154,7 @@ impl Session {
 			message::Stream::Info => publisher.recv_info(stream).await,
 		}
 	}
-	
+
 	/// Publish a track, automatically announcing and serving it.
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
 		self.publisher.publish(track)
