@@ -28,7 +28,7 @@ struct Cli {
 
 	/// The path of the broadcast
 	/// Use multiple times to create a nested path.
-	#[arg(long)]
+	#[arg(long, required = true)]
 	pub path: Vec<String>,
 
 	#[command(subcommand)]
