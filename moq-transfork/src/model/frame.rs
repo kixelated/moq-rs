@@ -57,8 +57,8 @@ impl FrameProducer {
 		Self { state, info }
 	}
 
-	pub fn write(&mut self, chunk: bytes::Bytes) {
-		self.state.send_modify(|state| state.chunks.push(chunk));
+	pub fn write<B: Into<Bytes>>(&mut self, chunk: B) {
+		self.state.send_modify(|state| state.chunks.push(chunk.into()));
 	}
 
 	/// Close the stream with an error.

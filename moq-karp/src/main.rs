@@ -62,9 +62,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument("publish", skip_all, err, fields(?path))]
-async fn publish(session: moq_transfork::Session, path: Path) -> anyhow::Result<()> {
-	let producer = produce::Resumable::new(session, path);
-	let broadcast = producer.broadcast();
+async fn publish(mut session: moq_transfork::Session, path: Path) -> anyhow::Result<()> {
+	let broadcast = produce::Resumable::new(path).broadcast();
 
 	let mut input = tokio::io::stdin();
 
@@ -73,7 +72,12 @@ async fn publish(session: moq_transfork::Session, path: Path) -> anyhow::Result<
 
 	tracing::info!(catalog = ?import.catalog());
 
-	Ok(import.read_from(&mut input).await?)
+	import.publish(&mut session)?;
+
+	tokio::select! {
+		res = import.read_from(&mut input) => Ok(res?),
+		res = session.closed() => Err(res.into()),
+	}
 }
 
 /*

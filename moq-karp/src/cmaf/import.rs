@@ -213,18 +213,11 @@ impl Import {
 
 	// Read the media from a stream, processing moof and mdat atoms.
 	pub async fn read_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
-		loop {
-			tokio::select! {
-				res = Option::<mp4_atom::Any>::read_from(input) => {
-					match res {
-						Ok(Some(atom)) => self.process(atom)?,
-						Ok(None) => return Ok(()),
-						Err(err) => return Err(err.into()),
-					}
-				}
-				_ = self.broadcast.closed() => return Err(Error::Closed),
-			}
+		while let Some(atom) = Option::<mp4_atom::Any>::read_from(input).await? {
+			self.process(atom)?;
 		}
+
+		Ok(())
 	}
 
 	fn process(&mut self, atom: mp4_atom::Any) -> Result<()> {
@@ -297,5 +290,14 @@ impl Import {
 
 	pub fn catalog(&self) -> &catalog::Broadcast {
 		self.broadcast.catalog()
+	}
+
+	pub fn publish(&mut self, session: &mut moq_transfork::Session) -> Result<()> {
+		if self.moov.is_none() {
+			return Err(Error::MissingBox(Moov::KIND));
+		}
+		self.broadcast.publish(session)?;
+
+		Ok(())
 	}
 }

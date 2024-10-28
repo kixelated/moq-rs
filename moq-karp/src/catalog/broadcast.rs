@@ -59,26 +59,18 @@ impl Broadcast {
 		Ok(parsed)
 	}
 
-	pub fn publish(&self, session: &mut moq_transfork::Session, path: Path) -> Result<moq_transfork::TrackProducer> {
-		let (mut writer, reader) = moq_transfork::Track {
-			path,
+	/// Returns the track metadata that should be used for this catalog.
+	pub fn track(path: Path) -> moq_transfork::Track {
+		moq_transfork::Track {
+			path: path.push("catalog.json"),
 			priority: -1,
 			group_order: moq_transfork::GroupOrder::Desc,
 			group_expires: std::time::Duration::ZERO,
 		}
-		.produce();
-
-		session.publish(reader)?;
-		self.update(&mut writer)?;
-		Ok(writer)
 	}
 
-	pub fn update(&self, track: &mut moq_transfork::TrackProducer) -> Result<()> {
-		let mut group = track.append_group();
-		let frame = self.to_string()?;
-		group.write_frame(frame.into());
-
-		Ok(())
+	pub fn is_empty(&self) -> bool {
+		self.video.is_empty() && self.audio.is_empty()
 	}
 }
 
