@@ -20,6 +20,11 @@ COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
 COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
 ENTRYPOINT ["moq-bbb"]
 
+## moq-clock
+FROM debian:bookworm-slim AS moq-clock
+COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
+ENTRYPOINT ["moq-clock"]
+
 ## moq-karp
 FROM debian:bookworm-slim AS moq-karp
 COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin

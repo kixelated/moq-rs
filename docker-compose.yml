@@ -43,6 +43,16 @@ services:
     depends_on:
       - relay2
 
+  clock:
+    <<: *x-moq
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: moq-clock
+    command: --tls-disable-verify --publish https://relay1
+    depends_on:
+      - relay1
+
   install-certs:
     image: golang:latest
     working_dir: /work
