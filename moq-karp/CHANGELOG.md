@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.0...moq-karp-v0.4.1) - 2024-10-28
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.4.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.3.0...moq-karp-v0.4.0) - 2024-10-27
 
 ### Other
