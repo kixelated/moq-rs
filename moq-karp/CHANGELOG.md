@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.1...moq-karp-v0.4.2) - 2024-10-28
+
+### Other
+
+- Require --path argument ([#211](https://github.com/kixelated/moq-rs/pull/211))
+
 ## [0.4.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.0...moq-karp-v0.4.1) - 2024-10-28
 
 ### Other
