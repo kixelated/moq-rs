@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.5.0...moq-karp-v0.6.0) - 2024-10-28
+
+### Other
+
+- Small API changes to avoid needing the Session upfront. ([#216](https://github.com/kixelated/moq-rs/pull/216))
+
 ## [0.5.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.4.2...moq-karp-v0.5.0) - 2024-10-28
 
 ### Other

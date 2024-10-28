@@ -1011,7 +1011,7 @@ checksum = "c9be0862c1b3f26a88803c4a49de6889c10e608b3ee9344e6ef5b45fb37ad3d1"
 
 [[package]]
 name = "moq-clock"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "moq-karp"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "moq-transfork"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytes",
  "futures",
