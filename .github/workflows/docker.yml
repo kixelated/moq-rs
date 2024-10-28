@@ -32,7 +32,7 @@ jobs:
 
       # Extract version from the tag
       - id: version
-        run: echo "version=${github.ref_name##moq-relay-v}" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF##refs/tags/moq-relay-v}" >> $GITHUB_OUTPUT
 
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
@@ -70,7 +70,7 @@ jobs:
 
       # Extract version from the tag
       - id: version
-        run: echo "version=${github.ref_name##moq-karp-v}" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF##refs/tags/moq-karp-v}" >> $GITHUB_OUTPUT
 
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
@@ -120,7 +120,7 @@ jobs:
 
       # Extract version from the tag
       - id: version
-        run: echo "version=${github.ref_name##moq-clock-v}" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF##refs/tags/moq-clock-v}" >> $GITHUB_OUTPUT
 
       # Build and push Docker image with Depot
       - uses: depot/build-push-action@v1
