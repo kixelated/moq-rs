@@ -17,6 +17,9 @@ use subscriber::*;
 use writer::*;
 
 /// A MoqTransfork session, used to publish and/or subscribe to broadcasts.
+///
+/// A publisher will [Self::publish] tracks, or alternatively [Self::announce] and [Self::route] arbitrary paths.
+/// A subscriber will [Self::subscribe] to tracks, or alternatively use [Self::announced] to discover arbitrary paths.
 #[derive(Clone)]
 pub struct Session {
 	webtransport: web_transport::Session,
@@ -151,40 +154,45 @@ impl Session {
 			message::Stream::Info => publisher.recv_info(stream).await,
 		}
 	}
-
-	pub fn announce(&mut self, announced: AnnouncedConsumer) {
-		self.publisher.announce(announced);
-	}
-
+	
 	/// Publish a track, automatically announcing and serving it.
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
 		self.publisher.publish(track)
 	}
 
-	/// Optionally support unknown tracks via a router.
+	/// Optionally announce the provided tracks.
+	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::route].
+	pub fn announce(&mut self, announced: AnnouncedConsumer) {
+		self.publisher.announce(announced);
+	}
+
+	/// Optionally route unknown paths.
+	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::announce].
 	pub fn route(&mut self, router: RouterConsumer) {
 		self.publisher.route(router);
 	}
 
-	/// Subscribe to a track.
+	/// Subscribe to a track and start receiving data over the network.
 	pub fn subscribe(&self, track: Track) -> TrackConsumer {
 		self.subscriber.subscribe(track)
 	}
 
-	/// Discover any tracks by path.
+	/// Discover any tracks published by the remote.
 	pub fn announced(&self) -> AnnouncedConsumer {
 		self.announced_prefix(Path::default())
 	}
 
-	/// Discover any tracks matching a prefix.
+	/// Discover any tracks published by the remote matching a prefix.
 	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
 		self.subscriber.announced(prefix)
 	}
 
+	/// Close the underlying WebTransport session.
 	pub fn close(mut self, err: Error) {
 		self.webtransport.close(err.to_code(), &err.to_string());
 	}
 
+	/// Block until the WebTransport session is closed.
 	pub async fn closed(&self) -> Error {
 		self.webtransport.closed().await.into()
 	}
