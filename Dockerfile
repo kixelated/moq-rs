@@ -13,20 +13,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
-## moq-bbb
-FROM debian:bookworm-slim AS moq-bbb
-RUN apt-get update && apt-get install -y ffmpeg wget
-COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
-COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
-ENTRYPOINT ["moq-bbb"]
-
 ## moq-clock
 FROM debian:bookworm-slim AS moq-clock
 COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
 ENTRYPOINT ["moq-clock"]
 
-## moq-karp
+## moq-karp (and moq-bbb)
 FROM debian:bookworm-slim AS moq-karp
+RUN apt-get update && apt-get install -y ffmpeg wget
+COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
 COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
 ENTRYPOINT ["moq-karp"]
 
