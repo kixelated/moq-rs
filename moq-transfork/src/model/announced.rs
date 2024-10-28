@@ -14,6 +14,15 @@ pub enum Announced {
 	Ended(Path),
 }
 
+impl Announced {
+	pub fn path(&self) -> &Path {
+		match self {
+			Announced::Active(path) => path,
+			Announced::Ended(path) => path,
+		}
+	}
+}
+
 /// Announces tracks to consumers over the network.
 #[derive(Clone)]
 pub struct AnnouncedProducer {

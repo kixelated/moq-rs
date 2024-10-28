@@ -1,4 +1,4 @@
-use crate::{catalog, media};
+use crate::catalog;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -11,8 +11,8 @@ pub enum Error {
 	#[error("mp4 error: {0}")]
 	Mp4(#[from] mp4_atom::Error),
 
-	#[error("media error: {0}")]
-	Media(#[from] media::Error),
+	#[error("karp error: {0}")]
+	Media(#[from] crate::Error),
 
 	#[error("missing tracks")]
 	MissingTracks,
