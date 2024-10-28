@@ -22,7 +22,7 @@ impl Resumable {
 			.unwrap()
 			.as_secs();
 
-		let path = self.path.clone().push(&id.to_string());
+		let path = self.path.clone().push(id.to_string());
 		Broadcast::new(self.session.clone(), path)
 	}
 }
