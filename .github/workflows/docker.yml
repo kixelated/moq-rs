@@ -42,8 +42,8 @@ jobs:
           push: true
           target: moq-relay
           tags: |
-            - ${{env.REGISTRY}}/moq-relay:${{ steps.version.outputs.version }}
-            - ${{env.REGISTRY}}/moq-relay:latest
+            ${{env.REGISTRY}}/moq-relay:${{ steps.version.outputs.version }}
+            ${{env.REGISTRY}}/moq-relay:latest
           platforms: linux/amd64,linux/arm64
 
   deploy-karp:
@@ -80,8 +80,8 @@ jobs:
           push: true
           target: moq-karp
           tags: |
-            - ${{env.REGISTRY}}/moq-karp:${{ steps.version.outputs.version }}
-            - ${{env.REGISTRY}}/moq-karp:latest
+            ${{env.REGISTRY}}/moq-karp:${{ steps.version.outputs.version }}
+            ${{env.REGISTRY}}/moq-karp:latest
           platforms: linux/amd64,linux/arm64
 
       # moq-bbb also includes ffmpeg and a script
@@ -92,8 +92,8 @@ jobs:
           push: true
           target: moq-bbb
           tags: |
-            - ${{env.REGISTRY}}/moq-bbb:${{ steps.version.outputs.version }}
-            - ${{env.REGISTRY}}/moq-bbb:latest
+            ${{env.REGISTRY}}/moq-bbb:${{ steps.version.outputs.version }}
+            ${{env.REGISTRY}}/moq-bbb:latest
           platforms: linux/amd64,linux/arm64
 
   deploy-clock:
@@ -130,6 +130,6 @@ jobs:
           push: true
           target: moq-clock
           tags: |
-            - ${{env.REGISTRY}}/moq-clock:${{ steps.version.outputs.version }}
-            - ${{env.REGISTRY}}/moq-clock:latest
+            ${{env.REGISTRY}}/moq-clock:${{ steps.version.outputs.version }}
+            ${{env.REGISTRY}}/moq-clock:latest
           platforms: linux/amd64,linux/arm64
