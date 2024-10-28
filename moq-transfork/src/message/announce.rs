@@ -46,18 +46,18 @@ impl Encode for AnnounceInterest {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum AnnounceStatus {
-	Active,
-	Ended,
+	Active = 1,
+	Ended = 0,
 }
 
 impl Decode for AnnounceStatus {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let status = u8::decode(r)?;
 		match status {
-			0 => Ok(Self::Active),
-			1 => Ok(Self::Ended),
+			0 => Ok(Self::Ended),
+			1 => Ok(Self::Active),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
@@ -65,9 +65,6 @@ impl Decode for AnnounceStatus {
 
 impl Encode for AnnounceStatus {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		match self {
-			Self::Active => 0u8.encode(w),
-			Self::Ended => 1u8.encode(w),
-		}
+		(*self as u8).encode(w)
 	}
 }

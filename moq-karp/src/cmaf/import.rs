@@ -90,7 +90,7 @@ impl Import {
 	}
 
 	fn init_video(trak: &Trak) -> Result<catalog::Video> {
-		let name = trak.tkhd.track_id.to_string();
+		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
 		let track = if let Some(avc1) = &stsd.avc1 {
@@ -171,7 +171,7 @@ impl Import {
 	}
 
 	fn init_audio(trak: &Trak) -> Result<catalog::Audio> {
-		let name = trak.tkhd.track_id.to_string();
+		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
 		let track = if let Some(mp4a) = &stsd.mp4a {
