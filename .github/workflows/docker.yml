@@ -1,9 +1,8 @@
-name: deploy
+name: docker
 
 on:
-  push:
-    tags:
-      - 'moq-*'
+  release:
+    types: [published]
 
 env:
   REGISTRY: docker.io/kixelated
