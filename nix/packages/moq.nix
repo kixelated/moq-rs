@@ -20,8 +20,11 @@ flake-utils.lib.eachDefaultSystem (system:
 
           nativeBuildInputs = [ pkg-config ];
 
-          buildInputs = [ libressl ];
-
+          buildInputs = [ libressl ]
+                        ++ lib.optionals stdenv.isDarwin [
+                          darwin.apple_sdk.frameworks.Security
+                          darwin.apple_sdk.frameworks.SystemConfiguration
+                        ];
           meta = {
             description = "Media Over QUIC relay server";
             mainProgram = "moq-relay";
