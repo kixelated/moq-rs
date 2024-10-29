@@ -5,12 +5,12 @@ use crate::{media::Frame, util::FuturesExt};
 
 use moq_transfork::coding::*;
 
-pub struct Video {
+pub struct Track {
 	track: moq_transfork::TrackConsumer,
 	group: Option<moq_transfork::GroupConsumer>,
 }
 
-impl Video {
+impl Track {
 	pub(super) fn new(track: moq_transfork::TrackConsumer) -> Self {
 		Self { track, group: None }
 	}

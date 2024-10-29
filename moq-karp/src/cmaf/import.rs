@@ -1,10 +1,14 @@
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Moof, Moov, Trak};
 use std::collections::HashMap;
 use tokio::io::AsyncRead;
 
 use super::{util, Error, Result};
-use crate::{catalog, media::Timestamp, produce};
+use crate::{
+	catalog,
+	media::{self, Timestamp},
+	produce,
+};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -15,8 +19,7 @@ pub struct Import {
 	broadcast: produce::Broadcast,
 
 	// A lookup to tracks in the broadcast
-	audio: HashMap<u32, produce::Audio>,
-	video: HashMap<u32, produce::Video>,
+	tracks: HashMap<u32, produce::Track>,
 
 	// The moov atom at the start of the file.
 	moov: Option<Moov>,
@@ -30,8 +33,7 @@ impl Import {
 		Self {
 			buffer: BytesMut::new(),
 			broadcast,
-			audio: HashMap::default(),
-			video: HashMap::default(),
+			tracks: HashMap::default(),
 			moov: None,
 			moof: None,
 		}
@@ -68,20 +70,20 @@ impl Import {
 			let track_id = trak.tkhd.track_id;
 			let handler = &trak.mdia.hdlr.handler;
 
-			match handler.as_ref() {
+			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					let video = self.broadcast.create_video(track)?;
-					self.video.insert(track_id, video);
+					self.broadcast.create_video(track)?
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					let audio = self.broadcast.create_audio(track)?;
-					self.audio.insert(track_id, audio);
+					self.broadcast.create_audio(track)?
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
+
+			self.tracks.insert(track_id, track);
 		}
 
 		self.moov = Some(moov);
@@ -228,30 +230,6 @@ impl Import {
 				self.init(moov)?;
 			}
 			Any::Moof(moof) => {
-				let track_id = util::frame_track_id(&moof)?;
-				let keyframe = util::frame_is_key(&moof);
-
-				if keyframe {
-					let moov = self.moov.as_ref().ok_or(Error::MissingBox(Moov::KIND))?;
-					let trak = moov
-						.trak
-						.iter()
-						.find(|trak| trak.tkhd.track_id == track_id)
-						.ok_or(Error::UnknownTrack)?;
-
-					// If this is a video track, start a new group for the keyframe.
-					if trak.mdia.hdlr.handler == b"vide".into() {
-						// Start a new group for the keyframe.
-						for track in self.video.values_mut() {
-							track.keyframe();
-						}
-
-						for track in self.audio.values_mut() {
-							track.segment();
-						}
-					}
-				}
-
 				if self.moof.is_some() {
 					// Two moof boxes in a row.
 					return Err(Error::DuplicateBox(Moof::KIND));
@@ -269,13 +247,14 @@ impl Import {
 
 				let timestamp = Timestamp::from_units(timestamp, timescale as _);
 
-				if let Some(video) = self.video.get_mut(&track_id) {
-					video.write(timestamp, mdat.data);
-				} else if let Some(audio) = self.audio.get_mut(&track_id) {
-					audio.write(timestamp, mdat.data);
-				} else {
-					return Err(Error::UnknownTrack);
-				}
+				let frame = media::Frame {
+					timestamp,
+					keyframe: util::frame_is_key(&moof),
+					payload: Bytes::from(mdat.data),
+				};
+
+				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
+				track.write(frame);
 			}
 
 			_ => {
