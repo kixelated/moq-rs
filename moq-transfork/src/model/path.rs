@@ -89,9 +89,3 @@ impl<S: ToString> FromIterator<S> for Path {
 		Self::new(iter)
 	}
 }
-
-impl<T: ToString> From<Vec<T>> for Path {
-	fn from(parts: Vec<T>) -> Self {
-		parts.into()
-	}
-}

@@ -13,6 +13,7 @@ impl Encode for Path {
 
 impl Decode for Path {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		Vec::<String>::decode(r).map(Into::into)
+		let parts = Vec::<String>::decode(r)?;
+		Ok(Self::new(parts))
 	}
 }
