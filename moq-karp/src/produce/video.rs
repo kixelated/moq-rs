@@ -19,7 +19,7 @@ impl Video {
 		}
 	}
 
-	pub fn write(&mut self, timestamp: Timestamp, payload: Bytes) {
+	pub fn write<B: Into<Bytes>>(&mut self, timestamp: Timestamp, payload: B) {
 		let timestamp = timestamp.as_micros();
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
 		timestamp.encode(&mut header);
@@ -29,6 +29,7 @@ impl Video {
 			None => self.inner.append_group(),
 		};
 
+		let payload = payload.into();
 		let mut frame = group.create_frame(header.len() + payload.len());
 		frame.write(header.freeze());
 		frame.write(payload);

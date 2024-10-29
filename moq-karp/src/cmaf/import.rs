@@ -112,7 +112,6 @@ impl Import {
 				}
 				.into(),
 				description: description.freeze(),
-				layers: vec![],
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
@@ -159,7 +158,6 @@ impl Import {
 					width: vp09.width,
 					height: vp09.height,
 				},
-				layers: vec![],
 				bitrate: None,
 			}
 		} else {
@@ -269,12 +267,12 @@ impl Import {
 				let timestamp = util::frame_timestamp(&moof)?;
 				let timescale = util::frame_timescale(moov, &moof)?;
 
-				let timestamp = Timestamp::from_scale(timestamp, timescale as _);
+				let timestamp = Timestamp::from_units(timestamp, timescale as _);
 
 				if let Some(video) = self.video.get_mut(&track_id) {
-					video.write(timestamp, mdat.data.into());
+					video.write(timestamp, mdat.data);
 				} else if let Some(audio) = self.audio.get_mut(&track_id) {
-					audio.write(timestamp, mdat.data.into());
+					audio.write(timestamp, mdat.data);
 				} else {
 					return Err(Error::UnknownTrack);
 				}

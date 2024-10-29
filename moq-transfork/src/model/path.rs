@@ -6,9 +6,10 @@ pub struct Path {
 }
 
 impl Path {
-	pub fn new(parts: Vec<String>) -> Path {
-		Path {
-			parts: parts.into_iter().map(Arc::new).collect(),
+	/// Creates a new `Path` from any collection of elements that can be converted to strings.
+	pub fn new<T: ToString, I: IntoIterator<Item = T>>(parts: I) -> Self {
+		Self {
+			parts: parts.into_iter().map(|s| Arc::new(s.to_string())).collect(),
 		}
 	}
 
@@ -80,5 +81,17 @@ impl fmt::Debug for Path {
 			write!(f, "{:?}", part)?;
 		}
 		write!(f, "]")
+	}
+}
+
+impl<S: ToString> FromIterator<S> for Path {
+	fn from_iter<T: IntoIterator<Item = S>>(iter: T) -> Self {
+		Self::new(iter)
+	}
+}
+
+impl<T: ToString> From<Vec<T>> for Path {
+	fn from(parts: Vec<T>) -> Self {
+		parts.into()
 	}
 }

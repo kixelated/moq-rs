@@ -27,20 +27,4 @@ pub struct Video {
 
 	#[serde(default)]
 	pub bitrate: Option<u32>,
-
-	// Additional enhancement layers
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub layers: Vec<VideoLayer>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct VideoLayer {
-	/// The name of the track, relative to the broadcast path.
-	pub name: String,
-
-	/// The priority of the track, relative to other tracks in the same broadcast.
-	pub priority: i8,
-
-	/// The resolution of this layer.
-	pub resolution: Dimensions,
 }
