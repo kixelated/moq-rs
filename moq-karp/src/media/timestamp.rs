@@ -1,6 +1,6 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp {
-	pub micros: u64,
+	micros: u64,
 }
 
 impl Timestamp {
@@ -18,9 +18,9 @@ impl Timestamp {
 		}
 	}
 
-	pub fn from_scale(base: u64, scale: u64) -> Self {
+	pub fn from_units(value: u64, base: u64) -> Self {
 		Self {
-			micros: base * 1_000_000 / scale,
+			micros: (value * 1_000_000) / base,
 		}
 	}
 
@@ -36,7 +36,7 @@ impl Timestamp {
 		self.micros / 1_000_000
 	}
 
-	pub fn to_scale(&self, scale: u64) -> u64 {
-		self.micros * scale / 1_000_000
+	pub fn as_units(&self, base: u64) -> u64 {
+		(self.micros * base) / 1_000_000
 	}
 }

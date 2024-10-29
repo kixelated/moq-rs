@@ -5,7 +5,7 @@ use crate::{
 	Error,
 };
 
-use super::{Audio, Video};
+use super::Track;
 
 pub struct Broadcast {
 	pub path: Path,
@@ -26,7 +26,7 @@ impl Broadcast {
 		}
 	}
 
-	pub fn create_video(&mut self, info: catalog::Video) -> Result<Video, Error> {
+	pub fn create_video(&mut self, info: catalog::Video) -> Result<Track, Error> {
 		let (producer, consumer) = moq_transfork::Track {
 			path: self.path.clone().push(&info.track.name),
 			priority: info.track.priority,
@@ -34,7 +34,7 @@ impl Broadcast {
 		}
 		.produce();
 
-		let track = Video::new(producer);
+		let track = Track::new(producer);
 
 		self.catalog.video.push(info);
 		self.tracks.push(consumer);
@@ -44,7 +44,7 @@ impl Broadcast {
 		Ok(track)
 	}
 
-	pub fn create_audio(&mut self, info: catalog::Audio) -> Result<Audio, Error> {
+	pub fn create_audio(&mut self, info: catalog::Audio) -> Result<Track, Error> {
 		let (producer, consumer) = moq_transfork::Track {
 			path: self.path.clone().push(&info.track.name),
 			priority: info.track.priority,
@@ -52,7 +52,7 @@ impl Broadcast {
 		}
 		.produce();
 
-		let track = Audio::new(producer);
+		let track = Track::new(producer);
 
 		self.catalog.audio.push(info);
 		self.tracks.push(consumer);

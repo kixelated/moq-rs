@@ -6,7 +6,6 @@ use url::Url;
 
 use moq_karp::{cmaf, produce};
 use moq_native::quic;
-use moq_transfork::*;
 
 #[derive(Parser, Clone)]
 struct Cli {
@@ -53,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(&cli.url).await?;
 	let session = moq_transfork::Session::connect(session).await?;
 
-	let path = Path::new(cli.path);
+	let path = moq_transfork::Path::new(cli.path);
 
 	match cli.command {
 		Command::Publish => publish(session, path).await,
@@ -62,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument("publish", skip_all, err, fields(?path))]
-async fn publish(mut session: moq_transfork::Session, path: Path) -> anyhow::Result<()> {
+async fn publish(mut session: moq_transfork::Session, path: moq_transfork::Path) -> anyhow::Result<()> {
 	let broadcast = produce::Resumable::new(path).broadcast();
 
 	let mut input = tokio::io::stdin();

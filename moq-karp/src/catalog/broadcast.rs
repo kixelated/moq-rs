@@ -130,7 +130,6 @@ mod test {
 					width: 1280,
 					height: 720,
 				},
-				layers: Default::default(),
 				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {

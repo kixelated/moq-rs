@@ -61,7 +61,7 @@ impl Publisher {
 	pub fn announce(&mut self, mut announced: AnnouncedConsumer) {
 		let mut downstream = self.announced.clone();
 
-		tokio::spawn(async move {
+		spawn(async move {
 			while let Some(announced) = announced.next().await {
 				match announced {
 					Announced::Active(path) => downstream.announce(path.clone()),

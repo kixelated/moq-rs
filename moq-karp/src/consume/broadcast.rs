@@ -3,7 +3,7 @@ use crate::{catalog, Error};
 use moq_transfork::{Path, Session};
 use tokio::sync::mpsc;
 
-use super::{Audio, Video};
+use super::Track;
 
 #[derive(Clone)]
 pub struct Broadcast {
@@ -41,7 +41,7 @@ impl Broadcast {
 	}
 
 	// This API could be improved
-	pub fn video(&self, name: &str) -> Result<Video, Error> {
+	pub fn video(&self, name: &str) -> Result<Track, Error> {
 		let info = self.find_video(name)?;
 
 		let track = moq_transfork::Track {
@@ -51,10 +51,10 @@ impl Broadcast {
 		};
 		let track = self.session.subscribe(track);
 
-		Ok(Video::new(track))
+		Ok(Track::new(track))
 	}
 
-	pub fn audio(&self, name: &str) -> Result<Audio, Error> {
+	pub fn audio(&self, name: &str) -> Result<Track, Error> {
 		let info = self.find_audio(name)?;
 
 		let track = moq_transfork::Track {
@@ -64,7 +64,7 @@ impl Broadcast {
 		};
 		let track = self.session.subscribe(track);
 
-		Ok(Audio::new(track))
+		Ok(Track::new(track))
 	}
 
 	fn find_audio(&self, name: &str) -> Result<&catalog::Audio, Error> {

@@ -8,3 +8,6 @@ mod error;
 pub use error::*;
 
 pub(crate) mod util;
+
+// export the moq-transfork version in use
+pub use moq_transfork;
