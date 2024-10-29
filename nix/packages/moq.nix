@@ -1,20 +1,22 @@
 { self, nixpkgs, flake-utils, ... }:
 flake-utils.lib.eachDefaultSystem (system:
   let
-    pkgs = import nixpkgs {
-      inherit system;
-    };
+    pkgs = nixpkgs.legacyPackages.${system};
+    moq-relay-version = (pkgs.lib.importTOML ../../moq-relay/Cargo.toml).package.version;
   in
     with pkgs;
     {
       packages = rec {
         moq-relay = rustPlatform.buildRustPackage rec {
           pname = "moq-relay";
-          version = "0.6.7";
+          version = moq-relay-version;
 
           src = ../../.;
 
-          cargoHash = "sha256-kOAulF1OqR1VBKSy15RURJEk2ZpgZIFxPwrr03RbvPk=";
+          cargoLock = {
+            lockFile = ../../Cargo.lock;
+            allowBuiltinFetchGit = true;
+          };
 
           nativeBuildInputs = [ pkg-config ];
 
