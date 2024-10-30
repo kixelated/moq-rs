@@ -16,7 +16,7 @@ use super::{AnnouncedConsumer, Reader, Stream};
 pub(super) struct Subscriber {
 	session: web_transport::Session,
 
-	tracks: Lock<HashMap<Path, TrackConsumer>>,
+	tracks: Lock<HashMap<Path, TrackProducer>>,
 	subscribes: Lock<HashMap<u64, TrackProducer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
@@ -106,8 +106,8 @@ impl Subscriber {
 
 		// Check if we can deduplicate this subscription
 		match self.tracks.lock().entry(path.clone()) {
-			hash_map::Entry::Occupied(entry) => return entry.get().clone(),
-			hash_map::Entry::Vacant(entry) => entry.insert(reader.clone()),
+			hash_map::Entry::Occupied(entry) => return entry.get().subscribe(),
+			hash_map::Entry::Vacant(entry) => entry.insert(writer.clone()),
 		};
 
 		let mut this = self.clone();
@@ -148,7 +148,7 @@ impl Subscriber {
 		// TODO use the response to correctly populate the track info
 		let _response: message::Info = stream.reader.decode().await?;
 
-		tracing::info!("ok");
+		tracing::info!("active");
 
 		self.subscribes.lock().insert(id, track.clone());
 
@@ -168,6 +168,8 @@ impl Subscriber {
 				_ = track.unused() => break
 			};
 		}
+
+		tracing::info!("done");
 
 		Ok(())
 	}

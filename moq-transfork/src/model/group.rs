@@ -87,6 +87,11 @@ impl GroupProducer {
 		self.state.borrow().frames.len()
 	}
 
+	/// Create a new consumer for the group.
+	pub fn subscribe(&self) -> GroupConsumer {
+		GroupConsumer::new(self.state.subscribe(), self.info.clone())
+	}
+
 	/// Close the stream with an error.
 	pub fn close(self, err: Error) {
 		self.state.send_modify(|state| {
