@@ -65,6 +65,11 @@ impl FrameProducer {
 	pub fn close(self, err: Error) {
 		self.state.send_modify(|state| state.closed = Err(err));
 	}
+
+	/// Create a new consumer for the frame.
+	pub fn subscribe(&self) -> FrameConsumer {
+		FrameConsumer::new(self.state.subscribe(), self.info.clone())
+	}
 }
 
 impl ops::Deref for FrameProducer {

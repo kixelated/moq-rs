@@ -196,6 +196,12 @@ impl TrackProducer {
 		});
 	}
 
+	/// Create a new consumer for the track.
+	pub fn subscribe(&self) -> TrackConsumer {
+		TrackConsumer::new(self.state.subscribe(), self.info.clone())
+	}
+
+	/// Block until there are no active consumers.
 	pub async fn unused(&self) {
 		self.state.closed().await
 	}
