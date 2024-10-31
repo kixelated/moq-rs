@@ -18,7 +18,7 @@ moq-transfork = { path = "../moq-transfork", version = "0.4" }
 
 url = "2"
 futures = "0.3"
-bytes = "1.7"
+bytes = "1.8"
 hex = "0.4"
 
 mp4-atom = { version = "0.3", features = ["tokio", "bytes"] }
@@ -32,7 +32,7 @@ tracing = "0.1"
 lazy_static = "1"
 regex = "1"
 
-tokio = { version = "1.39", features = ["macros"] }
+tokio = { version = "1.41", features = ["macros"] }
 
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.5", optional = true }
