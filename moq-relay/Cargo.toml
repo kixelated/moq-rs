@@ -27,7 +27,7 @@ axum = { version = "0.7", features = ["tokio"] }
 hyper-serve = { version = "0.6", features = [
 	"tls-rustls",
 ] } # fork of axum-server
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors"] }
 
 # Error handling
 anyhow = { version = "1", features = ["backtrace"] }

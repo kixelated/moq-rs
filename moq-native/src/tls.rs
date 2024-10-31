@@ -66,8 +66,15 @@ impl Args {
 		let mut roots = RootCertStore::empty();
 
 		if self.root.is_empty() {
+			let native = rustls_native_certs::load_native_certs();
+
+			// Log any errors that occurred while loading the native root certificates.
+			for err in native.errors {
+				tracing::warn!(?err, "failed to load root cert");
+			}
+
 			// Add the platform's native root certificates.
-			for cert in rustls_native_certs::load_native_certs().context("could not load platform certs")? {
+			for cert in native.certs {
 				roots.add(cert).context("failed to add root cert")?;
 			}
 		} else {
