@@ -46,3 +46,6 @@ pub use session::*;
 
 /// The ALPN used when connecting via QUIC directly.
 pub const ALPN: &[u8] = b"moqf-02";
+
+/// Export the web_transport crate.
+pub use web_transport;
