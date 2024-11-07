@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.7.0...moq-karp-v0.7.1) - 2024-11-07
+
+### Other
+
+- Add some more/better logging. ([#227](https://github.com/kixelated/moq-rs/pull/227))
+- Fix a bug with partial mdat chunks. ([#226](https://github.com/kixelated/moq-rs/pull/226))
+- Auto upgrade dependencies with release-plz ([#224](https://github.com/kixelated/moq-rs/pull/224))
+
 ## [0.7.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.6.0...moq-karp-v0.7.0) - 2024-10-29
 
 ### Other

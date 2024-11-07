@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.7...moq-relay-v0.6.8) - 2024-11-07
+
+### Other
+
+- Auto upgrade dependencies with release-plz ([#224](https://github.com/kixelated/moq-rs/pull/224))
+
 ## [0.6.7](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.6...moq-relay-v0.6.7) - 2024-10-28
 
 ### Other
