@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.4.2...moq-transfork-v0.4.3) - 2024-11-07
+
+### Other
+
+- Re-export the web_transport crate. ([#225](https://github.com/kixelated/moq-rs/pull/225))
+- Auto upgrade dependencies with release-plz ([#224](https://github.com/kixelated/moq-rs/pull/224))
+- Fix subscription deduplication. ([#223](https://github.com/kixelated/moq-rs/pull/223))
+
 ## [0.4.2](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.4.1...moq-transfork-v0.4.2) - 2024-10-29
 
 ### Other
