@@ -47,21 +47,29 @@ impl Import {
 			self.buffer = buffer.split_off(n);
 		} else {
 			let n = self.parse_inner(data)?;
-			self.buffer = data[n..].into();
+			self.buffer = BytesMut::from(&data[n..]);
 		}
 
 		Ok(())
 	}
 
 	fn parse_inner<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize> {
-		let mut cursor = std::io::Cursor::new(data);
+		let mut remain = data.as_ref();
 
-		while let Some(atom) = mp4_atom::Any::decode_maybe(&mut cursor)? {
-			self.process(atom)?;
+		loop {
+			let mut peek = remain;
+
+			match mp4_atom::Any::decode_maybe(&mut peek)? {
+				Some(atom) => {
+					remain = peek;
+					self.process(atom)?;
+				}
+				None => break,
+			}
 		}
 
 		// Return the number of bytes consumed
-		Ok(cursor.position() as usize)
+		Ok(data.as_ref().len() - remain.len())
 	}
 
 	fn init(&mut self, moov: Moov) -> Result<()> {
