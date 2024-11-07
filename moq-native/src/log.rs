@@ -26,7 +26,11 @@ impl Args {
 	}
 
 	pub fn init(&self) {
-		let filter = EnvFilter::new(self.level().to_string()).add_directive("h2=warn".parse().unwrap());
+		let filter = EnvFilter::new(self.level().to_string())
+			.add_directive("h2=warn".parse().unwrap())
+			.add_directive("quinn=info".parse().unwrap())
+			.add_directive("tracing::span=off".parse().unwrap())
+			.add_directive("tracing::span::active=off".parse().unwrap());
 
 		let logger = tracing_subscriber::FmtSubscriber::builder()
 			.with_writer(std::io::stderr)

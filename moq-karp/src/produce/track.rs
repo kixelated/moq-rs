@@ -22,6 +22,12 @@ impl Track {
 			_ => self.inner.append_group(),
 		};
 
+		if frame.keyframe {
+			tracing::debug!(group = ?group.sequence, ?frame, "encoded keyframe");
+		} else {
+			tracing::trace!(group = ?group.sequence, index = ?group.frame_count(), ?frame, "encoded frame");
+		}
+
 		let mut chunked = group.create_frame(header.len() + frame.payload.len());
 		chunked.write(header.freeze());
 		chunked.write(frame.payload);

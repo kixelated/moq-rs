@@ -32,7 +32,20 @@ impl Track {
 				biased;
 				Some(res) = self.group.as_mut().unwrap().read_frame().transpose() => {
 					let raw = res?;
+
 					let frame =  self.decode_frame(raw, keyframe)?;
+
+					// Get some information about the group for logging
+					let group = self.group.as_ref().unwrap();
+					let index = group.frame_index() - 1;
+					let group = group.sequence;
+
+					if keyframe {
+						tracing::debug!(?frame, ?group, "decoded keyframe");
+					} else {
+						tracing::trace!(?frame, ?group, ?index, "decoded frame");
+					}
+
 					return Ok(Some(frame));
 				},
 				Some(res) = self.track.next_group().transpose() => {

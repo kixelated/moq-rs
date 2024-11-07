@@ -264,9 +264,9 @@ impl Import {
 				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
 				track.write(frame);
 			}
-
 			_ => {
 				// Skip unknown atoms
+				tracing::warn!(?atom, "skipping")
 			}
 		};
 
