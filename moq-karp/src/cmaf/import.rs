@@ -234,7 +234,7 @@ impl Import {
 			let _ = buffer.split_to(n);
 		}
 
-		if buffer.len() > 0 {
+		if !buffer.is_empty() {
 			return Err(Error::TrailingData);
 		}
 
@@ -298,8 +298,7 @@ impl Import {
 			let trex = moov
 				.mvex
 				.as_ref()
-				.map(|mvex| mvex.trex.iter().find(|trex| trex.track_id == track_id))
-				.flatten();
+				.and_then(|mvex| mvex.trex.iter().find(|trex| trex.track_id == track_id));
 
 			// The moov contains some defaults
 			let default_sample_duration = trex.map(|trex| trex.default_sample_duration).unwrap_or_default();

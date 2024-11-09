@@ -3,13 +3,14 @@ use super::*;
 use derive_more::{Display, From};
 use std::str::FromStr;
 
-#[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Display, From)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, From)]
 pub enum AudioCodec {
-	Opus,
 	AAC(AAC),
 
-	#[serde(untagged)]
+	#[display("opus")]
+	Opus,
+
+	#[display("{_0}")]
 	Unknown(String),
 }
 
