@@ -361,8 +361,8 @@ impl Import {
 					}
 				} else {
 					match self.last_keyframe.get(&track_id) {
-						// Force an audio keyframe at least once per second
-						Some(prev) => timestamp - *prev > Timestamp::from_seconds(1),
+						// Force an audio keyframe at least every 10 seconds, but ideally at video keyframes
+						Some(prev) => timestamp - *prev > Timestamp::from_seconds(10),
 						None => true,
 					}
 				};
@@ -393,10 +393,10 @@ impl Import {
 		}
 
 		if let (Some(min), Some(max)) = (min_timestamp, max_timestamp) {
-			let diff = max.as_micros() as i64 - min.as_micros() as i64;
+			let diff = max - min;
 
-			if diff > 1000 {
-				tracing::warn!("fMP4 introduced {}ms of latency", diff / 1_000);
+			if diff > Timestamp::from_millis(1) {
+				tracing::warn!("fMP4 introduced {:?} of latency", diff);
 			}
 		}
 
