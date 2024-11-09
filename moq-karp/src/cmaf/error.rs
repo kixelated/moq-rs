@@ -53,6 +53,9 @@ pub enum Error {
 	#[error("closed")]
 	Closed,
 
+	#[error("invalid offset")]
+	InvalidOffset,
+
 	#[error("unsupported track: {0}")]
 	UnsupportedTrack(&'static str),
 

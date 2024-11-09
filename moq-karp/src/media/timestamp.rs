@@ -1,4 +1,26 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+use derive_more::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign, Sum};
+
+#[derive(
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Default,
+	Add,
+	AddAssign,
+	Sub,
+	SubAssign,
+	Mul,
+	MulAssign,
+	Div,
+	DivAssign,
+	Rem,
+	RemAssign,
+	Sum,
+)]
 pub struct Timestamp {
 	micros: u64,
 }

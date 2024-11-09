@@ -39,6 +39,10 @@ moq-native = { path = "../moq-native", version = "0.5", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
 
+[dependencies.derive_more]
+version = "1"
+features = ["add", "add_assign", "mul", "mul_assign", "sum", "from", "display"]
+
 [features]
 cli = ["moq-native", "tokio/full", "clap", "anyhow"]
 default = ["cli"]

@@ -1,8 +1,22 @@
+mod av1;
+mod codec;
+mod h264;
+mod h265;
+mod vp8;
+mod vp9;
+
+pub use av1::*;
+pub use codec::*;
+pub use h264::*;
+pub use h265::*;
+pub use vp8::*;
+pub use vp9::*;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
-use super::{Dimensions, Track, VideoCodec};
+use super::{Dimensions, Track};
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]

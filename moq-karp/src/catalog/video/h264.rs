@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::CodecError;
+use crate::catalog::Error;
 
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -12,10 +12,6 @@ pub struct H264 {
 	pub level: u8,
 }
 
-impl H264 {
-	pub const PREFIX: &'static str = "avc1";
-}
-
 impl fmt::Display for H264 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "avc1.{:02x}{:02x}{:02x}", self.profile, self.constraints, self.level)
@@ -23,17 +19,17 @@ impl fmt::Display for H264 {
 }
 
 impl FromStr for H264 {
-	type Err = CodecError;
+	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut parts = s.split('.');
 		if parts.next() != Some("avc1") {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
-		let part = parts.next().ok_or(CodecError::Invalid)?;
+		let part = parts.next().ok_or(Error::InvalidCodec)?;
 		if part.len() != 6 {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
 		Ok(Self {
