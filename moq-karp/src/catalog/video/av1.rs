@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::CodecError;
+use crate::catalog::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AV1 {
@@ -74,10 +74,10 @@ lazy_static::lazy_static! {
 }
 
 impl std::str::FromStr for AV1 {
-	type Err = CodecError;
+	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let captures = AV1_REGEX.captures(s).ok_or(CodecError::Invalid)?;
+		let captures = AV1_REGEX.captures(s).ok_or(Error::InvalidCodec)?;
 
 		let mut av1 = AV1 {
 			profile: u8::from_str(&captures["profile"])?,

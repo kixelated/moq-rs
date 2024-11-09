@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::CodecError;
+use crate::catalog::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VP9 {
@@ -12,10 +12,6 @@ pub struct VP9 {
 	pub transfer_characteristics: u8,
 	pub matrix_coefficients: u8,
 	pub full_range: bool,
-}
-
-impl VP9 {
-	pub const PREFIX: &'static str = "vp09";
 }
 
 // vp09.<profile>.<level>.<bitDepth>.<chromaSubsampling>.
@@ -48,18 +44,18 @@ impl std::fmt::Display for VP9 {
 }
 
 impl std::str::FromStr for VP9 {
-	type Err = CodecError;
+	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let parts = s
 			.strip_prefix("vp09.")
-			.ok_or(CodecError::Invalid)?
+			.ok_or(Error::InvalidCodec)?
 			.split('.')
 			.map(u8::from_str)
 			.collect::<Result<Vec<_>, _>>()?;
 
 		if parts.len() < 3 {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
 		let mut vp9 = VP9 {
@@ -72,7 +68,7 @@ impl std::str::FromStr for VP9 {
 		if parts.len() == 3 {
 			return Ok(vp9);
 		} else if parts.len() != 8 {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
 		vp9.chroma_subsampling = parts[3];

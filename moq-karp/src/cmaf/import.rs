@@ -1,9 +1,9 @@
 use bytes::{Bytes, BytesMut};
-use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Moof, Moov, Trak};
+use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::collections::HashMap;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
-use super::{util, Error, Result};
+use super::{Error, Result};
 use crate::{
 	catalog,
 	media::{self, Timestamp},
@@ -21,11 +21,15 @@ pub struct Import {
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, produce::Track>,
 
+	// The timestamp of the last keyframe for each track
+	last_keyframe: HashMap<u32, Timestamp>,
+
 	// The moov atom at the start of the file.
 	moov: Option<Moov>,
 
 	// The latest moof header
 	moof: Option<Moof>,
+	moof_size: usize,
 }
 
 impl Import {
@@ -34,8 +38,10 @@ impl Import {
 			buffer: BytesMut::new(),
 			broadcast,
 			tracks: HashMap::default(),
+			last_keyframe: HashMap::default(),
 			moov: None,
 			moof: None,
+			moof_size: 0,
 		}
 	}
 
@@ -61,8 +67,8 @@ impl Import {
 
 			match mp4_atom::Any::decode_maybe(&mut peek)? {
 				Some(atom) => {
+					self.process(atom, remain.len() - peek.len())?;
 					remain = peek;
-					self.process(atom)?;
 				}
 				None => break,
 			}
@@ -220,15 +226,22 @@ impl Import {
 	}
 
 	// Read the media from a stream, processing moof and mdat atoms.
-	pub async fn read_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
-		while let Some(atom) = Option::<mp4_atom::Any>::read_from(input).await? {
-			self.process(atom)?;
+	pub async fn read_from<T: AsyncReadExt + Unpin>(&mut self, input: &mut T) -> Result<()> {
+		let mut buffer = BytesMut::new();
+
+		while input.read_buf(&mut buffer).await? > 0 {
+			let n = self.parse_inner(&buffer)?;
+			let _ = buffer.split_to(n);
+		}
+
+		if !buffer.is_empty() {
+			return Err(Error::TrailingData);
 		}
 
 		Ok(())
 	}
 
-	fn process(&mut self, atom: mp4_atom::Any) -> Result<()> {
+	fn process(&mut self, atom: mp4_atom::Any, size: usize) -> Result<()> {
 		match atom {
 			Any::Ftyp(_) | Any::Styp(_) => {
 				// Skip
@@ -244,31 +257,148 @@ impl Import {
 				}
 
 				self.moof = Some(moof);
+				self.moof_size = size;
 			}
 			Any::Mdat(mdat) => {
-				// Get the track ID from the previous moof.
-				let moof = self.moof.take().ok_or(Error::MissingBox(Moof::KIND))?;
-				let moov = self.moov.as_ref().ok_or(Error::MissingBox(Moov::KIND))?;
-				let track_id = util::frame_track_id(&moof)?;
-				let timestamp = util::frame_timestamp(&moof)?;
-				let timescale = util::frame_timescale(moov, &moof)?;
-
-				let timestamp = Timestamp::from_units(timestamp, timescale as _);
-
-				let frame = media::Frame {
-					timestamp,
-					keyframe: util::frame_is_key(&moof),
-					payload: Bytes::from(mdat.data),
-				};
-
-				let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
-				track.write(frame);
+				// Extract the samples from the mdat atom.
+				let header_size = size - mdat.data.len();
+				self.extract(mdat, header_size)?;
 			}
 			_ => {
 				// Skip unknown atoms
 				tracing::warn!(?atom, "skipping")
 			}
 		};
+
+		Ok(())
+	}
+
+	// Extract all frames out of an mdat atom.
+	fn extract(&mut self, mdat: Mdat, header_size: usize) -> Result<()> {
+		let mdat = Bytes::from(mdat.data);
+		let moov = self.moov.as_ref().ok_or(Error::MissingBox(Moov::KIND))?;
+		let moof = self.moof.take().ok_or(Error::MissingBox(Moof::KIND))?;
+
+		// Keep track of the minimum and maximum timestamp so we can scold the user.
+		// Ideally these should both be the same value.
+		let mut min_timestamp = None;
+		let mut max_timestamp = None;
+
+		// Loop over all of the traf boxes in the moof.
+		for traf in &moof.traf {
+			let track_id = traf.tfhd.track_id;
+			let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
+
+			// Find the track information in the moov
+			let trak = moov
+				.trak
+				.iter()
+				.find(|trak| trak.tkhd.track_id == track_id)
+				.ok_or(Error::UnknownTrack)?;
+			let trex = moov
+				.mvex
+				.as_ref()
+				.and_then(|mvex| mvex.trex.iter().find(|trex| trex.track_id == track_id));
+
+			// The moov contains some defaults
+			let default_sample_duration = trex.map(|trex| trex.default_sample_duration).unwrap_or_default();
+			let default_sample_size = trex.map(|trex| trex.default_sample_size).unwrap_or_default();
+			let default_sample_flags = trex.map(|trex| trex.default_sample_flags).unwrap_or_default();
+
+			let tfhd = &traf.tfhd;
+			let trun = traf.trun.as_ref().ok_or(Error::MissingBox(Trun::KIND))?;
+
+			let tfdt = traf.tfdt.as_ref().ok_or(Error::MissingBox(Tfdt::KIND))?;
+			let mut dts = tfdt.base_media_decode_time;
+			let timescale = trak.mdia.mdhd.timescale;
+
+			let mut offset = tfhd.base_data_offset.unwrap_or_default() as usize;
+
+			if let Some(data_offset) = trun.data_offset {
+				// This is relative to the start of the MOOF, not the MDAT.
+				// Note: The trun data offset can be negative, but... that's not supported here.
+				let data_offset: usize = data_offset.try_into().map_err(|_| Error::InvalidOffset)?;
+				if data_offset < self.moof_size {
+					return Err(Error::InvalidOffset);
+				}
+
+				offset += data_offset - self.moof_size - header_size;
+			}
+
+			for entry in &trun.entries {
+				// Use the moof defaults if the sample doesn't have its own values.
+				let flags = entry
+					.flags
+					.unwrap_or(tfhd.default_sample_flags.unwrap_or(default_sample_flags));
+				let duration = entry
+					.duration
+					.unwrap_or(tfhd.default_sample_duration.unwrap_or(default_sample_duration));
+				let size = entry
+					.size
+					.unwrap_or(tfhd.default_sample_size.unwrap_or(default_sample_size)) as usize;
+
+				let pts = dts as i64 + entry.cts.unwrap_or_default() as i64;
+				let timestamp = Timestamp::from_units(pts as u64, timescale as _);
+
+				if offset + size > mdat.len() {
+					return Err(Error::InvalidOffset);
+				}
+
+				let keyframe = if trak.mdia.hdlr.handler == b"vide".into() {
+					// https://chromium.googlesource.com/chromium/src/media/+/master/formats/mp4/track_run_iterator.cc#177
+					let keyframe = (flags >> 24) & 0x3 == 0x2; // kSampleDependsOnNoOther
+					let non_sync = (flags >> 16) & 0x1 == 0x1; // kSampleIsNonSyncSample
+
+					if keyframe && !non_sync {
+						for audio in moov.trak.iter().filter(|t| t.mdia.hdlr.handler == b"soun".into()) {
+							// Force an audio keyframe on video keyframes
+							self.last_keyframe.remove(&audio.tkhd.track_id);
+						}
+
+						true
+					} else {
+						false
+					}
+				} else {
+					match self.last_keyframe.get(&track_id) {
+						// Force an audio keyframe at least once per second
+						Some(prev) => timestamp - *prev > Timestamp::from_seconds(1),
+						None => true,
+					}
+				};
+
+				if keyframe {
+					self.last_keyframe.insert(track_id, timestamp);
+				}
+
+				let payload = mdat.slice(offset..(offset + size));
+
+				let frame = media::Frame {
+					timestamp,
+					keyframe,
+					payload,
+				};
+				track.write(frame);
+
+				dts += duration as u64;
+				offset += size;
+
+				if timestamp >= max_timestamp.unwrap_or_default() {
+					max_timestamp = Some(timestamp);
+				}
+				if timestamp <= min_timestamp.unwrap_or_default() {
+					min_timestamp = Some(timestamp);
+				}
+			}
+		}
+
+		if let (Some(min), Some(max)) = (min_timestamp, max_timestamp) {
+			let diff = max.as_micros() as i64 - min.as_micros() as i64;
+
+			if diff > 1000 {
+				tracing::warn!("fMP4 introduced {}ms of latency", diff / 1_000);
+			}
+		}
 
 		Ok(())
 	}

@@ -2,17 +2,13 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::CodecError;
+use crate::catalog::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H265 {
 	pub profile: u8,
 	pub constraints: u8,
 	pub level: u8,
-}
-
-impl H265 {
-	pub const PREFIX: &'static str = "hev1";
 }
 
 impl fmt::Display for H265 {
@@ -22,17 +18,17 @@ impl fmt::Display for H265 {
 }
 
 impl FromStr for H265 {
-	type Err = CodecError;
+	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut parts = s.split('.');
 		if parts.next() != Some("hev1") {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
-		let part = parts.next().ok_or(CodecError::Invalid)?;
+		let part = parts.next().ok_or(Error::InvalidCodec)?;
 		if part.len() != 6 {
-			return Err(CodecError::Invalid);
+			return Err(Error::InvalidCodec);
 		}
 
 		Ok(Self {

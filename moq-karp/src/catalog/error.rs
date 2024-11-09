@@ -1,5 +1,3 @@
-use super::CodecError;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
 	#[error("json error: {0}")]
@@ -11,8 +9,14 @@ pub enum Error {
 	#[error("empty catalog")]
 	Empty,
 
-	#[error("codec error: {0}")]
-	Codec(#[from] CodecError),
+	#[error("invalid codec")]
+	InvalidCodec,
+
+	#[error("unsupported codec")]
+	UnsupportedCodec,
+
+	#[error("expected int")]
+	ExpectedInt(#[from] std::num::ParseIntError),
 
 	#[error("hex error: {0}")]
 	Hex(#[from] hex::FromHexError),
