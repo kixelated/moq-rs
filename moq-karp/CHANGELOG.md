@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.8.0...moq-karp-v0.8.1) - 2024-11-10
+
+### Other
+
+- Remove default CLI feature.
+- Fix a few constants. ([#231](https://github.com/kixelated/moq-rs/pull/231))
+
 ## [0.8.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.7.1...moq-karp-v0.8.0) - 2024-11-09
 
 ### Other
