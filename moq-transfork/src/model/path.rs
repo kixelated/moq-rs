@@ -6,11 +6,8 @@ pub struct Path {
 }
 
 impl Path {
-	/// Creates a new `Path` from any collection of elements that can be converted to strings.
-	pub fn new<T: ToString, I: IntoIterator<Item = T>>(parts: I) -> Self {
-		Self {
-			parts: parts.into_iter().map(|s| Arc::new(s.to_string())).collect(),
-		}
+	pub const fn new() -> Self {
+		Self { parts: Vec::new() }
 	}
 
 	pub fn push<T: ToString>(mut self, part: T) -> Self {
@@ -86,6 +83,8 @@ impl fmt::Debug for Path {
 
 impl<S: ToString> FromIterator<S> for Path {
 	fn from_iter<T: IntoIterator<Item = S>>(iter: T) -> Self {
-		Self::new(iter)
+		Self {
+			parts: iter.into_iter().map(|t| t.to_string()).map(Arc::new).collect(),
+		}
 	}
 }
