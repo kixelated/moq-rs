@@ -176,13 +176,13 @@ mod test {
 		for path in &paths {
 			assert!(!producer.is_active(path));
 			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(&path));
+			assert!(producer.is_active(path));
 		}
 
 		// Make sure we get all of the paths only once.
 		while !paths.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(paths.remove(&res.active().unwrap()));
+			assert!(paths.remove(res.active().unwrap()));
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
@@ -200,7 +200,7 @@ mod test {
 		for path in &paths {
 			assert!(!producer.is_active(path));
 			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(&path));
+			assert!(producer.is_active(path));
 		}
 
 		// Subscribe after announcing.
@@ -209,7 +209,7 @@ mod test {
 		// Make sure we get all of the paths only once.
 		while !paths.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(paths.remove(&res.active().unwrap()));
+			assert!(paths.remove(res.active().unwrap()));
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
@@ -233,7 +233,7 @@ mod test {
 
 		while !expected.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(expected.remove(&res.active().unwrap()));
+			assert!(expected.remove(res.active().unwrap()));
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
