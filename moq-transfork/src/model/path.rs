@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Path {
 	parts: Vec<Arc<String>>,
 }
