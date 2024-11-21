@@ -23,7 +23,7 @@ impl Default for Origins {
 impl Origins {
 	pub fn new() -> Self {
 		Self {
-			unique: AnnouncedProducer::new(1024),
+			unique: AnnouncedProducer::new(),
 			routes: Default::default(),
 		}
 	}
