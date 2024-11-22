@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(&config.url).await?;
 	let mut session = moq_transfork::Session::connect(session).await?;
 
-	let path = Path::new(config.path);
+	let path = config.path.into_iter().collect();
 	let track = Track::new(path);
 
 	if config.publish {
