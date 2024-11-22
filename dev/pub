@@ -42,4 +42,4 @@ ffmpeg -hide_banner -v quiet \
 	-i "$INPUT" \
 	-c copy \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | cargo run --bin moq-karp -- --url "$URL" --path "$NAME" "$@" publish
+	- | cargo run --bin moq-karp --features="cli" -- --url "$URL" --path "$NAME" "$@" publish
