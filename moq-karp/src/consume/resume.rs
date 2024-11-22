@@ -12,6 +12,7 @@ pub struct Resumable {
 
 	announced: AnnouncedConsumer,
 	latest: Option<(Broadcast, mpsc::Receiver<()>)>,
+	latest_id: Option<u64>,
 }
 
 impl Resumable {
@@ -22,6 +23,7 @@ impl Resumable {
 			session,
 			announced,
 			latest: Default::default(),
+			latest_id: Default::default(),
 		}
 	}
 
@@ -42,31 +44,33 @@ impl Resumable {
 	}
 
 	async fn try_load(&mut self, path: Path) -> Result<Option<Broadcast>, Error> {
-		let id = self.id(&path).ok_or(Error::InvalidSession)?;
+		let suffix = path.strip_prefix(self.announced.prefix()).unwrap();
+		if suffix.is_empty() {
+			return Ok(None);
+		}
 
-		if let Some((latest, _)) = &self.latest {
-			let latest = self.id(&latest.path).ok_or(Error::InvalidSession)?;
-			if id <= latest {
+		let id = suffix.first().ok_or(Error::InvalidSession)?;
+		let id = u64::decode(&mut id.as_bytes())?;
+
+		if let Some(latest_id) = &self.latest_id {
+			if id <= *latest_id {
 				// Skip old broadcasts
 				return Ok(None);
 			}
 		}
 
+		let base = self.announced.prefix().clone().push(suffix[0].clone());
+
 		let closed = mpsc::channel(1);
-		let broadcast = Broadcast::load_resumable(self.session.clone(), path, closed.0).await?;
+		let broadcast = Broadcast::load_resumable(self.session.clone(), base, closed.0).await?;
 
 		self.latest = Some((broadcast.clone(), closed.1));
+		self.latest_id = Some(id);
 
 		Ok(Some(broadcast))
 	}
 
 	fn unload(&mut self, path: Path) {
 		self.latest.take_if(|(broadcast, _)| broadcast.path == path);
-	}
-
-	// Returns the numberic session ID of the broadcast.
-	fn id(&self, path: &Path) -> Option<u64> {
-		let id = path.get(self.announced.prefix().len())?;
-		u64::decode(&mut id.as_bytes()).ok()
 	}
 }
