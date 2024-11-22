@@ -58,6 +58,12 @@ impl Path {
 		self.parts.drain(self.parts.len() - suffix.parts.len()..);
 		Some(self)
 	}
+
+	pub fn slice(&self, start: usize, end: usize) -> Self {
+		Path {
+			parts: self.parts[start..end].to_vec(),
+		}
+	}
 }
 
 impl std::ops::Deref for Path {
