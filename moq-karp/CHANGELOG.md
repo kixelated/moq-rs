@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.8.1...moq-karp-v0.9.0) - 2024-11-23
+
+### Other
+
+- Refactor and flatten the Karp API ([#238](https://github.com/kixelated/moq-rs/pull/238))
+- Fix the resumable broadcast detection for karp. ([#236](https://github.com/kixelated/moq-rs/pull/236))
+
 ## [0.8.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.8.0...moq-karp-v0.8.1) - 2024-11-10
 
 ### Other
