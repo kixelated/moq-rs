@@ -5,9 +5,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Error, Result};
 use crate::{
-	catalog,
-	media::{self, Timestamp},
-	produce,
+	Audio, BroadcastProducer, Catalog, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9,
 };
 
 /// Converts fMP4 -> Karp
@@ -16,10 +14,10 @@ pub struct Import {
 	buffer: BytesMut,
 
 	// The broadcast being produced
-	broadcast: produce::Broadcast,
+	broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
-	tracks: HashMap<u32, produce::Track>,
+	tracks: HashMap<u32, TrackProducer>,
 
 	// The timestamp of the last keyframe for each track
 	last_keyframe: HashMap<u32, Timestamp>,
@@ -33,7 +31,7 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new(broadcast: produce::Broadcast) -> Self {
+	pub fn new(broadcast: BroadcastProducer) -> Self {
 		Self {
 			buffer: BytesMut::new(),
 			broadcast,
@@ -87,11 +85,11 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.create_video(track)?
+					self.broadcast.video(track)?
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.create_audio(track)?
+					self.broadcast.audio(track)?
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
@@ -105,7 +103,7 @@ impl Import {
 		Ok(())
 	}
 
-	fn init_video(trak: &Trak) -> Result<catalog::Video> {
+	fn init_video(trak: &Trak) -> Result<Video> {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -115,13 +113,13 @@ impl Import {
 			let mut description = BytesMut::new();
 			avcc.encode_body(&mut description)?;
 
-			catalog::Video {
-				track: catalog::Track { name, priority: 2 },
-				resolution: catalog::Dimensions {
+			Video {
+				track: Track { name, priority: 2 },
+				resolution: Dimensions {
 					width: avc1.width,
 					height: avc1.height,
 				},
-				codec: catalog::H264 {
+				codec: H264 {
 					profile: avcc.avc_profile_indication,
 					constraints: avcc.profile_compatibility,
 					level: avcc.avc_level_indication,
@@ -156,9 +154,9 @@ impl Import {
 			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 			let vpcc = &vp09.vpcc;
 
-			catalog::Video {
-				track: catalog::Track { name, priority: 2 },
-				codec: catalog::VP9 {
+			Video {
+				track: Track { name, priority: 2 },
+				codec: VP9 {
 					profile: vpcc.profile,
 					level: vpcc.level,
 					bit_depth: vpcc.bit_depth,
@@ -170,7 +168,7 @@ impl Import {
 				}
 				.into(),
 				description: Default::default(),
-				resolution: catalog::Dimensions {
+				resolution: Dimensions {
 					width: vp09.width,
 					height: vp09.height,
 				},
@@ -184,7 +182,7 @@ impl Import {
 		Ok(track)
 	}
 
-	fn init_audio(trak: &Trak) -> Result<catalog::Audio> {
+	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -201,9 +199,9 @@ impl Import {
 				return Err(Error::UnsupportedCodec("MPEG2"));
 			}
 
-			catalog::Audio {
-				track: catalog::Track { name, priority: 1 },
-				codec: catalog::AAC {
+			Audio {
+				track: Track { name, priority: 1 },
+				codec: AAC {
 					profile: desc.dec_specific.profile,
 				}
 				.into(),
@@ -373,7 +371,7 @@ impl Import {
 
 				let payload = mdat.slice(offset..(offset + size));
 
-				let frame = media::Frame {
+				let frame = Frame {
 					timestamp,
 					keyframe,
 					payload,
@@ -403,16 +401,7 @@ impl Import {
 		Ok(())
 	}
 
-	pub fn catalog(&self) -> &catalog::Broadcast {
+	pub fn catalog(&self) -> &Catalog {
 		self.broadcast.catalog()
-	}
-
-	pub fn publish(&mut self, session: &mut moq_transfork::Session) -> Result<()> {
-		if self.moov.is_none() {
-			return Err(Error::MissingBox(Moov::KIND));
-		}
-		self.broadcast.publish(session)?;
-
-		Ok(())
 	}
 }

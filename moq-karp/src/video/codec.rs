@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use derive_more::{Display, From};
 
-use crate::catalog::Error;
+use crate::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, From)]
 pub enum VideoCodec {

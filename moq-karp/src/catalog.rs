@@ -1,11 +1,12 @@
-use moq_transfork::Path;
+//! This module contains the structs and functions for the MoQ catalog format
+/// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
 
-use super::{Audio, Error, Result, Video};
+use crate::{Audio, Result, Video};
 
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
-pub struct Broadcast {
+pub struct Catalog {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub video: Vec<Video>,
 
@@ -13,7 +14,7 @@ pub struct Broadcast {
 	pub audio: Vec<Audio>,
 }
 
-impl Broadcast {
+impl Catalog {
 	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(s: &str) -> Result<Self> {
 		Ok(serde_json::from_str(s)?)
@@ -43,32 +44,6 @@ impl Broadcast {
 		Ok(serde_json::to_writer(writer, self)?)
 	}
 
-	pub async fn fetch(session: &mut moq_transfork::Session, path: Path) -> Result<Self> {
-		let track = moq_transfork::Track {
-			path,
-			priority: -1,
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
-		};
-
-		let mut track = session.subscribe(track);
-		let mut group = track.next_group().await?.ok_or(Error::Empty)?;
-		let frame = group.read_frame().await?.ok_or(Error::Empty)?;
-		let parsed = Self::from_slice(&frame)?;
-
-		Ok(parsed)
-	}
-
-	/// Returns the track metadata that should be used for this catalog.
-	pub fn track(path: Path) -> moq_transfork::Track {
-		moq_transfork::Track {
-			path: path.push("catalog.json"),
-			priority: -1,
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
-		}
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.video.is_empty() && self.audio.is_empty()
 	}
@@ -76,8 +51,9 @@ impl Broadcast {
 
 #[cfg(test)]
 mod test {
+	use crate::{AudioCodec::Opus, Dimensions, Track, H264};
+
 	use super::*;
-	use crate::catalog;
 
 	#[test]
 	fn simple() {
@@ -113,38 +89,38 @@ mod test {
 
 		encoded.retain(|c| !c.is_whitespace());
 
-		let decoded = Broadcast {
+		let decoded = Catalog {
 			video: vec![Video {
-				track: catalog::Track {
+				track: Track {
 					name: "video".to_string(),
 					priority: 2,
 				},
-				codec: catalog::H264 {
+				codec: H264 {
 					profile: 0x64,
 					constraints: 0x00,
 					level: 0x1f,
 				}
 				.into(),
 				description: Default::default(),
-				resolution: catalog::Dimensions {
+				resolution: Dimensions {
 					width: 1280,
 					height: 720,
 				},
 				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
-				track: catalog::Track {
+				track: Track {
 					name: "audio".to_string(),
 					priority: 1,
 				},
-				codec: catalog::AudioCodec::Opus,
+				codec: Opus,
 				sample_rate: 48_000,
 				channel_count: 2,
 				bitrate: Some(128_000),
 			}],
 		};
 
-		let output = Broadcast::from_str(&encoded).expect("failed to decode");
+		let output = Catalog::from_str(&encoded).expect("failed to decode");
 		assert_eq!(decoded, output, "wrong decoded output");
 
 		let output = decoded.to_string().expect("failed to encode");

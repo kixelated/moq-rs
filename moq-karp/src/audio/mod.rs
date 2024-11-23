@@ -4,7 +4,9 @@ mod codec;
 pub use aac::*;
 pub use codec::*;
 
-use super::{Error, Track};
+use crate::Track;
+
+use super::Error;
 use serde::{Deserialize, Serialize};
 use serde_with::DisplayFromStr;
 
