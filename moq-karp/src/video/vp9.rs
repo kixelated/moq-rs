@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::Error;
+use crate::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VP9 {

@@ -1,10 +1,5 @@
-use crate::catalog;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-	#[error("catalog error: {0}")]
-	Catalog(#[from] catalog::Error),
-
 	#[error("transfork error: {0}")]
 	Transfork(#[from] moq_transfork::Error),
 
@@ -12,7 +7,7 @@ pub enum Error {
 	Mp4(#[from] mp4_atom::Error),
 
 	#[error("karp error: {0}")]
-	Media(#[from] crate::Error),
+	Karp(#[from] crate::Error),
 
 	#[error("missing tracks")]
 	MissingTracks,

@@ -2,27 +2,28 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::Error;
+use crate::Error;
 
+#[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct H265 {
+pub struct H264 {
 	pub profile: u8,
 	pub constraints: u8,
 	pub level: u8,
 }
 
-impl fmt::Display for H265 {
+impl fmt::Display for H264 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "hev1.{:02x}{:02x}{:02x}", self.profile, self.constraints, self.level)
+		write!(f, "avc1.{:02x}{:02x}{:02x}", self.profile, self.constraints, self.level)
 	}
 }
 
-impl FromStr for H265 {
+impl FromStr for H264 {
 	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut parts = s.split('.');
-		if parts.next() != Some("hev1") {
+		if parts.next() != Some("avc1") {
 			return Err(Error::InvalidCodec);
 		}
 
@@ -41,18 +42,20 @@ impl FromStr for H265 {
 
 #[cfg(test)]
 mod tests {
+	use std::str::FromStr;
+
 	use super::*;
 
 	#[test]
-	fn test_h265() {
-		let encoded = "hev1.42c01e";
-		let decoded = H265 {
+	fn test_h264() {
+		let encoded = "avc1.42c01e";
+		let decoded = H264 {
 			profile: 0x42,
 			constraints: 0xc0,
 			level: 0x1e,
 		};
 
-		let output = H265::from_str(encoded).expect("failed to parse");
+		let output = H264::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();

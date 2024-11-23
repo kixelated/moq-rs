@@ -14,7 +14,9 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
-use super::{Dimensions, Track};
+use crate::Track;
+
+use super::Dimensions;
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
