@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.4.3...moq-transfork-v0.5.0) - 2024-11-23
+
+### Other
+
+- Fix the resumable broadcast detection for karp. ([#236](https://github.com/kixelated/moq-rs/pull/236))
+- Fix the Path::new() iterface ([#233](https://github.com/kixelated/moq-rs/pull/233))
+- Simplify and add tests for Announced. ([#234](https://github.com/kixelated/moq-rs/pull/234))
+
 ## [0.4.3](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.4.2...moq-transfork-v0.4.3) - 2024-11-07
 
 ### Other

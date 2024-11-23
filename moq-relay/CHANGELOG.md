@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.10](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.9...moq-relay-v0.6.10) - 2024-11-23
+
+### Other
+
+- Simplify and add tests for Announced. ([#234](https://github.com/kixelated/moq-rs/pull/234))
+
 ## [0.6.9](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.8...moq-relay-v0.6.9) - 2024-11-10
 
 ### Other

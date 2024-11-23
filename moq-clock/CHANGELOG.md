@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.14](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.13...moq-clock-v0.5.14) - 2024-11-23
+
+### Other
+
+- Fix the Path::new() iterface ([#233](https://github.com/kixelated/moq-rs/pull/233))
+
 ## [0.5.13](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.12...moq-clock-v0.5.13) - 2024-11-10
 
 ### Other
