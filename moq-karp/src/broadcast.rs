@@ -25,7 +25,7 @@ impl BroadcastProducer {
 			.unwrap()
 			.as_millis();
 
-		let path = path.push(&id);
+		let path = path.push(id);
 
 		let track = moq_transfork::Track {
 			path: path.clone(),
