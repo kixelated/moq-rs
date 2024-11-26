@@ -1,11 +1,13 @@
 mod av1;
 mod codec;
+mod dimensions;
 mod h264;
 mod h265;
 mod vp9;
 
 pub use av1::*;
 pub use codec::*;
+pub use dimensions::*;
 pub use h264::*;
 pub use h265::*;
 pub use vp9::*;
@@ -15,8 +17,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
 use crate::Track;
-
-use super::Dimensions;
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]

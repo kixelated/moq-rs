@@ -73,16 +73,17 @@ impl Subscriber {
 					match res? {
 						// Handle the announce
 						Some(announce) => {
-							tracing::debug!(?announce);
 							let path = prefix.clone().append(&announce.suffix);
 
 							match announce.status {
 								message::AnnounceStatus::Active => {
+									tracing::debug!(?path, "announced");
 									if !announced.announce(path) {
 										return Err(Error::Duplicate);
 									}
 								},
 								message::AnnounceStatus::Ended => {
+									tracing::debug!(?path, "unannounced");
 									if !announced.unannounce(&path) {
 										return Err(Error::NotFound);
 									}

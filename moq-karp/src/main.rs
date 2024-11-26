@@ -2,9 +2,10 @@ use std::net;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use moq_transfork::Session;
 use url::Url;
 
-use moq_karp::{cmaf, produce};
+use moq_karp::{cmaf, Room};
 use moq_native::quic;
 
 #[derive(Parser, Clone)]
@@ -21,17 +22,22 @@ struct Cli {
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
 
-	/// Connect to the given URL starting with https://
-	#[arg(long, default_value = "https://relay.quic.video")]
-	pub url: Url,
-
-	/// The path of the broadcast
-	/// Use multiple times to create a nested path.
-	#[arg(long, required = true)]
-	pub path: Vec<String>,
-
+	/// If we're publishing or subscribing.
 	#[command(subcommand)]
 	pub command: Command,
+
+	/// The URL of the server.
+	/// The protocol MUST be https://
+	#[arg(long)]
+	pub server: Url,
+
+	/// The name of the room.
+	#[arg(long)]
+	pub room: String,
+
+	/// The name of the broadcast within the room.
+	#[arg(long)]
+	pub broadcast: String,
 }
 
 #[derive(Subcommand, Clone)]
@@ -48,30 +54,27 @@ async fn main() -> anyhow::Result<()> {
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 
-	tracing::info!(url = %cli.url, "connecting");
-	let session = quic.client.connect(&cli.url).await?;
-	let session = moq_transfork::Session::connect(session).await?;
+	tracing::info!(url = %cli.server, "connecting");
+	let session = quic.client.connect(&cli.server).await?;
+	let session = Session::connect(session).await?;
 
-	let path = moq_transfork::Path::new(cli.path);
+	let room = Room::new(session.clone(), cli.room);
 
 	match cli.command {
-		Command::Publish => publish(session, path).await,
+		Command::Publish => publish(session, room, cli.broadcast).await,
 		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
-#[tracing::instrument("publish", skip_all, err, fields(?path))]
-async fn publish(mut session: moq_transfork::Session, path: moq_transfork::Path) -> anyhow::Result<()> {
-	let broadcast = produce::Resumable::new(path).broadcast();
-
+#[tracing::instrument("publish", skip_all, err, fields(?room, ?name))]
+async fn publish(session: Session, room: Room, name: String) -> anyhow::Result<()> {
+	let broadcast = room.publish(&name)?;
 	let mut input = tokio::io::stdin();
 
 	let mut import = cmaf::Import::new(broadcast);
 	import.init_from(&mut input).await.context("failed to initialize")?;
 
-	tracing::info!(catalog = ?import.catalog());
-
-	import.publish(&mut session)?;
+	tracing::info!(catalog = ?import.catalog(), "publishing");
 
 	tokio::select! {
 		res = import.read_from(&mut input) => Ok(res?),

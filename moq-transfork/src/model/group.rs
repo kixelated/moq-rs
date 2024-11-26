@@ -16,7 +16,7 @@ use crate::Error;
 use super::{Frame, FrameConsumer, FrameProducer};
 
 /// An independent group of frames.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Group {
 	// The sequence number of the group within the track.
 	// NOTE: These may be received out of order
@@ -38,6 +38,7 @@ impl Group {
 	}
 }
 
+#[derive(Debug)]
 struct GroupState {
 	// The frames that has been written thus far
 	frames: Vec<FrameConsumer>,
@@ -56,7 +57,7 @@ impl Default for GroupState {
 }
 
 /// Create a group, frame-by-frame.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GroupProducer {
 	// Mutable stream state.
 	state: watch::Sender<GroupState>,
@@ -109,7 +110,7 @@ impl ops::Deref for GroupProducer {
 }
 
 /// Consume a group, frame-by-frame.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GroupConsumer {
 	// Modify the stream state.
 	state: watch::Receiver<GroupState>,
