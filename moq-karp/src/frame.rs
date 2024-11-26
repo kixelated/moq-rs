@@ -4,21 +4,15 @@ use moq_transfork::coding::*;
 
 use derive_more::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign, Sum};
 
-#[derive(Clone)]
+use derive_more::Debug;
+
+#[derive(Clone, Debug)]
 pub struct Frame {
 	pub timestamp: Timestamp,
 	pub keyframe: bool,
-	pub payload: Bytes,
-}
 
-impl fmt::Debug for Frame {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Frame")
-			.field("timestamp", &self.timestamp)
-			.field("keyframe", &self.keyframe)
-			.field("payload_len", &self.payload.len())
-			.finish()
-	}
+	#[debug("{}", payload.len())]
+	pub payload: Bytes,
 }
 
 #[derive(

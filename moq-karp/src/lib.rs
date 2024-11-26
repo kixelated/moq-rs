@@ -3,7 +3,7 @@ mod broadcast;
 mod catalog;
 mod error;
 mod frame;
-mod member;
+mod room;
 mod track;
 mod video;
 
@@ -12,7 +12,7 @@ pub use broadcast::*;
 pub use catalog::*;
 pub use error::*;
 pub use frame::*;
-pub use member::*;
+pub use room::*;
 pub use track::*;
 pub use video::*;
 

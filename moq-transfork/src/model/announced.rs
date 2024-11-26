@@ -93,22 +93,22 @@ impl AnnouncedConsumer {
 		}
 	}
 
-	/// Returns the next update.
+	/// Returns the suffix of the next announced track.
 	pub async fn next(&mut self) -> Option<Announced> {
 		// NOTE: This just checks if the producer has been dropped.
 		// We're not actually using the `changed()` state properly.
 		while self.state.has_changed().is_ok() {
 			while let Some(removed) = self.active.difference(&self.state.borrow()).next().cloned() {
 				self.active.remove(&removed);
-				if removed.has_prefix(&self.prefix) {
-					return Some(Announced::Ended(removed));
+				if let Some(suffix) = removed.strip_prefix(&self.prefix) {
+					return Some(Announced::Ended(suffix));
 				}
 			}
 
 			while let Some(added) = self.state.borrow().difference(&self.active).next().cloned() {
 				self.active.insert(added.clone());
-				if added.has_prefix(&self.prefix) {
-					return Some(Announced::Active(added));
+				if let Some(suffix) = added.strip_prefix(&self.prefix) {
+					return Some(Announced::Active(suffix));
 				}
 			}
 
@@ -118,8 +118,8 @@ impl AnnouncedConsumer {
 		}
 
 		while let Some(removed) = self.active.pop_first() {
-			if removed.has_prefix(&self.prefix) {
-				return Some(Announced::Ended(removed));
+			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
+				return Some(Announced::Ended(suffix));
 			}
 		}
 
@@ -225,11 +225,14 @@ mod test {
 		let path2 = Path::default().push("a").push("c");
 		let path3 = Path::default().push("d").push("e");
 
+		let suffix1 = Path::default().push("b");
+		let suffix2 = Path::default().push("c");
+
 		assert!(producer.announce(path1.clone()));
 		assert!(producer.announce(path2.clone()));
 		assert!(producer.announce(path3.clone()));
 
-		let mut expected: HashSet<Path> = HashSet::from_iter([path1, path2]);
+		let mut expected: HashSet<Path> = HashSet::from_iter([suffix1, suffix2]);
 
 		while !expected.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
@@ -249,12 +252,15 @@ mod test {
 		let path2 = Path::default().push("a").push("c");
 		let path3 = Path::default().push("d").push("e");
 
+		let suffix1 = Path::default().push("b");
+		let suffix2 = Path::default().push("c");
+
 		assert!(producer.announce(path1.clone()));
 		assert!(producer.announce(path2.clone()));
 		assert!(producer.announce(path3.clone()));
 
 		let res = match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Active(active) if active == path1 || active == path2 => active,
+			Announced::Active(ended) if ended == suffix1 || ended == suffix2 => ended,
 			res => panic!("unexpected announcement: {:?}", res),
 		};
 

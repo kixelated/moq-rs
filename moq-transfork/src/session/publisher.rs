@@ -82,14 +82,14 @@ impl Publisher {
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
 		let prefix = interest.prefix;
-		tracing::debug!(?prefix, "announced interest");
+		tracing::debug!(?prefix, "announce interest");
 
 		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
 		while let Some(announced) = announced.next().await {
 			match announced {
 				Announced::Active(path) => {
-					tracing::debug!(?path, "announced");
+					tracing::debug!(?path, "announce");
 
 					stream
 						.writer
@@ -100,7 +100,7 @@ impl Publisher {
 						.await?;
 				}
 				Announced::Ended(path) => {
-					tracing::debug!(?path, "unannounced");
+					tracing::debug!(?path, "unannounce");
 					stream
 						.writer
 						.encode(&message::Announce {

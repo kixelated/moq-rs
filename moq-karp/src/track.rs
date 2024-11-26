@@ -3,20 +3,24 @@ use serde::{Deserialize, Serialize};
 
 use moq_transfork::coding::*;
 
+use derive_more::Debug;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Track {
 	pub name: String,
 	pub priority: i8,
 }
 
+#[derive(Debug)]
+#[debug("{:?}", track.path)]
 pub struct TrackProducer {
-	inner: moq_transfork::TrackProducer,
+	track: moq_transfork::TrackProducer,
 	group: Option<moq_transfork::GroupProducer>,
 }
 
 impl TrackProducer {
-	pub fn new(inner: moq_transfork::TrackProducer) -> Self {
-		Self { inner, group: None }
+	pub fn new(track: moq_transfork::TrackProducer) -> Self {
+		Self { track, group: None }
 	}
 
 	pub fn write(&mut self, frame: Frame) {
@@ -26,7 +30,7 @@ impl TrackProducer {
 
 		let mut group = match self.group.take() {
 			Some(group) if !frame.keyframe => group,
-			_ => self.inner.append_group(),
+			_ => self.track.append_group(),
 		};
 
 		if frame.keyframe {
@@ -43,6 +47,8 @@ impl TrackProducer {
 	}
 }
 
+#[derive(Debug)]
+#[debug("{:?}", track.path)]
 pub struct TrackConsumer {
 	track: moq_transfork::TrackConsumer,
 	group: Option<moq_transfork::GroupConsumer>,

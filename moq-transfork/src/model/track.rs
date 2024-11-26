@@ -18,10 +18,10 @@ use super::{Group, GroupConsumer, GroupProducer, Path};
 pub use crate::message::GroupOrder;
 use crate::Error;
 
-use std::{cmp::Ordering, fmt, ops, sync::Arc, time};
+use std::{cmp::Ordering, ops, sync::Arc, time};
 
 /// A track, a collection of indepedent groups (streams) with a specified order/priority.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Track {
 	/// The path of the track.
 	pub path: Path,
@@ -59,11 +59,6 @@ impl Track {
 	}
 }
 
-impl fmt::Debug for Track {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.path.fmt(f)
-	}
-}
 impl Default for Track {
 	fn default() -> Self {
 		Self {
@@ -129,6 +124,7 @@ impl From<TrackBuilder> for Track {
 	}
 }
 
+#[derive(Debug)]
 struct TrackState {
 	latest: Option<GroupConsumer>,
 	closed: Result<(), Error>,
@@ -144,7 +140,7 @@ impl Default for TrackState {
 }
 
 /// A producer for a track, used to create new groups.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackProducer {
 	pub info: Arc<Track>,
 	state: watch::Sender<TrackState>,
@@ -216,7 +212,7 @@ impl ops::Deref for TrackProducer {
 }
 
 /// A consumer for a track, used to read groups.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackConsumer {
 	pub info: Arc<Track>,
 	state: watch::Receiver<TrackState>,
@@ -290,11 +286,5 @@ impl ops::Deref for TrackConsumer {
 
 	fn deref(&self) -> &Self::Target {
 		&self.info
-	}
-}
-
-impl fmt::Debug for TrackConsumer {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.info.path.fmt(f)
 	}
 }

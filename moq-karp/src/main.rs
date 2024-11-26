@@ -2,9 +2,10 @@ use std::net;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use moq_transfork::{Path, Session};
 use url::Url;
 
-use moq_karp::{cmaf, Member};
+use moq_karp::{cmaf, Room};
 use moq_native::quic;
 
 #[derive(Parser, Clone)]
@@ -25,9 +26,12 @@ struct Cli {
 	#[command(subcommand)]
 	pub command: Command,
 
-	/// The broadcast address.
+	/// The URL of the broadcast.
+	/// The protocol MUST be https:// and there MUST be at least one path fragment.
+	/// The last path fragment is the name of the broadcast, the rest is the room name.
+	/// ex. https://relay.quic.video/demo/bbb
 	#[arg()]
-	pub addr: Url,
+	pub url: Url,
 }
 
 #[derive(Subcommand, Clone)]
@@ -44,11 +48,11 @@ async fn main() -> anyhow::Result<()> {
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 
-	let path = moq_transfork::Path::from_iter(cli.addr.path_segments().context("no broadcast path")?);
+	tracing::info!(url = %cli.url, "connecting");
+	let session = quic.client.connect(&cli.url).await?;
+	let session = Session::connect(session).await?;
 
-	tracing::info!(url = %cli.addr, "connecting");
-	let session = quic.client.connect(&cli.addr).await?;
-	let session = moq_transfork::Session::connect(session).await?;
+	let path = Path::from_iter(cli.url.path_segments().context("missing path")?);
 
 	match cli.command {
 		Command::Publish => publish(session, path).await,
@@ -57,15 +61,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument("publish", skip_all, err, fields(?path))]
-async fn publish(session: moq_transfork::Session, path: moq_transfork::Path) -> anyhow::Result<()> {
-	let user = Member::new(session.clone(), path).produce().broadcast_now()?;
+async fn publish(session: Session, mut path: Path) -> anyhow::Result<()> {
+	let name = path.pop().expect("missing name");
+	let room = Room::new(session.clone(), path);
+	let broadcast = room.publish(name)?;
 
 	let mut input = tokio::io::stdin();
 
-	let mut import = cmaf::Import::new(user);
+	let mut import = cmaf::Import::new(broadcast);
 	import.init_from(&mut input).await.context("failed to initialize")?;
 
-	tracing::info!(catalog = ?import.catalog());
+	tracing::info!(catalog = ?import.catalog(), "publishing");
 
 	tokio::select! {
 		res = import.read_from(&mut input) => Ok(res?),

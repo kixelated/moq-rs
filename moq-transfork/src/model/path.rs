@@ -1,8 +1,8 @@
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 #[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Path {
-	parts: Vec<Arc<String>>,
+	parts: Vec<String>,
 }
 
 impl Path {
@@ -11,11 +11,11 @@ impl Path {
 	}
 
 	pub fn push<T: ToString>(mut self, part: T) -> Self {
-		self.parts.push(Arc::new(part.to_string()));
+		self.parts.push(part.to_string());
 		self
 	}
 
-	pub fn append(mut self, other: &Path) -> Self {
+	pub fn append(mut self, other: &Self) -> Self {
 		self.parts.extend_from_slice(&other.parts);
 		self
 	}
@@ -58,19 +58,19 @@ impl Path {
 		self.parts.drain(self.parts.len() - suffix.parts.len()..);
 		Some(self)
 	}
-
-	pub fn slice(&self, start: usize, end: usize) -> Self {
-		Path {
-			parts: self.parts[start..end].to_vec(),
-		}
-	}
 }
 
 impl std::ops::Deref for Path {
-	type Target = [Arc<String>];
+	type Target = Vec<String>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.parts
+	}
+}
+
+impl std::ops::DerefMut for Path {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.parts
 	}
 }
 
@@ -90,7 +90,13 @@ impl fmt::Debug for Path {
 impl<S: ToString> FromIterator<S> for Path {
 	fn from_iter<T: IntoIterator<Item = S>>(iter: T) -> Self {
 		Self {
-			parts: iter.into_iter().map(|t| t.to_string()).map(Arc::new).collect(),
+			parts: iter.into_iter().map(|t| t.to_string()).collect(),
 		}
+	}
+}
+
+impl From<Vec<String>> for Path {
+	fn from(parts: Vec<String>) -> Self {
+		Self { parts }
 	}
 }

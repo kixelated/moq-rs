@@ -40,7 +40,16 @@ anyhow = { version = "1", features = ["backtrace"], optional = true }
 
 [dependencies.derive_more]
 version = "1"
-features = ["add", "add_assign", "mul", "mul_assign", "sum", "from", "display"]
+features = [
+	"add",
+	"add_assign",
+	"mul",
+	"mul_assign",
+	"sum",
+	"from",
+	"display",
+	"debug",
+]
 
 [features]
 cli = ["moq-native", "tokio/full", "clap", "anyhow"]

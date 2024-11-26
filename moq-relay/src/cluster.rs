@@ -126,8 +126,6 @@ impl Cluster {
 			if let Announced::Active(path) = &announce {
 				tracing::info!(?path, "discovered origin");
 
-				let path = path.clone().strip_prefix(&origins).context("incorrect prefix")?;
-
 				// Extract the hostname from the first part of the path.
 				let host = path.first().context("missing node")?.to_string();
 				if Some(&host) == node.as_ref() {

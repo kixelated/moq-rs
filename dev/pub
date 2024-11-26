@@ -24,17 +24,15 @@ PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
 SCHEME="${SCHEME:-https}"
 
-# Use the default "demo" for the broadcast.
-NAME="${NAME:-demo}"
-
-# Combine the host into a URL.
+# Use the default "demo/bbb" for the broadcast.
+NAME="${NAME:-demo/bbb}"
 URL="${URL:-"$SCHEME://$ADDR/$NAME"}"
 
 # Default to a source video
 INPUT="${INPUT:-dev/bbb.fmp4}"
 
 # Print out the watch URL
-echo "Watch URL: https://quic.video/watch?name=$NAME&server=$ADDR"
+echo "Watch URL: https://quic.video/watch?server=$ADDR&path=$NAME"
 
 # Run ffmpeg and pipe the output to moq-pub
 ffmpeg -hide_banner -v quiet \
@@ -42,4 +40,4 @@ ffmpeg -hide_banner -v quiet \
 	-i "$INPUT" \
 	-c copy \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | cargo run --bin moq-karp -- "$@" "$URL" publish
+	- | cargo run --bin moq-karp -- "${URL}" "$@" publish
