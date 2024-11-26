@@ -1,7 +1,7 @@
 use crate::coding::*;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Stream {
+pub enum ControlType {
 	Session,
 	Announce,
 	Subscribe,
@@ -9,7 +9,7 @@ pub enum Stream {
 	Info,
 }
 
-impl Decode for Stream {
+impl Decode for ControlType {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let t = u64::decode(r)?;
 		match t {
@@ -23,7 +23,7 @@ impl Decode for Stream {
 	}
 }
 
-impl Encode for Stream {
+impl Encode for ControlType {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = match self {
 			Self::Session => 0,
@@ -37,11 +37,11 @@ impl Encode for Stream {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum StreamUni {
+pub enum DataType {
 	Group,
 }
 
-impl Decode for StreamUni {
+impl Decode for DataType {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let t = u64::decode(r)?;
 		match t {
@@ -51,7 +51,7 @@ impl Decode for StreamUni {
 	}
 }
 
-impl Encode for StreamUni {
+impl Encode for DataType {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		let v: u64 = match self {
 			Self::Group => 0,

@@ -62,6 +62,18 @@ impl Publisher {
 		let mut downstream = self.announced.clone();
 
 		spawn(async move {
+			// Flush any synchronously announced paths
+			while let Some(announced) = announced.try_next() {
+				match announced {
+					Announced::Active(path) => downstream.announce(path.clone()),
+					Announced::Ended(path) => downstream.unannounce(&path),
+				};
+			}
+
+			// Indicate that we're caught up to live.
+			downstream.current();
+
+			// Now listen for any future announcements
 			while let Some(announced) = announced.next().await {
 				match announced {
 					Announced::Active(path) => downstream.announce(path.clone()),
@@ -79,40 +91,40 @@ impl Publisher {
 		self.router.lock().replace(router);
 	}
 
-	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
+	pub async fn recv_announce(&mut self, mut stream: &mut Stream) -> Result<(), Error> {
+		let interest = stream.reader.decode::<message::AnnouncePlease>().await?;
 		let prefix = interest.prefix;
 		tracing::debug!(?prefix, "announce interest");
 
 		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
-		while let Some(announced) = announced.next().await {
-			match announced {
-				Announced::Active(path) => {
-					tracing::debug!(?path, "announce");
+		// Flush any synchronously announced paths
+		while let Some(announced) = announced.try_next() {
+			self.send_announced(&mut stream, announced).await?;
+		}
 
-					stream
-						.writer
-						.encode(&message::Announce {
-							status: message::AnnounceStatus::Active,
-							suffix: path,
-						})
-						.await?;
-				}
-				Announced::Ended(path) => {
-					tracing::debug!(?path, "unannounce");
-					stream
-						.writer
-						.encode(&message::Announce {
-							status: message::AnnounceStatus::Ended,
-							suffix: path,
-						})
-						.await?;
-				}
-			}
+		// Indicate that we're caught up to live.
+		stream.writer.encode(&message::Announce::Current).await?;
+
+		// Now listen for any future announcements
+		while let Some(announced) = announced.next().await {
+			self.send_announced(&mut stream, announced).await?;
 		}
 
 		Ok(())
+	}
+
+	async fn send_announced(&mut self, stream: &mut Stream, announced: Announced) -> Result<(), Error> {
+		match announced {
+			Announced::Active(path) => {
+				tracing::debug!(?path, "announce");
+				stream.writer.encode(&message::Announce::Active { suffix: path }).await
+			}
+			Announced::Ended(path) => {
+				tracing::debug!(?path, "unannounce");
+				stream.writer.encode(&message::Announce::Ended { suffix: path }).await
+			}
+		}
 	}
 
 	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -193,7 +205,7 @@ impl Publisher {
 		subscribe: u64,
 		group: &mut GroupConsumer,
 	) -> Result<(), Error> {
-		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
+		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await

@@ -37,9 +37,9 @@ impl Subscriber {
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.subscribe_prefix(prefix.clone());
 
-		let mut this = self.clone();
+		let mut session = self.session.clone();
 		spawn(async move {
-			let mut stream = match Stream::open(&mut this.session, message::Stream::Announce).await {
+			let mut stream = match Stream::open(&mut session, message::ControlType::Announce).await {
 				Ok(stream) => stream,
 				Err(err) => {
 					tracing::warn!(?err, "failed to open announce stream");
@@ -47,7 +47,7 @@ impl Subscriber {
 				}
 			};
 
-			this.run_announce(&mut stream, prefix, producer)
+			Self::run_announce(&mut stream, prefix, producer)
 				.await
 				.or_close(&mut stream)
 				.ok();
@@ -56,15 +56,10 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(
-		&self,
-		stream: &mut Stream,
-		prefix: Path,
-		mut announced: AnnouncedProducer,
-	) -> Result<(), Error> {
+	async fn run_announce(stream: &mut Stream, prefix: Path, mut announced: AnnouncedProducer) -> Result<(), Error> {
 		stream
 			.writer
-			.encode(&message::AnnounceInterest { prefix: prefix.clone() })
+			.encode(&message::AnnouncePlease { prefix: prefix.clone() })
 			.await?;
 
 		loop {
@@ -72,24 +67,7 @@ impl Subscriber {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
 						// Handle the announce
-						Some(announce) => {
-							let path = prefix.clone().append(&announce.suffix);
-
-							match announce.status {
-								message::AnnounceStatus::Active => {
-									tracing::debug!(?path, "announced");
-									if !announced.announce(path) {
-										return Err(Error::Duplicate);
-									}
-								},
-								message::AnnounceStatus::Ended => {
-									tracing::debug!(?path, "unannounced");
-									if !announced.unannounce(&path) {
-										return Err(Error::NotFound);
-									}
-								},
-							}
-						},
+						Some(announce) => Self::recv_announce(announce, &prefix, &mut announced)?,
 						// Stop if the stream has been closed
 						None => return Ok(()),
 					}
@@ -98,6 +76,35 @@ impl Subscriber {
 				_ = announced.closed() => return Ok(()),
 			}
 		}
+	}
+
+	fn recv_announce(
+		announce: message::Announce,
+		prefix: &Path,
+		announced: &mut AnnouncedProducer,
+	) -> Result<(), Error> {
+		match announce {
+			message::Announce::Active { suffix } => {
+				let path = prefix.clone().append(&suffix);
+				tracing::debug!(?path, "active");
+				if !announced.announce(path) {
+					return Err(Error::Duplicate);
+				}
+			}
+			message::Announce::Ended { suffix } => {
+				let path = prefix.clone().append(&suffix);
+				tracing::debug!(?path, "unannounced");
+				if !announced.unannounce(&path) {
+					return Err(Error::NotFound);
+				}
+			}
+			message::Announce::Current => {
+				tracing::debug!("current");
+				announced.current();
+			}
+		};
+
+		Ok(())
 	}
 
 	/// Subscribe to a given track.
@@ -115,7 +122,7 @@ impl Subscriber {
 		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 
 		spawn(async move {
-			if let Ok(mut stream) = Stream::open(&mut this.session, message::Stream::Subscribe).await {
+			if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
 				this.run_subscribe(id, writer, &mut stream)
 					.await
 					.or_close(&mut stream)

@@ -1,4 +1,4 @@
-use crate::{BroadcastAnnounced, BroadcastProducer, Result};
+use crate::{BroadcastConsumer, BroadcastProducer, Result};
 
 use derive_more::Debug;
 use moq_transfork::Path;
@@ -21,10 +21,10 @@ impl Room {
 	}
 
 	/// Watch a broadcast with a given name.
-	/// The returned [BroadcastAnnounced] will be updated as new broadcasts are announced.
-	/// This allows viewers to automatically reconnect to the new broadcast ID if the producer crashes.
-	pub fn watch(&self, name: &str) -> BroadcastAnnounced {
+	///
+	/// This supports automatically reloading the catalog on publisher crash.
+	pub fn watch(&self, name: &str) -> BroadcastConsumer {
 		let path = Path::new().push(&self.name).push(name);
-		BroadcastAnnounced::new(self.session.clone(), path)
+		BroadcastConsumer::new(self.session.clone(), path)
 	}
 }

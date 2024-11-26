@@ -3,6 +3,7 @@ use tokio::sync::watch;
 
 use super::Path;
 
+/// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announced {
 	Active(Path),
@@ -10,7 +11,7 @@ pub enum Announced {
 }
 
 impl Announced {
-	pub fn path(&self) -> &Path {
+	pub fn suffix(&self) -> &Path {
 		match self {
 			Announced::Active(path) => path,
 			Announced::Ended(path) => path,
@@ -32,10 +33,16 @@ impl Announced {
 	}
 }
 
+#[derive(Default)]
+struct State {
+	active: BTreeSet<Path>,
+	current: bool,
+}
+
 /// Announces tracks to consumers over the network.
 #[derive(Clone, Default)]
 pub struct AnnouncedProducer {
-	state: watch::Sender<BTreeSet<Path>>,
+	state: watch::Sender<State>,
 }
 
 impl AnnouncedProducer {
@@ -45,16 +52,29 @@ impl AnnouncedProducer {
 
 	/// Announce a track, returning true if it's new.
 	pub fn announce(&mut self, path: Path) -> bool {
-		self.state.send_if_modified(|state| state.insert(path))
+		self.state.send_if_modified(|state| state.active.insert(path))
 	}
 
 	/// Stop announcing a track, returning true if it was active.
 	pub fn unannounce(&mut self, path: &Path) -> bool {
-		self.state.send_if_modified(|state| state.remove(path))
+		self.state.send_if_modified(|state| state.active.remove(path))
 	}
 
 	pub fn is_active(&self, path: &Path) -> bool {
-		self.state.borrow().contains(path)
+		self.state.borrow().active.contains(path)
+	}
+
+	/// Indicate that we're caught up to the current state of the world.
+	pub fn current(&mut self) {
+		self.state.send_if_modified(|state| {
+			let prev = state.current;
+			state.current = true;
+			!prev
+		});
+	}
+
+	pub fn is_current(&self) -> bool {
+		self.state.borrow().current
 	}
 
 	/// Subscribe to all announced tracks, including those already active.
@@ -73,9 +93,10 @@ impl AnnouncedProducer {
 }
 
 /// Consumes announced tracks over the network matching an optional prefix.
+#[derive(Clone)]
 pub struct AnnouncedConsumer {
 	// The official list of active paths.
-	state: watch::Receiver<BTreeSet<Path>>,
+	state: watch::Receiver<State>,
 
 	// A set of updates that we haven't consumed yet.
 	active: BTreeSet<Path>,
@@ -85,7 +106,7 @@ pub struct AnnouncedConsumer {
 }
 
 impl AnnouncedConsumer {
-	fn new(state: watch::Receiver<BTreeSet<Path>>, prefix: Path) -> Self {
+	fn new(state: watch::Receiver<State>, prefix: Path) -> Self {
 		Self {
 			state,
 			active: BTreeSet::new(),
@@ -93,30 +114,27 @@ impl AnnouncedConsumer {
 		}
 	}
 
-	/// Returns the suffix of the next announced track.
-	pub async fn next(&mut self) -> Option<Announced> {
-		// NOTE: This just checks if the producer has been dropped.
-		// We're not actually using the `changed()` state properly.
-		while self.state.has_changed().is_ok() {
-			while let Some(removed) = self.active.difference(&self.state.borrow()).next().cloned() {
-				self.active.remove(&removed);
-				if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-					return Some(Announced::Ended(suffix));
-				}
-			}
-
-			while let Some(added) = self.state.borrow().difference(&self.active).next().cloned() {
-				self.active.insert(added.clone());
-				if let Some(suffix) = added.strip_prefix(&self.prefix) {
-					return Some(Announced::Active(suffix));
-				}
-			}
-
-			if self.state.changed().await.is_err() {
-				break;
+	/// Returns the suffix of the next announced track received already.
+	pub fn try_next(&mut self) -> Option<Announced> {
+		// TODO this absolutely need to be optimized one day.
+		while let Some(removed) = self.active.difference(&self.state.borrow().active).next().cloned() {
+			self.active.remove(&removed);
+			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
+				return Some(Announced::Ended(suffix));
 			}
 		}
 
+		while let Some(added) = self.state.borrow().active.difference(&self.active).next().cloned() {
+			self.active.insert(added.clone());
+			if let Some(suffix) = added.strip_prefix(&self.prefix) {
+				return Some(Announced::Active(suffix));
+			}
+		}
+
+		// Return None if the publisher is still active.
+		self.state.has_changed().err()?;
+
+		// The publisher is closed, so return `Ended` for all active paths.
 		while let Some(removed) = self.active.pop_first() {
 			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
 				return Some(Announced::Ended(suffix));
@@ -124,6 +142,33 @@ impl AnnouncedConsumer {
 		}
 
 		None
+	}
+
+	/// Returns the suffix of the next announced track.
+	pub async fn next(&mut self) -> Option<Announced> {
+		// NOTE: This just checks if the producer has been dropped.
+		// We're not actually using the `changed()` state properly.
+		loop {
+			if let Some(announced) = self.try_next() {
+				return Some(announced);
+			}
+
+			// Wait for any updates.
+			if self.state.changed().await.is_err() {
+				// The publisher so return whatever we have.
+				return self.try_next();
+			}
+		}
+	}
+
+	// Block until we're caught up to the current state of the world.
+	pub async fn current(&self) -> bool {
+		self.state.clone().wait_for(|state| state.current).await.is_ok()
+	}
+
+	// Return if we're caught up to the current state of the world.
+	pub fn is_current(&self) -> bool {
+		self.state.borrow().current
 	}
 
 	/// Returns the prefix in use.
