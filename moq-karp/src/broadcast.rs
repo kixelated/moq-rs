@@ -18,6 +18,15 @@ pub struct BroadcastProducer {
 
 impl BroadcastProducer {
 	pub fn new(mut session: Session, path: Path) -> Result<Self> {
+		// Generate a "unique" ID for this broadcast session.
+		// If we crash, then the viewers will automatically reconnect to the new ID.
+		let id = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_millis();
+
+		let path = path.push(&id);
+
 		let track = moq_transfork::Track {
 			path: path.clone(),
 			priority: -1,

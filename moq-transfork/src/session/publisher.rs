@@ -95,7 +95,7 @@ impl Publisher {
 						.writer
 						.encode(&message::Announce {
 							status: message::AnnounceStatus::Active,
-							suffix: path.clone().strip_prefix(&prefix).expect("prefix mismatch"),
+							suffix: path,
 						})
 						.await?;
 				}
@@ -105,7 +105,7 @@ impl Publisher {
 						.writer
 						.encode(&message::Announce {
 							status: message::AnnounceStatus::Ended,
-							suffix: path.clone().strip_prefix(&prefix).expect("prefix mismatch"),
+							suffix: path,
 						})
 						.await?;
 				}

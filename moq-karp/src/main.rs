@@ -2,7 +2,7 @@ use std::net;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use moq_transfork::{Path, Session};
+use moq_transfork::Session;
 use url::Url;
 
 use moq_karp::{cmaf, Room};
@@ -26,12 +26,18 @@ struct Cli {
 	#[command(subcommand)]
 	pub command: Command,
 
-	/// The URL of the broadcast.
-	/// The protocol MUST be https:// and there MUST be at least one path fragment.
-	/// The last path fragment is the name of the broadcast, the rest is the room name.
-	/// ex. https://relay.quic.video/demo/bbb
-	#[arg()]
-	pub url: Url,
+	/// The URL of the server.
+	/// The protocol MUST be https://
+	#[arg(long)]
+	pub server: Url,
+
+	/// The name of the room.
+	#[arg(long)]
+	pub room: String,
+
+	/// The name of the broadcast within the room.
+	#[arg(long)]
+	pub broadcast: String,
 }
 
 #[derive(Subcommand, Clone)]
@@ -48,24 +54,21 @@ async fn main() -> anyhow::Result<()> {
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 
-	tracing::info!(url = %cli.url, "connecting");
-	let session = quic.client.connect(&cli.url).await?;
+	tracing::info!(url = %cli.server, "connecting");
+	let session = quic.client.connect(&cli.server).await?;
 	let session = Session::connect(session).await?;
 
-	let path = Path::from_iter(cli.url.path_segments().context("missing path")?);
+	let room = Room::new(session.clone(), cli.room);
 
 	match cli.command {
-		Command::Publish => publish(session, path).await,
+		Command::Publish => publish(session, room, cli.broadcast).await,
 		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
-#[tracing::instrument("publish", skip_all, err, fields(?path))]
-async fn publish(session: Session, mut path: Path) -> anyhow::Result<()> {
-	let name = path.pop().expect("missing name");
-	let room = Room::new(session.clone(), path);
-	let broadcast = room.publish(name)?;
-
+#[tracing::instrument("publish", skip_all, err, fields(?room, ?name))]
+async fn publish(session: Session, room: Room, name: String) -> anyhow::Result<()> {
+	let broadcast = room.publish(&name)?;
 	let mut input = tokio::io::stdin();
 
 	let mut import = cmaf::Import::new(broadcast);
