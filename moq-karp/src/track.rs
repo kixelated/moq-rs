@@ -79,13 +79,14 @@ impl TrackConsumer {
 				Some(res) = async { self.track.next_group().await.transpose() } => {
 					let group = res?;
 
-					if group.sequence < self.group.as_ref().unwrap().sequence {
-						// Ignore old groups
-						continue;
+					match &self.group {
+						Some(existing) if group.sequence < existing.sequence => {
+							// Ignore old groups
+							continue;
+						},
+						// TODO use a configurable latency before moving to the next group.
+						_ => self.group = Some(group),
 					}
-
-					// TODO use a configurable latency before moving to the next group.
-					self.group = Some(group);
 				},
 				else => return Ok(None),
 			}

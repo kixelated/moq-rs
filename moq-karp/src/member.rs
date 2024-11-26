@@ -8,32 +8,32 @@ use crate::{
 use moq_transfork::{Announced, AnnouncedConsumer, Path, Session};
 
 #[derive(Clone)]
-pub struct Room {
+pub struct Member {
 	pub session: Session,
 	pub path: Path,
 }
 
-impl Room {
+impl Member {
 	pub fn new(session: Session, path: Path) -> Self {
 		Self { session, path }
 	}
 
-	pub fn produce(self) -> RoomProducer {
-		RoomProducer::new(self)
+	pub fn produce(self) -> MemberProducer {
+		MemberProducer::new(self)
 	}
 
-	pub fn consume(self) -> RoomConsumer {
-		RoomConsumer::new(self)
+	pub fn consume(self) -> MemberConsumer {
+		MemberConsumer::new(self)
 	}
 }
 
-pub struct RoomProducer {
-	room: Room,
+pub struct MemberProducer {
+	member: Member,
 }
 
-impl RoomProducer {
-	pub fn new(room: Room) -> Self {
-		Self { room }
+impl MemberProducer {
+	pub fn new(member: Member) -> Self {
+		Self { member }
 	}
 
 	/// Produce a broadcast using the current time as the ID.
@@ -56,35 +56,35 @@ impl RoomProducer {
 	}
 }
 
-impl std::ops::Deref for RoomProducer {
-	type Target = Room;
+impl std::ops::Deref for MemberProducer {
+	type Target = Member;
 
 	fn deref(&self) -> &Self::Target {
-		&self.room
+		&self.member
 	}
 }
 
 /// Provides resumable access to broadcasts.
 /// Each broadcast is identified by an increasing ID, allowing the consumer to discover crashes and use the higher ID.
-pub struct RoomConsumer {
-	room: Room,
+pub struct MemberConsumer {
+	member: Member,
 
 	announced: AnnouncedConsumer,
 	active: HashSet<String>,
 }
 
-impl RoomConsumer {
-	pub fn new(room: Room) -> Self {
-		let announced = room.session.announced_prefix(room.path.clone());
+impl MemberConsumer {
+	pub fn new(member: Member) -> Self {
+		let announced = member.session.announced_prefix(member.path.clone());
 
 		Self {
-			room,
+			member,
 			announced,
 			active: HashSet::new(),
 		}
 	}
 
-	// Returns the next unique broadcast.
+	// Returns the next unique broadcast from this user.
 	pub async fn broadcast(&mut self) -> Option<BroadcastConsumer> {
 		while let Some(broadcast) = self.announced.next().await {
 			match broadcast {
@@ -112,7 +112,7 @@ impl RoomConsumer {
 
 		let broadcast = Broadcast {
 			path,
-			session: self.room.session.clone(),
+			session: self.member.session.clone(),
 		}
 		.consume();
 
@@ -128,10 +128,10 @@ impl RoomConsumer {
 	}
 }
 
-impl std::ops::Deref for RoomConsumer {
-	type Target = Room;
+impl std::ops::Deref for MemberConsumer {
+	type Target = Member;
 
 	fn deref(&self) -> &Self::Target {
-		&self.room
+		&self.member
 	}
 }
