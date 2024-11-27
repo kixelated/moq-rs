@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  native:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,29 @@ jobs:
 
       # Make sure u guys don't write bad code
       - run: cargo test --verbose
+      - run: cargo clippy --no-deps
+      - run: cargo fmt --check
+
+      # Check for unused dependencies
+      - uses: bnjbvr/cargo-machete@main
+
+  wasm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./moq-web
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Rust with clippy/rustfmt
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      # Make sure u guys don't write bad code
+      - run: cargo check --verbose
       - run: cargo clippy --no-deps
       - run: cargo fmt --check
 

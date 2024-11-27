@@ -1,5 +1,13 @@
-.DS_Store
 target/
 logs/
 *.mp4
-result
+
+# Local
+.DS_Store
+*.local
+*.log*
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
