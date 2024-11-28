@@ -4,11 +4,7 @@ import * as Rust from "../pkg/moq_web";
 export * from "../pkg/moq_web";
 
 export class Api {
-	async watch(
-		server: string,
-		room: string,
-		broadcast: string,
-	): Promise<Rust.Watch & Comlink.ProxyMarked> {
+	async watch(server: string, room: string, broadcast: string): Promise<Rust.Watch & Comlink.ProxyMarked> {
 		return Comlink.proxy(new Rust.Watch(server, room, broadcast));
 	}
 }

@@ -29,10 +29,7 @@ export class Watch {
 	}
 
 	async render(value: HTMLCanvasElement | OffscreenCanvas) {
-		const canvas =
-			value instanceof HTMLCanvasElement
-				? value.transferControlToOffscreen()
-				: value;
+		const canvas = value instanceof HTMLCanvasElement ? value.transferControlToOffscreen() : value;
 
 		await (await this.#inner).render(Comlink.transfer(canvas, [canvas]));
 	}

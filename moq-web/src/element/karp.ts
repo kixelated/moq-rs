@@ -1,4 +1,4 @@
-import type * as Moq from "..";
+import type * as Moq from "../../src";
 
 export class MoqKarp extends HTMLElement {
 	static get observedAttributes() {
@@ -31,11 +31,7 @@ export class MoqKarp extends HTMLElement {
 		console.log("Custom element moved to new page.");
 	}
 
-	attributeChangedCallback(
-		name: string,
-		_old: string | null,
-		value: string | null,
-	) {
+	attributeChangedCallback(name: string, _old: string | null, value: string | null) {
 		switch (name) {
 			case "addr":
 				this.#addr = value;

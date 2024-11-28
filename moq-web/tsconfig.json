@@ -23,6 +23,9 @@
 		/* Experimental Features */
 		"useDefineForClassFields": true
 	},
-	"include": ["lib"],
-	"exclude": ["node_modules", "pkg"]
+	"include": ["src", "rspack.config.ts"],
+	"exclude": ["node_modules", "pkg"],
+	"ts-node": {
+		"esm": true
+	}
 }
