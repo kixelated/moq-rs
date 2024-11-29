@@ -25,9 +25,8 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
 		rustup target add wasm32-unknown-unknown
 
 # Install bun dependencies
-COPY moq-web/package.json ./moq-web/
-COPY moq-web/bun.lockb ./moq-web/
-RUN cd moq-web && bun install
+COPY package.json bun.lockb .
+RUN bun install
 
 # Copy the rest
 COPY . ./

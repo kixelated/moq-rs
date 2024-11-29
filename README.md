@@ -23,12 +23,25 @@ There are additional components that have been split into other repositories for
 - [moq-gst](https://github.com/kixelated/moq-gst): A gstreamer plugin for producing Karp broadcasts.
 
 # Usage
-To launch a full cluster with docker-compose, run:
-```
+## Requirements
+-  (optional) [Docker](https://docs.docker.com/get-docker/)
+
+## Docker
+To launch a full cluster with [docker-compose](https://docs.docker.com/compose/), run:
+```sh
 make run
 ```
 
-Or for faster iteration cycles, use the dev helper scripts:
+This will start two relays (clustered!), a ffmpeg publisher, and web server.
+Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
+
+## Manual
+Or for faster iteration cycles, run stuff without docker. You'll need:
+-  [Rust](https://www.rust-lang.org/tools/install)
+-  [Go](https://golang.org/doc/install) (TODO: replace mkcert fork)
+-  (web only) [Bun](https://bun.sh/)
+
+There's a few scripts in the [dev](dev) directory to help you get started:
 ```sh
 # Run as a single (hacky) command:
 ./dev/all
@@ -39,11 +52,9 @@ Or for faster iteration cycles, use the dev helper scripts:
 ./dev/web
 ```
 
-Then, visit [https://localhost:8080](localhost:8080) to use the demo client.
-
+Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
 # Components
-
 ## moq-relay
 
 [moq-relay](moq-relay) is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.

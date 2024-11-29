@@ -8,11 +8,17 @@
 .idea
 
 # Build stuff
-node_modules
-pkg
-target
-dist
+**/node_modules
+**/pkg
+**/target
+**/dist
 
-# Our stuff
-logs
+# No dev stuff
 **/*.mp4
+**/*.fmp4
+**/*.crt
+**/*.key
+**/*.hex
+
+# Git
+.git

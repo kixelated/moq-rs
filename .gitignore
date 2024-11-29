@@ -14,6 +14,9 @@ pkg
 target
 dist
 
-# Our stuff
-logs
+# Don't leak dev stuff
 *.mp4
+*.fmp4
+*.crt
+*.key
+*.hex
