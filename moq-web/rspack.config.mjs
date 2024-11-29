@@ -1,11 +1,15 @@
-// Based on https://github.com/rustwasm/wasm-bindgen/blob/main/examples/hello_world/webpack.config.js
+// @ts-check
 
 import path from "node:path";
-import rspack from "@rspack/core";
+import { fileURLToPath } from "node:url";
 import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
+import { defineConfig } from "@rspack/cli";
 
-module.exports = {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default defineConfig({
 	entry: "./src/index.ts",
 	output: {
 		path: path.resolve(__dirname, "dist"),
@@ -46,4 +50,4 @@ module.exports = {
 	resolve: {
 		extensions: [".ts", ".js"],
 	},
-};
+});
