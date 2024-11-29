@@ -1,0 +1,46 @@
+{
+	"name": "@kixelated/moq",
+	"version": "0.3.1",
+	"type": "module",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./element": {
+			"import": "./dist/element/index.js",
+			"types": "./dist/element/index.d.ts"
+		}
+	},
+	"files": ["dist", "pkg", "README.md", "LICENSE*"],
+	"scripts": {
+		"pack": "wasm-pack build --out-dir ../pkg moq-web --release && tsc",
+		"dev": "rspack serve",
+		"build": "rspack build",
+		"lint": "biome check --write && cargo clippy --fix --allow-dirty --allow-staged",
+		"fmt": "biome format --write && cargo fmt"
+	},
+	"dependencies": {
+		"comlink": "^4.4.2",
+		"npm-run-all": "^4.1.5"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.3",
+		"@rspack/cli": "^1.0.14",
+		"@rspack/core": "^1.0.14",
+		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
+		"html-webpack-plugin": "^5.6.0",
+		"typescript": "^5.6.3",
+		"wasm-pack": "^0.13.1"
+	},
+	"engines": {
+		"bun": "1",
+		"node": "use bun",
+		"npm": "use bun",
+		"yarn": "use bun",
+		"pnpm": "use bun"
+	},
+	"engineStrict": true
+}

@@ -1,0 +1,20 @@
+# Local
+.DS_Store
+*.local
+*.log*
+
+# Dist
+node_modules
+pkg
+target
+dist
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# We're using bun
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

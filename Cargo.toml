@@ -1,5 +1,6 @@
 [workspace]
 members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-karp"]
+exclude = ["moq-web"]
 resolver = "2"
 
 [workspace.dependencies]
