@@ -24,23 +24,12 @@ There are additional components that have been split into other repositories for
 
 # Usage
 ## Requirements
+- [Rust](https://www.rust-lang.org/tools/install) (duh)
+- [Go](https://golang.org/doc/install) (for mkcert, somebody please replace this)
+- [Bun](https://bun.sh/) (for web only)
 -  (optional) [Docker](https://docs.docker.com/get-docker/)
 
-## Docker
-To launch a full cluster with [docker-compose](https://docs.docker.com/compose/), run:
-```sh
-make run
-```
-
-This will start two relays (clustered!), a ffmpeg publisher, and web server.
-Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
-
-## Manual
-Or for faster iteration cycles, run stuff without docker. You'll need:
--  [Rust](https://www.rust-lang.org/tools/install)
--  [Go](https://golang.org/doc/install) (TODO: replace mkcert fork)
--  (web only) [Bun](https://bun.sh/)
-
+## Local
 There's a few scripts in the [dev](dev) directory to help you get started:
 ```sh
 # Run as a single (hacky) command:
@@ -53,6 +42,16 @@ There's a few scripts in the [dev](dev) directory to help you get started:
 ```
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
+
+## Docker
+Alternatively, you can use docker to launch a full cluster:
+```sh
+make run
+```
+
+This will start two relays (clustered!), a ffmpeg publisher, and web server.
+Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
+
 
 # Components
 ## moq-relay
