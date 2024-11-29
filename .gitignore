@@ -1,7 +1,3 @@
-target/
-logs/
-*.mp4
-
 # Local
 .DS_Store
 *.local
@@ -11,3 +7,13 @@ logs/
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Build stuff
+node_modules
+pkg
+target
+dist
+
+# Our stuff
+logs
+*.mp4

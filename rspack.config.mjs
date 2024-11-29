@@ -2,25 +2,25 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defineConfig } from "@rspack/cli";
 import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
-import { defineConfig } from "@rspack/cli";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
-	entry: "./src/index.ts",
+	entry: "./moq-web/src/index.ts",
 	output: {
 		path: path.resolve(__dirname, "dist"),
 		filename: "index.js",
 	},
 	plugins: [
 		new HtmlWebpackPlugin({
-			template: "src/index.html",
+			template: "moq-web/src/index.html",
 		}),
 		new WasmPackPlugin({
-			crateDirectory: __dirname,
+			crateDirectory: path.resolve(__dirname, "moq-web"),
 			outDir: path.resolve(__dirname, "pkg"),
 		}),
 	],

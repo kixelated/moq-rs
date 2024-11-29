@@ -1,9 +1,9 @@
-import * as Moq from "../../src";
+import * as Moq from "..";
 
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
-export class MoqVideo extends HTMLElement implements HTMLVideoElement {
+export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	#watch?: Moq.Watch;
 	#canvas: OffscreenCanvas;
 
@@ -98,7 +98,7 @@ export class MoqVideo extends HTMLElement implements HTMLVideoElement {
 	}
 
 	connectedCallback() {
-		for (const name of MoqVideo.initAttrbiutes.concat(...MoqVideo.observedAttributes)) {
+		for (const name of MoqVideoElement.initAttrbiutes.concat(...MoqVideoElement.observedAttributes)) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
 				this.attributeChangedCallback(name, null, this.getAttribute(name));
@@ -160,6 +160,8 @@ export class MoqVideo extends HTMLElement implements HTMLVideoElement {
 		const room = parts[1];
 		const broadcast = parts[2];
 
+		console.log("module", Moq);
+		console.log("Watch", Moq.Watch);
 		const watch = new Moq.Watch(server, room, broadcast);
 		this.#watch = watch;
 
@@ -332,7 +334,7 @@ export class MoqVideo extends HTMLElement implements HTMLVideoElement {
 	}
 }
 
-customElements.define("moq-video", MoqVideo);
+customElements.define("moq-video", MoqVideoElement);
 
 function emptyRange(): TimeRanges {
 	const invalid = () => {

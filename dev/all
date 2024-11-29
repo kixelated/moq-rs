@@ -1,0 +1,48 @@
+#!/bin/bash
+set -euo pipefail
+
+# Change directory to the root of the project
+cd "$(dirname "$0")/.."
+
+# Store process IDs
+pids=()
+
+# Function to clean up processes
+cleanup() {
+  echo "Terminating all child processes..."
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid"
+    fi
+  done
+  exit 1
+}
+
+# Trap signals and call cleanup
+trap cleanup SIGINT SIGTERM ERR
+
+# Run commands in parallel
+echo "Starting: relay"
+./dev/relay &
+pids+=($!)
+
+# Give the relay a moment to grab the rust build lock
+sleep 1
+
+echo "Starting: pub"
+./dev/pub &
+pids+=($!)
+
+echo "Starting: web"
+./dev/web &
+pids+=($!)
+
+# Wait for all processes, check for errors
+for pid in "${pids[@]}"; do
+  if ! wait "$pid"; then
+    echo "Error detected, shutting down..."
+    cleanup
+  fi
+done
+
+echo "All commands completed successfully."

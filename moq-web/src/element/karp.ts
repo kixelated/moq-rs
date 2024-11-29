@@ -1,6 +1,6 @@
-import type * as Moq from "../../src";
+import type * as Moq from "..";
 
-export class MoqKarp extends HTMLElement {
+export class MoqKarpElement extends HTMLElement {
 	static get observedAttributes() {
 		return ["addr", "broadcast", "action", "muted", "blinded"];
 	}
@@ -15,7 +15,7 @@ export class MoqKarp extends HTMLElement {
 	setAttr(name: string, oldValue: string | null, newValue: string | null) {}
 
 	connectedCallback() {
-		for (const name of MoqKarp.observedAttributes) {
+		for (const name of MoqKarpElement.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
 				this.attributeChangedCallback(name, null, this.getAttribute(name));
@@ -59,4 +59,4 @@ export class MoqKarp extends HTMLElement {
 	}
 }
 
-customElements.define("moq-karp", MoqKarp);
+customElements.define("moq-karp", MoqKarpElement);

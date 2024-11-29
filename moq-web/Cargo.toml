@@ -6,6 +6,7 @@ publish = false
 version = "0.0.0"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kixelated/moq-web"
+description = "WebAssembly frontend for MoQ"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

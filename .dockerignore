@@ -1,3 +1,18 @@
+# Local
+**/.DS_Store
+**/*.local
+**/*.log*
+
+# IDE
+.vscode/*
+.idea
+
+# Build stuff
+node_modules
+pkg
 target
-dev
-*.mp4
+dist
+
+# Our stuff
+logs
+**/*.mp4

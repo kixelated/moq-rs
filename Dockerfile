@@ -1,4 +1,4 @@
-FROM rust:bookworm AS build
+FROM rust:slim-bookworm AS build
 
 # Create a build directory and copy over all of the files
 WORKDIR /build
@@ -13,6 +13,30 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
+## build-wasm
+FROM oven/bun:slim AS build-wasm
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y ca-certificates curl
+
+# Install Rustup
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+		. $HOME/.cargo/env && \
+		rustup target add wasm32-unknown-unknown
+
+# Install bun dependencies
+COPY moq-web/package.json ./moq-web/
+COPY moq-web/bun.lockb ./moq-web/
+RUN cd moq-web && bun install
+
+# Copy the rest
+COPY . ./
+
+# Build it
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+		. $HOME/.cargo/env && cd moq-web && bun run
+
 ## moq-clock
 FROM debian:bookworm-slim AS moq-clock
 COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
@@ -24,6 +48,13 @@ RUN apt-get update && apt-get install -y ffmpeg wget
 COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
 COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
 ENTRYPOINT ["moq-karp"]
+
+## moq-web
+FROM caddy:alpine AS moq-web
+EXPOSE 443
+COPY --from=build-wasm /build/moq-web/dist /srv
+
+ENTRYPOINT ["caddy", "file-server", "--root", "/srv", "--listen", ":443"]
 
 ## moq-relay
 FROM debian:bookworm-slim AS moq-relay

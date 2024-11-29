@@ -23,6 +23,6 @@
 		/* Experimental Features */
 		"useDefineForClassFields": true
 	},
-	"include": ["src", "rspack.config.js"],
+	"include": ["moq-web/src"],
 	"exclude": ["node_modules", "pkg"]
 }

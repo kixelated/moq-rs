@@ -1,6 +1,6 @@
 {
 	"name": "@kixelated/moq",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"type": "module",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -9,15 +9,16 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./element/video": {
-			"import": "./dist/element/video.js",
-			"types": "./dist/element/video.d.ts"
+		"./element": {
+			"import": "./dist/element/index.js",
+			"types": "./dist/element/index.d.ts"
 		}
 	},
-	"files": ["dist", "pkg", "README.md", "../LICENSE*"],
+	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"pack": "wasm-pack build --release && tsc",
+		"pack": "wasm-pack build --out-dir ../pkg moq-web --release && tsc",
 		"dev": "rspack serve",
+		"build": "rspack build",
 		"lint": "biome check --write && cargo clippy --fix --allow-dirty --allow-staged",
 		"fmt": "biome format --write && cargo fmt"
 	},
@@ -31,7 +32,8 @@
 		"@rspack/core": "^1.0.14",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"html-webpack-plugin": "^5.6.0",
-		"typescript": "^5.6.3"
+		"typescript": "^5.6.3",
+		"wasm-pack": "^0.13.1"
 	},
 	"engines": {
 		"bun": "1",
