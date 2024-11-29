@@ -37,7 +37,7 @@ pub struct LockGuard<'a, T> {
 	inner: sync::MutexGuard<'a, T>,
 }
 
-impl<'a, T> ops::Deref for LockGuard<'a, T> {
+impl<T> ops::Deref for LockGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -45,13 +45,13 @@ impl<'a, T> ops::Deref for LockGuard<'a, T> {
 	}
 }
 
-impl<'a, T> ops::DerefMut for LockGuard<'a, T> {
+impl<T> ops::DerefMut for LockGuard<'_, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner
 	}
 }
 
-impl<'a, T: fmt::Debug> fmt::Debug for LockGuard<'a, T> {
+impl<T: fmt::Debug> fmt::Debug for LockGuard<'_, T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.inner.fmt(f)
 	}
