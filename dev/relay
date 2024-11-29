@@ -4,8 +4,12 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
+NOCERT="${NOCERT:-}"
+
 # Generate the self-signed certificate if needed
-./dev/cert
+if [ -z "$NOCERT" ]; then
+	./dev/cert
+fi
 
 # Default to a self-signed certificate
 # TODO automatically generate if it doesn't exist.
@@ -32,5 +36,14 @@ fi
 
 echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
 
+# Forward signals to the actual process
+# Not sure why only the relay needs this?
+cleanup() {
+  kill -TERM "$child" 2>/dev/null
+}
+trap cleanup SIGINT SIGTERM
+
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS "$@"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS "$@" &
+child=$!
+wait "$child"

@@ -21,19 +21,19 @@ cleanup() {
 # Trap signals and call cleanup
 trap cleanup SIGINT SIGTERM ERR
 
+# Generate certs first
+./dev/cert
+
 # Run commands in parallel
-echo "Starting: relay"
-./dev/relay &
+NOCERT=1 ./dev/relay &
 pids+=($!)
 
-# Give the relay a moment to grab the rust build lock
-sleep 1
+# Give the relay a moment to grab the rust build lock so it starts first
+sleep 0.1
 
-echo "Starting: pub"
 ./dev/pub &
 pids+=($!)
 
-echo "Starting: web"
 ./dev/web &
 pids+=($!)
 
