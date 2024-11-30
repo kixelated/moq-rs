@@ -34,6 +34,8 @@ impl Origins {
 		while let Some(announced) = announced.next().await {
 			match announced {
 				Announced::Active(path) => {
+					tracing::info!(?path, "announced origin");
+
 					let mut routes = self.routes.lock().unwrap();
 					match routes.entry(path.clone()) {
 						hash_map::Entry::Occupied(mut entry) => entry.get_mut().push(origin.clone()),
@@ -44,6 +46,8 @@ impl Origins {
 					}
 				}
 				Announced::Ended(path) => {
+					tracing::info!(?path, "unannounced origin");
+
 					let mut routes = self.routes.lock().unwrap();
 					let entry = match routes.entry(path.clone()) {
 						hash_map::Entry::Occupied(entry) => entry.into_mut(),
