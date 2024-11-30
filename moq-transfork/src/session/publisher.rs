@@ -87,25 +87,26 @@ impl Publisher {
 		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
 		while let Some(announced) = announced.next().await {
+			let path = prefix.clone().append(announced.path());
 			match announced {
-				Announced::Active(path) => {
+				Announced::Active(suffix) => {
 					tracing::debug!(?path, "announce");
 
 					stream
 						.writer
 						.encode(&message::Announce {
 							status: message::AnnounceStatus::Active,
-							suffix: path,
+							suffix,
 						})
 						.await?;
 				}
-				Announced::Ended(path) => {
+				Announced::Ended(suffix) => {
 					tracing::debug!(?path, "unannounce");
 					stream
 						.writer
 						.encode(&message::Announce {
 							status: message::AnnounceStatus::Ended,
-							suffix: path,
+							suffix,
 						})
 						.await?;
 				}
@@ -140,7 +141,7 @@ impl Publisher {
 
 		stream.writer.encode(&info).await?;
 
-		tracing::info!("active");
+		tracing::info!("subscribed");
 
 		let mut tasks = FuturesUnordered::new();
 		let mut complete = false;
@@ -194,6 +195,7 @@ impl Publisher {
 		group: &mut GroupConsumer,
 	) -> Result<(), Error> {
 		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
+		tracing::trace!("serving group");
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await

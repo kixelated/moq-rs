@@ -67,6 +67,8 @@ impl Subscriber {
 			.encode(&message::AnnounceInterest { prefix: prefix.clone() })
 			.await?;
 
+		tracing::debug!(?prefix, "waiting for announcements");
+
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
@@ -74,6 +76,7 @@ impl Subscriber {
 						// Handle the announce
 						Some(announce) => {
 							let path = prefix.clone().append(&announce.suffix);
+							tracing::debug!(?path, ?announce.status, "announce");
 
 							match announce.status {
 								message::AnnounceStatus::Active => {
@@ -177,6 +180,7 @@ impl Subscriber {
 
 	pub async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
 		let group: message::Group = stream.decode().await?;
+		tracing::trace!(?group, "decoded group");
 
 		let mut group = {
 			let mut subs = self.subscribes.lock();
@@ -185,6 +189,7 @@ impl Subscriber {
 		};
 
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
+			tracing::trace!(?frame, "decoded frame");
 			let mut frame = group.create_frame(frame.size);
 			let mut remain = frame.size;
 

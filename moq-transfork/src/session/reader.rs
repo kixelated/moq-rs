@@ -38,7 +38,10 @@ impl Reader {
 				Err(err) => return Err(err.into()),
 			};
 
-			tracing::trace!(required, "more data needed");
+			if !self.buffer.is_empty() {
+				tracing::trace!(required, "more data needed");
+				tracing::trace!(?self.buffer, "buffer");
+			}
 
 			// Read in more data until we reach the requested amount.
 			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
