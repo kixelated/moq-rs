@@ -1,4 +1,4 @@
-name: pr
+name: PR Checks
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ env:
 
 jobs:
   native:
+    name: Native Checks
     runs-on: ubuntu-latest
 
     steps:
@@ -28,6 +29,7 @@ jobs:
       - uses: bnjbvr/cargo-machete@main
 
   wasm:
+    name: WASM Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,3 +54,19 @@ jobs:
 
       # Check for unused dependencies
       - uses: bnjbvr/cargo-machete@main
+
+  # Make sure the NPM package is good to go
+  npm:
+    name: Javascript Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+      - run: bun pack
+      - run: bun pm pack

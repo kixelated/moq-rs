@@ -12,3 +12,4 @@ max_line_length = 120
 # YAML doesn't support hard tabs 🙃
 [**.yml]
 indent_style = space
+indent_size = 2

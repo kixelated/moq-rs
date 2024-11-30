@@ -1,0 +1,31 @@
+name: Publish NPM Package
+
+on:
+  push:
+    tags:
+      - 'moq-web-v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Update NPM version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/moq-web-v}
+          jq ".version=\"$VERSION\"" package.json > temp.json && mv temp.json package.json
+
+      - name: Build/Publish NPM Package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          bun install
+          bun pack
+          bun publish
