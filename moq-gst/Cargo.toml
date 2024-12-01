@@ -29,5 +29,5 @@ gst-plugin-version-helper = "0.8"
 
 [lib]
 name = "gstmoq"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
