@@ -1,6 +1,9 @@
 [workspace]
 members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-karp"]
-exclude = ["moq-web"]
+# These are separate while they have annoying dependencies.
+# 	moq-web: requires wasm target
+# 	moq-gst: requires gstreamer is installed
+exclude = ["moq-web", "moq-gst"]
 resolver = "2"
 
 [workspace.dependencies]
