@@ -1,6 +1,6 @@
 {
 	"name": "@kixelated/moq",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"type": "module",
 	"module": "./dist/src/index.js",
 	"types": "./dist/src/index.d.ts",
