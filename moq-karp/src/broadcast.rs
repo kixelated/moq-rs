@@ -131,7 +131,6 @@ impl BroadcastAnnounced {
 
 	async fn try_load(&mut self, suffix: Path) -> Result<Option<BroadcastConsumer>> {
 		let name = suffix.first().ok_or(Error::InvalidSession)?;
-		tracing::info!(?name, "loading broadcast");
 
 		if self.active.contains(name.as_str()) {
 			// Skip duplicates
@@ -139,7 +138,7 @@ impl BroadcastAnnounced {
 		}
 
 		let path = self.announced.prefix().clone().push(name);
-		tracing::info!(prefix = ?self.announced.prefix(), ?path, "loading broadcast");
+		tracing::info!(?path, "loading broadcast");
 		let broadcast = BroadcastConsumer::new(self.session.clone(), path);
 
 		self.active.insert(name.to_string());
@@ -194,7 +193,6 @@ impl BroadcastConsumer {
 					return Ok(Some(catalog));
 				},
 				Some(group) = async { self.catalog_track.next_group().await.transpose() } => {
-					println!("{:?}", group);
 					self.catalog_group.replace(group?);
 				},
 				else => return Ok(None),

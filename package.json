@@ -2,16 +2,16 @@
 	"name": "@kixelated/moq",
 	"version": "0.3.1",
 	"type": "module",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
+	"module": "./dist/src/index.js",
+	"types": "./dist/src/index.d.ts",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
+			"types": "./dist/src/index.d.ts",
+			"import": "./dist/src/index.js"
 		},
 		"./element": {
-			"import": "./dist/element/index.js",
-			"types": "./dist/element/index.d.ts"
+			"import": "./dist/src/element/index.js",
+			"types": "./dist/src/element/index.d.ts"
 		}
 	},
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],

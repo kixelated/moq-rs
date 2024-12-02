@@ -152,7 +152,7 @@ impl Subscriber {
 		// TODO use the response to correctly populate the track info
 		let _response: message::Info = stream.reader.decode().await?;
 
-		tracing::info!("active");
+		tracing::info!("subscribed");
 
 		self.subscribes.lock().insert(id, track.clone());
 
