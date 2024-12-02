@@ -128,7 +128,7 @@ impl WatchBackend {
 
 		let mut announced = room.watch(&self.broadcast);
 
-		tracing::info!(addr = ?self.server, ?room, broadcast = ?announced, "connected");
+		tracing::info!(addr = %self.server, ?room, broadcast = ?announced, "connected");
 
 		self.status.send_modify(|status| {
 			status.connected = true;
@@ -137,8 +137,6 @@ impl WatchBackend {
 		loop {
 			tokio::select! {
 				Some(broadcast) = announced.broadcast() => {
-					tracing::info!(?broadcast, "announced");
-
 					// TODO ignore lower IDs
 					self.active = Some(broadcast);
 					self.catalog = None;
@@ -171,6 +169,8 @@ impl WatchBackend {
 	fn init(&mut self) -> Result<()> {
 		let broadcast = self.active.as_ref().unwrap();
 		let catalog = self.catalog.as_ref().unwrap();
+
+		tracing::info!(?catalog, "initializing");
 
 		if let Some(video) = catalog.video.first() {
 			tracing::info!("fetching video track: {:?}", video);

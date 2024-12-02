@@ -5,7 +5,7 @@ import * as Moq from "..";
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
 export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	#watch?: Moq.Watch;
-	#canvas: OffscreenCanvas;
+	#canvas?: OffscreenCanvas;
 
 	// Attributes with getters and setters.
 	#width = 0;
@@ -91,13 +91,37 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	constructor() {
 		super();
 
-		const shadowRoot = this.attachShadow({ mode: "open" });
-		const canvas = document.createElement("canvas");
-		shadowRoot.appendChild(canvas);
-		this.#canvas = canvas.transferControlToOffscreen();
+		const shadow = this.attachShadow({ mode: "open" });
+		const style = document.createElement("style");
+		style.textContent = `
+			:host {
+				display: block;
+				position: relative;
+			}
+
+			::slotted(canvas) {
+				display: block;
+				max-width: 100%;
+				height: auto;
+			}
+		`;
+		shadow.appendChild(style);
+
+		const slot = document.createElement("slot");
+		slot.name = "canvas"; // Named slot for the canvas
+		shadow.appendChild(slot);
 	}
 
 	connectedCallback() {
+		// Provide a default canvas if none is slotted
+		if (!this.querySelector("canvas")) {
+			const defaultCanvas = document.createElement("canvas");
+			defaultCanvas.slot = "canvas";
+			this.appendChild(defaultCanvas);
+		}
+
+		this.#canvas = this.querySelector("canvas")?.transferControlToOffscreen();
+
 		for (const name of MoqVideoElement.initAttrbiutes.concat(...MoqVideoElement.observedAttributes)) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
@@ -160,8 +184,6 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 		const room = parts[1];
 		const broadcast = parts[2];
 
-		console.log("module", Moq);
-		console.log("Watch", Moq.Watch);
 		const watch = new Moq.Watch(server, room, broadcast);
 		this.#watch = watch;
 
@@ -169,6 +191,7 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 		(async () => {
 			await watch.pause(paused);
 			await watch.volume(volume);
+			if (!this.#canvas) throw new Error("canvas not loaded");
 			await watch.render(this.#canvas);
 		})();
 	}
@@ -334,8 +357,6 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	}
 }
 
-customElements.define("moq-video", MoqVideoElement);
-
 function emptyRange(): TimeRanges {
 	const invalid = () => {
 		throw new RangeError("Index is not in the allowed range.");
@@ -414,4 +435,12 @@ function emptyTextTracks(): TextTrackList {
 			throw new Error("Function not implemented.");
 		},
 	};
+}
+
+customElements.define("moq-video", MoqVideoElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"moq-video": MoqVideoElement;
+	}
 }

@@ -60,3 +60,9 @@ export class MoqKarpElement extends HTMLElement {
 }
 
 customElements.define("moq-karp", MoqKarpElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"moq-karp": MoqKarpElement;
+	}
+}
