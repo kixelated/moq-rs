@@ -437,8 +437,10 @@ function emptyTextTracks(): TextTrackList {
 	};
 }
 
+// Register the custom element.
 customElements.define("moq-video", MoqVideoElement);
 
+// Add our type to the typescript global scope.
 declare global {
 	interface HTMLElementTagNameMap {
 		"moq-video": MoqVideoElement;
