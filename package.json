@@ -1,6 +1,6 @@
 {
 	"name": "@kixelated/moq",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"type": "module",
 	"module": "./dist/src/index.js",
 	"types": "./dist/src/index.d.ts",
@@ -8,10 +8,6 @@
 		".": {
 			"types": "./dist/src/index.d.ts",
 			"import": "./dist/src/index.js"
-		},
-		"./element": {
-			"import": "./dist/src/element/index.js",
-			"types": "./dist/src/element/index.d.ts"
 		}
 	},
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
@@ -34,13 +30,5 @@
 		"html-webpack-plugin": "^5.6.0",
 		"typescript": "^5.6.3",
 		"wasm-pack": "^0.13.1"
-	},
-	"engines": {
-		"bun": "1",
-		"node": "use bun",
-		"npm": "use bun",
-		"yarn": "use bun",
-		"pnpm": "use bun"
-	},
-	"engineStrict": true
+	}
 }

@@ -357,8 +357,6 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	}
 }
 
-customElements.define("moq-video", MoqVideoElement);
-
 function emptyRange(): TimeRanges {
 	const invalid = () => {
 		throw new RangeError("Index is not in the allowed range.");
@@ -437,4 +435,12 @@ function emptyTextTracks(): TextTrackList {
 			throw new Error("Function not implemented.");
 		},
 	};
+}
+
+customElements.define("moq-video", MoqVideoElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"moq-video": MoqVideoElement;
+	}
 }
