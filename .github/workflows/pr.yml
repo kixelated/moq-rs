@@ -20,37 +20,36 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # Make sure u guys don't write bad code
-      - run: cargo test --verbose
-      - run: cargo clippy --no-deps
-      - run: cargo fmt --check
-
-      # Check for unused dependencies
-      - uses: bnjbvr/cargo-machete@main
-
-  wasm:
-    name: WASM Checks
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./moq-web
-
-    steps:
-      - uses: actions/checkout@v3
-
-      # Install Rust with clippy/rustfmt
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: wasm32-unknown-unknown
-          components: clippy, rustfmt
+      # Annoying: we need gstreamer installed to compile moq-gst
+      - name: Setup GStreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get remove libunwind-*
+          sudo apt-get install -y \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools \
+            gstreamer1.0-x \
+            gstreamer1.0-alsa \
+            gstreamer1.0-gl \
+            gstreamer1.0-gtk3 \
+            gstreamer1.0-qt5 \
+            gstreamer1.0-pulseaudio
 
       # Required for unstable WebCodecs and WebTransport
       - run: echo "RUSTFLAGS=--cfg=web_sys_unstable_apis" >> $GITHUB_ENV
 
       # Make sure u guys don't write bad code
-      - run: cargo check --verbose
-      - run: cargo clippy --no-deps
-      - run: cargo fmt --check
+      - run: cargo check --all --verbose
+      - run: cargo test --all --verbose
+      - run: cargo clippy --all --no-deps
+      - run: cargo fmt --all --check
 
       # Check for unused dependencies
       - uses: bnjbvr/cargo-machete@main
@@ -70,27 +69,3 @@ jobs:
       - run: bun install
       - run: bun pack
       - run: bun pm pack
-
-  gst:
-    name: GStreamer Checks
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./moq-gst
-
-    steps:
-      - uses: actions/checkout@v3
-
-      # Install Rust with clippy/rustfmt
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: clippy, rustfmt
-
-      # We need gstreamer installed to compile this repo
-      - name: Setup GStreamer
-        uses: blinemedical/setup-gstreamer@v1
-
-      # Make sure u guys don't write bad code
-      - run: cargo test --verbose
-      - run: cargo clippy --no-deps
-      - run: cargo fmt --check

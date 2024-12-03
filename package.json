@@ -29,9 +29,9 @@
 		"pack:wasm": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index",
 		"dev": "rspack serve",
 		"build": "rspack build",
-		"check": "biome check && cargo check && (cd moq-web; cargo check) && (cd moq-gst; cargo check)",
-		"fix": "biome check --write && cargo clippy --fix --allow-dirty --allow-staged && (cd moq-web; cargo clippy --fix --allow-dirty --allow-staged) && (cd moq-gst; cargo clippy --fix --allow-dirty --allow-staged)",
-		"fmt": "biome format --write && cargo fmt && (cd moq-web; cargo fmt) && (cd moq-gst; cargo fmt)"
+		"check": "biome check && cargo check --all",
+		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged",
+		"fmt": "biome format --write && cargo fmt --all"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2",

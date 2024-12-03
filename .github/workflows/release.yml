@@ -41,21 +41,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Release-plz Web
-        uses: MarcoIeni/release-plz-action@v0.5
-        with:
-          manifest_path: moq-web/Cargo.toml
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-
-      - name: Release-plz Gstreamer
-        uses: MarcoIeni/release-plz-action@v0.5
-        with:
-          manifest_path: moq-gst/Cargo.toml
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-

@@ -1,16 +1,29 @@
 [workspace]
-members = ["moq-transfork", "moq-relay", "moq-clock", "moq-native", "moq-karp"]
-# These are separate while they have annoying dependencies.
-# 	moq-web: requires wasm target
-# 	moq-gst: requires gstreamer is installed
-exclude = ["moq-web", "moq-gst"]
+members = [
+	"moq-transfork",
+	"moq-relay",
+	"moq-clock",
+	"moq-native",
+	"moq-karp",
+	"moq-gst",
+	"moq-web",
+]
+default-members = [
+	"moq-transfork",
+	"moq-relay",
+	"moq-clock",
+	"moq-native",
+	"moq-karp",
+	"moq-web",
+	# "moq-gst", # Requires gstreamer is installed; annoying
+]
 resolver = "2"
 
 [workspace.dependencies]
 # Make it easy to test web-transport changes
 #web-transport = { path = "../web-transport-rs/web-transport" }
-web-transport = "0.6.2"
+web-transport = "0.7"
 
-# Use debug symbols in production until things are more stable
-[profile.release]
-debug = true
+[profile.release.package.moq-web]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
