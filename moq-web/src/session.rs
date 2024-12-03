@@ -10,22 +10,19 @@ pub async fn connect(addr: &Url) -> Result<moq_transfork::Session> {
 		return Err(Error::InvalidUrl);
 	}
 
-	let session = web_transport::wasm::Session::build(addr.clone())
-		.allow_pooling(false)
-		.congestion_control(web_transport::wasm::CongestionControl::LowLatency)
-		.require_unreliable(true);
+	let client = web_transport::Client::new().congestion_control(web_transport::CongestionControl::LowLatency);
 
 	// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
 	// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
-	let session = match addr.host_str() {
+	let client = match addr.host_str() {
 		Some("localhost") => {
 			let fingerprint = fingerprint(addr).await?;
-			session.server_certificate_hashes(vec![fingerprint])
+			client.server_certificate_hashes(vec![fingerprint])
 		}
-		_ => session,
+		_ => client,
 	};
 
-	let session = session.connect().await?;
+	let session = client.connect(addr).await?;
 	let session = moq_transfork::Session::connect(session.into()).await?;
 
 	Ok(session)

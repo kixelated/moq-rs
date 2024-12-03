@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Change directory to the moq-gst folder
-cd "$(dirname "$0")/../moq-gst"
+# Change directory to the root
+cd "$(dirname "$0")/.."
 
 # Use info logging by default
 export RUST_LOG="${RUST_LOG:-info}"
@@ -24,7 +24,7 @@ URL="${URL:-"$SCHEME://$ADDR"}"
 echo "Watch URL: https://quic.video/watch/$ROOM/$NAME?server=$ADDR"
 
 # Make sure we build the gstreamer plugin
-cargo build
+cargo build -p moq-gst
 
 export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
 
@@ -33,20 +33,20 @@ export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}
 # export GST_DEBUG=*:5
 
 # Download the Big Buck Bunny video if it doesn't exist
-if [ ! -f ../dev/bbb.fmp4 ]; then
-	if [ ! -f ../dev/bbb.mp4 ]; then
+if [ ! -f dev/bbb.fmp4 ]; then
+	if [ ! -f dev/bbb.mp4 ]; then
 		echo "Downloading ya boye Big Buck Bunny..."
-		wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O ../dev/bbb.mp4
+		wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/bbb.mp4
 	fi
 
 	echo "Converting to a (properly) fragmented MP4..."
-	ffmpeg -i ../dev/bbb.mp4 \
+	ffmpeg -i dev/bbb.mp4 \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		../dev/bbb.fmp4
+		dev/bbb.fmp4
 fi
 
 # Run gstreamer and pipe the output to moq-pub
-gst-launch-1.0 -v -e multifilesrc location="../dev/bbb.fmp4" loop=true ! qtdemux name=demux \
+gst-launch-1.0 -v -e multifilesrc location="dev/bbb.fmp4" loop=true ! qtdemux name=demux \
     demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" room="$ROOM" broadcast="$NAME" \
     demux.audio_0 ! aacparse ! queue ! mux.

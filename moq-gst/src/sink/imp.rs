@@ -167,7 +167,10 @@ impl MoqSink {
 				.await
 				.expect("failed to connect");
 
-			let path = src.path_segments().expect("missing path").collect::<moq_transfork::Path>();
+			let path = src
+				.path_segments()
+				.expect("missing path")
+				.collect::<moq_transfork::Path>();
 			let broadcast = moq_karp::BroadcastProducer::new(session, path).unwrap();
 			let media = moq_karp::cmaf::Import::new(broadcast);
 

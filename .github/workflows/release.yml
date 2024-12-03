@@ -36,7 +36,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # Run release-plz to create PRs and releases
-      - name: Run release-plz
+      - name: Release-plz Native
         uses: MarcoIeni/release-plz-action@v0.5
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
