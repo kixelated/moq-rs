@@ -10,6 +10,7 @@ use moq_native::{quic, tls};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::sync::Mutex;
+use url::Url;
 
 pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 	tokio::runtime::Builder::new_multi_thread()
@@ -21,9 +22,7 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 
 #[derive(Default, Clone)]
 struct Settings {
-	pub url: Option<String>,
-	pub room: String,
-	pub broadcast: String,
+	pub src: Option<String>,
 	pub tls_disable_verify: bool,
 }
 
@@ -53,17 +52,9 @@ impl ObjectImpl for MoqSink {
 	fn properties() -> &'static [glib::ParamSpec] {
 		static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
 			vec![
-				glib::ParamSpecString::builder("url")
-					.nick("URL")
-					.blurb("Connect to the subscriber at the given URL")
-					.build(),
-				glib::ParamSpecString::builder("room")
-					.nick("Room")
-					.blurb("Publish the broadcast to the given room")
-					.build(),
-				glib::ParamSpecString::builder("broadcast")
-					.nick("Broadcast")
-					.blurb("Publish the broadcast with the given name")
+				glib::ParamSpecString::builder("src")
+					.nick("Source URL")
+					.blurb("Connect to the given URL")
 					.build(),
 				glib::ParamSpecBoolean::builder("tls-disable-verify")
 					.nick("TLS disable verify")
@@ -79,9 +70,7 @@ impl ObjectImpl for MoqSink {
 		let mut settings = self.settings.lock().unwrap();
 
 		match pspec.name() {
-			"url" => settings.url = Some(value.get().unwrap()),
-			"broadcast" => settings.broadcast = value.get().unwrap(),
-			"room" => settings.room = value.get().unwrap(),
+			"src" => settings.src = Some(value.get().unwrap()),
 			"tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
 			_ => unimplemented!(),
 		}
@@ -91,9 +80,7 @@ impl ObjectImpl for MoqSink {
 		let settings = self.settings.lock().unwrap();
 
 		match pspec.name() {
-			"url" => settings.url.to_value(),
-			"broadcast" => settings.broadcast.to_value(),
-			"room" => settings.room.to_value(),
+			"src" => settings.src.to_value(),
 			"tls-disable-verify" => settings.tls_disable_verify.to_value(),
 			_ => unimplemented!(),
 		}
@@ -160,8 +147,8 @@ impl BaseSinkImpl for MoqSink {
 impl MoqSink {
 	fn setup(&self) -> anyhow::Result<()> {
 		let settings = self.settings.lock().unwrap();
-		let url = settings.url.clone().context("missing url")?;
-		let url = url.parse().context("invalid URL")?;
+		let src = settings.src.clone().context("missing src")?;
+		let src = Url::parse(&src).context("invalid URL")?;
 
 		// TODO support TLS certs and other options
 		let config = quic::Args {
@@ -174,16 +161,14 @@ impl MoqSink {
 		.load()?;
 		let client = quic::Endpoint::new(config)?.client;
 
-		let room = settings.room.clone();
-		let broadcast = settings.broadcast.clone();
-
 		RUNTIME.block_on(async move {
-			let session = client.connect(&url).await.expect("failed to connect");
+			let session = client.connect(&src).await.expect("failed to connect");
 			let session = moq_transfork::Session::connect(session)
 				.await
 				.expect("failed to connect");
 
-			let broadcast = moq_karp::Room::new(session, room).publish(&broadcast).unwrap();
+			let path = src.path_segments().expect("missing path").collect::<moq_transfork::Path>();
+			let broadcast = moq_karp::BroadcastProducer::new(session, path).unwrap();
 			let media = moq_karp::cmaf::Import::new(broadcast);
 
 			let mut state = self.state.lock().unwrap();

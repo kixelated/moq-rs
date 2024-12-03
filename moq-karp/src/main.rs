@@ -2,11 +2,11 @@ use std::net;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use moq_transfork::Session;
+use moq_transfork::{Path, Session};
 use url::Url;
 
-use moq_karp::{cmaf, Room};
-use moq_native::quic;
+use moq_karp::{cmaf, BroadcastProducer};
+use moq_native::quic::{self, Client};
 
 #[derive(Parser, Clone)]
 struct Cli {
@@ -25,24 +25,14 @@ struct Cli {
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
 	pub command: Command,
-
-	/// The URL of the server.
-	/// The protocol MUST be https://
-	#[arg(long)]
-	pub server: Url,
-
-	/// The name of the room.
-	#[arg(long)]
-	pub room: String,
-
-	/// The name of the broadcast within the room.
-	#[arg(long)]
-	pub broadcast: String,
 }
 
 #[derive(Subcommand, Clone)]
 pub enum Command {
-	Publish,
+	Publish {
+		/// The URL must start with https://
+		url: String,
+	},
 	//Subscribe,
 }
 
@@ -54,21 +44,20 @@ async fn main() -> anyhow::Result<()> {
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 
-	tracing::info!(url = %cli.server, "connecting");
-	let session = quic.client.connect(&cli.server).await?;
-	let session = Session::connect(session).await?;
-
-	let room = Room::new(session.clone(), cli.room);
-
 	match cli.command {
-		Command::Publish => publish(session, room, cli.broadcast).await,
+		Command::Publish { url } => publish(quic.client, &url).await,
 		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
-#[tracing::instrument("publish", skip_all, err, fields(?room, ?name))]
-async fn publish(session: Session, room: Room, name: String) -> anyhow::Result<()> {
-	let broadcast = room.publish(&name)?;
+#[tracing::instrument(skip_all, err, fields(?url))]
+async fn publish(client: Client, url: &str) -> anyhow::Result<()> {
+	let url = Url::parse(&url).context("invalid URL")?;
+	let session = client.connect(&url).await?;
+	let session = Session::connect(session).await?;
+
+	let path = url.path_segments().context("missing path")?.collect::<Path>();
+	let broadcast = BroadcastProducer::new(session.clone(), path)?;
 	let mut input = tokio::io::stdin();
 
 	let mut import = cmaf::Import::new(broadcast);
