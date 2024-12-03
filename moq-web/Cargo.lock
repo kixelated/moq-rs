@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "moq-web"
-version = "0.3.3"
+version = "0.3.5"
 dependencies = [
  "console_error_panic_hook",
  "gloo-net",
