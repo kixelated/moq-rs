@@ -20,7 +20,7 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # We need gstreamer installed to compile moq-gst
+      # Annoying: we need gstreamer installed to compile moq-gst
       - name: Setup GStreamer
         run: |
           sudo apt-get update
@@ -30,7 +30,9 @@ jobs:
             gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad \
             gstreamer1.0-plugins-ugly \
-            gstreamer1.0-libav
+            gstreamer1.0-libav \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
 
       # Required for unstable WebCodecs and WebTransport
       - run: echo "RUSTFLAGS=--cfg=web_sys_unstable_apis" >> $GITHUB_ENV
