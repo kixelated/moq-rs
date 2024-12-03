@@ -26,7 +26,7 @@ tokio = { version = "1", features = ["sync"] }
 
 js-sys = "0.3.72"
 url = "2"
-thiserror = "1"
+thiserror = "2"
 hex = "0.4"
 
 [dependencies.web-sys]
