@@ -100,9 +100,9 @@ impl Subscriber {
 					return Err(Error::NotFound);
 				}
 			}
-			message::Announce::Current => {
-				tracing::debug!("current");
-				announced.current();
+			message::Announce::Live => {
+				tracing::debug!("live");
+				announced.live();
 			}
 		};
 

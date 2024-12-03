@@ -6,37 +6,20 @@ use super::Path;
 /// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announced {
+	// Indicates the track is active.
 	Active(Path),
+
+	// Indicates the track is no longer active.
 	Ended(Path),
-}
 
-impl Announced {
-	pub fn suffix(&self) -> &Path {
-		match self {
-			Announced::Active(path) => path,
-			Announced::Ended(path) => path,
-		}
-	}
-
-	pub fn active(&self) -> Option<&Path> {
-		match self {
-			Announced::Active(path) => Some(path),
-			Announced::Ended(_) => None,
-		}
-	}
-
-	pub fn ended(&self) -> Option<&Path> {
-		match self {
-			Announced::Active(_) => None,
-			Announced::Ended(path) => Some(path),
-		}
-	}
+	// Indicates we're caught up to the current state of the world.
+	Live,
 }
 
 #[derive(Default)]
 struct State {
 	active: BTreeSet<Path>,
-	current: bool,
+	live: bool,
 }
 
 /// Announces tracks to consumers over the network.
@@ -65,16 +48,16 @@ impl AnnouncedProducer {
 	}
 
 	/// Indicate that we're caught up to the current state of the world.
-	pub fn current(&mut self) {
+	pub fn live(&mut self) -> bool {
 		self.state.send_if_modified(|state| {
-			let prev = state.current;
-			state.current = true;
+			let prev = state.live;
+			state.live = true;
 			!prev
-		});
+		})
 	}
 
-	pub fn is_current(&self) -> bool {
-		self.state.borrow().current
+	pub fn is_live(&self) -> bool {
+		self.state.borrow().live
 	}
 
 	/// Subscribe to all announced tracks, including those already active.
@@ -103,6 +86,9 @@ pub struct AnnouncedConsumer {
 
 	// Only consume paths with this prefix.
 	prefix: Path,
+
+	// Indicates if the publisher is still active.
+	live: bool,
 }
 
 impl AnnouncedConsumer {
@@ -111,34 +97,33 @@ impl AnnouncedConsumer {
 			state,
 			active: BTreeSet::new(),
 			prefix,
+			live: false,
 		}
 	}
 
 	/// Returns the suffix of the next announced track received already.
-	pub fn try_next(&mut self) -> Option<Announced> {
+	fn try_next(&mut self) -> Option<Announced> {
+		let state = self.state.borrow();
+
 		// TODO this absolutely need to be optimized one day.
-		while let Some(removed) = self.active.difference(&self.state.borrow().active).next().cloned() {
+		while let Some(removed) = self.active.difference(&state.active).next().cloned() {
 			self.active.remove(&removed);
 			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
 				return Some(Announced::Ended(suffix));
 			}
 		}
 
-		while let Some(added) = self.state.borrow().active.difference(&self.active).next().cloned() {
+		while let Some(added) = state.active.difference(&self.active).next().cloned() {
 			self.active.insert(added.clone());
 			if let Some(suffix) = added.strip_prefix(&self.prefix) {
 				return Some(Announced::Active(suffix));
 			}
 		}
 
-		// Return None if the publisher is still active.
-		self.state.has_changed().err()?;
-
-		// The publisher is closed, so return `Ended` for all active paths.
-		while let Some(removed) = self.active.pop_first() {
-			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-				return Some(Announced::Ended(suffix));
-			}
+		// Return the live marker if needed.
+		if state.live && !self.live {
+			self.live = true;
+			return Some(Announced::Live);
 		}
 
 		None
@@ -148,27 +133,27 @@ impl AnnouncedConsumer {
 	pub async fn next(&mut self) -> Option<Announced> {
 		// NOTE: This just checks if the producer has been dropped.
 		// We're not actually using the `changed()` state properly.
-		loop {
-			if let Some(announced) = self.try_next() {
-				return Some(announced);
+		while self.state.has_changed().is_ok() {
+			match self.try_next() {
+				Some(announced) => return Some(announced),
+				None => (),
 			}
 
 			// Wait for any updates.
-			if self.state.changed().await.is_err() {
-				// The publisher so return whatever we have.
-				return self.try_next();
+			match self.state.changed().await {
+				Ok(_) => continue,
+				Err(_) => break,
 			}
 		}
-	}
 
-	// Block until we're caught up to the current state of the world.
-	pub async fn current(&self) -> bool {
-		self.state.clone().wait_for(|state| state.current).await.is_ok()
-	}
+		// The publisher is closed, so return `Ended` for all active paths.
+		while let Some(removed) = self.active.pop_first() {
+			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
+				return Some(Announced::Ended(suffix));
+			}
+		}
 
-	// Return if we're caught up to the current state of the world.
-	pub fn is_current(&self) -> bool {
-		self.state.borrow().current
+		None
 	}
 
 	/// Returns the prefix in use.
@@ -227,7 +212,10 @@ mod test {
 		// Make sure we get all of the paths only once.
 		while !paths.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(paths.remove(res.active().unwrap()));
+			match res {
+				Announced::Active(active) => assert!(paths.remove(&active)),
+				_ => panic!("unexpected announcement: {:?}", res),
+			}
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
@@ -254,7 +242,10 @@ mod test {
 		// Make sure we get all of the paths only once.
 		while !paths.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(paths.remove(res.active().unwrap()));
+			match res {
+				Announced::Active(active) => assert!(paths.remove(&active)),
+				_ => panic!("unexpected announcement: {:?}", res),
+			}
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
@@ -281,7 +272,10 @@ mod test {
 
 		while !expected.is_empty() {
 			let res = consumer.next().now_or_never().unwrap().unwrap();
-			assert!(expected.remove(res.active().unwrap()));
+			match res {
+				Announced::Active(active) => assert!(expected.remove(&active)),
+				_ => panic!("unexpected announcement: {:?}", res),
+			}
 		}
 
 		assert_eq!(consumer.next().now_or_never(), None);
@@ -375,6 +369,40 @@ mod test {
 
 		// Since the producer is dropped, we immediately return None.
 		assert_eq!(consumer.next().now_or_never().unwrap(), None);
+	}
+
+	#[test]
+	fn live() {
+		let mut producer = AnnouncedProducer::new();
+		let mut consumer = producer.subscribe();
+
+		let path1 = Path::default().push("a").push("b");
+		let path2 = Path::default().push("a").push("c");
+		let path3 = Path::default().push("d").push("e");
+
+		producer.announce(path1.clone());
+		producer.live();
+		producer.announce(path2.clone());
+
+		assert_eq!(
+			consumer.next().now_or_never().unwrap(),
+			Some(Announced::Active(path1.clone()))
+		);
+		assert_eq!(
+			consumer.next().now_or_never().unwrap(),
+			Some(Announced::Active(path2.clone()))
+		);
+		// We actually get live after path2 because we were slow to consume.
+		assert_eq!(consumer.next().now_or_never().unwrap(), Some(Announced::Live));
+
+		producer.live(); // no-op
+		producer.announce(path3.clone());
+
+		assert_eq!(
+			consumer.next().now_or_never().unwrap(),
+			Some(Announced::Active(path3.clone()))
+		);
+		assert_eq!(consumer.next().now_or_never(), None);
 	}
 
 	#[tokio::test]

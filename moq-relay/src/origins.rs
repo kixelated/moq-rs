@@ -61,6 +61,9 @@ impl Origins {
 						self.unique.unannounce(&path);
 					}
 				}
+				Announced::Live => {
+					// Ignore.
+				}
 			}
 		}
 	}

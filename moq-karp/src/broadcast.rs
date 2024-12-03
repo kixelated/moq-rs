@@ -1,4 +1,4 @@
-use crate::{Audio, Catalog, Result, Track, TrackConsumer, TrackProducer, Video};
+use crate::{Audio, Catalog, Error, Result, Track, TrackConsumer, TrackProducer, Video};
 
 use moq_transfork::{Announced, AnnouncedConsumer, Path, Session};
 
@@ -106,7 +106,6 @@ pub struct BroadcastConsumer {
 
 	// Discovers new broadcasts as they are announced.
 	announced: AnnouncedConsumer,
-	announced_current: AnnouncedConsumer,
 
 	// The ID of the current broadcast
 	current: Option<String>,
@@ -119,26 +118,10 @@ impl BroadcastConsumer {
 	pub fn new(session: Session, path: Path) -> Self {
 		let announced = session.announced_prefix(path.clone());
 
-		// Use a separate Consumer just to satisfy the borrow checker.
-		let announced_current = announced.clone();
-
-		/*
-		let track = moq_transfork::Track {
-			path: path.clone(),
-			priority: -1,
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
-		};
-
-		let catalog_track = session.subscribe(track);
-		tracing::info!(?path, "fetching catalog");
-		*/
-
 		Self {
 			session,
 			path,
 			announced,
-			announced_current,
 			current: None,
 			catalog_track: None,
 			catalog_group: None,
@@ -155,23 +138,15 @@ impl BroadcastConsumer {
 				biased;
 				// Wait for new announcements.
 				Some(announced) = self.announced.next() => {
-					if announced.suffix().len() != 1 {
-						// Ignore sub-tracks for a broadcast.
-						continue
-					}
-
-					let id = announced.suffix().first().unwrap().clone();
-
 					// Load or unload based on the announcement.
 					match announced {
-						Announced::Active(_) => self.load(id),
-						Announced::Ended(_) => self.unload(id),
+						Announced::Active(suffix) => self.load(suffix),
+						Announced::Ended(suffix) => self.unload(suffix),
+						Announced::Live => {
+							// Return None if we're caught up to live with no broadcast.
+							if self.current.is_none() { return Ok(None) }
+						},
 					}
-				},
-				// Wait until we're caught up on all announcements.
-				true = self.announced_current.current(), if self.catalog_track.is_none() => {
-					// Return a 404 if we couldn't find the broadcast.
-					return Ok(None);
 				},
 				Some(group) = async { self.catalog_track.as_mut()?.next_group().await.transpose() } => {
 					// Use the new group.
@@ -187,12 +162,17 @@ impl BroadcastConsumer {
 		}
 	}
 
-	fn load(&mut self, id: String) {
+	fn load(&mut self, suffix: Path) {
+		if suffix.len() != 1 {
+			return;
+		}
+		let id = &suffix[0];
+
 		if let Some(current) = &self.current {
 			// I'm extremely lazy and using string comparison.
 			// This will be wrong when the number of milliseconds since 1970 adds a new digit...
 			// But the odds of that happening are low.
-			if id <= *current {
+			if id <= current {
 				tracing::warn!(?id, ?current, "ignoring old broadcast");
 				return;
 			}
@@ -209,11 +189,16 @@ impl BroadcastConsumer {
 		};
 
 		self.catalog_track = Some(self.session.subscribe(track));
-		self.current = Some(id);
+		self.current = Some(id.to_string());
 	}
 
-	fn unload(&mut self, id: String) {
-		if self.current == Some(id) {
+	fn unload(&mut self, suffix: Path) {
+		if suffix.len() != 1 {
+			return;
+		}
+		let id = &suffix[0];
+
+		if self.current.as_ref() == Some(id) {
 			self.current = None;
 			self.catalog_track = None;
 			self.catalog_group = None;
@@ -221,16 +206,19 @@ impl BroadcastConsumer {
 	}
 
 	/// Subscribes to a track
-	pub fn track(&self, track: &Track) -> TrackConsumer {
+	pub fn track(&self, track: &Track) -> Result<TrackConsumer> {
+		let path = self.catalog_track.as_ref().ok_or(Error::MissingTrack)?.path.clone();
+
 		let track = moq_transfork::Track {
-			path: self.path.clone().push(&track.name),
+			path: path.push(&track.name),
 			priority: track.priority,
 
 			// TODO add these to the catalog and support higher latencies.
 			group_order: moq_transfork::GroupOrder::Desc,
 			group_expires: std::time::Duration::ZERO,
 		};
+
 		let track = self.session.subscribe(track);
-		TrackConsumer::new(track)
+		Ok(TrackConsumer::new(track))
 	}
 }

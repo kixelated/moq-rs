@@ -168,7 +168,7 @@ impl WatchBackend {
 
 			decoder.configure(&config)?;
 
-			let track = broadcast.track(&video.track);
+			let track = broadcast.track(&video.track)?;
 			let controls = self.controls.borrow();
 
 			let decoder = Decoder::new(track, decoder);

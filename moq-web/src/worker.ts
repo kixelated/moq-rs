@@ -4,8 +4,8 @@ import * as Rust from "../../pkg";
 export type { Watch } from "../../pkg";
 
 export class Api {
-	async watch(server: string, room: string, broadcast: string): Promise<Rust.Watch & Comlink.ProxyMarked> {
-		return Comlink.proxy(new Rust.Watch(server, room, broadcast));
+	async watch(src: string): Promise<Rust.Watch & Comlink.ProxyMarked> {
+		return Comlink.proxy(new Rust.Watch(src));
 	}
 }
 

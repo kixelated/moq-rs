@@ -17,7 +17,7 @@ enum AnnounceStatus {
 pub enum Announce {
 	Ended { suffix: Path },
 	Active { suffix: Path },
-	Current,
+	Live,
 }
 
 impl Decode for Announce {
@@ -29,7 +29,7 @@ impl Decode for Announce {
 			AnnounceStatus::Active => Self::Active {
 				suffix: Path::decode(r)?,
 			},
-			AnnounceStatus::Wait => Self::Current,
+			AnnounceStatus::Wait => Self::Live,
 		})
 	}
 }
@@ -45,7 +45,7 @@ impl Encode for Announce {
 				AnnounceStatus::Active.encode(w);
 				suffix.encode(w);
 			}
-			Self::Current => AnnounceStatus::Wait.encode(w),
+			Self::Live => AnnounceStatus::Wait.encode(w),
 		}
 	}
 }

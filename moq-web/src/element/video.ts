@@ -413,7 +413,7 @@ function emptyTextTracks(): TextTrackList {
 		dispatchEvent: (event: Event): boolean => {
 			throw new Error("Function not implemented.");
 		},
-	};
+	} as TextTrackList;
 }
 
 // Register the custom element.
