@@ -134,7 +134,9 @@ impl AnnouncedConsumer {
 		// NOTE: This just checks if the producer has been dropped.
 		// We're not actually using the `changed()` state properly.
 		while self.state.has_changed().is_ok() {
-			if let Some(announced) = self.try_next() { return Some(announced) }
+			if let Some(announced) = self.try_next() {
+				return Some(announced);
+			}
 
 			// Wait for any updates.
 			match self.state.changed().await {
