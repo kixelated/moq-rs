@@ -5,8 +5,8 @@ import type * as Api from "./worker";
 export class Watch {
 	#inner: Promise<Comlink.Remote<Api.Watch>>;
 
-	constructor(server: string, room: string, broadcast: string) {
-		this.#inner = init.then((api) => api.watch(server, room, broadcast));
+	constructor(src: string) {
+		this.#inner = init.then((api) => api.watch(src));
 	}
 
 	async pause(value: boolean) {

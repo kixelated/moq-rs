@@ -163,34 +163,13 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 			return;
 		}
 
-		const src = new URL(this.#src);
-		if (src.protocol !== "https:") {
-			throw new Error(`Unsupported protocol: ${src.protocol}`);
-		}
-
-		if (src.username || src.password) {
-			throw new Error("Unsupported username/password");
-		}
-
-		const paused = !this.autoplay && this.#paused;
-		const volume = this.#muted ? 0 : this.#volume;
-
-		const server = `https://${src.host}`;
-		const parts = src.pathname.split("/");
-		if (parts.length !== 3) {
-			throw new Error("invalid path: must be /room/broadcast");
-		}
-
-		const room = parts[1];
-		const broadcast = parts[2];
-
-		const watch = new Moq.Watch(server, room, broadcast);
+		const watch = new Moq.Watch(this.#src);
 		this.#watch = watch;
 
 		// Set the initial state in this specific order.
 		(async () => {
-			await watch.pause(paused);
-			await watch.volume(volume);
+			await watch.pause(this.#paused);
+			await watch.volume(this.#volume);
 			if (!this.#canvas) throw new Error("canvas not loaded");
 			await watch.render(this.#canvas);
 		})();
