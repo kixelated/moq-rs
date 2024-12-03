@@ -66,6 +66,9 @@ impl Publisher {
 				match announced {
 					Announced::Active(path) => downstream.announce(path.clone()),
 					Announced::Ended(path) => downstream.unannounce(&path),
+
+					// Indicate that we're caught up to live.
+					Announced::Live => downstream.live(),
 				};
 			}
 		});
@@ -80,35 +83,30 @@ impl Publisher {
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let interest = stream.reader.decode::<message::AnnounceInterest>().await?;
+		let interest = stream.reader.decode::<message::AnnouncePlease>().await?;
 		let prefix = interest.prefix;
 		tracing::debug!(?prefix, "announce interest");
 
 		let mut announced = self.announced.subscribe_prefix(prefix.clone());
 
+		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
-			let path = prefix.clone().append(announced.path());
 			match announced {
-				Announced::Active(suffix) => {
+				Announced::Active(path) => {
 					tracing::debug!(?path, "announce");
-
 					stream
 						.writer
-						.encode(&message::Announce {
-							status: message::AnnounceStatus::Active,
-							suffix,
-						})
+						.encode(&message::Announce::Active { suffix: path })
 						.await?;
 				}
-				Announced::Ended(suffix) => {
+				Announced::Ended(path) => {
 					tracing::debug!(?path, "unannounce");
-					stream
-						.writer
-						.encode(&message::Announce {
-							status: message::AnnounceStatus::Ended,
-							suffix,
-						})
-						.await?;
+					stream.writer.encode(&message::Announce::Ended { suffix: path }).await?;
+				}
+				Announced::Live => {
+					// Indicate that we're caught up to live.
+					tracing::debug!("live");
+					stream.writer.encode(&message::Announce::Live).await?;
 				}
 			}
 		}
@@ -194,7 +192,7 @@ impl Publisher {
 		subscribe: u64,
 		group: &mut GroupConsumer,
 	) -> Result<(), Error> {
-		let mut stream = Writer::open(&mut session, message::StreamUni::Group).await?;
+		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
 		tracing::trace!("serving group");
 
 		Self::serve_group_inner(subscribe, group, &mut stream)

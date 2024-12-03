@@ -17,7 +17,7 @@ impl Writer {
 		}
 	}
 
-	pub async fn open(session: &mut web_transport::Session, typ: message::StreamUni) -> Result<Self, Error> {
+	pub async fn open(session: &mut web_transport::Session, typ: message::DataType) -> Result<Self, Error> {
 		let send = session.open_uni().await?;
 
 		let mut writer = Self::new(send);

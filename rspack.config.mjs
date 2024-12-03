@@ -10,14 +10,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
-	entry: "./moq-web/src/index.ts",
+	entry: "./moq-web/src/demo/index.ts",
 	output: {
 		path: path.resolve(__dirname, "dist"),
 		filename: "index.js",
 	},
 	plugins: [
 		new HtmlWebpackPlugin({
-			template: "moq-web/src/index.html",
+			template: "moq-web/src/demo/index.html",
 		}),
 		new WasmPackPlugin({
 			crateDirectory: path.resolve(__dirname, "moq-web"),

@@ -56,7 +56,7 @@ impl Session {
 
 	/// Perform the MoQ handshake as a client.
 	pub async fn connect(mut session: web_transport::Session) -> Result<Self, Error> {
-		let mut stream = Stream::open(&mut session, message::Stream::Session).await?;
+		let mut stream = Stream::open(&mut session, message::ControlType::Session).await?;
 		Self::connect_setup(&mut stream).await.or_close(&mut stream)?;
 		Ok(Self::new(session, stream))
 	}
@@ -80,7 +80,7 @@ impl Session {
 		let mut stream = Stream::accept(&mut session).await?;
 		let kind = stream.reader.decode().await?;
 
-		if kind != message::Stream::Session {
+		if kind != message::ControlType::Session {
 			return Err(Error::UnexpectedStream(kind));
 		}
 
@@ -126,7 +126,7 @@ impl Session {
 	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
 		let kind = stream.decode().await?;
 		match kind {
-			message::StreamUni::Group => subscriber.recv_group(stream).await,
+			message::DataType::Group => subscriber.recv_group(stream).await,
 		}
 	}
 
@@ -147,11 +147,11 @@ impl Session {
 	async fn run_control(stream: &mut Stream, mut publisher: Publisher) -> Result<(), Error> {
 		let kind = stream.reader.decode().await?;
 		match kind {
-			message::Stream::Session => Err(Error::UnexpectedStream(kind)),
-			message::Stream::Announce => publisher.recv_announce(stream).await,
-			message::Stream::Subscribe => publisher.recv_subscribe(stream).await,
-			message::Stream::Fetch => publisher.recv_fetch(stream).await,
-			message::Stream::Info => publisher.recv_info(stream).await,
+			message::ControlType::Session => Err(Error::UnexpectedStream(kind)),
+			message::ControlType::Announce => publisher.recv_announce(stream).await,
+			message::ControlType::Subscribe => publisher.recv_subscribe(stream).await,
+			message::ControlType::Fetch => publisher.recv_fetch(stream).await,
+			message::ControlType::Info => publisher.recv_info(stream).await,
 		}
 	}
 

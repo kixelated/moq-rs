@@ -19,7 +19,7 @@ pub enum Error {
 
 	/// An unexpected stream was received
 	#[error("unexpected stream: {0:?}")]
-	UnexpectedStream(message::Stream),
+	UnexpectedStream(message::ControlType),
 
 	/// Some VarInt was too large and we were too lazy to handle it
 	#[error("varint bounds exceeded")]

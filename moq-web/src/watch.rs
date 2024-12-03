@@ -1,3 +1,4 @@
+use moq_karp::BroadcastConsumer;
 use tokio::sync::watch;
 
 use url::Url;
@@ -31,12 +32,12 @@ pub struct Watch {
 #[wasm_bindgen]
 impl Watch {
 	#[wasm_bindgen(constructor)]
-	pub fn new(server: &str, room: String, broadcast: String) -> Result<Self> {
-		let server = Url::parse(server).map_err(|_| Error::InvalidUrl)?;
+	pub fn new(src: &str) -> Result<Self> {
+		let src = Url::parse(src).map_err(|_| Error::InvalidUrl)?;
 
 		let controls = watch::channel(Controls::default());
 		let status = watch::channel(Status::default());
-		let mut backend = WatchBackend::new(server, room, broadcast, controls.1, status.0.clone());
+		let mut backend = WatchBackend::new(src, controls.1, status.0.clone());
 
 		spawn_local(async move {
 			if let Err(err) = backend.run().await {
@@ -86,36 +87,23 @@ impl Watch {
 }
 
 struct WatchBackend {
-	server: Url,
-	room: String,
-	broadcast: String,
+	src: Url,
 
 	controls: watch::Receiver<Controls>,
 	status: watch::Sender<Status>,
 
-	active: Option<moq_karp::BroadcastConsumer>,
 	catalog: Option<moq_karp::Catalog>,
 	decoder: Option<Decoder>,
 	renderer: Option<Renderer>,
 }
 
 impl WatchBackend {
-	fn new(
-		server: Url,
-		room: String,
-		broadcast: String,
-		controls: watch::Receiver<Controls>,
-		status: watch::Sender<Status>,
-	) -> Self {
+	fn new(src: Url, controls: watch::Receiver<Controls>, status: watch::Sender<Status>) -> Self {
 		Self {
-			server,
-			room,
-			broadcast,
-
+			src,
 			controls,
 			status,
 
-			active: None,
 			catalog: None,
 			decoder: None,
 			renderer: None,
@@ -123,12 +111,11 @@ impl WatchBackend {
 	}
 
 	async fn run(&mut self) -> Result<()> {
-		let session = super::session::connect(&self.server).await?;
-		let room = moq_karp::Room::new(session, self.room.to_string());
+		let session = super::session::connect(&self.src).await?;
+		let path = self.src.path_segments().ok_or(Error::InvalidUrl)?.collect();
+		let mut broadcast = moq_karp::BroadcastConsumer::new(session, path);
 
-		let mut announced = room.watch(&self.broadcast);
-
-		tracing::info!(addr = %self.server, ?room, broadcast = ?announced, "connected");
+		tracing::info!(%self.src, "connected");
 
 		self.status.send_modify(|status| {
 			status.connected = true;
@@ -136,14 +123,9 @@ impl WatchBackend {
 
 		loop {
 			tokio::select! {
-				Some(broadcast) = announced.broadcast() => {
-					// TODO ignore lower IDs
-					self.active = Some(broadcast);
-					self.catalog = None;
-				}
-				Some(catalog) = async { self.active.as_mut()?.catalog().await.transpose() } => {
+				Some(catalog) = async { broadcast.catalog().await.transpose() } => {
 					self.catalog = Some(catalog?);
-					self.init()?;
+					self.init(&mut broadcast)?;
 				}
 				Err(err) = self.decoder.run() => return Err(err),
 				Err(err) = self.renderer.run() => return Err(err),
@@ -166,8 +148,7 @@ impl WatchBackend {
 		}
 	}
 
-	fn init(&mut self) -> Result<()> {
-		let broadcast = self.active.as_ref().unwrap();
+	fn init(&mut self, broadcast: &mut BroadcastConsumer) -> Result<()> {
 		let catalog = self.catalog.as_ref().unwrap();
 
 		tracing::info!(?catalog, "initializing");
@@ -187,7 +168,7 @@ impl WatchBackend {
 
 			decoder.configure(&config)?;
 
-			let track = broadcast.track(&video.track);
+			let track = broadcast.track(&video.track)?;
 			let controls = self.controls.borrow();
 
 			let decoder = Decoder::new(track, decoder);

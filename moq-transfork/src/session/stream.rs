@@ -7,7 +7,7 @@ pub(super) struct Stream {
 }
 
 impl Stream {
-	pub async fn open(session: &mut web_transport::Session, typ: message::Stream) -> Result<Self, Error> {
+	pub async fn open(session: &mut web_transport::Session, typ: message::ControlType) -> Result<Self, Error> {
 		let (send, recv) = session.open_bi().await?;
 
 		let mut writer = Writer::new(send);
