@@ -178,7 +178,7 @@ impl BroadcastConsumer {
 			}
 		}
 
-		let path = self.announced.prefix().clone().push(&id);
+		let path = self.announced.prefix().clone().push(id);
 		tracing::info!(?path, "loading catalog");
 
 		let track = moq_transfork::Track {

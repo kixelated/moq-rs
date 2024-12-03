@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[tracing::instrument(skip_all, err, fields(?url))]
 async fn publish(client: Client, url: &str) -> anyhow::Result<()> {
-	let url = Url::parse(&url).context("invalid URL")?;
+	let url = Url::parse(url).context("invalid URL")?;
 	let session = client.connect(&url).await?;
 	let session = Session::connect(session).await?;
 
