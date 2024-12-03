@@ -152,7 +152,7 @@ impl Publisher {
 
 		stream.writer.encode(&info).await?;
 
-		tracing::info!("active");
+		tracing::info!("subscribed");
 
 		let mut tasks = FuturesUnordered::new();
 		let mut complete = false;
@@ -206,6 +206,7 @@ impl Publisher {
 		group: &mut GroupConsumer,
 	) -> Result<(), Error> {
 		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
+		tracing::trace!("serving group");
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await

@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.11](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.10...moq-relay-v0.6.11) - 2024-11-26
+
+### Other
+
+- Karp cleanup and URL reshuffling ([#239](https://github.com/kixelated/moq-rs/pull/239))
+
 ## [0.6.10](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.9...moq-relay-v0.6.10) - 2024-11-23
 
 ### Other

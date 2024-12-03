@@ -1,5 +1,22 @@
+# Local
 .DS_Store
-target/
-logs/
+*.local
+*.log*
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Build stuff
+node_modules
+pkg
+target
+dist
+
+# Don't leak dev stuff
 *.mp4
-result
+*.fmp4
+*.crt
+*.key
+*.hex

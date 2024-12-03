@@ -1,3 +1,24 @@
-target
-dev
-*.mp4
+# Local
+**/.DS_Store
+**/*.local
+**/*.log*
+
+# IDE
+.vscode/*
+.idea
+
+# Build stuff
+**/node_modules
+**/pkg
+**/target
+**/dist
+
+# No dev stuff
+**/*.mp4
+**/*.fmp4
+**/*.crt
+**/*.key
+**/*.hex
+
+# Git
+.git

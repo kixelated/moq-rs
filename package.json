@@ -1,0 +1,48 @@
+{
+	"name": "@kixelated/moq",
+	"version": "0.3.5",
+	"type": "module",
+	"module": "./dist/src/index.js",
+	"types": "./dist/src/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/src/index.d.ts",
+			"import": "./dist/src/index.js"
+		},
+		"./element": {
+			"types": "./dist/src/element/index.d.ts",
+			"import": "./dist/src/element/index.js"
+		},
+		"./element/video": {
+			"types": "./dist/src/element/video.d.ts",
+			"import": "./dist/src/element/video.js"
+		},
+		"./element/karp": {
+			"types": "./dist/src/element/karp.d.ts",
+			"import": "./dist/src/element/karp.js"
+		}
+	},
+	"sideEffects": ["./dist/src/element/*"],
+	"files": ["dist", "pkg", "README.md", "LICENSE*"],
+	"scripts": {
+		"pack": "bun run pack:wasm && rm pkg/.gitignore && tsc",
+		"pack:wasm": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index",
+		"dev": "rspack serve",
+		"build": "rspack build",
+		"lint": "biome check --write && cargo clippy --fix --allow-dirty --allow-staged && (cd moq-web; cargo clippy --fix --allow-dirty --allow-staged) && (cd moq-gst; cargo clippy --fix --allow-dirty --allow-staged)",
+		"fmt": "biome format --write && cargo fmt && (cd moq-web; cargo fmt) && (cd moq-gst; cargo fmt)"
+	},
+	"dependencies": {
+		"comlink": "^4.4.2",
+		"npm-run-all": "^4.1.5"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.3",
+		"@rspack/cli": "^1.0.14",
+		"@rspack/core": "^1.0.14",
+		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
+		"html-webpack-plugin": "^5.6.0",
+		"typescript": "^5.6.3",
+		"wasm-pack": "^0.13.1"
+	}
+}
