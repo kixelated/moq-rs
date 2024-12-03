@@ -8,7 +8,7 @@ pub enum Error {
 	Transfork(#[from] moq_transfork::Error),
 
 	#[error("webtransport error: {0}")]
-	WebTransport(#[from] web_transport::wasm::Error),
+	WebTransport(#[from] web_transport::Error),
 
 	#[error("webcodecs error: {0}")]
 	WebCodecs(#[from] web_codecs::Error),
