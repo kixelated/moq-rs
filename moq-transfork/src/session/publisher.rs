@@ -14,9 +14,12 @@ use super::{Stream, Writer};
 #[derive(Clone)]
 pub(super) struct Publisher {
 	session: web_transport::Session,
-	announced: AnnouncedProducer,
 	tracks: Lock<HashMap<Path, TrackConsumer>>,
 	router: Lock<Option<RouterConsumer>>,
+
+	// Announced paths by prefix.
+	// We only serve a single level so this is not exhaustive.
+	announced: Lock<HashMap<Path, AnnouncedProducer>>,
 }
 
 impl Publisher {
@@ -32,7 +35,11 @@ impl Publisher {
 	/// Publish a track.
 	#[tracing::instrument("publish", skip_all, err, fields(?track))]
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
-		if !self.announced.announce(track.path.clone()) {
+		let mut prefix = track.path.clone();
+		let suffix = prefix.pop().ok_or(Error::EmptyPath)?;
+
+		let mut announced = self.announced.lock().entry(prefix.clone()).or_default().clone();
+		if !announced.announce(suffix.clone()) {
 			return Err(Error::Duplicate);
 		}
 
@@ -41,7 +48,7 @@ impl Publisher {
 			hash_map::Entry::Vacant(entry) => entry.insert(track.clone()),
 		};
 
-		let mut this = self.clone();
+		let this = self.clone();
 
 		spawn(async move {
 			tokio::select! {
@@ -49,7 +56,10 @@ impl Publisher {
 				_ = this.session.closed() => (),
 			}
 			this.tracks.lock().remove(&track.path);
-			this.announced.unannounce(&track.path);
+
+			// Remove the announced suffix and clean up if there are no more announced paths.
+			announced.unannounce(&suffix);
+			this.tidy_announce(prefix);
 		});
 
 		Ok(())
@@ -58,9 +68,10 @@ impl Publisher {
 	/// Announce the given tracks.
 	/// This is an advanced API for producing tracks dynamically.
 	/// NOTE: You may want to call [Self::route] to process any subscriptions for these paths.
-	pub fn announce(&mut self, mut announced: AnnouncedConsumer) {
-		let mut downstream = self.announced.clone();
+	pub fn announce(&mut self, prefix: Path, mut announced: AnnouncedConsumer) {
+		let mut downstream = self.announced.lock().entry(prefix.clone()).or_default().clone();
 
+		let this = self.clone();
 		spawn(async move {
 			while let Some(announced) = announced.next().await {
 				match announced {
@@ -71,6 +82,9 @@ impl Publisher {
 					Announced::Live => downstream.live(),
 				};
 			}
+
+			drop(downstream);
+			this.tidy_announce(prefix);
 		});
 	}
 
@@ -87,7 +101,7 @@ impl Publisher {
 		let prefix = interest.prefix;
 		tracing::debug!(?prefix, "announce interest");
 
-		let mut announced = self.announced.subscribe_prefix(prefix.clone());
+		let mut announced = self.announced.lock().entry(prefix.clone()).or_default().subscribe();
 
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
@@ -111,7 +125,18 @@ impl Publisher {
 			}
 		}
 
+		self.tidy_announce(prefix);
+
 		Ok(())
+	}
+
+	fn tidy_announce(&self, prefix: Path) {
+		if let hash_map::Entry::Occupied(entry) = self.announced.lock().entry(prefix) {
+			// Closed means no more active paths or subscribers.
+			if entry.get().is_closed() {
+				entry.remove();
+			}
+		}
 	}
 
 	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {

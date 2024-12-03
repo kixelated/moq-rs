@@ -162,8 +162,8 @@ impl Session {
 
 	/// Optionally announce the provided tracks.
 	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::route].
-	pub fn announce(&mut self, announced: AnnouncedConsumer) {
-		self.publisher.announce(announced);
+	pub fn announce(&mut self, prefix: Path, announced: AnnouncedConsumer) {
+		self.publisher.announce(prefix, announced);
 	}
 
 	/// Optionally route unknown paths.
@@ -178,12 +178,7 @@ impl Session {
 	}
 
 	/// Discover any tracks published by the remote.
-	pub fn announced(&self) -> AnnouncedConsumer {
-		self.announced_prefix(Path::default())
-	}
-
-	/// Discover any tracks published by the remote matching a prefix.
-	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
+	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
 		self.subscriber.announced(prefix)
 	}
 

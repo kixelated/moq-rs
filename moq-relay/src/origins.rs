@@ -7,8 +7,8 @@ use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Path, Sessi
 
 #[derive(Clone)]
 pub struct Origins {
-	// Tracks announced by clients.
-	unique: AnnouncedProducer,
+	// Root tracks announced by clients.
+	root: AnnouncedProducer,
 
 	// Active routes based on path.
 	routes: Arc<Mutex<HashMap<Path, Vec<Session>>>>,
@@ -23,7 +23,7 @@ impl Default for Origins {
 impl Origins {
 	pub fn new() -> Self {
 		Self {
-			unique: AnnouncedProducer::new(),
+			root: AnnouncedProducer::new(),
 			routes: Default::default(),
 		}
 	}
@@ -41,7 +41,7 @@ impl Origins {
 						hash_map::Entry::Occupied(mut entry) => entry.get_mut().push(origin.clone()),
 						hash_map::Entry::Vacant(entry) => {
 							entry.insert(vec![origin.clone()]);
-							self.unique.announce(path.clone());
+							self.root.announce(path.clone());
 						}
 					}
 				}
@@ -58,7 +58,7 @@ impl Origins {
 
 					if entry.is_empty() {
 						routes.remove(&path);
-						self.unique.unannounce(&path);
+						self.root.unannounce(&path);
 					}
 				}
 				Announced::Live => {
@@ -69,11 +69,7 @@ impl Origins {
 	}
 
 	pub fn announced(&self) -> AnnouncedConsumer {
-		self.unique.subscribe()
-	}
-
-	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		self.unique.subscribe_prefix(prefix)
+		self.root.subscribe()
 	}
 
 	pub fn route(&self, path: &Path) -> Option<Session> {

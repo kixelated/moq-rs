@@ -116,7 +116,7 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: Path) -> Self {
-		let announced = session.announced_prefix(path.clone());
+		let announced = session.announced(path.clone());
 
 		Self {
 			session,
@@ -162,23 +162,18 @@ impl BroadcastConsumer {
 		}
 	}
 
-	fn load(&mut self, suffix: Path) {
-		if suffix.len() != 1 {
-			return;
-		}
-		let id = &suffix[0];
-
+	fn load(&mut self, id: String) {
 		if let Some(current) = &self.current {
 			// I'm extremely lazy and using string comparison.
 			// This will be wrong when the number of milliseconds since 1970 adds a new digit...
 			// But the odds of that happening are low.
-			if id <= current {
+			if &id <= current {
 				tracing::warn!(?id, ?current, "ignoring old broadcast");
 				return;
 			}
 		}
 
-		let path = self.announced.prefix().clone().push(id);
+		let path = self.path.clone().push(id.clone());
 		tracing::info!(?path, "loading catalog");
 
 		let track = moq_transfork::Track {
@@ -192,13 +187,8 @@ impl BroadcastConsumer {
 		self.current = Some(id.to_string());
 	}
 
-	fn unload(&mut self, suffix: Path) {
-		if suffix.len() != 1 {
-			return;
-		}
-		let id = &suffix[0];
-
-		if self.current.as_ref() == Some(id) {
+	fn unload(&mut self, id: String) {
+		if self.current == Some(id) {
 			self.current = None;
 			self.catalog_track = None;
 			self.catalog_group = None;

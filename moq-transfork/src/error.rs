@@ -46,6 +46,9 @@ pub enum Error {
 
 	#[error("protocol violation")]
 	ProtocolViolation,
+
+	#[error("empty path")]
+	EmptyPath,
 }
 
 impl Error {
@@ -63,6 +66,7 @@ impl Error {
 			Self::NotFound => 13,
 			Self::WrongSize => 14,
 			Self::ProtocolViolation => 15,
+			Self::EmptyPath => 16,
 			Self::App(app) => *app + 64,
 		}
 	}

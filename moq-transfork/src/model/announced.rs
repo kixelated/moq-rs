@@ -1,16 +1,14 @@
 use std::collections::BTreeSet;
 use tokio::sync::watch;
 
-use super::Path;
-
 /// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announced {
 	// Indicates the track is active.
-	Active(Path),
+	Active(String),
 
 	// Indicates the track is no longer active.
-	Ended(Path),
+	Ended(String),
 
 	// Indicates we're caught up to the current state of the world.
 	Live,
@@ -18,7 +16,7 @@ pub enum Announced {
 
 #[derive(Default)]
 struct State {
-	active: BTreeSet<Path>,
+	active: BTreeSet<String>,
 	live: bool,
 }
 
@@ -34,17 +32,18 @@ impl AnnouncedProducer {
 	}
 
 	/// Announce a track, returning true if it's new.
-	pub fn announce(&mut self, path: Path) -> bool {
-		self.state.send_if_modified(|state| state.active.insert(path))
+	pub fn announce<T: ToString>(&mut self, path: T) -> bool {
+		self.state
+			.send_if_modified(|state| state.active.insert(path.to_string()))
 	}
 
 	/// Stop announcing a track, returning true if it was active.
-	pub fn unannounce(&mut self, path: &Path) -> bool {
-		self.state.send_if_modified(|state| state.active.remove(path))
+	pub fn unannounce<T: AsRef<str>>(&mut self, path: T) -> bool {
+		self.state.send_if_modified(|state| state.active.remove(path.as_ref()))
 	}
 
-	pub fn is_active(&self, path: &Path) -> bool {
-		self.state.borrow().active.contains(path)
+	pub fn is_active<T: AsRef<str>>(&self, path: T) -> bool {
+		self.state.borrow().active.contains(path.as_ref())
 	}
 
 	/// Indicate that we're caught up to the current state of the world.
@@ -62,12 +61,15 @@ impl AnnouncedProducer {
 
 	/// Subscribe to all announced tracks, including those already active.
 	pub fn subscribe(&self) -> AnnouncedConsumer {
-		self.subscribe_prefix(Path::default())
+		AnnouncedConsumer::new(self.state.subscribe())
 	}
 
-	/// Subscribe to all announced tracks based on a prefix, including those already active.
-	pub fn subscribe_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		AnnouncedConsumer::new(self.state.subscribe(), prefix)
+	pub fn len(&self) -> usize {
+		self.state.borrow().active.len()
+	}
+
+	pub fn is_closed(&self) -> bool {
+		self.state.is_closed() && self.state.borrow().active.is_empty()
 	}
 
 	pub async fn closed(&self) {
@@ -82,21 +84,17 @@ pub struct AnnouncedConsumer {
 	state: watch::Receiver<State>,
 
 	// A set of updates that we haven't consumed yet.
-	active: BTreeSet<Path>,
-
-	// Only consume paths with this prefix.
-	prefix: Path,
+	active: BTreeSet<String>,
 
 	// Indicates if the publisher is still active.
 	live: bool,
 }
 
 impl AnnouncedConsumer {
-	fn new(state: watch::Receiver<State>, prefix: Path) -> Self {
+	fn new(state: watch::Receiver<State>) -> Self {
 		Self {
 			state,
 			active: BTreeSet::new(),
-			prefix,
 			live: false,
 		}
 	}
@@ -105,19 +103,15 @@ impl AnnouncedConsumer {
 	fn try_next(&mut self) -> Option<Announced> {
 		let state = self.state.borrow();
 
-		// TODO this absolutely need to be optimized one day.
+		// TODO this absolutely should be optimized one day.
 		while let Some(removed) = self.active.difference(&state.active).next().cloned() {
 			self.active.remove(&removed);
-			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-				return Some(Announced::Ended(suffix));
-			}
+			return Some(Announced::Ended(removed));
 		}
 
 		while let Some(added) = state.active.difference(&self.active).next().cloned() {
 			self.active.insert(added.clone());
-			if let Some(suffix) = added.strip_prefix(&self.prefix) {
-				return Some(Announced::Active(suffix));
-			}
+			return Some(Announced::Active(added));
 		}
 
 		// Return the live marker if needed.
@@ -146,26 +140,14 @@ impl AnnouncedConsumer {
 		}
 
 		// The publisher is closed, so return `Ended` for all active paths.
-		while let Some(removed) = self.active.pop_first() {
-			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-				return Some(Announced::Ended(suffix));
-			}
-		}
-
-		None
-	}
-
-	/// Returns the prefix in use.
-	pub fn prefix(&self) -> &Path {
-		&self.prefix
+		self.active.pop_first().map(Announced::Ended)
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use std::collections::HashSet;
-
 	use futures::FutureExt;
+	use std::collections::HashSet;
 
 	use super::*;
 
@@ -174,20 +156,18 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path = Path::default().push("a").push("b");
-
-		assert!(!producer.is_active(&path));
-		assert!(producer.announce(path.clone()));
-		assert!(producer.is_active(&path));
+		assert!(!producer.is_active("a"));
+		assert!(producer.announce("a"));
+		assert!(producer.is_active("a"));
 
 		let announced = consumer.next().now_or_never().unwrap().unwrap();
-		assert!(matches!(announced, Announced::Active(active) if active == path));
+		assert!(matches!(announced, Announced::Active(active) if active == "a"));
 
-		assert!(producer.unannounce(&path));
-		assert!(!producer.is_active(&path));
+		assert!(producer.unannounce("a"));
+		assert!(!producer.is_active("a"));
 
 		let announced = consumer.next().now_or_never().unwrap().unwrap();
-		assert!(matches!(announced, Announced::Ended(active) if active == path));
+		assert!(matches!(announced, Announced::Ended(active) if active == "a"));
 
 		assert_eq!(consumer.next().now_or_never(), None);
 	}
@@ -197,11 +177,7 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
+		let mut paths: HashSet<String> = HashSet::from_iter(["a", "b", "c"].map(String::from));
 		for path in &paths {
 			assert!(!producer.is_active(path));
 			assert!(producer.announce(path.clone()));
@@ -224,11 +200,7 @@ mod test {
 	fn late() {
 		let mut producer = AnnouncedProducer::new();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
+		let mut paths: HashSet<String> = HashSet::from_iter(["a", "b", "c"].map(String::from));
 		for path in &paths {
 			assert!(!producer.is_active(path));
 			assert!(producer.announce(path.clone()));
@@ -251,80 +223,16 @@ mod test {
 	}
 
 	#[test]
-	fn prefix() {
-		let mut producer = AnnouncedProducer::new();
-		let prefix = Path::default().push("a");
-		let mut consumer = producer.subscribe_prefix(prefix);
-
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		let suffix1 = Path::default().push("b");
-		let suffix2 = Path::default().push("c");
-
-		assert!(producer.announce(path1.clone()));
-		assert!(producer.announce(path2.clone()));
-		assert!(producer.announce(path3.clone()));
-
-		let mut expected: HashSet<Path> = HashSet::from_iter([suffix1, suffix2]);
-
-		while !expected.is_empty() {
-			let res = consumer.next().now_or_never().unwrap().unwrap();
-			match res {
-				Announced::Active(active) => assert!(expected.remove(&active)),
-				_ => panic!("unexpected announcement: {:?}", res),
-			}
-		}
-
-		assert_eq!(consumer.next().now_or_never(), None);
-	}
-
-	#[test]
-	fn prefix_unannounce() {
-		let mut producer = AnnouncedProducer::new();
-		let prefix = Path::default().push("a");
-		let mut consumer = producer.subscribe_prefix(prefix);
-
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		let suffix1 = Path::default().push("b");
-		let suffix2 = Path::default().push("c");
-
-		assert!(producer.announce(path1.clone()));
-		assert!(producer.announce(path2.clone()));
-		assert!(producer.announce(path3.clone()));
-
-		let res = match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Active(ended) if ended == suffix1 || ended == suffix2 => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		assert!(producer.unannounce(&path1));
-		assert!(producer.unannounce(&path2));
-		assert!(producer.unannounce(&path3));
-
-		match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Ended(ended) if ended == res => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		assert_eq!(consumer.next().now_or_never(), None);
-	}
-
-	#[test]
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path = Path::default().push("a").push("b");
+		let path = "a".to_string();
 
 		assert!(!producer.is_active(&path));
 		assert!(producer.announce(path.clone()));
 		assert!(producer.is_active(&path));
-		assert!(producer.unannounce(&path));
+		assert!(producer.unannounce("a"));
 		assert!(!producer.is_active(&path));
 
 		// We missed it.
@@ -336,33 +244,29 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		producer.announce(path1.clone());
+		producer.announce("a");
 		assert_eq!(
 			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path1.clone()))
+			Some(Announced::Active("a".to_string()))
 		);
-		producer.announce(path2.clone());
+		producer.announce("b");
 		assert_eq!(
 			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path2.clone()))
+			Some(Announced::Active("b".to_string()))
 		);
 
-		// Don't consume path3 before dropping.
-		producer.announce(path3);
+		// Don't consume "c" before dropping.
+		producer.announce("c");
 		drop(producer);
 
 		let res = match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Ended(ended) if ended == path1 || ended == path2 => ended,
+			Announced::Ended(ended) if ended == "a" || ended == "b" => ended,
 			res => panic!("unexpected announcement: {:?}", res),
 		};
 
 		match consumer.next().now_or_never().unwrap().unwrap() {
 			Announced::Ended(res1) if res1 == res => panic!("duplicate announcement: {:?}", res1),
-			Announced::Ended(ended) if ended == path1 || ended == path2 => ended,
+			Announced::Ended(ended) if ended == "a" || ended == "b" => ended,
 			res => panic!("unexpected announcement: {:?}", res),
 		};
 
@@ -375,31 +279,27 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		producer.announce(path1.clone());
+		producer.announce("a");
 		producer.live();
-		producer.announce(path2.clone());
+		producer.announce("b");
 
 		assert_eq!(
 			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path1.clone()))
+			Some(Announced::Active("a".to_string()))
 		);
 		assert_eq!(
 			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path2.clone()))
+			Some(Announced::Active("b".to_string()))
 		);
-		// We actually get live after path2 because we were slow to consume.
+		// We actually get live after "b" because we were slow to consume.
 		assert_eq!(consumer.next().now_or_never().unwrap(), Some(Announced::Live));
 
 		producer.live(); // no-op
-		producer.announce(path3.clone());
+		producer.announce("c");
 
 		assert_eq!(
 			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path3.clone()))
+			Some(Announced::Active("c".to_string()))
 		);
 		assert_eq!(consumer.next().now_or_never(), None);
 	}
@@ -411,37 +311,31 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.subscribe();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-
-		let p1 = path1.clone();
-		let p2 = path2.clone();
-
 		tokio::spawn(async move {
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(p1.clone());
+			producer.announce("a");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(p2);
+			producer.announce("b");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.unannounce(&p1);
+			producer.unannounce("a");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			// Don't actually unannounce p2, just drop.
+			// Don't actually unannounce "b", just drop.
 			drop(producer);
 		});
 
 		let res = match consumer.next().await.unwrap() {
-			Announced::Active(active) if active == path1 || active == path2 => active,
+			Announced::Active(active) if active == "a" || active == "b" => active,
 			res => panic!("unexpected announcement: {:?}", res),
 		};
 
 		match consumer.next().await.unwrap() {
 			Announced::Active(dup) if dup == res => panic!("duplicate announcement: {:?}", dup),
-			Announced::Active(active) if active == path1 || active == path2 => active,
+			Announced::Active(active) if active == "a" || active == "b" => active,
 			res => panic!("unexpected announcement: {:?}", res),
 		};
 
-		assert_eq!(consumer.next().await.unwrap(), Announced::Ended(path1));
-		assert_eq!(consumer.next().await.unwrap(), Announced::Ended(path2));
+		assert_eq!(consumer.next().await.unwrap(), Announced::Ended("a".to_string()));
+		assert_eq!(consumer.next().await.unwrap(), Announced::Ended("b".to_string()));
 		assert_eq!(consumer.next().await, None);
 	}
 }

@@ -15,8 +15,8 @@ enum AnnounceStatus {
 /// Sent by the publisher to announce the availability of a track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announce {
-	Ended { suffix: Path },
-	Active { suffix: Path },
+	Ended { suffix: String },
+	Active { suffix: String },
 	Live,
 }
 
@@ -24,12 +24,18 @@ impl Decode for Announce {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(match AnnounceStatus::decode(r)? {
 			AnnounceStatus::Ended => Self::Ended {
-				suffix: Path::decode(r)?,
+				suffix: String::decode(r)?,
 			},
 			AnnounceStatus::Active => Self::Active {
-				suffix: Path::decode(r)?,
+				suffix: String::decode(r)?,
 			},
-			AnnounceStatus::Wait => Self::Live,
+			AnnounceStatus::Wait => {
+				let size = r.get_u8();
+				if size != 0 {
+					return Err(DecodeError::InvalidValue);
+				}
+				Self::Live
+			}
 		})
 	}
 }
@@ -45,7 +51,10 @@ impl Encode for Announce {
 				AnnounceStatus::Active.encode(w);
 				suffix.encode(w);
 			}
-			Self::Live => AnnounceStatus::Wait.encode(w),
+			Self::Live => {
+				AnnounceStatus::Wait.encode(w);
+				w.put_u8(0);
+			}
 		}
 	}
 }

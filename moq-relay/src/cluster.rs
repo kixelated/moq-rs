@@ -111,30 +111,26 @@ impl Cluster {
 				}
 
 				// Subscribe to available origins.
-				root.announced_prefix(origins.clone())
+				root.announced(origins.clone())
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
 				// Subscribe to the available origins.
-				self.locals.announced_prefix(origins.clone())
+				self.locals.announced(origins.clone())
 			}
 		};
 
 		// Discover other origins.
 		while let Some(announce) = announced.next().await {
 			// TODO handle Ended?
-			if let Announced::Active(path) = &announce {
-				tracing::info!(?path, "discovered origin");
-
-				// Extract the hostname from the first part of the path.
-				let host = path.first().context("missing node")?.to_string();
-				if Some(&host) == node.as_ref() {
+			if let Announced::Active(host) = &announce {
+				if Some(host) == node.as_ref() {
 					continue;
 				}
 
-				tracing::info!(%host, "discovered origin");
+				tracing::info!(?host, "discovered origin");
 
-				tokio::spawn(self.clone().run_remote(host).in_current_span());
+				tokio::spawn(self.clone().run_remote(host.to_string()).in_current_span());
 			}
 		}
 
@@ -154,7 +150,7 @@ impl Cluster {
 		session.route(self.router);
 
 		// NOTE: we don't announce remotes to remotes
-		session.announce(self.locals.announced());
+		session.announce(Path::default(), self.locals.announced());
 
 		self.remotes.publish(session).await;
 
