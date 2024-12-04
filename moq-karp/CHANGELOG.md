@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.10.0...moq-karp-v0.11.0) - 2024-12-04
+
+### Other
+
+- Add support for immediate 404s ([#241](https://github.com/kixelated/moq-rs/pull/241))
+- Npm fix ([#249](https://github.com/kixelated/moq-rs/pull/249))
+
 ## [0.10.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.9.0...moq-karp-v0.10.0) - 2024-11-26
 
 ### Other
