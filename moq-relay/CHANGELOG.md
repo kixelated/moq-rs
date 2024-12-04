@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.12](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.11...moq-relay-v0.6.12) - 2024-12-04
+
+### Other
+
+- Add support for immediate 404s ([#241](https://github.com/kixelated/moq-rs/pull/241))
+- Some more logging around announcements. ([#245](https://github.com/kixelated/moq-rs/pull/245))
+
 ## [0.6.11](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.10...moq-relay-v0.6.11) - 2024-11-26
 
 ### Other

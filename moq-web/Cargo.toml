@@ -19,7 +19,7 @@ tracing = "0.1"
 wasm-tracing = "0.2"
 gloo-net = "0.6"
 
-moq-karp = { version = "0.10", path = "../moq-karp", default-features = false }
+moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 web-codecs = "0.3.2"
 tokio = { version = "1", features = ["sync"] }
 
