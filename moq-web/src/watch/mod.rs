@@ -1,3 +1,9 @@
+mod decoder;
+mod renderer;
+
+use decoder::*;
+use renderer::*;
+
 use moq_karp::BroadcastConsumer;
 use tokio::sync::watch;
 
@@ -7,7 +13,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::OffscreenCanvas;
 
-use crate::{Decoder, Error, Renderer, Result, Run};
+use crate::util::Run;
+use crate::{Error, Result};
 
 #[derive(Debug, Default)]
 struct Controls {

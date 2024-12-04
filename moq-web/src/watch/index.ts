@@ -1,6 +1,6 @@
 import * as Comlink from "comlink";
-import { init } from "./main";
-import type * as Api from "./worker";
+import { init } from "../main";
+import type * as Api from "../worker";
 
 export class Watch {
 	#inner: Promise<Comlink.Remote<Api.Watch>>;

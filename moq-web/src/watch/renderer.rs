@@ -4,7 +4,7 @@ use wasm_bindgen::{prelude::Closure, JsCast};
 use web_codecs::{VideoDecoded, VideoFrame};
 use web_sys::{CanvasRenderingContext2d, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
-use crate::{Result, Run};
+use crate::{util::Run, Result};
 
 pub struct Renderer {
 	decoded: VideoDecoded,
