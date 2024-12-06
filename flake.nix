@@ -4,9 +4,10 @@
   inputs = {
     nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url  = "github:numtide/flake-utils";
+    crate2nix.url = "github:nix-community/crate2nix";
   };
 
-  outputs = inputs@{ flake-utils, ... }:
+  outputs = inputs@{ flake-utils, crate2nix, ... }:
     flake-utils.lib.meld inputs [
       ./nix/modules
       ./nix/packages/moq.nix
