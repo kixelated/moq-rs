@@ -2,6 +2,7 @@ use std::{fmt, ops, sync};
 
 // It's just a cosmetic wrapper around Arc/Mutex
 pub struct Lock<T> {
+	// TODO depending on the platform, use Rc<RefCell<T>> or Arc<Mutex<T>>
 	inner: sync::Arc<sync::Mutex<T>>,
 }
 

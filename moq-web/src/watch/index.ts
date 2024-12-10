@@ -1,9 +1,9 @@
 import * as Comlink from "comlink";
-import { init } from "../main";
-import type * as Api from "../worker";
+import { init } from "..";
+import type * as Bridge from "../bridge";
 
 export class Watch {
-	#inner: Promise<Comlink.Remote<Api.Watch>>;
+	#inner: Promise<Comlink.Remote<Bridge.Watch>>;
 
 	constructor(src: string) {
 		this.#inner = init.then((api) => api.watch(src));
@@ -25,9 +25,5 @@ export class Watch {
 
 	async close() {
 		await (await this.#inner).close();
-	}
-
-	async closed() {
-		await (await this.#inner).closed();
 	}
 }

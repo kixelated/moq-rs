@@ -5,35 +5,35 @@ use decoder::*;
 use renderer::*;
 
 use moq_karp::BroadcastConsumer;
-use tokio::sync::watch;
 
 use url::Url;
 use wasm_bindgen::prelude::*;
 
+use baton::Baton;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::OffscreenCanvas;
 
 use crate::util::Run;
 use crate::{Error, Result};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Baton)]
 struct Controls {
-	paused: bool,
-	volume: f64,
-	canvas: Option<OffscreenCanvas>,
-	close: bool,
+	pub paused: bool,
+	pub volume: f64,
+	pub canvas: Option<OffscreenCanvas>,
+	pub close: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Baton)]
 struct Status {
-	connected: bool,
-	error: Option<String>,
+	pub connected: bool,
+	pub error: Option<String>,
 }
 
 #[wasm_bindgen]
 pub struct Watch {
-	controls: watch::Sender<Controls>,
-	status: watch::Receiver<Status>,
+	controls: ControlsSend,
+	status: StatusRecv,
 }
 
 #[wasm_bindgen]
@@ -42,17 +42,13 @@ impl Watch {
 	pub fn new(src: &str) -> Result<Self> {
 		let src = Url::parse(src).map_err(|_| Error::InvalidUrl)?;
 
-		let controls = watch::channel(Controls::default());
-		let status = watch::channel(Status::default());
-		let mut backend = WatchBackend::new(src, controls.1, status.0.clone());
+		let controls = Controls::default().baton();
+		let status = Status::default().baton();
+		let mut backend = WatchBackend::new(src, controls.1, status.0);
 
 		spawn_local(async move {
 			if let Err(err) = backend.run().await {
 				tracing::error!(?err, "backend error");
-
-				status.0.send_modify(|status| {
-					status.error = err.to_string().into();
-				});
 			} else {
 				tracing::warn!("backend closed");
 			}
@@ -65,39 +61,27 @@ impl Watch {
 	}
 
 	pub fn render(&mut self, canvas: Option<OffscreenCanvas>) {
-		self.controls.send_modify(|controls| {
-			controls.canvas = canvas;
-		});
+		self.controls.canvas.send(canvas).ok();
 	}
 
 	pub fn pause(&mut self, paused: bool) {
-		self.controls.send_modify(|controls| {
-			controls.paused = paused;
-		});
+		self.controls.paused.send(paused).ok();
 	}
 
 	pub fn volume(&mut self, value: f64) {
-		self.controls.send_modify(|controls| {
-			controls.volume = value;
-		});
+		self.controls.volume.send(value).ok();
 	}
 
 	pub fn close(&mut self) {
-		self.controls.send_modify(|controls| {
-			controls.close = true;
-		});
-	}
-
-	pub async fn closed(&self) {
-		let _ = self.status.clone().wait_for(|_| false).await;
+		self.controls.close.send(true).ok();
 	}
 }
 
 struct WatchBackend {
 	src: Url,
 
-	controls: watch::Receiver<Controls>,
-	status: watch::Sender<Status>,
+	controls: ControlsRecv,
+	status: StatusSend,
 
 	catalog: Option<moq_karp::Catalog>,
 	decoder: Option<Decoder>,
@@ -105,7 +89,7 @@ struct WatchBackend {
 }
 
 impl WatchBackend {
-	fn new(src: Url, controls: watch::Receiver<Controls>, status: watch::Sender<Status>) -> Self {
+	fn new(src: Url, controls: ControlsRecv, status: StatusSend) -> Self {
 		Self {
 			src,
 			controls,
@@ -124,9 +108,7 @@ impl WatchBackend {
 
 		tracing::info!(%self.src, "connected");
 
-		self.status.send_modify(|status| {
-			status.connected = true;
-		});
+		self.status.connected.send(true).ok();
 
 		loop {
 			tokio::select! {
@@ -136,18 +118,10 @@ impl WatchBackend {
 				}
 				Err(err) = self.decoder.run() => return Err(err),
 				Err(err) = self.renderer.run() => return Err(err),
-				changed = self.controls.changed() => {
-					if changed.is_err() {
-						return Ok(());
-					}
-
-					let controls = self.controls.borrow_and_update();
-					if controls.close {
-						return Ok(());
-					}
-
+				Some(true) = self.controls.close.recv() => return Ok(()),
+				Some(canvas) = self.controls.canvas.recv() => {
 					if let Some(renderer) = &mut self.renderer {
-						renderer.update(controls.canvas.clone());
+						renderer.update(canvas.clone());
 					}
 				},
 				else => return Ok(()),
@@ -163,23 +137,23 @@ impl WatchBackend {
 		if let Some(video) = catalog.video.first() {
 			tracing::info!("fetching video track: {:?}", video);
 
-			let (decoder, decoded) = web_codecs::video_decoder();
-
-			let mut config = web_codecs::VideoDecoderConfig::new(video.codec.to_string())
-				.coded_dimensions(video.resolution.width as _, video.resolution.height as _)
-				.latency_optimized();
-
-			if !video.description.is_empty() {
-				config = config.description(video.description.clone());
+			// Construct the video decoder
+			let (decoder, decoded) = web_codecs::VideoDecoderConfig {
+				codec: video.codec.to_string(),
+				description: video.description.clone(),
+				resolution: Some(web_codecs::Dimensions {
+					width: video.resolution.width,
+					height: video.resolution.height,
+				}),
+				latency_optimized: Some(true),
+				..Default::default()
 			}
-
-			decoder.configure(&config)?;
+			.build()?;
 
 			let track = broadcast.track(&video.track)?;
-			let controls = self.controls.borrow();
 
 			let decoder = Decoder::new(track, decoder);
-			let renderer = Renderer::new(decoded, controls.canvas.clone());
+			let renderer = Renderer::new(decoded, self.controls.canvas.latest().clone());
 
 			self.decoder = Some(decoder);
 			self.renderer = Some(renderer);

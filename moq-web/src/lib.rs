@@ -1,12 +1,12 @@
 mod error;
-//mod publish;
+mod publish;
 mod session;
 mod util;
 mod watch;
 
 pub use error::*;
-//pub use publish::*;
-pub use watch::*;
+pub use publish::Publish;
+pub use watch::Watch;
 
 use wasm_bindgen::prelude::*;
 

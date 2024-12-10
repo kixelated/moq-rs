@@ -17,9 +17,9 @@
 			"types": "./dist/src/element/video.d.ts",
 			"import": "./dist/src/element/video.js"
 		},
-		"./element/karp": {
-			"types": "./dist/src/element/karp.d.ts",
-			"import": "./dist/src/element/karp.js"
+		"./element/publish": {
+			"types": "./dist/src/element/publish.d.ts",
+			"import": "./dist/src/element/publish.js"
 		}
 	},
 	"sideEffects": ["./dist/src/element/*"],
@@ -42,6 +42,7 @@
 		"@rspack/cli": "^1.0.14",
 		"@rspack/core": "^1.0.14",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
+		"html-loader": "^5.1.0",
 		"html-webpack-plugin": "^5.6.0",
 		"typescript": "^5.6.3",
 		"wasm-pack": "^0.13.1"

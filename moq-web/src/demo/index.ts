@@ -1,1 +1,2 @@
-export { MoqVideoElement } from "../element/video";
+import "../element/video";
+export { MoqPublishElement } from "../element/publish";

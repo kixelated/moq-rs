@@ -13,6 +13,9 @@ pub enum Error {
 	#[error("webcodecs error: {0}")]
 	WebCodecs(#[from] web_codecs::Error),
 
+	#[error("streams error: {0}")]
+	Streams(#[from] web_streams::Error),
+
 	#[error("karp error: {0}")]
 	Karp(#[from] moq_karp::Error),
 
@@ -24,6 +27,15 @@ pub enum Error {
 
 	#[error("offline")]
 	Offline,
+
+	#[error("unsupported")]
+	Unsupported,
+
+	#[error("backend closed")]
+	Backend,
+
+	#[error("capture failed")]
+	CaptureFailed,
 
 	#[error("http error: {0}")]
 	Http(#[from] gloo_net::Error),

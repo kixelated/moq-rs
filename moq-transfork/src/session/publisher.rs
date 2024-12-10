@@ -5,9 +5,10 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use crate::{
 	message,
 	model::{GroupConsumer, Track, TrackConsumer},
-	util::{spawn, FuturesExt, Lock, OrClose},
 	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, RouterConsumer,
 };
+
+use moq_async::{spawn, FuturesExt, Lock, OrClose};
 
 use super::{Stream, Writer};
 

@@ -94,7 +94,7 @@ impl Reader {
 	*/
 }
 
-impl Close for Reader {
+impl Close<Error> for Reader {
 	fn close(&mut self, err: Error) {
 		self.stream.stop(err.to_code());
 	}

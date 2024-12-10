@@ -106,7 +106,7 @@ mod test {
 					width: 1280,
 					height: 720,
 				},
-				bitrate: Some(6_000_000),
+				bitrate: Some(6_000_000.0),
 			}],
 			audio: vec![Audio {
 				track: Track {
@@ -116,7 +116,7 @@ mod test {
 				codec: Opus,
 				sample_rate: 48_000,
 				channel_count: 2,
-				bitrate: Some(128_000),
+				bitrate: Some(128_000.0),
 			}],
 		};
 

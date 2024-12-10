@@ -1,2 +1,2 @@
-import "./karp";
+import "./publish";
 import "./video";

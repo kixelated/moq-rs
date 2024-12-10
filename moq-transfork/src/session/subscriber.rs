@@ -6,9 +6,10 @@ use std::{
 use crate::{
 	message,
 	model::{Track, TrackConsumer},
-	util::{spawn, Lock, OrClose},
 	AnnouncedProducer, Error, Path, TrackProducer,
 };
+
+use moq_async::{spawn, Lock, OrClose};
 
 use super::{AnnouncedConsumer, Reader, Stream};
 

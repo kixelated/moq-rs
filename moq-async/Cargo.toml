@@ -1,34 +1,20 @@
 [package]
-name = "moq-transfork"
-description = "Media over QUIC"
+name = "moq-async"
+description = "Media over QUIC - Async helpers and utilities"
 authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.6.0"
+version = "0.1.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-bytes = "1"
-thiserror = "1"
 tracing = "0.1"
-
-tokio = { version = "1.41", features = [
-	"macros",
-	"io-util",
-	"sync",
-	"test-util",
-] }
-
-web-transport = { workspace = true }
+tokio = { version = "1.41", features = ["rt"] }
 futures = "0.3"
-
-num_enum = "0.7"
-
-moq-async = { path = "../moq-async" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
