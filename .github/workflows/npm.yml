@@ -24,7 +24,7 @@ jobs:
 
       - name: Build/Publish NPM Package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           bun install
           bun pack
