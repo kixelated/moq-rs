@@ -134,6 +134,11 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 		}
 	}
 
+	disconnectedCallback() {
+		this.#watch?.close();
+		this.#watch = undefined;
+	}
+
 	attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
 		if (oldValue === newValue) {
 			return;

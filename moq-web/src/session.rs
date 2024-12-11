@@ -23,7 +23,7 @@ pub async fn connect(addr: &Url) -> Result<moq_transfork::Session> {
 	};
 
 	let session = client.connect(addr).await?;
-	let session = moq_transfork::Session::connect(session.into()).await?;
+	let session = moq_transfork::Session::connect(session).await?;
 
 	Ok(session)
 }
