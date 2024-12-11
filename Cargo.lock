@@ -1489,7 +1489,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "moq-karp"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "bytes",
