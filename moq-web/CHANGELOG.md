@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.5...moq-web-v0.3.6) - 2024-12-11
+
+### Other
+
+- Maybe close on disconnected element. ([#264](https://github.com/kixelated/moq-rs/pull/264))
+
 ## [0.3.5](https://github.com/kixelated/moq-rs/releases/tag/moq-web-v0.3.5) - 2024-12-04
 
 ### Other
