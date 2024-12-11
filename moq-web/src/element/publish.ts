@@ -1,7 +1,5 @@
 import * as Moq from "..";
 
-import template from "./publish.html";
-
 export class MoqPublishElement extends HTMLElement {
 	#publish?: Moq.Publish;
 	#url: string | null = null;
@@ -19,7 +17,30 @@ export class MoqPublishElement extends HTMLElement {
 		super();
 
 		const shadow = this.attachShadow({ mode: "open" });
-		shadow.innerHTML = template;
+		shadow.innerHTML = `
+<style>
+	:host {
+		display: block;
+		position: relative;
+	}
+
+	::slotted(canvas) {
+		display: block;
+		max-width: 100%;
+		height: auto;
+	}
+
+	#controls {
+		margin-top: 10px;
+	}
+</style>
+<slot name="canvas"></slot>
+
+<div id="controls">
+	<button id="camera">Camera</button>
+	<button id="screen">Screen</button>
+</div>
+`;
 		this.#shadow = shadow;
 	}
 

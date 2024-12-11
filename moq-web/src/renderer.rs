@@ -4,7 +4,7 @@ use wasm_bindgen::{prelude::Closure, JsCast};
 use web_codecs::{VideoDecoded, VideoFrame};
 use web_sys::{CanvasRenderingContext2d, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
-use crate::{util::Run, Result};
+use crate::Result;
 
 pub struct Renderer {
 	decoded: VideoDecoded,
@@ -22,10 +22,8 @@ impl Renderer {
 	pub fn update(&mut self, canvas: Option<OffscreenCanvas>) {
 		self.animate.state.borrow_mut().canvas = canvas;
 	}
-}
 
-impl Run for Renderer {
-	async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.decoded.next().await? {
 			self.animate.push(frame);
 		}

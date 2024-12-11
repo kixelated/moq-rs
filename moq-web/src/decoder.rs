@@ -1,4 +1,4 @@
-use crate::{util::Run, Result};
+use crate::Result;
 
 pub struct Decoder {
 	track: moq_karp::TrackConsumer,
@@ -9,10 +9,8 @@ impl Decoder {
 	pub fn new(track: moq_karp::TrackConsumer, decoder: web_codecs::VideoDecoder) -> Self {
 		Self { track, decoder }
 	}
-}
 
-impl Run for Decoder {
-	async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.track.read().await? {
 			let frame = web_codecs::EncodedFrame {
 				payload: frame.payload,

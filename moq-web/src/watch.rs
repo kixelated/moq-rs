@@ -1,9 +1,3 @@
-mod decoder;
-mod renderer;
-
-use decoder::*;
-use renderer::*;
-
 use moq_karp::BroadcastConsumer;
 
 use url::Url;
@@ -13,8 +7,7 @@ use baton::Baton;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::OffscreenCanvas;
 
-use crate::util::Run;
-use crate::{Error, Result};
+use crate::{Decoder, Error, Renderer, Result};
 
 #[derive(Debug, Default, Baton)]
 struct Controls {
@@ -111,13 +104,16 @@ impl WatchBackend {
 		self.status.connected.send(true).ok();
 
 		loop {
+			let decoder = self.decoder.as_mut();
+			let renderer = self.renderer.as_mut();
+
 			tokio::select! {
 				Some(catalog) = async { broadcast.catalog().await.transpose() } => {
 					self.catalog = Some(catalog?);
 					self.init(&mut broadcast)?;
 				}
-				Err(err) = self.decoder.run() => return Err(err),
-				Err(err) = self.renderer.run() => return Err(err),
+				Some(Err(err)) = async move { Some(decoder?.run().await) } => return Err(err),
+				Some(Err(err)) = async move { Some(renderer?.run().await) } => return Err(err),
 				Some(true) = self.controls.close.recv() => return Ok(()),
 				Some(canvas) = self.controls.canvas.recv() => {
 					if let Some(renderer) = &mut self.renderer {

@@ -1,6 +1,6 @@
 import * as Comlink from "comlink";
-import { init } from "..";
-import type * as Bridge from "../bridge";
+import { init } from ".";
+import type * as Bridge from "./bridge";
 
 export class Watch {
 	#inner: Promise<Comlink.Remote<Bridge.Watch>>;

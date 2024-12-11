@@ -45,10 +45,6 @@ export default defineConfig({
 				},
 				type: "javascript/auto",
 			},
-			{
-				test: /\.html$/i,
-				loader: "html-loader",
-			},
 		],
 	},
 	resolve: {
