@@ -26,8 +26,4 @@ export class Watch {
 	async close() {
 		await (await this.#inner).close();
 	}
-
-	async closed() {
-		await (await this.#inner).closed();
-	}
 }

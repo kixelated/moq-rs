@@ -26,7 +26,7 @@ struct Status {
 #[wasm_bindgen]
 pub struct Watch {
 	controls: watch::Sender<Controls>,
-	status: watch::Receiver<Status>,
+	_status: watch::Receiver<Status>,
 }
 
 #[wasm_bindgen]
@@ -53,7 +53,7 @@ impl Watch {
 
 		Ok(Self {
 			controls: controls.0,
-			status: status.1,
+			_status: status.1,
 		})
 	}
 
@@ -79,10 +79,6 @@ impl Watch {
 		self.controls.send_modify(|controls| {
 			controls.close = true;
 		});
-	}
-
-	pub async fn closed(&self) {
-		let _ = self.status.clone().wait_for(|_| false).await;
 	}
 }
 
