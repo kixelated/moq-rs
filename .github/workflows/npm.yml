@@ -13,6 +13,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@v1
+        id: generate-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -29,3 +36,19 @@ jobs:
           bun install
           bun pack
           bun publish
+
+      - name: Trigger quic.video update
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/moq-web-v}
+          curl -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/kixelated/quic.video/actions/workflows/update.yml/dispatches \
+            -d "$(jq -n --arg version "$VERSION" '{
+              ref: "main",
+              inputs: {
+                npm_version: $version
+              }
+            }')"
