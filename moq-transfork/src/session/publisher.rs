@@ -119,7 +119,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("publish", skip_all, err, fields(track = ?subscribe.path, id = subscribe.id))]
+	#[tracing::instrument("subscribed", skip_all, err, fields(track = ?subscribe.path, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			path: subscribe.path,
@@ -137,9 +137,9 @@ impl Publisher {
 			track_priority: track.priority,
 		};
 
-		stream.writer.encode(&info).await?;
+		tracing::info!(?info);
 
-		tracing::info!("subscribed");
+		stream.writer.encode(&info).await?;
 
 		let mut tasks = FuturesUnordered::new();
 		let mut complete = false;
@@ -168,6 +168,8 @@ impl Publisher {
 					let (group, res) = res;
 
 					if let Err(err) = res {
+						tracing::warn!(?err, subscribe = ?subscribe.id, group = group.sequence, "dropped");
+
 						let drop = message::GroupDrop {
 							sequence: group.sequence,
 							count: 0,
@@ -186,14 +188,14 @@ impl Publisher {
 		Ok(())
 	}
 
-	#[tracing::instrument("data", skip_all, err, fields(?subscribe, group = group.sequence))]
+	#[tracing::instrument("group", skip_all, fields(?subscribe, sequence = group.sequence))]
 	pub async fn serve_group(
 		mut session: web_transport::Session,
 		subscribe: u64,
 		group: &mut GroupConsumer,
 	) -> Result<(), Error> {
 		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
-		tracing::trace!("serving group");
+		tracing::trace!("serving");
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await

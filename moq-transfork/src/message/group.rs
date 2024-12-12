@@ -12,7 +12,7 @@ pub struct Group {
 impl Decode for Group {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			subscribe: u64::decode_more(r, 1)?,
+			subscribe: u64::decode(r)?,
 			sequence: u64::decode(r)?,
 		})
 	}
@@ -70,8 +70,8 @@ impl Encode for GroupDrop {
 impl Decode for GroupDrop {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(Self {
-			sequence: u64::decode_more(r, 2)?,
-			count: u64::decode_more(r, 1)?,
+			sequence: u64::decode(r)?,
+			count: u64::decode(r)?,
 			code: u32::decode(r)?,
 		})
 	}

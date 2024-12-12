@@ -23,13 +23,13 @@ pub struct Subscribe {
 
 impl Decode for Subscribe {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let id = u64::decode_more(r, 6)?;
-		let path = Path::decode_more(r, 5)?;
-		let priority = i8::decode_more(r, 4)?;
+		let id = u64::decode(r)?;
+		let path = Path::decode(r)?;
+		let priority = i8::decode(r)?;
 
-		let group_order = group::GroupOrder::decode_more(r, 3)?;
-		let group_expires = time::Duration::decode_more(r, 2)?;
-		let group_min = match u64::decode_more(r, 1)? {
+		let group_order = group::GroupOrder::decode(r)?;
+		let group_expires = time::Duration::decode(r)?;
+		let group_min = match u64::decode(r)? {
 			0 => None,
 			n => Some(n - 1),
 		};
@@ -76,10 +76,10 @@ pub struct SubscribeUpdate {
 
 impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let priority = u64::decode_more(r, 4)?;
-		let group_order = group::GroupOrder::decode_more(r, 3)?;
-		let group_expires = time::Duration::decode_more(r, 2)?;
-		let group_min = match u64::decode_more(r, 1)? {
+		let priority = u64::decode(r)?;
+		let group_order = group::GroupOrder::decode(r)?;
+		let group_expires = time::Duration::decode(r)?;
+		let group_min = match u64::decode(r)? {
 			0 => None,
 			n => Some(n - 1),
 		};

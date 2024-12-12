@@ -8,4 +8,5 @@ cd "$(dirname "$0")/.."
 bun i
 
 # Start the development server
-bun dev
+# Override the log level to only show warnings otherwise wasm-bindgen will spam the console
+RUST_LOG=warn bun dev

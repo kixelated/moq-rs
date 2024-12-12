@@ -20,9 +20,9 @@ impl Encode for Fetch {
 
 impl Decode for Fetch {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let path = Path::decode_more(r, 3)?;
-		let priority = i8::decode_more(r, 2)?;
-		let group = u64::decode_more(r, 1)?;
+		let path = Path::decode(r)?;
+		let priority = i8::decode(r)?;
+		let group = u64::decode(r)?;
 		let offset = usize::decode(r)?;
 
 		Ok(Self {
