@@ -5,7 +5,7 @@ edition = "2021"
 version = "0.3.6"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kixelated/moq-web"
-description = "WebAssembly frontend for MoQ"
+description = "Web implementation for MoQ utilizing WebAssembly+Typescript"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
