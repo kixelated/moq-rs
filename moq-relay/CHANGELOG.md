@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.14](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.13...moq-relay-v0.6.14) - 2024-12-12
+
+### Other
+
+- updated the following local packages: moq-transfork
+
 ## [0.6.13](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.12...moq-relay-v0.6.13) - 2024-12-11
 
 ### Other

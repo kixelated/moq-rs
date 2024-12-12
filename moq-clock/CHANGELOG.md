@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.17](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.16...moq-clock-v0.5.17) - 2024-12-12
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.5.16](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.15...moq-clock-v0.5.16) - 2024-12-04
 
 ### Other

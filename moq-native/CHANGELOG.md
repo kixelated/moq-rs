@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10](https://github.com/kixelated/moq-rs/compare/moq-native-v0.5.9...moq-native-v0.5.10) - 2024-12-12
+
+### Other
+
+- Add support for RUST_LOG again. ([#267](https://github.com/kixelated/moq-rs/pull/267))
+
 ## [0.5.9](https://github.com/kixelated/moq-rs/compare/moq-native-v0.5.8...moq-native-v0.5.9) - 2024-12-04
 
 ### Other
