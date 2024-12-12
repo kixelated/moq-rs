@@ -29,30 +29,21 @@ impl Reader {
 			let mut cursor = io::Cursor::new(&self.buffer);
 
 			// Try to decode with the current buffer.
-			let required = match T::decode(&mut cursor) {
+			match T::decode(&mut cursor) {
 				Ok(msg) => {
 					self.buffer.advance(cursor.position() as usize);
 					return Ok(msg);
 				}
-				Err(DecodeError::More(required)) => self.buffer.len() + required, // Try again with more data
+				Err(DecodeError::Short) => (), // Try again with more data
 				Err(err) => return Err(err.into()),
 			};
 
 			if !self.buffer.is_empty() {
-				tracing::trace!(required, "more data needed");
-				tracing::trace!(?self.buffer, "buffer");
+				tracing::trace!(?self.buffer, "more data needed");
 			}
 
-			// Read in more data until we reach the requested amount.
-			// We always read at least once to avoid an infinite loop if some dingus puts remain=0
-			loop {
-				if self.stream.read_buf(&mut self.buffer).await?.is_none() {
-					return Err(DecodeError::More(required - self.buffer.len()).into());
-				};
-
-				if self.buffer.len() >= required {
-					break;
-				}
+			if self.stream.read_buf(&mut self.buffer).await?.is_none() {
+				return Err(DecodeError::Short.into());
 			}
 		}
 	}
@@ -66,6 +57,7 @@ impl Reader {
 		}
 	}
 
+	// Returns a non-zero chunk of data, or None if the stream is closed
 	pub async fn read(&mut self, max: usize) -> Result<Option<Bytes>, Error> {
 		if !self.buffer.is_empty() {
 			let size = cmp::min(max, self.buffer.len());

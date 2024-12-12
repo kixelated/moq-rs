@@ -140,6 +140,8 @@ impl Subscriber {
 
 	#[tracing::instrument("subscribe", skip_all, fields(?id, track = ?track.path))]
 	async fn run_subscribe(&mut self, id: u64, track: TrackProducer, stream: &mut Stream) -> Result<(), Error> {
+		self.subscribes.lock().insert(id, track.clone());
+
 		let request = message::Subscribe {
 			id,
 			path: track.path.clone(),
@@ -159,8 +161,6 @@ impl Subscriber {
 		let _response: message::Info = stream.reader.decode().await?;
 
 		tracing::info!("subscribed");
-
-		self.subscribes.lock().insert(id, track.clone());
 
 		loop {
 			tokio::select! {
@@ -185,17 +185,20 @@ impl Subscriber {
 	}
 
 	pub async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
-		let group: message::Group = stream.decode().await?;
-		tracing::trace!(?group, "decoded group");
+		let group = stream.decode().await?;
+		self.recv_group_inner(stream, group).await.or_close(stream)
+	}
 
+	#[tracing::instrument("group", skip_all, err, fields(subscribe = ?group.subscribe, group = group.sequence))]
+	pub async fn recv_group_inner(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), Error> {
 		let mut group = {
 			let mut subs = self.subscribes.lock();
-			let track = subs.get_mut(&group.subscribe).ok_or(Error::NotFound)?;
-			track.create_group(group.sequence)
+			let track = subs.get_mut(&group.subscribe).ok_or(Error::Cancel)?;
+			let group = track.create_group(group.sequence);
+			group
 		};
 
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
-			tracing::trace!(?frame, "decoded frame");
 			let mut frame = group.create_frame(frame.size);
 			let mut remain = frame.size;
 
@@ -203,7 +206,7 @@ impl Subscriber {
 				let chunk = stream.read(remain).await?.ok_or(Error::WrongSize)?;
 
 				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
-				tracing::trace!(chunk = chunk.len(), remain, "chunk");
+				tracing::trace!(size = chunk.len(), remain, "chunk");
 
 				frame.write(chunk);
 			}

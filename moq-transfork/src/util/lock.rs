@@ -1,20 +1,42 @@
-use std::{fmt, ops, sync};
+use std::fmt;
+use std::ops::{Deref, DerefMut};
 
-// It's just a cosmetic wrapper around Arc/Mutex
+// It's a cosmetic wrapper around Arc<Mutex<T>> on native platforms.
+// On WASM, it uses Rc<RefCell<T>> instead.
 pub struct Lock<T> {
-	inner: sync::Arc<sync::Mutex<T>>,
+	#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+	inner: std::sync::Arc<std::sync::Mutex<T>>,
+
+	#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+	inner: std::rc::Rc<std::cell::RefCell<T>>,
 }
 
+#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
 impl<T> Lock<T> {
 	pub fn new(value: T) -> Self {
 		Self {
-			inner: sync::Arc::new(sync::Mutex::new(value)),
+			inner: std::sync::Arc::new(std::sync::Mutex::new(value)),
 		}
 	}
 
 	pub fn lock(&self) -> LockGuard<T> {
 		LockGuard {
 			inner: self.inner.lock().unwrap(),
+		}
+	}
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+impl<T> Lock<T> {
+	pub fn new(value: T) -> Self {
+		Self {
+			inner: std::rc::Rc::new(std::cell::RefCell::new(value)),
+		}
+	}
+
+	pub fn lock(&self) -> LockGuard<T> {
+		LockGuard {
+			inner: self.inner.borrow_mut(),
 		}
 	}
 }
@@ -34,10 +56,14 @@ impl<T> Clone for Lock<T> {
 }
 
 pub struct LockGuard<'a, T> {
-	inner: sync::MutexGuard<'a, T>,
+	#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+	inner: std::sync::MutexGuard<'a, T>,
+
+	#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+	inner: std::cell::RefMut<'a, T>,
 }
 
-impl<T> ops::Deref for LockGuard<'_, T> {
+impl<T> Deref for LockGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -45,7 +71,7 @@ impl<T> ops::Deref for LockGuard<'_, T> {
 	}
 }
 
-impl<T> ops::DerefMut for LockGuard<'_, T> {
+impl<T> DerefMut for LockGuard<'_, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner
 	}
