@@ -26,7 +26,9 @@ impl Args {
 	}
 
 	pub fn init(&self) {
-		let filter = EnvFilter::new(self.level().to_string())
+		let filter = EnvFilter::builder()
+			.with_default_directive(self.level().into()) // Default to our -q/-v args
+			.from_env_lossy() // Allow overriding with RUST_LOG
 			.add_directive("h2=warn".parse().unwrap())
 			.add_directive("quinn=info".parse().unwrap())
 			.add_directive("tracing::span=off".parse().unwrap())
