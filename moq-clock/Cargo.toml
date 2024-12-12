@@ -5,7 +5,7 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.5.16"
+version = "0.5.17"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -15,7 +15,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-native = { path = "../moq-native", version = "0.5" }
-moq-transfork = { path = "../moq-transfork", version = "0.7" }
+moq-transfork = { path = "../moq-transfork", version = "0.8" }
 
 # QUIC
 url = "2"
