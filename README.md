@@ -46,11 +46,12 @@ Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 ## Docker
 Alternatively, you can use docker to launch a full cluster:
 ```sh
-make run
+make
 ```
 
 This will start two relays (clustered!), a ffmpeg publisher, and web server.
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
+Live updates aren't supported in this mode.
 
 
 # Components

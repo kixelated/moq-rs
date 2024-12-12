@@ -22,7 +22,7 @@
 			"import": "./dist/src/element/karp.js"
 		}
 	},
-	"sideEffects": ["./dist/src/element/*"],
+	"sideEffects": ["./dist/src/element/index.js", "./dist/src/element/video.js"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
 		"pack": "bun run pack:wasm && rm pkg/.gitignore && tsc",

@@ -33,33 +33,35 @@ services:
       - "4444:443"
       - "4444:443/udp"
 
-  karp:
+  bbb:
     <<: *x-moq
     build:
       target: moq-karp
     entrypoint: moq-bbb
-    command: --tls-disable-verify --path bbb --url https://relay1
+    command: --tls-disable-verify publish "https://relay1/demo/bbb"
     depends_on:
       - relay1
 
-  web:
-    <<: *x-moq
-    build:
-      target: moq-web
-    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
-    depends_on:
-      - relay1
-    ports:
-      - "8080:8080"
+# Temporarily disabled awaiting https://github.com/oven-sh/bun/issues/15383
+#  web:
+#    <<: *x-moq
+#    build:
+#      target: moq-web
+#    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
+#    depends_on:
+#      - relay1
+#    ports:
+#      - "8080:8080"
 
-  clock:
-    <<: *x-moq
-    build:
-      dockerfile: Dockerfile
-    # Using relay2 just to test clustering.
-    command: --tls-disable-verify --publish https://relay2
-    depends_on:
-      - relay2
+# Disabled until it's shown on the UI.
+#  clock:
+#    <<: *x-moq
+#    build:
+#      dockerfile: Dockerfile
+#    # Using relay2 just to test clustering.
+#    command: --tls-disable-verify --publish https://relay2
+#    depends_on:
+#      - relay2
 
   install-certs:
     image: golang:latest

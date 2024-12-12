@@ -45,4 +45,4 @@ ffmpeg \
 	-tune zerolatency \
     -f mp4 \
 	-movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | moq-karp "$@" publish "https://relay.quic.video/demo/bbb"
+	- | moq-karp "$@"

@@ -10,19 +10,20 @@ COPY . ./
 # We can't mount that without clobbering cargo itself.
 # We instead we build the binaries and copy them to the cargo bin directory.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
-    cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
+	--mount=type=cache,target=/build/target \
+	cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
 ## build-wasm
 FROM oven/bun:slim AS build-wasm
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y ca-certificates curl
+RUN apt-get update && apt-get install -y ca-certificates curl build-essential
 
 # Install Rustup
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
-		. $HOME/.cargo/env && \
-		rustup target add wasm32-unknown-unknown
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install -f wasm-bindgen-cli
 
 # Install bun dependencies
 COPY package.json bun.lockb .
@@ -33,10 +34,10 @@ COPY . ./
 
 # Build it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
-		. $HOME/.cargo/env && cd moq-web && bun run
+	--mount=type=cache,target=/build/target \
+	bun run rspack
 
-## moq-clock
+# moq-clock
 FROM debian:bookworm-slim AS moq-clock
 COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
 ENTRYPOINT ["moq-clock"]
@@ -51,7 +52,7 @@ ENTRYPOINT ["moq-karp"]
 ## moq-web
 FROM caddy:alpine AS moq-web
 EXPOSE 443
-COPY --from=build-wasm /build/moq-web/dist /srv
+COPY --from=build-wasm /build/dist /srv
 
 ENTRYPOINT ["caddy", "file-server", "--root", "/srv", "--listen", ":443"]
 
