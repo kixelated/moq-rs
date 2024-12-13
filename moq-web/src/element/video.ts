@@ -3,7 +3,7 @@ import * as Moq from "..";
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
-export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
+export default class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	#watch?: Moq.Watch;
 	#canvas?: OffscreenCanvas;
 

@@ -16,10 +16,6 @@
 		"./element/video": {
 			"types": "./dist/src/element/video.d.ts",
 			"import": "./dist/src/element/video.js"
-		},
-		"./element/karp": {
-			"types": "./dist/src/element/karp.d.ts",
-			"import": "./dist/src/element/karp.js"
 		}
 	},
 	"sideEffects": ["./dist/src/element/index.js", "./dist/src/element/video.js"],
