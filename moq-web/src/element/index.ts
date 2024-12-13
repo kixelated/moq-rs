@@ -1,1 +1,2 @@
-export { MoqVideoElement } from "./video";
+import MoqVideoElement from "./video";
+export { MoqVideoElement };
