@@ -10,6 +10,7 @@ in
 {
   options.services.moq-relay = {
     enable = lib.mkEnableOption "moq-relay";
+    dev = lib.mkEnableOption "dev";
     port = lib.mkOption {
       type = lib.types.port;
       default = 443;
@@ -61,7 +62,9 @@ in
       serviceConfig = {
         User = cfg.user;
         Group = cfg.group;
-        ExecStart = "${pkgs.moq.moq-relay}/bin/moq-relay --bind [::]:${builtins.toString cfg.port} --tls-cert ${cfg.tls.certPath} --tls-key ${cfg.tls.keyPath}";
+        ExecStart = builtins.concatStringsSep " " ([
+          "${pkgs.moq.moq-relay}/bin/moq-relay --bind [::]:${builtins.toString cfg.port} --tls-cert ${cfg.tls.certPath} --tls-key ${cfg.tls.keyPath}"
+        ] ++ lib.optionals cfg.dev [ "--dev" ]);
         Restart = "on-failure";
         RestartSec = "1";
 
