@@ -1,18 +1,41 @@
-{ self, nixpkgs, flake-utils, ... }:
+{ self, nixpkgs, flake-utils, fenix, ... }:
 flake-utils.lib.eachDefaultSystem (system:
   let
     pkgs = nixpkgs.legacyPackages.${system};
   in
-    with pkgs;
     {
-      devShells.default = mkShell {
-        nativeBuildInputs = [
-          pkg-config
-          libressl
-          cargo
-          ffmpeg
-        ];
-        LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+      devShells = {
+        default = with pkgs; mkShell {
+          nativeBuildInputs = [
+            pkg-config
+            libressl
+            cargo
+            rustfmt
+            ffmpeg
+          ];
+          LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+        };
+
+        web =
+          let
+            rustToolchain = with fenix.packages.${system};
+              combine [
+                latest.rustc
+                latest.cargo
+                targets.wasm32-unknown-unknown.latest.rust-std
+              ];
+          in
+            with pkgs;
+            mkShell {
+              nativeBuildInputs = [
+                bun
+                go
+                nodejs_23
+                biome
+                rustToolchain
+                wasm-pack
+              ];
+            };
       };
     }
 )
