@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.8...moq-web-v0.3.9) - 2024-12-24
+
+### Added
+
+- request for the fingerprint anytime an http url is passed (#272)
+
 ## [0.3.7](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.6...moq-web-v0.3.7) - 2024-12-12
 
 ### Other
