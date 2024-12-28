@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.15](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.14...moq-relay-v0.6.15) - 2024-12-24
+
+### Added
+
+- request for the fingerprint anytime an http url is passed (#272)
+
 ## [0.6.14](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.13...moq-relay-v0.6.14) - 2024-12-12
 
 ### Other
