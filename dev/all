@@ -21,11 +21,8 @@ cleanup() {
 # Trap signals and call cleanup
 trap cleanup SIGINT SIGTERM ERR
 
-# Generate certs first
-./dev/cert
-
 # Run commands in parallel
-NOCERT=1 ./dev/relay &
+./dev/relay &
 pids+=($!)
 
 # Give the relay a moment to grab the rust build lock so it starts first

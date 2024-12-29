@@ -194,8 +194,8 @@ impl Subscriber {
 		let mut group = {
 			let mut subs = self.subscribes.lock();
 			let track = subs.get_mut(&group.subscribe).ok_or(Error::Cancel)?;
-			let group = track.create_group(group.sequence);
-			group
+
+			track.create_group(group.sequence)
 		};
 
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
