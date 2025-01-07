@@ -50,7 +50,9 @@ impl Publish {
 		let src = Url::parse(src).map_err(|_| Error::InvalidUrl)?;
 		let session = crate::session::connect(&src).await?;
 		let path: moq_transfork::Path = src.path_segments().ok_or(Error::InvalidUrl)?.collect();
-		let broadcast = moq_karp::BroadcastProducer::new(session, path)?;
+
+		let id = js_sys::Date::now() as u64;
+		let broadcast = moq_karp::BroadcastProducer::new(session, path, id)?;
 
 		Ok(Self { broadcast, video_id: 0 })
 	}

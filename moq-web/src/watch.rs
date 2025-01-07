@@ -26,7 +26,7 @@ struct Status {
 #[wasm_bindgen]
 pub struct Watch {
 	controls: ControlsSend,
-	status: StatusRecv,
+	_status: StatusRecv,
 }
 
 #[wasm_bindgen]
@@ -49,7 +49,7 @@ impl Watch {
 
 		Ok(Self {
 			controls: controls.0,
-			status: status.1,
+			_status: status.1,
 		})
 	}
 

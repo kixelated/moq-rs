@@ -10,7 +10,7 @@ use derive_more::Debug;
 pub struct BroadcastProducer {
 	pub session: Session,
 	pub path: Path,
-	id: u128,
+	id: u64,
 	catalog: Lock<CatalogProducer>,
 }
 
@@ -20,14 +20,7 @@ struct CatalogProducer {
 }
 
 impl BroadcastProducer {
-	pub fn new(mut session: Session, path: Path) -> Result<Self> {
-		// Generate a "unique" ID for this broadcast session.
-		// If we crash, then the viewers will automatically reconnect to the new ID.
-		let id = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_millis();
-
+	pub fn new(mut session: Session, path: Path, id: u64) -> Result<Self> {
 		let full = path.clone().push(id);
 
 		let catalog = moq_transfork::Track {

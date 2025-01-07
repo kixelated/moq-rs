@@ -17,6 +17,7 @@ impl Decoder {
 				timestamp: frame.timestamp.as_micros() as _,
 				keyframe: frame.keyframe,
 			};
+
 			self.decoder.decode(frame)?;
 		}
 

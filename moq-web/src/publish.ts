@@ -1,29 +1,59 @@
-import type * as Comlink from "comlink";
-import { init } from ".";
+import * as Comlink from "comlink";
 import type * as Bridge from "./bridge";
+import { init } from ".";
 
 export class Publish {
-	#inner: Promise<Comlink.Remote<Bridge.Publish>>;
+	#bridge: Promise<Comlink.Remote<Bridge.Publish>>;
+	#video?: PublishVideo;
 
 	constructor(src: string) {
-		this.#inner = init.then((api) => api.publish(src));
+		this.#bridge = init.then((api) => api.publish(src));
 	}
 
-	async media(media?: MediaStream) {
+	async capture(media?: MediaStream): Promise<PublishVideo | null> {
 		if (!media) {
 			// TODO tell the worker to end the current tracks
-			return;
+			return null;
 		}
 
-		for (const track of media.getVideoTracks()) {
+		const input = media.getVideoTracks().at(0);
+		if (!input) {
+			return null;
 		}
+
+		const bridge = await this.#bridge;
+		const output = Comlink.proxy(await bridge.video(input.getSettings()));
+
+		if (this.#video) {
+			await this.#video.close();
+		}
+
+		this.#video = new PublishVideo(input, output);
+		return this.#video;
 	}
 
-	async #runVideo(track: MediaStreamVideoTrack) {
-		const inner = await this.#inner;
+	async close() {
+		await this.#video?.close();
+		await (await this.#bridge).close();
+	}
+}
 
-		const video = await inner.video(track.getSettings());
-		const processor = new MediaStreamTrackProcessor({ track });
+export class PublishVideo {
+	#input: MediaStreamVideoTrack;
+	#output: Bridge.PublishVideo & Comlink.ProxyMarked;
+	#abort: AbortController;
+
+	readonly closed: Promise<void>;
+
+	constructor(input: MediaStreamVideoTrack, output: Bridge.PublishVideo & Comlink.ProxyMarked) {
+		this.#input = input;
+		this.#output = output;
+		this.#abort = new AbortController();
+		this.closed = this.#run().catch(console.error);
+	}
+
+	async #run() {
+		const processor = new MediaStreamTrackProcessor({ track: this.#input });
 		const reader = processor.readable.getReader();
 
 		for (;;) {
@@ -32,11 +62,11 @@ export class Publish {
 				break;
 			}
 
-			await video.encode(next.value);
+			await this.#output.encode(next.value);
 		}
 	}
 
 	async close() {
-		await (await this.#inner).close();
+		this.#abort.abort();
 	}
 }

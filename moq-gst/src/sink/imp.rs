@@ -171,7 +171,15 @@ impl MoqSink {
 				.path_segments()
 				.expect("missing path")
 				.collect::<moq_transfork::Path>();
-			let broadcast = moq_karp::BroadcastProducer::new(session, path).unwrap();
+
+			// Generate a "unique" ID for this broadcast session.
+			// If we crash, then the viewers will automatically reconnect to the new ID.
+			let id = std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_millis() as u64;
+
+			let broadcast = moq_karp::BroadcastProducer::new(session, path, id).unwrap();
 			let media = moq_karp::cmaf::Import::new(broadcast);
 
 			let mut state = self.state.lock().unwrap();
