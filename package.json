@@ -17,14 +17,22 @@
 	"sideEffects": ["./dist/src/element/video.js"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
+		"all": "npm-run-all --parallel relay pub web",
+		"up": "docker-compose up --build --remove-orphans",
+
+		"relay": "./dev/relay",
+		"pub": "./dev/pub",
+		"gst": "./dev/gst",
+		"clock": "./dev/clock",
+		"web": "./dev/web",
+
 		"pack": "bun run pack:wasm && rm pkg/.gitignore && tsc",
 		"pack:wasm": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index",
 		"dev": "rspack serve",
-		"build": "rspack build",
+
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged",
-		"fmt": "biome format --write && cargo fmt --all",
-		"up": "docker-compose up --build --remove-orphans"
+		"fmt": "biome format --write && cargo fmt --all"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2",
