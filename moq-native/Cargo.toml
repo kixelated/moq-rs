@@ -21,6 +21,8 @@ rustls-native-certs = "0.8"
 quinn = { version = "0.11", features = ["ring"] }
 ring = "0.17"
 webpki = "0.22"
+rcgen = "0.13"
+time = "0.3"
 
 hex = "0.4"
 url = "2"

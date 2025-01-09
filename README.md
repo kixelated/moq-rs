@@ -25,9 +25,10 @@ There are additional components that have been split into other repositories for
 # Usage
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install) (duh)
-- [Go](https://golang.org/doc/install) (for mkcert, somebody please replace this)
-- [Bun](https://bun.sh/) (for web only)
--  (optional) [Docker](https://docs.docker.com/get-docker/)
+
+Web only:
+- [Bun](https://bun.sh/)
+- `rustup target add wasm32-unknown-unknown`
 
 ## Local
 There's a few scripts in the [dev](dev) directory to help you get started:
@@ -44,9 +45,12 @@ There's a few scripts in the [dev](dev) directory to help you get started:
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
 ## Docker
-Alternatively, you can use docker to launch a full cluster:
+Alternatively, you can use [Docker](https://docs.docker.com/get-docker/) to launch a full cluster:
 ```sh
-make
+bun up
+
+# alternatively:
+docker-compose up --build
 ```
 
 This will start two relays (clustered!), a ffmpeg publisher, and web server.

@@ -23,7 +23,8 @@
 		"build": "rspack build",
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged",
-		"fmt": "biome format --write && cargo fmt --all"
+		"fmt": "biome format --write && cargo fmt --all",
+		"up": "docker-compose up --build --remove-orphans"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2",
