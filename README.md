@@ -25,37 +25,20 @@ There are additional components that have been split into other repositories for
 # Usage
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install) (duh)
-
-Web only:
 - [Bun](https://bun.sh/)
 - `rustup target add wasm32-unknown-unknown`
 
-## Local
+## Development
 There's a few scripts in the [dev](dev) directory to help you get started:
 ```sh
-# Run as a single (hacky) command:
-./dev/all
+# Run the relay, publisher, and web server:
+bun all
 
-# Or individually:
-./dev/relay
-./dev/pub
-./dev/web
-```
-
-Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
-
-## Docker
-Alternatively, you can use [Docker](https://docs.docker.com/get-docker/) to launch a full cluster:
-```sh
-bun up
-
-# alternatively:
+# Or use docker instead:
 docker-compose up --build
 ```
 
-This will start two relays (clustered!), a ffmpeg publisher, and web server.
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
-Live updates aren't supported in this mode.
 
 
 # Components
