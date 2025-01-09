@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.15](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.14...moq-relay-v0.6.15) - 2024-12-24
+
+### Added
+
+- request for the fingerprint anytime an http url is passed (#272)
+
+## [0.6.14](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.13...moq-relay-v0.6.14) - 2024-12-12
+
+### Other
+
+- updated the following local packages: moq-transfork
+
+## [0.6.13](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.12...moq-relay-v0.6.13) - 2024-12-11
+
+### Other
+
+- update Cargo.lock dependencies
+
+## [0.6.12](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.11...moq-relay-v0.6.12) - 2024-12-04
+
+### Other
+
+- Add support for immediate 404s ([#241](https://github.com/kixelated/moq-rs/pull/241))
+- Some more logging around announcements. ([#245](https://github.com/kixelated/moq-rs/pull/245))
+
 ## [0.6.11](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.10...moq-relay-v0.6.11) - 2024-11-26
 
 ### Other

@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.7.0...moq-transfork-v0.8.0) - 2024-12-12
+
+### Other
+
+- Fix a race condition on subscribe ([#268](https://github.com/kixelated/moq-rs/pull/268))
+
+## [0.7.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.6.0...moq-transfork-v0.7.0) - 2024-12-04
+
+### Other
+
+- Bump thiserror from 1.0.69 to 2.0.3 ([#254](https://github.com/kixelated/moq-rs/pull/254))
+- Add support for immediate 404s ([#241](https://github.com/kixelated/moq-rs/pull/241))
+- Npm fix ([#249](https://github.com/kixelated/moq-rs/pull/249))
+- Some more logging around announcements. ([#245](https://github.com/kixelated/moq-rs/pull/245))
+- Merge in the new moq-web crate. ([#242](https://github.com/kixelated/moq-rs/pull/242))
+
 ## [0.6.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.5.0...moq-transfork-v0.6.0) - 2024-11-26
 
 ### Other

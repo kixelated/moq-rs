@@ -1,37 +1,29 @@
-{ self, nixpkgs, flake-utils, ... }:
+{ self, nixpkgs, flake-utils, crate2nix, ... }:
 flake-utils.lib.eachDefaultSystem (system:
   let
     pkgs = nixpkgs.legacyPackages.${system};
     moq-relay-version = (pkgs.lib.importTOML ../../moq-relay/Cargo.toml).package.version;
+    cargoWorkspace = pkgs.callPackage (crate2nix.tools.${system}.generatedCargoNix {
+      name = "moq-rs";
+      src = ../../.;
+    }) {
+      defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+        aws-lc-rs = _: {
+          # NOTE: If aws-lc-sys version changes we will need to change these variables
+          DEP_AWS_LC_0_21_2_INCLUDE = "";
+          DEP_AWS_LC_0_21_2_LIBCRYPTO = "";
+          DEP_AWS_LC_0_21_2_ROOT = "";
+          features = [
+            "aws-lc-sys"
+          ];
+        };
+      };
+    };
   in
     with pkgs;
     {
-      packages = rec {
-        moq-relay = rustPlatform.buildRustPackage rec {
-          pname = "moq-relay";
-          version = moq-relay-version;
-
-          src = ../../.;
-
-          cargoLock = {
-            lockFile = ../../Cargo.lock;
-            allowBuiltinFetchGit = true;
-          };
-
-          nativeBuildInputs = [ pkg-config ];
-
-          buildInputs = [ libressl ]
-                        ++ lib.optionals stdenv.isDarwin [
-                          darwin.apple_sdk.frameworks.Security
-                          darwin.apple_sdk.frameworks.SystemConfiguration
-                        ];
-          meta = {
-            description = "Media Over QUIC relay server";
-            mainProgram = "moq-relay";
-            homepage = "https://quic.video/";
-            changelog = "https://github.com/kixelated/moq-rs/releases/tag/moq-relay-v${version}";
-          };
-        };
-      };
+      packages = lib.concatMapAttrs (name: _: {
+        ${name} = cargoWorkspace.workspaceMembers.${name}.build;
+      }) cargoWorkspace.workspaceMembers;
     }
 )

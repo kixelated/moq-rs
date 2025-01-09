@@ -2,10 +2,10 @@
 name = "moq-web"
 authors = ["Luke Curley <kixelated@gmail.com>"]
 edition = "2021"
-version = "0.3.5"
+version = "0.3.9"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kixelated/moq-web"
-description = "WebAssembly frontend for MoQ"
+description = "Web implementation for MoQ utilizing WebAssembly+Typescript"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -19,15 +19,15 @@ tracing = "0.1"
 wasm-tracing = "0.2"
 gloo-net = "0.6"
 
-moq-karp = { version = "0.10", path = "../moq-karp", default-features = false }
+moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
-web-codecs = { version = "0.3.2", path = "../../web-rs/web-codecs" }
 web-streams = { version = "0.1", path = "../../web-rs/web-streams" }
+web-codecs = { version = "0.3.2", path = "../../web-rs/web-codecs" }
 tokio = { version = "1", features = ["sync"] }
 
 js-sys = "0.3.72"
 url = "2"
-thiserror = "1"
+thiserror = "2"
 hex = "0.4"
 baton = "0.1.1"
 

@@ -160,7 +160,9 @@ impl fmt::Display for VarInt {
 impl Decode for VarInt {
 	/// Decode a varint from the given reader.
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		Self::decode_cap(r, 1)?;
+		if !r.has_remaining() {
+			return Err(DecodeError::Short);
+		}
 
 		let b = r.get_u8();
 		let tag = b >> 6;
@@ -171,17 +173,23 @@ impl Decode for VarInt {
 		let x = match tag {
 			0b00 => u64::from(buf[0]),
 			0b01 => {
-				Self::decode_cap(r, 1)?;
+				if !r.has_remaining() {
+					return Err(DecodeError::Short);
+				}
 				r.copy_to_slice(buf[1..2].as_mut());
 				u64::from(u16::from_be_bytes(buf[..2].try_into().unwrap()))
 			}
 			0b10 => {
-				Self::decode_cap(r, 3)?;
+				if r.remaining() < 3 {
+					return Err(DecodeError::Short);
+				}
 				r.copy_to_slice(buf[1..4].as_mut());
 				u64::from(u32::from_be_bytes(buf[..4].try_into().unwrap()))
 			}
 			0b11 => {
-				Self::decode_cap(r, 7)?;
+				if r.remaining() < 7 {
+					return Err(DecodeError::Short);
+				}
 				r.copy_to_slice(buf[1..8].as_mut());
 				u64::from_be_bytes(buf)
 			}

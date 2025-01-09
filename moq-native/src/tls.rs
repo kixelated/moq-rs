@@ -1,7 +1,8 @@
 use anyhow::Context;
 use clap::Parser;
 use ring::digest::{digest, SHA256};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::crypto::ring::sign::any_supported_type;
+use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer, ServerName, UnixTime};
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
 use rustls::RootCertStore;
@@ -18,20 +19,20 @@ pub struct Args {
 	/// You can use this option multiple times for multiple certificates.
 	/// The first match for the provided SNI will be used, otherwise the last cert will be used.
 	/// You also need to provide the private key multiple times via `key``.
-	#[arg(long = "tls-cert")]
+	#[arg(long = "tls-cert", value_delimiter = ',')]
 	pub cert: Vec<path::PathBuf>,
 
 	/// Use the private key at this path, encoded as PEM.
 	///
 	/// There must be a key for every certificate provided via `cert`.
-	#[arg(long = "tls-key")]
+	#[arg(long = "tls-key", value_delimiter = ',')]
 	pub key: Vec<path::PathBuf>,
 
 	/// Use the TLS root at this path, encoded as PEM.
 	///
 	/// This value can be provided multiple times for multiple roots.
 	/// If this is empty, system roots will be used instead
-	#[arg(long = "tls-root")]
+	#[arg(long = "tls-root", value_delimiter = ',')]
 	pub root: Vec<path::PathBuf>,
 
 	/// Danger: Disable TLS certificate verification.
@@ -39,6 +40,13 @@ pub struct Args {
 	/// Fine for local development and between relays, but should be used in caution in production.
 	#[arg(long = "tls-disable-verify")]
 	pub disable_verify: bool,
+
+	/// Generate a self-signed certificate for the provided hostnames (comma separated).
+	///
+	/// This is useful for local development and testing.
+	/// This can be combined with the `/fingerprint` endpoint for clients to fetch the fingerprint.
+	#[arg(long = "tls-self-sign", value_delimiter = ',')]
+	pub self_sign: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -60,6 +68,10 @@ impl Args {
 		);
 		for (chain, key) in self.cert.iter().zip(self.key.iter()) {
 			serve.load(chain, key)?;
+		}
+
+		if !self.self_sign.is_empty() {
+			serve.generate(&self.self_sign)?;
 		}
 
 		// Create a list of acceptable root certificates.
@@ -107,7 +119,7 @@ impl Args {
 		let fingerprints = serve.fingerprints();
 
 		// Create the TLS configuration we'll use as a server (relay <- browser)
-		let server = if !self.key.is_empty() {
+		let server = if !serve.list.is_empty() {
 			Some(
 				rustls::ServerConfig::builder_with_provider(provider)
 					.with_protocol_versions(&[&rustls::version::TLS13])?
@@ -156,6 +168,30 @@ impl ServeCerts {
 
 		let certified = Arc::new(CertifiedKey::new(chain, key));
 		self.list.push(certified);
+
+		Ok(())
+	}
+
+	pub fn generate(&mut self, hostnames: &[String]) -> anyhow::Result<()> {
+		let key_pair = rcgen::KeyPair::generate()?;
+
+		let mut params = rcgen::CertificateParams::new(hostnames)?;
+
+		// Make the certificate valid for two weeks, starting yesterday (in case of clock drift).
+		// WebTransport certificates MUST be valid for two weeks at most.
+		params.not_before = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+		params.not_after = params.not_before + time::Duration::days(14);
+
+		// Generate the certificate
+		let cert = params.self_signed(&key_pair)?;
+
+		// Convert the rcgen type to the rustls type.
+		let key = PrivatePkcs8KeyDer::from(key_pair.serialized_der());
+		let key = any_supported_type(&key.into())?;
+
+		// Create a rustls::sign::CertifiedKey
+		let certified = CertifiedKey::new(vec![cert.into()], key);
+		self.list.push(Arc::new(certified));
 
 		Ok(())
 	}

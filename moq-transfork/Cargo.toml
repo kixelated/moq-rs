@@ -5,7 +5,7 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.6.0"
+version = "0.8.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -13,7 +13,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 bytes = "1"
-thiserror = "1"
+thiserror = "2"
 tracing = "0.1"
 
 tokio = { version = "1.41", features = [

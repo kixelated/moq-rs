@@ -3,29 +3,13 @@ use thiserror::Error;
 
 pub trait Decode: Sized {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError>;
-
-	// Helper function to require a additional number of bytes and then decode.
-	fn decode_more<B: bytes::Buf>(buf: &mut B, remain: usize) -> Result<Self, DecodeError> {
-		Self::decode_cap(buf, remain)?;
-		Self::decode(buf)
-	}
-
-	// Helper function to return an error if the buffer does not have enough data
-	fn decode_cap<B: bytes::Buf>(buf: &mut B, remain: usize) -> Result<(), DecodeError> {
-		let needed = remain.saturating_sub(buf.remaining());
-		if needed > 0 {
-			Err(DecodeError::More(needed))
-		} else {
-			Ok(())
-		}
-	}
 }
 
 /// A decode error.
 #[derive(Error, Debug, Clone)]
 pub enum DecodeError {
-	#[error("fill buffer")]
-	More(usize),
+	#[error("short buffer")]
+	Short,
 
 	#[error("invalid string")]
 	InvalidString(#[from] FromUtf8Error),
@@ -66,7 +50,7 @@ impl Decode for u8 {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		match r.has_remaining() {
 			true => Ok(r.get_u8()),
-			false => Err(DecodeError::More(1)),
+			false => Err(DecodeError::Short),
 		}
 	}
 }
@@ -116,6 +100,10 @@ impl Decode for time::Duration {
 
 impl Decode for i8 {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		if !r.has_remaining() {
+			return Err(DecodeError::Short);
+		}
+
 		// This is not the usual way of encoding negative numbers.
 		// i8 doesn't exist in the draft, but we use it instead of u8 for priority.
 		// A default of 0 is more ergonomic for the user than a default of 128.
@@ -126,6 +114,9 @@ impl Decode for i8 {
 impl Decode for bytes::Bytes {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let len = usize::decode(r)?;
+		if r.remaining() < len {
+			return Err(DecodeError::Short);
+		}
 		let bytes = r.copy_to_bytes(len);
 		Ok(bytes)
 	}

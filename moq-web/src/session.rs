@@ -6,24 +6,24 @@ use crate::{Error, Result};
 pub async fn connect(addr: &Url) -> Result<moq_transfork::Session> {
 	tracing::info!("connecting to: {}", addr);
 
-	if addr.scheme() != "https" {
-		return Err(Error::InvalidUrl);
-	}
-
 	let client = web_transport::Client::new().congestion_control(web_transport::CongestionControl::LowLatency);
 
-	// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
-	// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
-	let client = match addr.host_str() {
-		Some("localhost") => {
+	let session = match addr.scheme() {
+		"http" => {
+			// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
+			// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
 			let fingerprint = fingerprint(addr).await?;
-			client.server_certificate_hashes(vec![fingerprint])
+			let client = client.server_certificate_hashes(vec![fingerprint]);
+			// Make a copy of the address, changing it from HTTP to HTTPS for WebTransport:
+			let mut addr = addr.clone();
+			let _ = addr.set_scheme("https");
+			client.connect(&addr).await?
 		}
-		_ => client,
+		"https" => client.connect(addr).await?,
+		_ => return Err(Error::InvalidUrl),
 	};
 
-	let session = client.connect(addr).await?;
-	let session = moq_transfork::Session::connect(session.into()).await?;
+	let session = moq_transfork::Session::connect(session).await?;
 
 	Ok(session)
 }

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.0...moq-karp-v0.11.1) - 2024-12-12
+
+### Other
+
+- Fix a race condition on subscribe ([#268](https://github.com/kixelated/moq-rs/pull/268))
+
+## [0.11.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.10.0...moq-karp-v0.11.0) - 2024-12-04
+
+### Other
+
+- Bump thiserror from 1.0.69 to 2.0.3 ([#254](https://github.com/kixelated/moq-rs/pull/254))
+- Bump bytes from 1.8.0 to 1.9.0 ([#253](https://github.com/kixelated/moq-rs/pull/253))
+- Add support for immediate 404s ([#241](https://github.com/kixelated/moq-rs/pull/241))
+- Npm fix ([#249](https://github.com/kixelated/moq-rs/pull/249))
+
 ## [0.10.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.9.0...moq-karp-v0.10.0) - 2024-11-26
 
 ### Other

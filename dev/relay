@@ -4,13 +4,6 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
-NOCERT="${NOCERT:-}"
-
-# Generate the self-signed certificate if needed
-if [ -z "$NOCERT" ]; then
-	./dev/cert
-fi
-
 # Default to a self-signed certificate
 # TODO automatically generate if it doesn't exist.
 CERT="${CERT:-dev/localhost.crt}"
@@ -44,6 +37,6 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-cert "$CERT" --tls-key "$KEY" --dev $ARGS "$@" &
+cargo run --bin moq-relay -- --bind "$BIND" --tls-self-sign localhost --dev $ARGS "$@" &
 child=$!
 wait "$child"

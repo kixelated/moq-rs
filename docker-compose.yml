@@ -2,13 +2,6 @@ x-moq: &x-moq
   build:
     context: .
     dockerfile: Dockerfile
-  volumes:
-    - ./dev/localhost.crt:/etc/tls/cert:ro
-    - ./dev/localhost.key:/etc/tls/key:ro
-    - certs:/etc/ssl/certs
-  depends_on:
-    install-certs:
-      condition: service_completed_successfully
 
 services:
   relay1:
@@ -16,7 +9,7 @@ services:
     build:
       target: moq-relay
     # This relay is the root, used to discover/announce origins.
-    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --cluster-node relay1 --cluster-root relay1 --dev
+    command: --tls-self-sign localhost,relay1,127.0.0.1 --cluster-node relay1 --cluster-root relay1 --dev
     ports:
       - "4443:443"
       - "4443:443/udp"
@@ -26,52 +19,39 @@ services:
     build:
       target: moq-relay
     # This relay is a follower, connecting to relay1 to discover/announce origins.
-    command: --tls-cert /etc/tls/cert --tls-key /etc/tls/key --tls-disable-verify --cluster-node relay2 --cluster-root relay1 --dev
+    command: --tls-self-sign localhost,relay2,127.0.0.1 --cluster-node relay2 --cluster-root relay1 --dev
     depends_on:
       - relay1
     ports:
       - "4444:443"
       - "4444:443/udp"
 
-  karp:
+  bbb:
     <<: *x-moq
     build:
       target: moq-karp
     entrypoint: moq-bbb
-    command: --tls-disable-verify --path bbb --url https://relay1
+    command: --tls-disable-verify publish "https://relay1/demo/bbb"
     depends_on:
       - relay1
 
-  web:
-    <<: *x-moq
-    build:
-      target: moq-web
-    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
-    depends_on:
-      - relay1
-    ports:
-      - "8080:8080"
+# Temporarily disabled awaiting https://github.com/oven-sh/bun/issues/15383
+#  web:
+#    <<: *x-moq
+#    build:
+#      target: moq-web
+#    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
+#    depends_on:
+#      - relay1
+#    ports:
+#      - "8080:8080"
 
-  clock:
-    <<: *x-moq
-    build:
-      dockerfile: Dockerfile
-    # Using relay2 just to test clustering.
-    command: --tls-disable-verify --publish https://relay2
-    depends_on:
-      - relay2
-
-  install-certs:
-    image: golang:latest
-    working_dir: /work
-    command: go run filippo.io/mkcert -install
-    environment:
-      CAROOT: /work/caroot
-    volumes:
-      - ${CAROOT:-.}:/work/caroot
-      - certs:/etc/ssl/certs
-      - ./dev/go.mod:/work/go.mod:ro
-      - ./dev/go.sum:/work/go.sum:ro
-
-volumes:
-  certs:
+# Disabled until it's shown on the UI.
+#  clock:
+#    <<: *x-moq
+#    build:
+#      dockerfile: Dockerfile
+#    # Using relay2 just to test clustering.
+#    command: --tls-disable-verify --publish https://relay2
+#    depends_on:
+#      - relay2
