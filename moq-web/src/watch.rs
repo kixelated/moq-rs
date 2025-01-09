@@ -33,6 +33,7 @@ pub struct Watch {
 impl Watch {
 	#[wasm_bindgen(constructor)]
 	pub fn new(src: &str) -> Result<Self> {
+		tracing::info!("watching: {:?}", src);
 		let src = Url::parse(src).map_err(|_| Error::InvalidUrl)?;
 
 		let controls = Controls::default().baton();

@@ -29,8 +29,7 @@ js-sys = "0.3.72"
 url = "2"
 thiserror = "1"
 hex = "0.4"
-
-baton = { path = "../../baton/baton", version = "0.1" }
+baton = "0.1.1"
 
 [dependencies.web-sys]
 version = "0.3.72"

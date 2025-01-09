@@ -163,16 +163,15 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 			return;
 		}
 
-		const watch = new Moq.Watch(this.#src);
-		this.#watch = watch;
+		console.log("Loading", this.#src);
+		this.#watch = new Moq.Watch(this.#src);
+
+		if (!this.#canvas) throw new Error("canvas not loaded");
 
 		// Set the initial state in this specific order.
-		(async () => {
-			await watch.pause(this.#paused);
-			await watch.volume(this.#volume);
-			if (!this.#canvas) throw new Error("canvas not loaded");
-			await watch.render(this.#canvas);
-		})();
+		this.#watch.pause(this.#paused);
+		this.#watch.volume(this.#volume);
+		this.#watch.render(this.#canvas);
 	}
 
 	pause(): void {
@@ -187,10 +186,7 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 			this.load();
 		}
 
-		if (this.#watch) {
-			const w = await this.#watch;
-			await w.pause(false);
-		}
+		this.#watch?.pause(false);
 	}
 
 	get paused(): boolean {

@@ -28,20 +28,11 @@ pub enum Error {
 	#[error("offline")]
 	Offline,
 
-	#[error("closed")]
-	Closed,
-
 	#[error("unsupported")]
 	Unsupported,
 
 	#[error("backend closed")]
 	Backend,
-
-	#[error("init failed")]
-	InitFailed,
-
-	#[error("missing resolution")]
-	MissingResolution,
 
 	#[error("capture failed")]
 	CaptureFailed,

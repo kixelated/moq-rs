@@ -3,7 +3,7 @@ import * as Moq from "..";
 export class MoqPublishElement extends HTMLElement {
 	#publish?: Moq.Publish;
 	#url: string | null = null;
-	#canvas?: OffscreenCanvas;
+	#preview: HTMLVideoElement | null = null;
 	#shadow: ShadowRoot;
 
 	#camera: HTMLButtonElement | null = null;
@@ -34,7 +34,7 @@ export class MoqPublishElement extends HTMLElement {
 		margin-top: 10px;
 	}
 </style>
-<slot name="canvas"></slot>
+<slot name="preview"></slot>
 
 <div id="controls">
 	<button id="camera">Camera</button>
@@ -49,19 +49,14 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	connectedCallback() {
-		// Provide a default canvas if none is slotted
-		if (!this.querySelector("canvas")) {
-			const defaultCanvas = document.createElement("canvas");
-			defaultCanvas.slot = "canvas";
-			this.appendChild(defaultCanvas);
-		}
-
-		this.#canvas = this.querySelector("canvas")?.transferControlToOffscreen();
+		this.#preview = this.querySelector("video");
 
 		this.#camera = this.#shadow.querySelector("#camera");
 		this.#camera?.addEventListener("click", async () => {
 			const media = await navigator.mediaDevices.getUserMedia({ video: true });
-			this.#publish?.capture(media);
+			if (this.#preview) {
+				this.#preview.srcObject = media;
+			}
 		});
 
 		for (const name of MoqPublishElement.observedAttributes) {
