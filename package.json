@@ -24,15 +24,13 @@
 		"pub": "./dev/pub",
 		"gst": "./dev/gst",
 		"clock": "./dev/clock",
-		"web": "./dev/web",
-
-		"pack": "bun run pack:wasm && rm pkg/.gitignore && tsc",
-		"pack:wasm": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index",
-		"dev": "rspack serve",
+		"web": "rspack serve",
 
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged",
-		"fmt": "biome format --write && cargo fmt --all"
+		"fmt": "biome format --write && cargo fmt --all",
+
+		"pack": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index && rm pkg/.gitignore && tsc"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2",

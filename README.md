@@ -25,14 +25,15 @@ There are additional components that have been split into other repositories for
 # Usage
 ## Requirements
 - [Rust](https://www.rust-lang.org/tools/install) (duh)
-- [Bun](https://bun.sh/)
+- [Node + NPM](https://nodejs.org/)
 - `rustup target add wasm32-unknown-unknown`
 
 ## Development
 There's a few scripts in the [dev](dev) directory to help you get started:
 ```sh
 # Run the relay, publisher, and web server:
-bun all
+npm install
+npm run all
 
 # Or use docker instead:
 docker-compose up --build
@@ -73,22 +74,21 @@ For example:
 ```
 
 The package is a gross frankenstein of Rust+Typescript.
-To make changes, you'll need to install (Bun)[https://bun.sh/] and then run:
 
 ```sh
-bun i
-bun dev
+npm i
+npm run web
 ```
 
 You can also test the package locally by linking.
-Replace `bun` with your favorite package manager; it might work.
+Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
-bun pack
-bun link
+npm run pack
+npm link
 
 # In your other package
-bun link @kixelated/moq
+npm link @kixelated/moq
 ```
 
 See the [moq-web README](moq-web/README.md) for more information.
