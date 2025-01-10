@@ -2,12 +2,13 @@ import * as Moq from "..";
 
 export class MoqPublishElement extends HTMLElement {
 	#publish?: Moq.Publish;
-	#url: string | null = null;
-	#preview: HTMLVideoElement | null = null;
-	#shadow: ShadowRoot;
+	#url?: string;
+	#media?: MediaStream;
 
-	#camera: HTMLButtonElement | null = null;
-	#screen: HTMLButtonElement | null = null;
+	#shadow: ShadowRoot;
+	#preview?: HTMLVideoElement;
+	#camera?: HTMLButtonElement;
+	#screen?: HTMLButtonElement;
 
 	static get observedAttributes() {
 		return ["url"];
@@ -44,25 +45,44 @@ export class MoqPublishElement extends HTMLElement {
 		this.#shadow = shadow;
 	}
 
-	setAttr(name: string, oldValue: string | null, newValue: string | null) {
+	setAttr(name: string, oldValue?: string, newValue?: string) {
 		this.attributeChangedCallback(name, oldValue, newValue);
 	}
 
 	connectedCallback() {
-		this.#preview = this.querySelector("video");
+		this.#preview = this.querySelector("video") ?? undefined;
 
-		this.#camera = this.#shadow.querySelector("#camera");
+		this.#camera = this.#shadow.querySelector("#camera") ?? undefined;
 		this.#camera?.addEventListener("click", async () => {
-			const media = await navigator.mediaDevices.getUserMedia({ video: true });
+			this.#media = await navigator.mediaDevices.getUserMedia({
+				video: true,
+			});
+
+			for (const track of this.#media.getTracks()) {
+				console.log(track.getSettings(), track.getCapabilities(), track.getConstraints());
+			}
+
+			this.#publish?.capture(this.#media);
+
 			if (this.#preview) {
-				this.#preview.srcObject = media;
+				this.#preview.srcObject = this.#media;
+			}
+		});
+
+		this.#screen = this.#shadow.querySelector("#screen") ?? undefined;
+		this.#screen?.addEventListener("click", async () => {
+			this.#media = await navigator.mediaDevices.getDisplayMedia({ video: true });
+			this.#publish?.capture(this.#media);
+
+			if (this.#preview) {
+				this.#preview.srcObject = this.#media;
 			}
 		});
 
 		for (const name of MoqPublishElement.observedAttributes) {
-			const value = this.getAttribute(name);
-			if (value !== null) {
-				this.attributeChangedCallback(name, null, this.getAttribute(name));
+			const value = this.getAttribute(name) ?? undefined;
+			if (value !== undefined) {
+				this.attributeChangedCallback(name, undefined, value);
 			}
 		}
 	}
@@ -71,7 +91,7 @@ export class MoqPublishElement extends HTMLElement {
 		this.#publish?.close();
 	}
 
-	attributeChangedCallback(name: string, old: string | null, value: string | null) {
+	attributeChangedCallback(name: string, old?: string, value?: string) {
 		if (old === value) {
 			return;
 		}
@@ -84,6 +104,7 @@ export class MoqPublishElement extends HTMLElement {
 
 				if (this.#url) {
 					this.#publish = new Moq.Publish(this.#url);
+					this.#publish.capture(this.#media);
 				}
 
 				break;

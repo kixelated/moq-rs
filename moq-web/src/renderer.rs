@@ -94,9 +94,9 @@ impl RenderAnimate {
 		let ctx = canvas.get_context("2d").unwrap().unwrap();
 
 		if let Some(ctx) = ctx.dyn_ref::<OffscreenCanvasRenderingContext2d>() {
-			ctx.draw_image_with_video_frame(&frame, 0.0, 0.0).unwrap();
+			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		} else if let Some(ctx) = ctx.dyn_ref::<CanvasRenderingContext2d>() {
-			ctx.draw_image_with_video_frame(&frame, 0.0, 0.0).unwrap();
+			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		} else {
 			unreachable!("unsupported canvas context");
 		}

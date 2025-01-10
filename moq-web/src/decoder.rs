@@ -14,7 +14,7 @@ impl Decoder {
 		while let Some(frame) = self.track.read().await? {
 			let frame = web_codecs::EncodedFrame {
 				payload: frame.payload,
-				timestamp: frame.timestamp.as_micros() as _,
+				timestamp: web_codecs::Timestamp::from_micros(frame.timestamp.as_micros()),
 				keyframe: frame.keyframe,
 			};
 

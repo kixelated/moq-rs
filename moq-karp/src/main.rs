@@ -65,14 +65,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[tracing::instrument(skip_all, fields(?path))]
 async fn publish(session: Session, path: Path) -> anyhow::Result<()> {
-	// Generate a "unique" ID for this broadcast session.
-	// If we crash, then the viewers will automatically reconnect to the new ID.
-	let id = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_millis() as u64;
-
-	let broadcast = BroadcastProducer::new(session.clone(), path, id)?;
+	let broadcast = BroadcastProducer::new(session.clone(), path)?;
 	let mut input = tokio::io::stdin();
 
 	let mut import = cmaf::Import::new(broadcast);

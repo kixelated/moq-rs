@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Change directory to root folder
+cd "$(dirname "$0")/.."
+
+# Install any new dependencies
+npm i
+
+# Start the development server
+# Override the log level to only show warnings otherwise wasm-bindgen will spam the console
+RUST_LOG=warn npm run web

@@ -20,7 +20,14 @@ struct CatalogProducer {
 }
 
 impl BroadcastProducer {
-	pub fn new(mut session: Session, path: Path, id: u64) -> Result<Self> {
+	pub fn new(mut session: Session, path: Path) -> Result<Self> {
+		// Generate a "unique" ID for this broadcast session.
+		// If we crash, then the viewers will automatically reconnect to the new ID.
+		let id = web_time::SystemTime::now()
+			.duration_since(web_time::SystemTime::UNIX_EPOCH)
+			.unwrap()
+			.as_millis() as u64;
+
 		let full = path.clone().push(id);
 
 		let catalog = moq_transfork::Track {

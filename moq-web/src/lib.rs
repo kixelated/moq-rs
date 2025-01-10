@@ -1,13 +1,11 @@
 mod decoder;
 mod error;
-mod meet;
 mod publish;
 mod renderer;
 mod session;
 mod watch;
 
 pub use error::*;
-pub use meet::*;
 pub use publish::*;
 pub use watch::*;
 

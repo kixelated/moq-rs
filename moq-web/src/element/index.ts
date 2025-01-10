@@ -1,3 +1,4 @@
-import "./publish";
-import "./video";
-import "./meet";
+import MoqVideoElement from "./video";
+
+export { MoqVideoElement };
+export { MoqPublishElement } from "./publish";

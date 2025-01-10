@@ -81,8 +81,7 @@ impl PublishBackend {
 		let path: moq_transfork::Path = self.src.path_segments().ok_or(Error::InvalidUrl)?.collect();
 		let mut active = None;
 
-		let id = js_sys::Date::now() as u64;
-		let broadcast = moq_karp::BroadcastProducer::new(session.clone(), path.clone(), id)?;
+		let broadcast = moq_karp::BroadcastProducer::new(session.clone(), path.clone())?;
 
 		tracing::info!(%self.src, ?broadcast, "connected");
 
@@ -158,7 +157,7 @@ impl PublishVideo {
 
 	async fn run(mut self) -> Result<()> {
 		let config = self.config().await?;
-		let (encoder, mut encoded) = config.clone().init()?;
+		let (mut encoder, mut encoded) = config.clone().init()?;
 
 		let name = self.track.id();
 
@@ -169,21 +168,22 @@ impl PublishVideo {
 		let mut reader: web_streams::Reader<web_sys::VideoFrame> = web_streams::Reader::new(&processor.readable())?;
 
 		// Pump the encoder to get the first decoded frame, so we can learn the description.
-		// TODO helper function
 		let decoder_config;
 		loop {
 			tokio::select! {
-				Some(frame) = reader.read().transpose() => encoder.encode(frame?.into())?,
+				Some(frame) = reader.read().transpose() => {
+					let frame = frame?.into();
+					encoder.encode(&frame, Default::default())?;
+				},
 				Some(config) = encoded.config() => {
+					tracing::info!("config: {:?}", config);
 					decoder_config = config;
+
 					break;
 				},
 				else => return Err(Error::CaptureFailed),
 			}
 		}
-
-		let frame = reader.read().await?.ok_or(Error::CaptureFailed)?;
-		encoder.encode(frame.into())?;
 
 		let track = moq_karp::Video {
 			track: moq_karp::Track { name, priority: 2 },
@@ -196,14 +196,29 @@ impl PublishVideo {
 			bitrate: config.bit_rate,
 		};
 
+		tracing::info!(?track);
+
 		let mut track = self.broadcast.publish_video(track)?;
 
-		while let Some(frame) = encoded.frame().await? {
-			track.write(moq_karp::Frame {
-				timestamp: moq_karp::Timestamp::from_micros(frame.timestamp as _),
-				keyframe: frame.keyframe,
-				payload: frame.payload,
-			});
+		loop {
+			tokio::select! {
+				// A new input frame is available.
+				Some(frame) = reader.read().transpose() => {
+					let frame: web_codecs::VideoFrame = frame?.into(); // NOTE: closed on Drop
+					encoder.encode(&frame, Default::default())?;
+				},
+				// A new output frame is available.
+				Some(frame) = encoded.frame().transpose() => {
+					let frame = frame?;
+					track.write(moq_karp::Frame {
+						timestamp: moq_karp::Timestamp::from_micros(frame.timestamp.as_micros()),
+						keyframe: frame.keyframe,
+						payload: frame.payload,
+					});
+				},
+				// All done with both the input and output.
+				else => break,
+			}
 		}
 
 		Ok(())
@@ -211,11 +226,14 @@ impl PublishVideo {
 
 	async fn config(&self) -> Result<web_codecs::VideoEncoderConfig> {
 		let settings = self.track.get_settings();
+		tracing::info!(?settings);
 
 		let resolution = web_codecs::Dimensions {
 			width: settings.get_width().ok_or(web_codecs::Error::InvalidDimensions)? as _,
 			height: settings.get_height().ok_or(web_codecs::Error::InvalidDimensions)? as _,
 		};
+
+		tracing::info!(?resolution);
 
 		let base = web_codecs::VideoEncoderConfig {
 			resolution,                  // TODO configurable
@@ -223,6 +241,7 @@ impl PublishVideo {
 			display: Some(resolution),
 			latency_optimized: Some(true), // TODO configurable
 			frame_rate: settings.get_frame_rate(),
+			max_gop_duration: Some(web_codecs::Duration::from_seconds(2)),
 			..Default::default()
 		};
 
