@@ -6,7 +6,7 @@ use moq_transfork::{Path, Session};
 use url::Url;
 
 use moq_karp::{cmaf, BroadcastProducer};
-use moq_native::quic::{self, Client};
+use moq_native::quic;
 
 #[derive(Parser, Clone)]
 struct Cli {
@@ -25,14 +25,18 @@ struct Cli {
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
 	pub command: Command,
+
+	/// The URL must start with https://
+	pub url: String,
 }
 
 #[derive(Subcommand, Clone)]
 pub enum Command {
-	Publish {
-		/// The URL must start with https://
-		url: String,
-	},
+	/// Connect to the server, do nothing else.
+	Connect,
+
+	// Publish a video stream.
+	Publish,
 	//Subscribe,
 }
 
@@ -44,20 +48,23 @@ async fn main() -> anyhow::Result<()> {
 	let tls = cli.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
 
-	match cli.command {
-		Command::Publish { url } => publish(quic.client, &url).await,
-		//Command::Subscribe => subscribe(session, broadcast).await,
-	}
-}
+	tracing::info!(url = ?cli.url, "connecting");
 
-#[tracing::instrument(skip_all, err, fields(?url))]
-async fn publish(client: Client, url: &str) -> anyhow::Result<()> {
-	let url = Url::parse(url).context("invalid URL")?;
-	let session = client.connect(&url).await?;
+	let url = Url::parse(&cli.url).context("invalid URL")?;
+	let session = quic.client.connect(&url).await?;
 	let session = Session::connect(session).await?;
 
 	let path = url.path_segments().context("missing path")?.collect::<Path>();
 
+	match cli.command {
+		Command::Connect => return Ok(()),
+		Command::Publish => publish(session, path).await,
+		//Command::Subscribe => subscribe(session, broadcast).await,
+	}
+}
+
+#[tracing::instrument(skip_all, fields(?path))]
+async fn publish(session: Session, path: Path) -> anyhow::Result<()> {
 	// Generate a "unique" ID for this broadcast session.
 	// If we crash, then the viewers will automatically reconnect to the new ID.
 	let id = std::time::SystemTime::now()

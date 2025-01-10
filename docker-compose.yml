@@ -35,16 +35,15 @@ services:
     depends_on:
       - relay1
 
-# Temporarily disabled awaiting https://github.com/oven-sh/bun/issues/15383
-#  web:
-#    <<: *x-moq
-#    build:
-#      target: moq-web
-#    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
-#    depends_on:
-#      - relay1
-#    ports:
-#      - "8080:8080"
+  web:
+    <<: *x-moq
+    build:
+      target: moq-web
+    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
+    depends_on:
+      - relay1
+    ports:
+      - "8080:8080"
 
 # Disabled until it's shown on the UI.
 #  clock:

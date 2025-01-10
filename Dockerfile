@@ -14,20 +14,18 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
 ## build-wasm
-FROM oven/bun:slim AS build-wasm
+FROM rust:slim AS build-wasm
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y ca-certificates curl build-essential
+RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs npm
 
 # Install Rustup
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install -f wasm-bindgen-cli
 
-# Install bun dependencies
-COPY package.json bun.lockb .
-RUN bun install
+# Install node dependencies
+COPY package.json package-lock.json .
+RUN npm install
 
 # Copy the rest
 COPY . ./
@@ -35,7 +33,7 @@ COPY . ./
 # Build it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
-	bun run rspack
+	npm run rspack
 
 # moq-clock
 FROM debian:bookworm-slim AS moq-clock
