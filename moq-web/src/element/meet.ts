@@ -1,9 +1,9 @@
 import * as Moq from "..";
 
-export class MoqPublishElement extends HTMLElement {
-	#publish?: Moq.Publish;
+export class MoqMeetElement extends HTMLElement {
+	#meet?: Moq.Meet;
 	#url: string | null = null;
-	#preview: HTMLVideoElement | null = null;
+	#canvas: HTMLCanvasElement | null = null;
 	#shadow: ShadowRoot;
 
 	#camera: HTMLButtonElement | null = null;
@@ -24,7 +24,7 @@ export class MoqPublishElement extends HTMLElement {
 		position: relative;
 	}
 
-	::slotted(video) {
+	::slotted(canvas) {
 		display: block;
 		max-width: 100%;
 		height: auto;
@@ -34,7 +34,7 @@ export class MoqPublishElement extends HTMLElement {
 		margin-top: 10px;
 	}
 </style>
-<slot name="preview"></slot>
+<slot name="canvas"></slot>
 
 <div id="controls">
 	<button id="camera">Camera</button>
@@ -49,17 +49,17 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	connectedCallback() {
-		this.#preview = this.querySelector("video");
+		this.#canvas = this.querySelector("canvas");
+		if (!this.#canvas) {
+			throw new Error("Canvas element is required");
+		}
 
 		this.#camera = this.#shadow.querySelector("#camera");
 		this.#camera?.addEventListener("click", async () => {
 			const media = await navigator.mediaDevices.getUserMedia({ video: true });
-			if (this.#preview) {
-				this.#preview.srcObject = media;
-			}
 		});
 
-		for (const name of MoqPublishElement.observedAttributes) {
+		for (const name of MoqMeetElement.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
 				this.attributeChangedCallback(name, null, this.getAttribute(name));
@@ -68,7 +68,7 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	disconnectedCallback() {
-		this.#publish?.close();
+		this.#canvas?.close();
 	}
 
 	attributeChangedCallback(name: string, old: string | null, value: string | null) {
@@ -80,10 +80,10 @@ export class MoqPublishElement extends HTMLElement {
 			case "url":
 				this.#url = value;
 
-				this.#publish?.close();
+				this.#meet?.close();
 
 				if (this.#url) {
-					this.#publish = new Moq.Publish(this.#url);
+					this.#meet = new Moq.Meet(this.#url);
 				}
 
 				break;
@@ -91,10 +91,10 @@ export class MoqPublishElement extends HTMLElement {
 	}
 }
 
-customElements.define("moq-publish", MoqPublishElement);
+customElements.define("moq-meet", MoqMeetElement);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-publish": MoqPublishElement;
+		"moq-meet": MoqMeetElement;
 	}
 }
