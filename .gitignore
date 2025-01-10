@@ -14,11 +14,17 @@ pkg
 target
 dist
 
+
 # Don't leak dev stuff
 *.mp4
 *.fmp4
 *.crt
 *.key
 *.hex
+
+# We're using NPM
+bun.lockb
+yarn.lock
+pnpm-lock.yaml
 
 result

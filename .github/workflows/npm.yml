@@ -20,9 +20,7 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: actions/setup-node@v4
 
       - name: Update NPM version
         run: |
@@ -33,9 +31,9 @@ jobs:
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          bun install
-          bun pack
-          bun publish
+          npm install
+          npm run pack
+          npm publish
 
       - name: Trigger quic.video update
         env:

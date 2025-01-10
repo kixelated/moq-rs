@@ -28,7 +28,6 @@ flake-utils.lib.eachDefaultSystem (system:
             with pkgs;
             mkShell {
               nativeBuildInputs = [
-                bun
                 go
                 nodejs_23
                 biome
