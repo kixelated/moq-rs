@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_codecs::{VideoDecoded, VideoFrame};
-use web_sys::{CanvasRenderingContext2d, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::Result;
 
@@ -12,14 +12,14 @@ pub struct Renderer {
 }
 
 impl Renderer {
-	pub fn new(decoded: VideoDecoded, canvas: Option<OffscreenCanvas>) -> Self {
+	pub fn new(decoded: VideoDecoded) -> Self {
 		Self {
-			animate: RenderAnimate::new(canvas),
+			animate: RenderAnimate::new(None),
 			decoded,
 		}
 	}
 
-	pub fn update(&mut self, canvas: Option<OffscreenCanvas>) {
+	pub fn canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
 		self.animate.state.borrow_mut().canvas = canvas;
 	}
 
@@ -39,13 +39,13 @@ struct RenderAnimate {
 
 struct RenderState {
 	scheduled: bool,
-	canvas: Option<OffscreenCanvas>,
+	canvas: Option<HtmlCanvasElement>,
 	queue: VecDeque<VideoFrame>,
 	render: Option<Closure<dyn FnMut()>>,
 }
 
 impl RenderAnimate {
-	pub fn new(canvas: Option<OffscreenCanvas>) -> Self {
+	pub fn new(canvas: Option<HtmlCanvasElement>) -> Self {
 		let state = Rc::new(RefCell::new(RenderState {
 			scheduled: false,
 			canvas,
@@ -93,12 +93,8 @@ impl RenderAnimate {
 		// TODO error handling lul
 		let ctx = canvas.get_context("2d").unwrap().unwrap();
 
-		if let Some(ctx) = ctx.dyn_ref::<OffscreenCanvasRenderingContext2d>() {
+		if let Some(ctx) = ctx.dyn_ref::<CanvasRenderingContext2d>() {
 			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
-		} else if let Some(ctx) = ctx.dyn_ref::<CanvasRenderingContext2d>() {
-			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
-		} else {
-			unreachable!("unsupported canvas context");
 		}
 	}
 
@@ -115,22 +111,9 @@ impl RenderAnimate {
 	}
 }
 
-// Based on: https://rustwasm.github.io/wasm-bindgen/examples/request-animation-frame.html
-// But with Worker support, which could contribute back to gloo_render.
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	let global = js_sys::global();
-
-	if let Some(window) = global.dyn_ref::<web_sys::Window>() {
-		// Main thread
-		window
-			.request_animation_frame(f.as_ref().unchecked_ref())
-			.expect("should register `requestAnimationFrame` on Window");
-	} else if let Some(worker) = global.dyn_ref::<web_sys::DedicatedWorkerGlobalScope>() {
-		// Dedicated Worker
-		worker
-			.request_animation_frame(f.as_ref().unchecked_ref())
-			.expect("should register `requestAnimationFrame` on DedicatedWorkerGlobalScope");
-	} else {
-		unimplemented!("Unsupported context: neither Window nor DedicatedWorkerGlobalScope");
-	}
+	web_sys::window()
+		.unwrap()
+		.request_animation_frame(f.as_ref().unchecked_ref())
+		.expect("should register `requestAnimationFrame` on Window");
 }

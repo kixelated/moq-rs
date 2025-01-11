@@ -31,8 +31,8 @@ pub enum Error {
 	#[error("unsupported")]
 	Unsupported,
 
-	#[error("backend closed")]
-	Backend,
+	#[error("closed")]
+	Closed,
 
 	#[error("capture failed")]
 	CaptureFailed,

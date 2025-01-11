@@ -5,7 +5,7 @@ import * as Moq from "..";
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
 export default class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	#watch?: Moq.Watch;
-	#canvas?: OffscreenCanvas;
+	#canvas?: HTMLCanvasElement;
 
 	// Attributes with getters and setters.
 	#width = 0;
@@ -113,14 +113,14 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 	}
 
 	connectedCallback() {
-		// Provide a default canvas if none is slotted
-		if (!this.querySelector("canvas")) {
-			const defaultCanvas = document.createElement("canvas");
-			defaultCanvas.slot = "canvas";
-			this.appendChild(defaultCanvas);
-		}
+		this.#canvas = this.querySelector("canvas") ?? undefined;
 
-		this.#canvas = this.querySelector("canvas")?.transferControlToOffscreen();
+		// Provide a default canvas if none is slotted
+		if (!this.#canvas) {
+			this.#canvas = document.createElement("canvas");
+			this.#canvas.slot = "canvas";
+			this.appendChild(this.#canvas);
+		}
 
 		for (const name of MoqVideoElement.initAttrbiutes.concat(...MoqVideoElement.observedAttributes)) {
 			const value = this.getAttribute(name);

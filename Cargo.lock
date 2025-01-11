@@ -250,8 +250,6 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 [[package]]
 name = "baton"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b5c5133808bf56ba6a4012814e109c36df525b0b64b3994d6b5346e3f62fc5c"
 dependencies = [
  "baton-derive",
  "tokio",
@@ -260,8 +258,6 @@ dependencies = [
 [[package]]
 name = "baton-derive"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6f246c53340c6fd20b75ec03f4a16220d3f9ef9036ba4b93aa7bb6ad396a33a"
 dependencies = [
  "quote",
  "syn",

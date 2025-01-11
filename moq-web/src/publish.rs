@@ -94,7 +94,7 @@ impl PublishBackend {
 					active.take();
 
 					if let Some(media) = media {
-						let media = PublishMedia::new(broadcast.clone(), media.clone());
+						let media = PublishMedia::new(broadcast.clone(), media);
 						active = Some(media);
 					}
 				},
