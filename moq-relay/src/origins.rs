@@ -87,9 +87,7 @@ impl Origins {
 
 		let available = routes.get(path)?;
 		available
-			.iter()
-			.filter(|route| route.is_some())
-			.next()
+			.iter().find(|route| route.is_some())
 			.cloned()
 			.unwrap()
 	}

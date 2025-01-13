@@ -23,13 +23,13 @@ moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 web-codecs = "0.3.2"
 tokio = { version = "1", features = ["sync"] }
 
-js-sys = "0.3.72"
+js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
 
 [dependencies.web-sys]
-version = "0.3.72"
+version = "0.3.77"
 features = [
 	"Window",
 	"Document",

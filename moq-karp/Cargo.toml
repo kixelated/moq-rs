@@ -31,7 +31,7 @@ tracing = "0.1"
 lazy_static = "1"
 regex = "1"
 
-tokio = { version = "1.41", features = ["macros"] }
+tokio = { version = "1.43", features = ["macros"] }
 
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.6", optional = true }
