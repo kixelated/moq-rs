@@ -25,7 +25,7 @@ RUN cargo install -f wasm-bindgen-cli
 
 # Install node dependencies
 COPY package.json package-lock.json .
-RUN npm install
+RUN npm ci
 
 # Copy the rest
 COPY . ./
@@ -33,7 +33,7 @@ COPY . ./
 # Build it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
-	npm run rspack
+	npm run build
 
 # moq-clock
 FROM debian:bookworm-slim AS moq-clock
