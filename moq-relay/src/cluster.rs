@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
 use moq_native::quic;
-use moq_transfork::{Announced, Error, Path, Router, RouterConsumer, RouterProducer, Track};
+use moq_transfork::{Announced, AnnouncedProducer, Error, Path, Router, RouterConsumer, RouterProducer};
 use tracing::Instrument;
 use url::Url;
 
@@ -83,56 +83,65 @@ impl Cluster {
 		// We advertise the hostname of origins under this prefix.
 		let origins = Path::default().push("internal").push("origins");
 
-		// If we're a node, then we need to announce our presence.
-		let origin = match self.config.cluster_node.as_ref() {
-			Some(node) => {
-				// Create a track that will be used to announce our presence.
-				// We don't actually produce any groups (yet), but it's still a trackso it can be discovered.
-				let origin = origins.clone().push(node);
-				Track::new(origin).produce().into()
-			}
-			None => None,
-		};
+		// If we're a node, then we need to announce ourselves as an origin.
+		let mut myself = AnnouncedProducer::new();
+		if let Some(node) = self.config.cluster_node.as_ref() {
+			let origin = origins.clone().push(node);
+			myself.announce(origin);
+		}
 
 		// If we're using a root node, then we have to connect to it.
 		let mut announced = match root.as_ref() {
-			Some(root) if Some(root) != node.as_ref() => {
+			Some(addr) if Some(addr) != node.as_ref() => {
+				tracing::info!(?addr, "connecting to root");
+
 				// Connect to the root node.
-				let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
-				let root = self.client.connect(&root).await.context("failed to connect to root")?;
+				let addr = Url::parse(&format!("https://{}", addr)).context("invalid root URL")?;
+				let root = self.client.connect(&addr).await.context("failed to connect to root")?;
 
 				let mut root = moq_transfork::Session::connect(root)
 					.await
 					.context("failed to establish root session")?;
 
-				// Publish ourselves as an origin.
-				if let Some(origin) = origin {
-					root.publish(origin.1)?;
-				}
+				// Announce ourselves as an origin to the root node.
+				root.announce(myself.subscribe());
+
+				tracing::info!(?origins, "waiting for prefix");
 
 				// Subscribe to available origins.
 				root.announced_prefix(origins.clone())
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
+				// Announce ourselves as an origin to all connected clients.
+				// Technically, we should only announce to cluster clients (not end users), but who cares.
+				let mut locals = self.locals.clone();
+				tokio::spawn(async move {
+					// Run this in a background task so we don't block the main loop.
+					// (it will never exit)
+					locals.announce(myself.subscribe(), None).await
+				});
+
+				tracing::info!(?node, "acting as root");
+
 				// Subscribe to the available origins.
 				self.locals.announced_prefix(origins.clone())
 			}
 		};
 
 		// Discover other origins.
+		// NOTE: The root node will connect to all other nodes as a client, ignoring the existing (server) connection.
+		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
 		while let Some(announce) = announced.next().await {
 			// TODO handle Ended?
 			if let Announced::Active(path) = &announce {
-				tracing::info!(?path, "discovered origin");
-
 				// Extract the hostname from the first part of the path.
 				let host = path.first().context("missing node")?.to_string();
 				if Some(&host) == node.as_ref() {
+					tracing::warn!(?host, "skipping self");
+					// Skip ourselves.
 					continue;
 				}
-
-				tracing::info!(%host, "discovered origin");
 
 				tokio::spawn(self.clone().run_remote(host).in_current_span());
 			}
@@ -143,6 +152,8 @@ impl Cluster {
 
 	#[tracing::instrument("remote", skip_all, err, fields(%host))]
 	async fn run_remote(mut self, host: String) -> anyhow::Result<()> {
+		tracing::info!("discovered origin");
+
 		// Connect to the remote node.
 		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
 		let conn = self.client.connect(&url).await.context("failed to connect to remote")?;
@@ -153,10 +164,12 @@ impl Cluster {
 
 		session.route(self.router);
 
-		// NOTE: we don't announce remotes to remotes
+		// NOTE: We only announce local tracks to remote nodes.
+		// Otherwise there would be conflicts and we wouldn't know which node is the origin.
 		session.announce(self.locals.announced());
 
-		self.remotes.publish(session).await;
+		// Add any tracks to the list of remotes for routing.
+		self.remotes.announce(session.announced(), Some(session.clone())).await;
 
 		Ok(())
 	}

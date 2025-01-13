@@ -17,11 +17,13 @@
 	"sideEffects": ["./dist/src/element/video.js"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"all": "npm-run-all --parallel relay pub web",
-		"up": "docker-compose up --build --remove-orphans",
+		"all": "npm-run-all --print-label --parallel --race relay pub web",
+		"cluster": "npm-run-all --print-label --parallel --race relay relay-leaf pub-leaf web",
 
 		"relay": "./dev/relay",
+		"relay-leaf": "PORT=4444 ./dev/relay --cluster-root localhost:4443",
 		"pub": "./dev/pub",
+		"pub-leaf": "PORT=4444 ./dev/pub",
 		"gst": "./dev/gst",
 		"clock": "./dev/clock",
 		"web": "rspack serve",
@@ -30,6 +32,7 @@
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged",
 		"fmt": "biome format --write && cargo fmt --all",
 
+		"build": "rspack build",
 		"pack": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index && rm pkg/.gitignore && tsc"
 	},
 	"dependencies": {
