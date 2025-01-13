@@ -9,7 +9,7 @@ use moq_karp::{cmaf, BroadcastProducer};
 use moq_native::quic;
 
 #[derive(Parser, Clone)]
-struct Cli {
+struct Config {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
@@ -25,46 +25,52 @@ struct Cli {
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
 	pub command: Command,
-
-	/// The URL must start with https://
-	pub url: String,
 }
 
 #[derive(Subcommand, Clone)]
 pub enum Command {
-	/// Connect to the server, do nothing else.
-	Connect,
-
-	// Publish a video stream.
-	Publish,
-	//Subscribe,
+	/// Publish a video stream to the provided URL.
+	Publish {
+		/// The URL must start with `https://` or `http://`.
+		///
+		/// - If `http` is used, a HTTP fetch to "/fingerprint" is first made to get the TLS certificiate fingerprint (insecure).
+		///   The URL is then upgraded to `https`.
+		///
+		/// - If `https` is used, then A WebTransport connection is made via QUIC to the provided host/port.
+		///   The path is used to identify the broadcast, with the rest of the URL (ex. query/fragment) currently ignored.
+		url: String,
+	},
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let cli = Cli::parse();
-	cli.log.init();
+	let config = Config::parse();
+	config.log.init();
 
-	let tls = cli.tls.load()?;
-	let quic = quic::Endpoint::new(quic::Config { bind: cli.bind, tls })?;
-
-	tracing::info!(url = ?cli.url, "connecting");
-
-	let url = Url::parse(&cli.url).context("invalid URL")?;
-	let session = quic.client.connect(&url).await?;
-	let session = Session::connect(session).await?;
-
-	let path = url.path_segments().context("missing path")?.collect::<Path>();
-
-	match cli.command {
-		Command::Connect => return Ok(()),
-		Command::Publish => publish(session, path).await,
+	match config.command.clone() {
+		Command::Publish { url } => publish(config, url).await,
 		//Command::Subscribe => subscribe(session, broadcast).await,
 	}
 }
 
-#[tracing::instrument(skip_all, fields(?path))]
-async fn publish(session: Session, path: Path) -> anyhow::Result<()> {
+async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, Path)> {
+	let tls = config.tls.load()?;
+	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
+
+	tracing::info!(?url, "connecting");
+
+	let url = Url::parse(url).context("invalid URL")?;
+	let path = url.path_segments().context("missing path")?.collect::<Path>();
+
+	let session = quic.client.connect(&url).await?;
+	let session = Session::connect(session).await?;
+
+	Ok((session, path))
+}
+
+#[tracing::instrument(skip_all, fields(?url))]
+async fn publish(config: Config, url: String) -> anyhow::Result<()> {
+	let (session, path) = connect(&config, &url).await?;
 	let broadcast = BroadcastProducer::new(session.clone(), path)?;
 	let mut input = tokio::io::stdin();
 
