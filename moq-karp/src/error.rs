@@ -1,4 +1,6 @@
-#[derive(Debug, thiserror::Error)]
+use std::sync::Arc;
+
+#[derive(Debug, thiserror::Error, Clone)]
 pub enum Error {
 	#[error("transfork error: {0}")]
 	Transfork(#[from] moq_transfork::Error),
@@ -7,7 +9,7 @@ pub enum Error {
 	Decode(#[from] moq_transfork::coding::DecodeError),
 
 	#[error("json error: {0}")]
-	Json(#[from] serde_json::Error),
+	Json(Arc<serde_json::Error>),
 
 	#[error("duplicate track")]
 	DuplicateTrack,
@@ -35,3 +37,10 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+// Wrap in an Arc so it is Clone
+impl From<serde_json::Error> for Error {
+	fn from(err: serde_json::Error) -> Self {
+		Error::Json(Arc::new(err))
+	}
+}

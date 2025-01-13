@@ -514,6 +514,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "custom-elements"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6274ad25234bd2b10fbe440bb70aaacddadfe94a4d98a0d93034947f86c45028"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1630,6 +1641,7 @@ version = "0.3.9"
 dependencies = [
  "baton",
  "console_error_panic_hook",
+ "custom-elements",
  "gloo-net",
  "hex",
  "js-sys",

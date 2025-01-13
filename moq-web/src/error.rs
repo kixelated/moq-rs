@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use moq_karp::moq_transfork;
 use moq_transfork::web_transport;
 use wasm_bindgen::JsValue;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
 	#[error("transfork error: {0}")]
 	Transfork(#[from] moq_transfork::Error),
@@ -38,7 +40,7 @@ pub enum Error {
 	CaptureFailed,
 
 	#[error("http error: {0}")]
-	Http(#[from] gloo_net::Error),
+	Http(Arc<gloo_net::Error>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -46,5 +48,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<Error> for JsValue {
 	fn from(err: Error) -> JsValue {
 		JsValue::from_str(&format!("{}", err))
+	}
+}
+
+impl From<gloo_net::Error> for Error {
+	fn from(err: gloo_net::Error) -> Self {
+		Error::Http(Arc::new(err))
 	}
 }

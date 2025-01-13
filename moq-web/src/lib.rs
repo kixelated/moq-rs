@@ -1,16 +1,15 @@
-mod decoder;
 mod error;
 mod publish;
-mod renderer;
 mod session;
 mod watch;
 
+use custom_elements::CustomElement;
 pub use error::*;
 pub use publish::*;
-pub use watch::*;
 
-use decoder::*;
-use renderer::*;
+pub(crate) use session::*;
+
+pub use watch::Element as Watch;
 
 use wasm_bindgen::prelude::*;
 
@@ -24,4 +23,6 @@ pub fn start() {
 		.set_max_level(tracing::Level::DEBUG)
 		.build();
 	wasm_tracing::set_as_global_default_with_config(config);
+
+	Watch::define("moq-watch");
 }

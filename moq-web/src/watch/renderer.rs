@@ -1,70 +1,42 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_codecs::{VideoDecoded, VideoFrame};
+use web_codecs::VideoFrame;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::Result;
-
-pub struct Renderer {
-	decoded: VideoDecoded,
-	animate: RenderAnimate,
-}
-
-impl Renderer {
-	pub fn new(decoded: VideoDecoded) -> Self {
-		Self {
-			animate: RenderAnimate::new(None),
-			decoded,
-		}
-	}
-
-	pub fn canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
-		self.animate.state.borrow_mut().canvas = canvas;
-	}
-
-	pub async fn run(&mut self) -> Result<()> {
-		while let Some(frame) = self.decoded.next().await? {
-			self.animate.push(frame);
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Clone)]
-struct RenderAnimate {
-	state: Rc<RefCell<RenderState>>,
-}
-
-struct RenderState {
+struct State {
 	scheduled: bool,
 	canvas: Option<HtmlCanvasElement>,
 	queue: VecDeque<VideoFrame>,
-	render: Option<Closure<dyn FnMut()>>,
+	draw: Option<Closure<dyn FnMut()>>,
 }
 
-impl RenderAnimate {
-	pub fn new(canvas: Option<HtmlCanvasElement>) -> Self {
-		let state = Rc::new(RefCell::new(RenderState {
+#[derive(Clone)]
+pub struct Renderer {
+	state: Rc<RefCell<State>>,
+}
+
+impl Renderer {
+	pub fn new() -> Self {
+		let state = Rc::new(RefCell::new(State {
 			scheduled: false,
-			canvas,
+			canvas: None,
 			queue: Default::default(),
-			render: None,
+			draw: None,
 		}));
 
 		let this = Self { state };
 
 		let mut cloned = this.clone();
 		let f = Closure::wrap(Box::new(move || {
-			cloned.render();
+			cloned.draw();
 		}) as Box<dyn FnMut()>);
 
-		this.state.borrow_mut().render = Some(f);
+		this.state.borrow_mut().draw = Some(f);
 		this
 	}
 
-	pub fn push(&mut self, frame: VideoFrame) {
+	pub fn render(&mut self, frame: VideoFrame) {
 		let mut state = self.state.borrow_mut();
 		state.queue.push_back(frame);
 		drop(state);
@@ -72,7 +44,7 @@ impl RenderAnimate {
 		self.schedule();
 	}
 
-	fn render(&mut self) {
+	fn draw(&mut self) {
 		let mut state = self.state.borrow_mut();
 		state.scheduled = false;
 
@@ -104,10 +76,14 @@ impl RenderAnimate {
 			return;
 		}
 
-		let render = state.render.as_ref().unwrap();
+		let render = state.draw.as_ref().unwrap();
 		request_animation_frame(render);
 
 		state.scheduled = true;
+	}
+
+	pub fn set_canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
+		self.state.borrow_mut().canvas = canvas;
 	}
 }
 
