@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/kixelated/moq-rs/compare/moq-native-v0.5.10...moq-native-v0.6.0) - 2025-01-13
+
+### Other
+
+- Raise the keep-alive. ([#278](https://github.com/kixelated/moq-rs/pull/278))
+- Replace mkcert with rcgen* ([#273](https://github.com/kixelated/moq-rs/pull/273))
+
 ## [0.5.10](https://github.com/kixelated/moq-rs/compare/moq-native-v0.5.9...moq-native-v0.5.10) - 2024-12-12
 
 ### Other

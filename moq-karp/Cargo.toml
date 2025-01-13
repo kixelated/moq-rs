@@ -5,7 +5,7 @@ authors = []
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.11.1"
+version = "0.11.2"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -34,7 +34,7 @@ regex = "1"
 tokio = { version = "1.41", features = ["macros"] }
 
 # CLI only dependencies
-moq-native = { path = "../moq-native", version = "0.5", optional = true }
+moq-native = { path = "../moq-native", version = "0.6", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
 
