@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.11](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.10...moq-web-v0.3.11) - 2025-01-13
+
+### Other
+
+- Revert some questionable changes. ([#281](https://github.com/kixelated/moq-rs/pull/281))
+
 ## [0.3.10](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.9...moq-web-v0.3.10) - 2025-01-13
 
 ### Other
