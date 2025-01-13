@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.0...moq-transfork-v0.8.1) - 2025-01-13
+
+### Other
+
+- Fix clustering. ([#280](https://github.com/kixelated/moq-rs/pull/280))
+- Replace mkcert with rcgen* ([#273](https://github.com/kixelated/moq-rs/pull/273))
+
 ## [0.8.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.7.0...moq-transfork-v0.8.0) - 2024-12-12
 
 ### Other

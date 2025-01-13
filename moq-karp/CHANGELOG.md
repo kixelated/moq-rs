@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.1...moq-karp-v0.11.2) - 2025-01-13
+
+### Other
+
+- Raise the keep-alive. ([#278](https://github.com/kixelated/moq-rs/pull/278))
+
 ## [0.11.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.0...moq-karp-v0.11.1) - 2024-12-12
 
 ### Other
