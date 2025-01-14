@@ -11,7 +11,7 @@ impl Connection {
 		Self { id, session, cluster }
 	}
 
-	#[tracing::instrument("connection", skip_all, err, fields(id = self.id))]
+	#[tracing::instrument("session", skip_all, err, fields(id = self.id))]
 	pub async fn run(mut self) -> anyhow::Result<()> {
 		let mut session = moq_transfork::Session::accept(self.session).await?;
 
@@ -22,7 +22,11 @@ impl Connection {
 		session.announce(self.cluster.locals.announced());
 		session.announce(self.cluster.remotes.announced());
 
-		self.cluster.locals.publish(session).await;
+		// Add any announcements to the cluster, indicating we're the origin.
+		self.cluster
+			.locals
+			.announce(session.announced(), Some(session.clone()))
+			.await;
 
 		Ok(())
 	}

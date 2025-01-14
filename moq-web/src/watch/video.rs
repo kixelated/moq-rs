@@ -3,15 +3,13 @@ use moq_async::FuturesExt;
 use crate::Result;
 
 pub struct Video {
-	info: moq_karp::Video,
-	consumer: moq_karp::TrackConsumer,
-
+	track: moq_karp::TrackConsumer,
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
 }
 
 impl Video {
-	pub fn new(info: moq_karp::Video, consumer: moq_karp::TrackConsumer) -> Result<Self> {
+	pub fn new(track: moq_karp::TrackConsumer, info: moq_karp::Video) -> Result<Self> {
 		// Construct the video decoder
 		let (decoder, decoded) = web_codecs::VideoDecoderConfig {
 			codec: info.codec.to_string(),
@@ -26,27 +24,16 @@ impl Video {
 		.build()?;
 
 		Ok(Self {
-			info,
-			consumer,
-
+			track,
 			decoder,
 			decoded,
 		})
 	}
 
-	pub fn info(&self) -> &moq_karp::Video {
-		&self.info
-	}
-
-	pub fn switch(&mut self, info: moq_karp::Video, consumer: moq_karp::TrackConsumer) {
-		self.info = info;
-		self.consumer = consumer;
-	}
-
 	pub async fn frame(&mut self) -> Result<Option<web_codecs::VideoFrame>> {
 		loop {
 			tokio::select! {
-				Some(frame) = self.consumer.read().transpose() => {
+				Some(frame) = self.track.read().transpose() => {
 					let frame = frame?;
 
 					let frame = web_codecs::EncodedFrame {

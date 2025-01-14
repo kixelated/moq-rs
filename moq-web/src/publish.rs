@@ -6,12 +6,12 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::MediaStream;
 
-use crate::{Error, Result};
+use crate::{Error, Result, Session};
 
 #[wasm_bindgen]
 pub struct Publish {
-	controls: ControlsSend,
-	_status: StatusRecv,
+	controls: ControlsProducer,
+	_status: StatusConsumer,
 }
 
 #[wasm_bindgen]
@@ -39,15 +39,15 @@ impl Publish {
 	}
 
 	pub fn capture(&mut self, media: Option<MediaStream>) {
-		self.controls.media.send(media).ok();
+		self.controls.media.set(media).ok();
 	}
 
 	pub fn volume(&mut self, value: f64) {
-		self.controls.volume.send(value).ok();
+		self.controls.volume.set(value).ok();
 	}
 
 	pub fn close(&mut self) {
-		self.controls.close.send(true).ok();
+		self.controls.close.set(true).ok();
 	}
 }
 
@@ -67,17 +67,19 @@ struct Status {
 struct PublishBackend {
 	src: Url,
 
-	controls: ControlsRecv,
-	status: StatusSend,
+	controls: ControlsConsumer,
+	status: StatusProducer,
 }
 
 impl PublishBackend {
-	fn new(src: Url, controls: ControlsRecv, status: StatusSend) -> Self {
+	fn new(src: Url, controls: ControlsConsumer, status: StatusProducer) -> Self {
 		Self { src, controls, status }
 	}
 
 	async fn run(&mut self) -> Result<()> {
-		let session = super::session::connect(&self.src).await?;
+		let mut session = Session::new(self.src.clone());
+		let session = session.connect().await?;
+
 		let path: moq_transfork::Path = self.src.path_segments().ok_or(Error::InvalidUrl)?.collect();
 		let mut active = None;
 
@@ -85,12 +87,12 @@ impl PublishBackend {
 
 		tracing::info!(%self.src, ?broadcast, "connected");
 
-		self.status.connected.send(true).ok();
+		self.status.connected.set(true).ok();
 
 		loop {
 			tokio::select! {
-				Some(true) = self.controls.close.recv() => return Ok(()),
-				Some(media) = self.controls.media.recv() => {
+				Some(true) = self.controls.close.next() => return Ok(()),
+				Some(media) = self.controls.media.next() => {
 					active.take();
 
 					if let Some(media) = media {

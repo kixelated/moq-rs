@@ -11,7 +11,7 @@ KEY="${KEY:-dev/localhost.key}"
 
 # Default to listening on localhost:4443
 PORT="${PORT:-4443}"
-BIND="${BIND:-[::]:$PORT}"
+BIND="${BIND:-localhost:$PORT}"
 
 # A list of optional args
 ARGS=""
@@ -37,6 +37,6 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-self-sign localhost --dev $ARGS "$@" &
+cargo run --bin moq-relay -- --bind "$BIND" --tls-self-sign "$BIND" --cluster-node "$BIND" --tls-disable-verify --dev $ARGS "$@" &
 child=$!
 wait "$child"

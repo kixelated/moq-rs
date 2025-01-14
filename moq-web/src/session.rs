@@ -1,8 +1,4 @@
-use std::{
-	cell::{LazyCell, RefCell},
-	collections::HashMap,
-	sync::LazyLock,
-};
+use std::{cell::RefCell, collections::HashMap};
 
 use moq_karp::moq_transfork::{self, web_transport};
 use tokio::sync::watch;
@@ -38,7 +34,7 @@ impl Session {
 		// Use a background task to make `connect` cancel safe.
 		spawn_local(async move {
 			let session = Self::run(&addr).await;
-			tx.send(Some(session.clone()));
+			tx.send(Some(session.clone())).ok();
 
 			if let Ok(session) = session {
 				tokio::select! {

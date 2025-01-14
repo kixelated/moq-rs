@@ -2,7 +2,7 @@
 name = "moq-web"
 authors = ["Luke Curley <kixelated@gmail.com>"]
 edition = "2021"
-version = "0.3.9"
+version = "0.3.11"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kixelated/moq-web"
 description = "Web implementation for MoQ utilizing WebAssembly+Typescript"
@@ -18,6 +18,7 @@ console_error_panic_hook = "0.1"
 tracing = "0.1"
 wasm-tracing = "0.2"
 gloo-net = "0.6"
+gloo-console = "0.3"
 custom-elements = "0.2"
 
 moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
@@ -26,20 +27,25 @@ web-streams = { version = "0.1", path = "../../web-rs/web-streams" }
 web-codecs = { version = "0.3.2", path = "../../web-rs/web-codecs" }
 tokio = { version = "1", features = ["sync"] }
 
-js-sys = "0.3.72"
+js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
 baton = { version = "0.1.1", path = "../../baton/baton", features = ["derive"] }
 
 [dependencies.web-sys]
-version = "0.3.72"
+version = "0.3.77"
 features = [
+	# DOM
 	"Window",
 	"Document",
 	"HtmlElement",
 	"Node",
 	"Text",
+
+	# Custom elements
+	"HtmlSlotElement",
+	"AssignedNodesOptions",
 
 	# Canvas stuff
 	"CanvasRenderingContext2d",

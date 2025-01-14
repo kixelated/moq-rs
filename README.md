@@ -24,19 +24,26 @@ There are additional components that have been split into other repositories for
 
 # Usage
 ## Requirements
-- [Rust](https://www.rust-lang.org/tools/install) (duh)
+- [Rust](https://www.rust-lang.org/tools/install) + WASM target
 - [Node + NPM](https://nodejs.org/)
-- `rustup target add wasm32-unknown-unknown`
+
+```sh
+rustup target add wasm32-unknown-unknown
+npm install
+```
 
 ## Development
-There's a few scripts in the [dev](dev) directory to help you get started:
+There's a few scripts in the [dev](dev) directory to help you get started.
+You can run them directly in separate terminals or use the `all` script to run them all at once.
+
 ```sh
 # Run the relay, publisher, and web server:
-npm install
-npm run all
+./dev/all
 
-# Or use docker instead:
-docker-compose up --build
+# Or run each individually in separate terminals:
+./dev/relay
+./dev/pub
+./dev/web
 ```
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.

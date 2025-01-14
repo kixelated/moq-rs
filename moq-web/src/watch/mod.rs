@@ -1,11 +1,11 @@
 mod backend;
 mod controls;
-mod element;
+mod frontend;
 mod renderer;
 mod status;
 mod video;
 
-pub use element::*;
+pub use frontend::*;
 
 use backend::*;
 use controls::*;

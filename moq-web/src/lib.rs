@@ -9,7 +9,7 @@ pub use publish::*;
 
 pub(crate) use session::*;
 
-pub use watch::Element as Watch;
+pub use watch::Watch;
 
 use wasm_bindgen::prelude::*;
 
