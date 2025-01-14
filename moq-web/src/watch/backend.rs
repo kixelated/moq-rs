@@ -1,11 +1,11 @@
 use moq_karp::{moq_transfork::Path, BroadcastConsumer};
 
-use super::{ControlsConsumer, Renderer, StatusProducer, Video};
+use super::{ControlsRecv, Renderer, StatusSend, Video};
 use crate::{Error, Result, Session};
 
 pub struct Backend {
-	controls: ControlsConsumer,
-	status: StatusProducer,
+	controls: ControlsRecv,
+	status: StatusSend,
 
 	path: Path,
 	session: Option<Session>,
@@ -16,7 +16,7 @@ pub struct Backend {
 }
 
 impl Backend {
-	pub fn new(controls: ControlsConsumer, status: StatusProducer) -> Self {
+	pub fn new(controls: ControlsRecv, status: StatusSend) -> Self {
 		let renderer = Renderer::new();
 
 		Self {
@@ -41,7 +41,7 @@ impl Backend {
 			let video = self.video.as_mut();
 
 			tokio::select! {
-				Some(Some(url)) = self.controls.url.next() => {
+				Some(Some(url)) = self.controls.url.recv() => {
 					// Connect using the base of the URL.
 					let mut addr = url.clone();
 					addr.set_fragment(None);
@@ -72,10 +72,10 @@ impl Backend {
 					let frame = frame?;
 					self.renderer.render(frame);
 				},
-				Some(true) = self.controls.close.next() => {
+				Some(true) = self.controls.close.recv() => {
 					return Ok(());
 				},
-				Some(canvas) = self.controls.canvas.next() => {
+				Some(canvas) = self.controls.canvas.recv() => {
 					self.renderer.set_canvas(canvas.clone());
 				},
 				else => return Ok(()),

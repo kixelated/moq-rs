@@ -5,13 +5,13 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlCanvasElement, HtmlElement, HtmlSlotElement};
 
-use super::{Backend, Controls, ControlsProducer, State, Status, StatusConsumer};
+use super::{Backend, Controls, ControlsSend, State, Status, StatusRecv};
 use crate::{Error, Result};
 
 #[wasm_bindgen]
 pub struct Watch {
-	controls: ControlsProducer,
-	status: StatusConsumer,
+	controls: ControlsSend,
+	status: StatusRecv,
 }
 
 #[wasm_bindgen]
@@ -42,7 +42,7 @@ impl Watch {
 	#[wasm_bindgen(setter)]
 	pub fn set_url(&mut self, url: Option<String>) -> Result<()> {
 		let url = url.map(|u| Url::parse(&u)).transpose().map_err(|_| Error::InvalidUrl)?;
-		self.controls.url.set(url).map_err(|_| Error::Closed)
+		self.controls.url.send(url).map_err(|_| Error::Closed)
 	}
 
 	#[wasm_bindgen(getter)]
@@ -52,7 +52,7 @@ impl Watch {
 
 	#[wasm_bindgen(setter)]
 	pub fn set_paused(&mut self, paused: bool) -> Result<()> {
-		self.controls.paused.set(paused).map_err(|_| Error::Closed)
+		self.controls.paused.send(paused).map_err(|_| Error::Closed)
 	}
 
 	#[wasm_bindgen(getter)]
@@ -62,7 +62,7 @@ impl Watch {
 
 	#[wasm_bindgen(setter)]
 	pub fn set_volume(&mut self, volume: f64) -> Result<()> {
-		self.controls.volume.set(volume).map_err(|_| Error::Closed)
+		self.controls.volume.send(volume).map_err(|_| Error::Closed)
 	}
 
 	#[wasm_bindgen(getter)]
@@ -72,11 +72,11 @@ impl Watch {
 
 	#[wasm_bindgen(setter)]
 	pub fn set_closed(&mut self, closed: bool) -> Result<()> {
-		self.controls.close.set(closed).map_err(|_| Error::Closed)
+		self.controls.close.send(closed).map_err(|_| Error::Closed)
 	}
 
 	pub async fn state(&mut self) -> State {
-		self.status.state.next().await.unwrap_or(State::Error)
+		self.status.state.recv().await.unwrap_or(State::Error)
 	}
 }
 
@@ -143,7 +143,7 @@ impl CustomElement for Watch {
 		let canvas = find_canvas(this);
 		gloo_console::log!("canvas", &canvas);
 
-		self.controls.canvas.set(Some(canvas)).ok();
+		self.controls.canvas.send(Some(canvas)).ok();
 
 		self.attribute_changed_callback(this, "url".to_string(), None, this.get_attribute("url"));
 		self.attribute_changed_callback(this, "paused".to_string(), None, this.get_attribute("paused"));
