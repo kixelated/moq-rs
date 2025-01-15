@@ -40,5 +40,5 @@ pub struct Video {
 	pub resolution: Dimensions,
 
 	#[serde(default)]
-	pub bitrate: Option<f64>,
+	pub bitrate: Option<u64>,
 }

@@ -51,7 +51,7 @@ impl Video {
 				width: config.resolution.width,
 				height: config.resolution.height,
 			},
-			bitrate: config.bit_rate,
+			bitrate: config.bit_rate.map(|b| b as _),
 		};
 
 		Ok(Self {
