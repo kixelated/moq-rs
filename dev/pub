@@ -22,7 +22,7 @@ fi
 HOST="${HOST:-localhost}"
 PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
-SCHEME="${SCHEME:-https}"
+SCHEME="${SCHEME:-http}"
 
 # Use the default "demo/bbb" for the broadcast.
 NAME="${NAME:-demo/bbb}"
@@ -37,4 +37,4 @@ ffmpeg -hide_banner -v quiet \
 	-i "$INPUT" \
 	-c copy \
 	-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-	- | cargo run --bin moq-karp -- --tls-disable-verify "$@" publish "${URL}"
+	- | cargo run --bin moq-karp -- "$@" publish "${URL}"

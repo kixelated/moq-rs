@@ -162,7 +162,7 @@ impl MoqSink {
 		let client = quic::Endpoint::new(config)?.client;
 
 		RUNTIME.block_on(async move {
-			let session = client.connect(&src).await.expect("failed to connect");
+			let session = client.connect(src.clone()).await.expect("failed to connect");
 			let session = moq_transfork::Session::connect(session)
 				.await
 				.expect("failed to connect");

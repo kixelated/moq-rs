@@ -62,7 +62,7 @@ async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, Path)> 
 	let url = Url::parse(url).context("invalid URL")?;
 	let path = url.path_segments().context("missing path")?.collect::<Path>();
 
-	let session = quic.client.connect(&url).await?;
+	let session = quic.client.connect(url).await?;
 	let session = Session::connect(session).await?;
 
 	Ok((session, path))
