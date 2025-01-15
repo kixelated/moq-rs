@@ -25,7 +25,7 @@
 	"sideEffects": ["./dist/src/element/video.js", "./dist/src/element/publish.js", "./dist/src/element/watch.js"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"all": "npm-run-all --parallel --race relay pub web",
+		"all": "npm-run-all --print-label --parallel --race relay pub web",
 		"cluster": "npm-run-all --print-label --parallel --race relay relay-leaf pub-leaf web",
 
 		"relay": "./dev/relay",

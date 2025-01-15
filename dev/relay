@@ -27,8 +27,6 @@ if [ -n "${HOST-}" ]; then
 	ARGS="$ARGS --host $HOST"
 fi
 
-echo "Publish URL: https://quic.video/publish/?server=localhost:$PORT"
-
 # Forward signals to the actual process
 # Not sure why only the relay needs this?
 cleanup() {
