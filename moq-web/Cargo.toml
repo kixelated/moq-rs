@@ -18,7 +18,6 @@ console_error_panic_hook = "0.1"
 tracing = "0.1"
 wasm-tracing = "0.2"
 gloo-net = "0.6"
-gloo-console = "0.3"
 
 moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
