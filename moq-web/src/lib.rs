@@ -19,7 +19,7 @@ pub fn start() {
 	console_error_panic_hook::set_once();
 
 	let config = wasm_tracing::WASMLayerConfigBuilder::new()
-		.set_max_level(tracing::Level::DEBUG)
+		.set_max_level(tracing::Level::INFO)
 		.build();
 	wasm_tracing::set_as_global_default_with_config(config);
 }

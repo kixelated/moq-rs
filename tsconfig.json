@@ -10,7 +10,6 @@
 		"outDir": "dist/src",
 		"declaration": true,
 		"sourceMap": true,
-		"resolveJsonModule": true,
 
 		/* type checking */
 		"strict": true,

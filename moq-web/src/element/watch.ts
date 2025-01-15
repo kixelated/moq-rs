@@ -1,5 +1,5 @@
-import { Watch } from "../watch";
-import type { WatchState } from "../watch";
+import { Watch } from "..";
+import type { WatchState } from "..";
 
 export class MoqWatchElement extends HTMLElement {
 	#watch: Watch;
@@ -76,7 +76,7 @@ export class MoqWatchElement extends HTMLElement {
 	}
 
 	set url(value: string | null) {
-		if (value === null) {
+		if (value === null || value === "") {
 			this.removeAttribute("url");
 		} else {
 			this.setAttribute("url", value);

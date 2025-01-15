@@ -55,6 +55,8 @@ impl Backend {
 
 					self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
 					self.connect = Some(Connect::new(addr));
+					self.broadcast = None;
+					self.video = None;
 
 					self.status.state.set(PublishState::Connecting);
 				},
