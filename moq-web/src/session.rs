@@ -9,15 +9,15 @@ use crate::{Error, Result};
 
 // Can't use LazyLock in WASM because nothing is Sync
 thread_local! {
-	static CACHE: RefCell<HashMap<Url, Session>> = RefCell::new(HashMap::new());
+	static CACHE: RefCell<HashMap<Url, Connect>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone)]
-pub struct Session {
+pub struct Connect {
 	connected: watch::Receiver<Option<Result<moq_transfork::Session>>>,
 }
 
-impl Session {
+impl Connect {
 	pub fn new(addr: Url) -> Self {
 		// Use a global cache to share sessions between elements.
 		CACHE.with(|cache| {
@@ -90,7 +90,7 @@ impl Session {
 		Ok(fingerprint)
 	}
 
-	pub async fn connect(&mut self) -> Result<moq_transfork::Session> {
+	pub async fn established(&mut self) -> Result<moq_transfork::Session> {
 		self.connected
 			.wait_for(Option::is_some)
 			.await

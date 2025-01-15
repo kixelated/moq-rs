@@ -514,17 +514,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "custom-elements"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6274ad25234bd2b10fbe440bb70aaacddadfe94a4d98a0d93034947f86c45028"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1654,7 +1643,7 @@ version = "0.3.11"
 dependencies = [
  "baton",
  "console_error_panic_hook",
- "custom-elements",
+ "derive_more",
  "gloo-console",
  "gloo-net",
  "hex",
@@ -1675,9 +1664,9 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "952d37eb0f265505e2b4888d1a58bf3ddea0047f623c06f656d03bcc3184caab"
+checksum = "4e6ca41187fd83535ec10045e7bd4e6ee508b5eb0488c3bce66bca9182d26a96"
 dependencies = [
  "bytes",
  "num",

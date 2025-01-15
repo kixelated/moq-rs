@@ -37,7 +37,7 @@ pub enum Error {
 	Closed,
 
 	#[error("capture failed")]
-	CaptureFailed,
+	InitFailed,
 
 	#[error("http error: {0}")]
 	Http(Arc<gloo_net::Error>),

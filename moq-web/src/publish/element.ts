@@ -1,14 +1,7 @@
 import * as Moq from "..";
 
 export class MoqPublishElement extends HTMLElement {
-	#publish?: Moq.Publish;
-	#url?: string;
-	#media?: MediaStream;
-
-	#shadow: ShadowRoot;
-	#preview?: HTMLVideoElement;
-	#camera?: HTMLButtonElement;
-	#screen?: HTMLButtonElement;
+	#publish: Moq.Publish;
 
 	static get observedAttributes() {
 		return ["url"];
@@ -16,6 +9,8 @@ export class MoqPublishElement extends HTMLElement {
 
 	constructor() {
 		super();
+
+		this.#publish = new Moq.Publish();
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.innerHTML = `
@@ -42,7 +37,6 @@ export class MoqPublishElement extends HTMLElement {
 	<button id="screen">Screen</button>
 </div>
 `;
-		this.#shadow = shadow;
 	}
 
 	setAttr(name: string, oldValue?: string, newValue?: string) {
@@ -50,33 +44,17 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	connectedCallback() {
-		this.#preview = this.querySelector("video") ?? undefined;
+		const preview = this.querySelector("video[slot=preview], [slot=preview] video") ?? undefined;
+		this.#publish.preview = preview as HTMLVideoElement | undefined;
 
-		this.#camera = this.#shadow.querySelector("#camera") ?? undefined;
-		this.#camera?.addEventListener("click", async () => {
-			this.#media = await navigator.mediaDevices.getUserMedia({
+		this.querySelector("#camera")?.addEventListener("click", async () => {
+			this.#publish.media = await navigator.mediaDevices.getUserMedia({
 				video: true,
 			});
-
-			for (const track of this.#media.getTracks()) {
-				console.log(track.getSettings(), track.getCapabilities(), track.getConstraints());
-			}
-
-			this.#publish?.capture(this.#media);
-
-			if (this.#preview) {
-				this.#preview.srcObject = this.#media;
-			}
 		});
 
-		this.#screen = this.#shadow.querySelector("#screen") ?? undefined;
-		this.#screen?.addEventListener("click", async () => {
-			this.#media = await navigator.mediaDevices.getDisplayMedia({ video: true });
-			this.#publish?.capture(this.#media);
-
-			if (this.#preview) {
-				this.#preview.srcObject = this.#media;
-			}
+		this.querySelector("#screen")?.addEventListener("click", async () => {
+			this.#publish.media = await navigator.mediaDevices.getDisplayMedia({ video: true });
 		});
 
 		for (const name of MoqPublishElement.observedAttributes) {
@@ -98,15 +76,7 @@ export class MoqPublishElement extends HTMLElement {
 
 		switch (name) {
 			case "url":
-				this.#url = value;
-
-				this.#publish?.close();
-
-				if (this.#url) {
-					this.#publish = new Moq.Publish(this.#url);
-					this.#publish.capture(this.#media);
-				}
-
+				this.#publish.url = value ?? undefined;
 				break;
 		}
 	}

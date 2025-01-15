@@ -120,7 +120,7 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("subscribed", skip_all, err, fields(track = ?subscribe.path, id = subscribe.id))]
+	#[tracing::instrument("publishing", skip_all, err, fields(track = ?subscribe.path, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			path: subscribe.path,
@@ -138,7 +138,7 @@ impl Publisher {
 			track_priority: track.priority,
 		};
 
-		tracing::info!(?info);
+		tracing::info!(?info, "active");
 
 		stream.writer.encode(&info).await?;
 

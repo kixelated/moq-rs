@@ -50,3 +50,9 @@ impl Video {
 		}
 	}
 }
+
+impl Drop for Video {
+	fn drop(&mut self) {
+		tracing::info!("dropping video");
+	}
+}

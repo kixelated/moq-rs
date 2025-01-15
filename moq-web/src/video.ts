@@ -1,10 +1,12 @@
-import * as Moq from "..";
+import * as Moq from ".";
+
+import { MoqWatchElement } from "./watch/element";
 
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
-export default class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
-	#watch?: Moq.Watch;
+export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
+	#watch: MoqWatchElement;
 	#canvas?: HTMLCanvasElement;
 
 	// Attributes with getters and setters.
@@ -91,37 +93,13 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 	constructor() {
 		super();
 
+		this.#watch = new MoqWatchElement();
+
 		const shadow = this.attachShadow({ mode: "open" });
-		const style = document.createElement("style");
-		style.textContent = `
-			:host {
-				display: block;
-				position: relative;
-			}
-
-			::slotted(canvas) {
-				display: block;
-				max-width: 100%;
-				height: auto;
-			}
-		`;
-		shadow.appendChild(style);
-
-		const slot = document.createElement("slot");
-		slot.name = "canvas"; // Named slot for the canvas
-		shadow.appendChild(slot);
+		shadow.appendChild(this.#watch);
 	}
 
 	connectedCallback() {
-		this.#canvas = this.querySelector("canvas") ?? undefined;
-
-		// Provide a default canvas if none is slotted
-		if (!this.#canvas) {
-			this.#canvas = document.createElement("canvas");
-			this.#canvas.slot = "canvas";
-			this.appendChild(this.#canvas);
-		}
-
 		for (const name of MoqVideoElement.initAttrbiutes.concat(...MoqVideoElement.observedAttributes)) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
@@ -134,10 +112,7 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 		}
 	}
 
-	disconnectedCallback() {
-		this.#watch?.close();
-		this.#watch = undefined;
-	}
+	disconnectedCallback() {}
 
 	attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
 		if (oldValue === newValue) {
@@ -162,26 +137,20 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 
 	// Actually supported methods
 	load() {
-		this.#watch?.close();
-
 		if (!this.#src) {
 			return;
 		}
 
-		console.log("Loading", this.#src);
-		this.#watch = new Moq.Watch(this.#src);
-
-		if (!this.#canvas) throw new Error("canvas not loaded");
+		this.#watch.url = this.#src;
 
 		// Set the initial state in this specific order.
-		this.#watch.pause(this.#paused);
-		this.#watch.volume(this.#volume);
-		this.#watch.render(this.#canvas);
+		this.#watch.paused = this.#paused;
+		this.#watch.volume = this.#volume;
 	}
 
 	pause(): void {
 		this.#paused = true;
-		this.#watch?.pause(true);
+		this.#watch.paused = true;
 	}
 
 	async play(): Promise<void> {
@@ -191,7 +160,7 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 			this.load();
 		}
 
-		this.#watch?.pause(false);
+		this.#watch.paused = false;
 	}
 
 	get paused(): boolean {
@@ -249,7 +218,7 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 
 		this.#muted = value;
 		const volume = this.#muted ? 0 : this.#volume;
-		this.#watch?.volume(volume);
+		this.#watch.volume = volume;
 	}
 
 	get volume() {
@@ -263,7 +232,7 @@ export default class MoqVideoElement extends HTMLElement implements HTMLVideoEle
 
 		this.#volume = value;
 		const volume = this.#muted ? 0 : this.#volume;
-		this.#watch?.volume(volume);
+		this.#watch.volume = volume;
 	}
 
 	// Attrbutes that will error when changed (unsupported).

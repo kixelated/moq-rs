@@ -1,7 +1,6 @@
 use url::Url;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::MediaStream;
+use web_sys::{HtmlVideoElement, MediaStream};
 
 use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
 use crate::{Error, Result};
@@ -15,36 +14,67 @@ pub struct Publish {
 #[wasm_bindgen]
 impl Publish {
 	#[wasm_bindgen(constructor)]
-	pub fn new(src: &str) -> Result<Self> {
-		let src = Url::parse(src).map_err(|_| Error::InvalidUrl)?;
-
+	pub fn new() -> Self {
 		let controls = Controls::default().baton();
 		let status = Status::default().baton();
-		let mut backend = Backend::new(src, controls.1, status.0);
 
-		spawn_local(async move {
-			if let Err(err) = backend.run().await {
-				tracing::error!(?err, "backend error");
-			} else {
-				tracing::warn!("backend closed");
-			}
-		});
+		let backend = Backend::new(controls.1, status.0);
+		backend.start();
 
-		Ok(Self {
+		Self {
 			controls: controls.0,
 			_status: status.1,
-		})
+		}
 	}
 
-	pub fn capture(&mut self, media: Option<MediaStream>) {
-		self.controls.media.send(media).ok();
+	#[wasm_bindgen(getter)]
+	pub fn url(&self) -> Option<String> {
+		self.controls.url.get().map(|u| u.to_string())
 	}
 
-	pub fn volume(&mut self, value: f64) {
-		self.controls.volume.send(value).ok();
+	#[wasm_bindgen(setter)]
+	pub fn set_url(&mut self, url: Option<String>) -> Result<()> {
+		let url = url.map(|u| Url::parse(&u)).transpose().map_err(|_| Error::InvalidUrl)?;
+		self.controls.url.set(url);
+		Ok(())
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn preview(&self) -> Option<HtmlVideoElement> {
+		self.controls.preview.get()
+	}
+
+	#[wasm_bindgen(setter)]
+	pub fn set_preview(&mut self, preview: Option<HtmlVideoElement>) {
+		self.controls.preview.set(preview)
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn media(&self) -> Option<MediaStream> {
+		self.controls.media.get()
+	}
+
+	#[wasm_bindgen(setter)]
+	pub fn set_media(&mut self, media: Option<MediaStream>) {
+		self.controls.media.set(media)
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn volume(&self) -> f64 {
+		self.controls.volume.get()
+	}
+
+	#[wasm_bindgen(setter)]
+	pub fn set_volume(&mut self, volume: f64) {
+		self.controls.volume.set(volume);
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn closed(&self) -> bool {
+		self.controls.close.get()
 	}
 
 	pub fn close(&mut self) {
-		self.controls.close.send(true).ok();
+		self.controls.close.set(true);
 	}
 }

@@ -1,37 +1,27 @@
 use moq_async::FuturesExt;
-use wasm_bindgen_futures::spawn_local;
 
 use crate::{Error, Result};
 
-#[derive(Clone)]
 pub struct Video {
-	broadcast: moq_karp::BroadcastProducer,
-	track: web_sys::MediaStreamTrack,
+	media: web_sys::MediaStreamTrack,
+	info: moq_karp::Video,
+	reader: web_streams::Reader<web_sys::VideoFrame>,
+	encoder: web_codecs::VideoEncoder,
+	encoded: web_codecs::VideoEncoded,
 }
 
 impl Video {
-	pub fn new(broadcast: moq_karp::BroadcastProducer, track: web_sys::MediaStreamTrack) -> Self {
-		let this = Self { broadcast, track };
-		let task = this.clone();
+	// Async because we need to initialize the video encoder.
+	// Unfortunate, I know, but it should take milliseconds.
+	pub async fn new(media: web_sys::MediaStreamTrack) -> Result<Self> {
+		let config = Self::config(&media).await?;
+		let (mut encoder, encoded) = config.clone().init()?;
 
-		spawn_local(async move {
-			if let Err(err) = task.run().await {
-				tracing::error!(?err, "publishing failed");
-			}
-		});
-
-		this
-	}
-
-	async fn run(mut self) -> Result<()> {
-		let config = self.config().await?;
-		let (mut encoder, mut encoded) = config.clone().init()?;
-
-		let name = self.track.id();
+		let name = media.id();
 
 		// Unfortunately... we don't know the description right now.
 		// We actually need to pump the encoder at least once.
-		let init = web_sys::MediaStreamTrackProcessorInit::new(&self.track);
+		let init = web_sys::MediaStreamTrackProcessorInit::new(&media);
 		let processor = web_sys::MediaStreamTrackProcessor::new(&init).unwrap();
 		let mut reader: web_streams::Reader<web_sys::VideoFrame> = web_streams::Reader::new(&processor.readable())?;
 
@@ -49,11 +39,11 @@ impl Video {
 
 					break;
 				},
-				else => return Err(Error::CaptureFailed),
+				else => return Err(Error::InitFailed),
 			}
 		}
 
-		let track = moq_karp::Video {
+		let info = moq_karp::Video {
 			track: moq_karp::Track { name, priority: 2 },
 			codec: config.codec.try_into().unwrap(),
 			description: decoder_config.description,
@@ -64,36 +54,45 @@ impl Video {
 			bitrate: config.bit_rate,
 		};
 
-		tracing::info!(?track);
+		Ok(Self {
+			media,
+			info,
+			reader,
+			encoder,
+			encoded,
+		})
+	}
 
-		let mut track = self.broadcast.publish_video(track)?;
+	pub fn info(&self) -> &moq_karp::Video {
+		&self.info
+	}
 
+	pub async fn frame(&mut self) -> Result<Option<moq_karp::Frame>> {
 		loop {
 			tokio::select! {
 				// A new input frame is available.
-				Some(frame) = reader.read().transpose() => {
+				Some(frame) = self.reader.read().transpose() => {
 					let frame: web_codecs::VideoFrame = frame?.into(); // NOTE: closed on Drop
-					encoder.encode(&frame, Default::default())?;
+					self.encoder.encode(&frame, Default::default())?;
 				},
 				// A new output frame is available.
-				Some(frame) = encoded.frame().transpose() => {
+				Some(frame) = self.encoded.frame().transpose() => {
 					let frame = frame?;
-					track.write(moq_karp::Frame {
+					let frame = moq_karp::Frame {
 						timestamp: moq_karp::Timestamp::from_micros(frame.timestamp.as_micros()),
 						keyframe: frame.keyframe,
 						payload: frame.payload,
-					});
+					};
+					return Ok(Some(frame));
 				},
 				// All done with both the input and output.
-				else => break,
+				else => return Ok(None),
 			}
 		}
-
-		Ok(())
 	}
 
-	async fn config(&self) -> Result<web_codecs::VideoEncoderConfig> {
-		let settings = self.track.get_settings();
+	async fn config(track: &web_sys::MediaStreamTrack) -> Result<web_codecs::VideoEncoderConfig> {
+		let settings = track.get_settings();
 		tracing::info!(?settings);
 
 		let resolution = web_codecs::Dimensions {
@@ -168,6 +167,6 @@ impl Video {
 impl Drop for Video {
 	fn drop(&mut self) {
 		// Terminate when one of the handles is dropped.
-		self.track.stop();
+		self.media.stop();
 	}
 }

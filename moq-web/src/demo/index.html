@@ -5,6 +5,12 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
+	<style type="text/css">
+		moq-watch {
+			border-radius: 0.375rem;
+			overflow: hidden;
+		}
+	</style>
 </head>
 
 <body style="display: flex">
@@ -12,9 +18,7 @@
 		<video slot="preview" autoplay muted style="border-radius: 0.375rem;"></video>
 	</moq-publish>-->
 
-	<moq-watch url="http://localhost:4443/demo/bbb">
-		<canvas slot="canvas" style="border-radius: 0.375rem;">
-	</moq-watch>
+	<moq-watch url="http://localhost:4443/demo/bbb" />
 </body>
 
 </html>

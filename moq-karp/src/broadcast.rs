@@ -147,6 +147,9 @@ pub struct BroadcastConsumer {
 	// The ID of the current broadcast
 	current: Option<String>,
 
+	// True if we should None because the broadcast has ended.
+	ended: bool,
+
 	catalog_track: Option<moq_transfork::TrackConsumer>,
 	catalog_group: Option<moq_transfork::GroupConsumer>,
 }
@@ -160,17 +163,21 @@ impl BroadcastConsumer {
 			path,
 			announced,
 			current: None,
+			ended: false,
 			catalog_track: None,
 			catalog_group: None,
 		}
 	}
 
-	/// Returns the latest catalog, or None if the broadcast has ended.
-	// TODO Make a new interface instead of returning the catalog directly.
-	// Otherwise, consumers won't realize that the underlying tracks are completely different.
-	// ex. "video" on the old session !== "video" on the new session
+	/// Returns the latest catalog, or None if the channel is offline.
 	pub async fn catalog(&mut self) -> Result<Option<Catalog>> {
 		loop {
+			if self.ended {
+				// Avoid returning None again.
+				self.ended = false;
+				return Ok(None);
+			}
+
 			tokio::select! {
 				biased;
 				// Wait for new announcements.
@@ -181,7 +188,9 @@ impl BroadcastConsumer {
 						Announced::Ended(suffix) => self.unload(suffix),
 						Announced::Live => {
 							// Return None if we're caught up to live with no broadcast.
-							if self.current.is_none() { return Ok(None) }
+							if self.current.is_none() {
+								return Ok(None)
+							}
 						},
 					}
 				},
@@ -194,7 +203,7 @@ impl BroadcastConsumer {
 					self.catalog_group.take(); // We don't support deltas yet
 					return Ok(Some(catalog));
 				},
-				else => return Ok(None),
+				else => return Err(self.session.closed().await.into()),
 			}
 		}
 	}
@@ -239,6 +248,7 @@ impl BroadcastConsumer {
 			self.current = None;
 			self.catalog_track = None;
 			self.catalog_group = None;
+			self.ended = true;
 		}
 	}
 

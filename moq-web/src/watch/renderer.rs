@@ -48,10 +48,7 @@ impl Renderer {
 		let mut state = self.state.borrow_mut();
 		state.scheduled = false;
 
-		let frame = match state.queue.pop_front() {
-			Some(frame) => frame,
-			None => return,
-		};
+		let frame = state.queue.pop_front().unwrap();
 
 		let canvas = match &mut state.canvas {
 			Some(canvas) => canvas,
@@ -68,6 +65,11 @@ impl Renderer {
 		if let Some(ctx) = ctx.dyn_ref::<CanvasRenderingContext2d>() {
 			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
+
+		drop(state);
+
+		// Schedule the next frame.
+		self.schedule();
 	}
 
 	fn schedule(&mut self) {
@@ -76,13 +78,17 @@ impl Renderer {
 			return;
 		}
 
-		let render = state.draw.as_ref().unwrap();
-		request_animation_frame(render);
+		if state.queue.is_empty() {
+			return;
+		}
+
+		let draw = state.draw.as_ref().unwrap();
+		request_animation_frame(draw);
 
 		state.scheduled = true;
 	}
 
-	pub fn set_canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
+	pub fn canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
 		self.state.borrow_mut().canvas = canvas;
 	}
 }

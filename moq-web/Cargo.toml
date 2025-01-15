@@ -19,7 +19,6 @@ tracing = "0.1"
 wasm-tracing = "0.2"
 gloo-net = "0.6"
 gloo-console = "0.3"
-custom-elements = "0.2"
 
 moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
@@ -32,6 +31,7 @@ url = "2"
 thiserror = "2"
 hex = "0.4"
 baton = { version = "0.1.1", path = "../../baton/baton", features = ["derive"] }
+derive_more = { version = "1", features = ["display"] }
 
 [dependencies.web-sys]
 version = "0.3.77"
@@ -42,10 +42,15 @@ features = [
 	"HtmlElement",
 	"Node",
 	"Text",
+	"HtmlVideoElement",
 
 	# Custom elements
 	"HtmlSlotElement",
 	"AssignedNodesOptions",
+	"CustomEvent",
+	"CustomEventInit",
+	"Event",
+	"EventTarget",
 
 	# Canvas stuff
 	"CanvasRenderingContext2d",

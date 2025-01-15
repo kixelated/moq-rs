@@ -14,8 +14,12 @@
 			"import": "./dist/src/element/video.js"
 		},
 		"./publish": {
-			"types": "./dist/src/element/publish.d.ts",
-			"import": "./dist/src/element/publish.js"
+			"types": "./dist/src/publish/element.d.ts",
+			"import": "./dist/src/publish/element.js"
+		},
+		"./watch": {
+			"types": "./dist/src/watch/element.d.ts",
+			"import": "./dist/src/watch/element.js"
 		}
 	},
 	"sideEffects": ["./dist/src/element/video.js"],

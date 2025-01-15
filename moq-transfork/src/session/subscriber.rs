@@ -159,9 +159,9 @@ impl Subscriber {
 		stream.writer.encode(&request).await?;
 
 		// TODO use the response to correctly populate the track info
-		let _response: message::Info = stream.reader.decode().await?;
+		let info: message::Info = stream.reader.decode().await?;
 
-		tracing::info!("subscribed");
+		tracing::info!(?info, "active");
 
 		loop {
 			tokio::select! {
