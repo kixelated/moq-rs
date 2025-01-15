@@ -53,5 +53,6 @@ export default defineConfig({
 	devServer: {
 		open: true,
 		hot: false,
+		liveReload: false,
 	},
 });

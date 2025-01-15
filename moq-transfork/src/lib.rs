@@ -38,8 +38,6 @@ mod session;
 
 pub mod coding;
 pub mod message;
-pub(crate) mod util;
-
 pub use error::*;
 pub use model::*;
 pub use session::*;

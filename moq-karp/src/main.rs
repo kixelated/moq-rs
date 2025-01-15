@@ -77,7 +77,7 @@ async fn publish(config: Config, url: String) -> anyhow::Result<()> {
 	let mut import = cmaf::Import::new(broadcast);
 	import.init_from(&mut input).await.context("failed to initialize")?;
 
-	tracing::info!(catalog = ?import.catalog(), "publishing");
+	tracing::info!("publishing");
 
 	tokio::select! {
 		res = import.read_from(&mut input) => Ok(res?),

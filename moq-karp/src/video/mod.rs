@@ -32,13 +32,13 @@ pub struct Video {
 
 	// Some codecs unfortunately aren't self-describing
 	// One of the best examples is H264, which needs the sps/pps out of band to function.
-	#[serde(default, skip_serializing_if = "Bytes::is_empty")]
-	#[serde_as(as = "Hex")]
-	pub description: Bytes,
+	#[serde(default)]
+	#[serde_as(as = "Option<Hex>")]
+	pub description: Option<Bytes>,
 
 	// The encoded width/height of the media
 	pub resolution: Dimensions,
 
 	#[serde(default)]
-	pub bitrate: Option<u32>,
+	pub bitrate: Option<u64>,
 }

@@ -46,6 +46,10 @@ impl TrackProducer {
 
 		self.group.replace(group);
 	}
+
+	pub fn subscribe(&self) -> TrackConsumer {
+		TrackConsumer::new(self.track.subscribe())
+	}
 }
 
 #[derive(Debug)]
@@ -112,5 +116,9 @@ impl TrackConsumer {
 		};
 
 		Ok(frame)
+	}
+
+	pub async fn closed(&self) -> Result<(), Error> {
+		self.track.closed().await.map_err(Into::into)
 	}
 }

@@ -248,6 +248,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "baton"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07d1e996140e7f9b33421c076a4ec5de8eb9b81e8b6810a3eadf67b7e7a8d85c"
+dependencies = [
+ "baton-derive",
+ "tokio",
+]
+
+[[package]]
+name = "baton-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a78a981083cc2a1436ec52b4e9ecbf8536a2e6e6470a3a8257376971a6d8fb"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.69.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1488,6 +1508,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-async"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "tokio",
+ "tracing",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "moq-clock"
 version = "0.5.19"
 dependencies = [
@@ -1527,6 +1557,7 @@ dependencies = [
  "derive_more",
  "hex",
  "lazy_static",
+ "moq-async",
  "moq-native",
  "moq-transfork",
  "mp4-atom",
@@ -1538,6 +1569,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -1587,6 +1619,7 @@ version = "0.8.2"
 dependencies = [
  "bytes",
  "futures",
+ "moq-async",
  "num_enum",
  "thiserror 2.0.11",
  "tokio",
@@ -1599,10 +1632,12 @@ dependencies = [
 name = "moq-web"
 version = "0.3.11"
 dependencies = [
+ "baton",
  "console_error_panic_hook",
  "gloo-net",
  "hex",
  "js-sys",
+ "moq-async",
  "moq-karp",
  "thiserror 2.0.11",
  "tokio",
@@ -1612,14 +1647,15 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-tracing",
  "web-codecs",
+ "web-streams",
  "web-sys",
 ]
 
 [[package]]
 name = "mp4-atom"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "952d37eb0f265505e2b4888d1a58bf3ddea0047f623c06f656d03bcc3184caab"
+checksum = "4e6ca41187fd83535ec10045e7bd4e6ee508b5eb0488c3bce66bca9182d26a96"
 dependencies = [
  "bytes",
  "num",
@@ -3007,15 +3043,27 @@ dependencies = [
 
 [[package]]
 name = "web-codecs"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96ac804a22cc9f7df65cf7048b23b5ef2dc74ade47b783ea2026088939820c6a"
+checksum = "294dfa949f7d28cba1b2b59c581e46f4e87f45fec52d3ea021e2cbd1acc8d983"
 dependencies = [
  "bytes",
  "derive_more",
  "js-sys",
  "thiserror 1.0.69",
  "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "web-streams"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64b009237ac7dbc6e1cc55bb5f0e511f6895b086899cb42ad3645d524c9aea1a"
+dependencies = [
+ "thiserror 1.0.69",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

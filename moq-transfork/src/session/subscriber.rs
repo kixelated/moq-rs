@@ -6,9 +6,10 @@ use std::{
 use crate::{
 	message,
 	model::{Track, TrackConsumer},
-	util::{spawn, Lock, OrClose},
 	AnnouncedProducer, Error, Path, TrackProducer,
 };
+
+use moq_async::{spawn, Lock, OrClose};
 
 use super::{AnnouncedConsumer, Reader, Stream};
 
@@ -158,9 +159,9 @@ impl Subscriber {
 		stream.writer.encode(&request).await?;
 
 		// TODO use the response to correctly populate the track info
-		let _response: message::Info = stream.reader.decode().await?;
+		let info: message::Info = stream.reader.decode().await?;
 
-		tracing::info!("subscribed");
+		tracing::info!(?info, "active");
 
 		loop {
 			tokio::select! {

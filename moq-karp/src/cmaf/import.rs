@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Error, Result};
-use crate::{
-	Audio, BroadcastProducer, Catalog, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9,
-};
+use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -85,11 +83,11 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.video(track)?
+					self.broadcast.publish_video(track)?
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.audio(track)?
+					self.broadcast.publish_audio(track)?
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
@@ -116,8 +114,8 @@ impl Import {
 			Video {
 				track: Track { name, priority: 2 },
 				resolution: Dimensions {
-					width: avc1.width,
-					height: avc1.height,
+					width: avc1.width as _,
+					height: avc1.height as _,
 				},
 				codec: H264 {
 					profile: avcc.avc_profile_indication,
@@ -125,7 +123,7 @@ impl Import {
 					level: avcc.avc_level_indication,
 				}
 				.into(),
-				description: description.freeze(),
+				description: Some(description.freeze()),
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
@@ -169,8 +167,8 @@ impl Import {
 				.into(),
 				description: Default::default(),
 				resolution: Dimensions {
-					width: vp09.width,
-					height: vp09.height,
+					width: vp09.width as _,
+					height: vp09.height as _,
 				},
 				bitrate: None,
 			}
@@ -205,9 +203,9 @@ impl Import {
 					profile: desc.dec_specific.profile,
 				}
 				.into(),
-				sample_rate: mp4a.samplerate.integer(),
-				channel_count: mp4a.channelcount,
-				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate)),
+				sample_rate: mp4a.samplerate.integer() as _,
+				channel_count: mp4a.channelcount as _,
+				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
 			}
 		} else {
 			return Err(Error::UnsupportedCodec("unknown"));
@@ -399,9 +397,5 @@ impl Import {
 		}
 
 		Ok(())
-	}
-
-	pub fn catalog(&self) -> &Catalog {
-		self.broadcast.catalog()
 	}
 }

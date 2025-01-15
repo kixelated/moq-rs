@@ -138,7 +138,6 @@ impl Cluster {
 				// Extract the hostname from the first part of the path.
 				let host = path.first().context("missing node")?.to_string();
 				if Some(&host) == node.as_ref() {
-					tracing::warn!(?host, "skipping self");
 					// Skip ourselves.
 					continue;
 				}

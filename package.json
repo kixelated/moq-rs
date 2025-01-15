@@ -12,12 +12,20 @@
 		"./video": {
 			"types": "./dist/src/element/video.d.ts",
 			"import": "./dist/src/element/video.js"
+		},
+		"./publish": {
+			"types": "./dist/src/publish/element.d.ts",
+			"import": "./dist/src/publish/element.js"
+		},
+		"./watch": {
+			"types": "./dist/src/watch/element.d.ts",
+			"import": "./dist/src/watch/element.js"
 		}
 	},
 	"sideEffects": ["./dist/src/element/video.js"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"all": "npm-run-all --print-label --parallel --race relay pub web",
+		"all": "npm-run-all --parallel --race relay pub web",
 		"cluster": "npm-run-all --print-label --parallel --race relay relay-leaf pub-leaf web",
 
 		"relay": "./dev/relay",
@@ -36,7 +44,7 @@
 		"pack": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index && rm pkg/.gitignore && tsc"
 	},
 	"dependencies": {
-		"comlink": "^4.4.2",
+		"@types/dom-mediacapture-transform": "^0.1.10",
 		"npm-run-all": "^4.1.5"
 	},
 	"devDependencies": {

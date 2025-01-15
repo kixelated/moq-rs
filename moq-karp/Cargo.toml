@@ -15,12 +15,13 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transfork = { path = "../moq-transfork", version = "0.8" }
+moq-async = { path = "../moq-async", version = "0.1" }
 
 url = "2"
 bytes = "1.9"
 hex = "0.4"
 
-mp4-atom = { version = "0.3", features = ["tokio", "bytes"] }
+mp4-atom = { version = "0.4", features = ["tokio", "bytes"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -32,6 +33,8 @@ lazy_static = "1"
 regex = "1"
 
 tokio = { version = "1.43", features = ["macros"] }
+
+web-time = "1"
 
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.6", optional = true }

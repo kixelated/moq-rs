@@ -20,9 +20,8 @@ pub struct Audio {
 	#[serde_as(as = "DisplayFromStr")]
 	pub codec: AudioCodec,
 
-	pub sample_rate: u16,
-	pub channel_count: u16,
+	pub sample_rate: u32,
+	pub channel_count: u32,
 
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub bitrate: Option<u32>,
+	pub bitrate: Option<u64>,
 }

@@ -1,8 +1,6 @@
-use crate::{
-	message,
-	util::{spawn, Close, OrClose},
-	AnnouncedConsumer, Error, Path, RouterConsumer, Track, TrackConsumer,
-};
+use crate::{message, AnnouncedConsumer, Error, Path, RouterConsumer, Track, TrackConsumer};
+
+use moq_async::{spawn, Close, OrClose};
 
 mod publisher;
 mod reader;

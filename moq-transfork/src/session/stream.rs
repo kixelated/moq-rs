@@ -27,7 +27,7 @@ impl Stream {
 	}
 }
 
-impl Close for Stream {
+impl Close<Error> for Stream {
 	fn close(&mut self, err: Error) {
 		self.writer.close(err.clone());
 		self.reader.close(err);

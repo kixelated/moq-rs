@@ -1,18 +1,14 @@
-mod decoder;
 mod error;
-//mod publish;
-mod renderer;
-mod run;
+mod publish;
 mod session;
 mod watch;
 
 pub use error::*;
-//pub use publish::*;
-pub use watch::*;
+pub use publish::*;
 
-use decoder::*;
-use renderer::*;
-use run::*;
+pub(crate) use session::*;
+
+pub use watch::Watch;
 
 use wasm_bindgen::prelude::*;
 

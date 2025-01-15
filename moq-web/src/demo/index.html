@@ -5,10 +5,20 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
+	<style type="text/css">
+		moq-watch {
+			border-radius: 0.375rem;
+			overflow: hidden;
+		}
+	</style>
 </head>
 
-<body>
-	<moq-video src="http://localhost:4443/demo/bbb" />
+<body style="display: flex">
+	<!--<moq-publish url="http://localhost:4443/demo/me">
+		<video slot="preview" autoplay muted style="border-radius: 0.375rem;"></video>
+	</moq-publish>-->
+
+	<moq-watch url="http://localhost:4443/demo/bbb" />
 </body>
 
 </html>

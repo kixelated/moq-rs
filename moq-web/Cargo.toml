@@ -20,32 +20,35 @@ wasm-tracing = "0.2"
 gloo-net = "0.6"
 
 moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
-web-codecs = "0.3.2"
+moq-async = { version = "0.1", path = "../moq-async" }
+web-streams = "0.1.1"
+web-codecs = "0.3.3"
 tokio = { version = "1", features = ["sync"] }
 
 js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
+baton = "0.2"
 
 [dependencies.web-sys]
 version = "0.3.77"
 features = [
+	# DOM
 	"Window",
 	"Document",
 	"HtmlElement",
 	"Node",
 	"Text",
+	"HtmlVideoElement",
 
-	# WebCodecs
-	"VideoDecoder",
-	"VideoDecoderInit",
-	"VideoDecoderConfig",
-	"VideoFrame",
-	"VideoColorSpaceInit",
-	"EncodedVideoChunk",
-	"EncodedVideoChunkInit",
-	"EncodedVideoChunkType",
+	# Custom elements
+	"HtmlSlotElement",
+	"AssignedNodesOptions",
+	"CustomEvent",
+	"CustomEventInit",
+	"Event",
+	"EventTarget",
 
 	# Canvas stuff
 	"CanvasRenderingContext2d",
@@ -54,4 +57,12 @@ features = [
 	"OffscreenCanvas",
 	"DedicatedWorkerGlobalScope",
 	"OffscreenCanvasRenderingContext2d",
+
+	# Capture
+	"MediaStream",
+	"MediaStreamTrack",
+	"MediaTrackSettings",
+	"MediaStreamTrackProcessor",
+	"MediaStreamTrackProcessorInit",
+	"ReadableStreamDefaultReader",
 ]
