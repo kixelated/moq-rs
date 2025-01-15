@@ -7,18 +7,8 @@ import { MoqWatchElement } from "./watch";
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
 export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	#watch: MoqWatchElement;
-	#canvas?: HTMLCanvasElement;
-
-	// Attributes with getters and setters.
-	#width = 0;
-	#height = 0;
-	#muted = false;
-	#paused = true;
-	#src = "";
-	#volume = 1;
 
 	// These only matter at init
-	autoplay = false;
 	playsInline = true;
 	poster = "";
 	currentTime = 0;
@@ -82,7 +72,7 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	}
 
 	static get observedAttributes() {
-		return ["src", "height", "muted", "width"];
+		return ["src", "paused", "volume"];
 	}
 
 	// Attributes we only check once on init.
@@ -121,118 +111,81 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 
 		switch (name) {
 			case "src":
-				this.src = newValue || "";
+				this.#watch.url = newValue;
 				break;
-			case "height":
-				this.height = newValue ? Number.parseInt(newValue) : 0;
+			case "volume":
+				this.#watch.volume = Number.parseFloat(newValue ?? "1");
 				break;
-			case "width":
-				this.width = newValue ? Number.parseInt(newValue) : 0;
-				break;
-			case "muted":
-				this.muted = newValue !== null;
+			case "paused":
+				this.#watch.paused = newValue !== null;
 				break;
 		}
 	}
 
-	// Actually supported methods
 	load() {
-		if (!this.#src) {
-			return;
-		}
-
-		this.#watch.url = this.#src;
-
-		// Set the initial state in this specific order.
-		this.#watch.paused = this.#paused;
-		this.#watch.volume = this.#volume;
+		// TODO wait until loading
 	}
 
 	pause(): void {
-		this.#paused = true;
+		this.setAttribute("paused", "");
 		this.#watch.paused = true;
 	}
 
 	async play(): Promise<void> {
-		this.#paused = false;
-
-		if (!this.#watch) {
-			this.load();
-		}
-
+		this.removeAttribute("paused");
 		this.#watch.paused = false;
+		this.load();
 	}
 
 	get paused(): boolean {
-		return this.#paused;
+		return this.getAttribute("paused") !== null;
 	}
 
-	// The afformentioned getters and setters.
-	get width() {
-		return this.#width;
+	// This width/height stuff is probably wrong
+	get width(): number {
+		const width = this.getAttribute("width");
+		return width ? Number.parseInt(width) : this.offsetWidth;
 	}
 
 	set width(value: number) {
-		if (this.#width === value) {
-			return;
-		}
-
-		this.#width = value;
-
-		// TODO update DOM
+		this.setAttribute("width", value.toString());
 	}
 
 	get height() {
-		return this.#height;
+		const height = this.getAttribute("height");
+		return height ? Number.parseInt(height) : this.offsetHeight;
 	}
 
 	set height(value: number) {
-		if (this.#height === value) {
-			return;
-		}
-
-		this.#height = value;
-		// TODO update DOM
+		this.setAttribute("height", value.toString());
 	}
 
-	get src() {
-		return this.#src;
+	get src(): string {
+		return this.getAttribute("src") ?? "";
 	}
 
 	set src(value: string) {
-		if (this.#src === value) {
-			return;
-		}
-
-		this.#src = value;
+		this.setAttribute("src", value);
 	}
 
 	get muted() {
-		return this.#muted;
+		return this.getAttribute("muted") !== null;
 	}
 
 	set muted(value: boolean) {
-		if (this.#muted === value) {
-			return;
+		if (value) {
+			this.setAttribute("muted", "");
+		} else {
+			this.removeAttribute("muted");
 		}
-
-		this.#muted = value;
-		const volume = this.#muted ? 0 : this.#volume;
-		this.#watch.volume = volume;
 	}
 
-	get volume() {
-		return this.#volume;
+	get volume(): number {
+		return Number.parseFloat(this.getAttribute("volume") ?? "1");
 	}
 
 	set volume(value: number) {
-		if (this.#volume === value) {
-			return;
-		}
-
-		this.#volume = value;
-		const volume = this.#muted ? 0 : this.#volume;
-		this.#watch.volume = volume;
+		this.setAttribute("volume", value.toString());
 	}
 
 	// Attrbutes that will error when changed (unsupported).
@@ -242,6 +195,18 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 
 	set defaultPlaybackRate(value: number) {
 		throw new Error("defaultPlaybackRate not implemented");
+	}
+
+	get autoplay(): boolean {
+		return this.getAttribute("autoplay") !== null;
+	}
+
+	set autoplay(value: boolean) {
+		if (value) {
+			this.setAttribute("autoplay", "");
+		} else {
+			this.removeAttribute("autoplay");
+		}
 	}
 
 	get loop() {
