@@ -1,6 +1,6 @@
-import * as Moq from ".";
+import * as Moq from "..";
 
-import { MoqWatchElement } from "./watch/element";
+import { MoqWatchElement } from "./watch";
 
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video

@@ -37,7 +37,7 @@ jobs:
       - name: Build/Publish NPM Package
         run: |
           npm install
-          npm run pack
+          npm run build
           npm publish --access public
 
       - name: Trigger quic.video update

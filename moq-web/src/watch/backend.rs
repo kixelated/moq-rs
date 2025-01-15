@@ -38,7 +38,7 @@ impl Backend {
 				self.status.error.set(Some(err));
 			}
 
-			self.status.state.set(WatchState::Closed);
+			self.status.state.set(WatchState::Error);
 		});
 	}
 
