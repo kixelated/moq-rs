@@ -112,6 +112,8 @@ impl Args {
 
 		// Allow disabling TLS verification altogether.
 		if self.disable_verify {
+			tracing::warn!("TLS server certificate verification is disabled");
+
 			let noop = NoCertificateVerification(provider.clone());
 			client.dangerous().set_certificate_verifier(Arc::new(noop));
 		}
@@ -266,5 +268,58 @@ impl rustls::client::danger::ServerCertVerifier for NoCertificateVerification {
 
 	fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
 		self.0.signature_verification_algorithms.supported_schemes()
+	}
+}
+
+// Verify the certificate matches a provided fingerprint.
+#[derive(Debug)]
+pub struct FingerprintVerifier {
+	provider: Arc<rustls::crypto::CryptoProvider>,
+	fingerprint: Vec<u8>,
+}
+
+impl FingerprintVerifier {
+	pub fn new(provider: Arc<rustls::crypto::CryptoProvider>, fingerprint: Vec<u8>) -> Self {
+		Self { provider, fingerprint }
+	}
+}
+
+impl rustls::client::danger::ServerCertVerifier for FingerprintVerifier {
+	fn verify_server_cert(
+		&self,
+		end_entity: &CertificateDer<'_>,
+		_intermediates: &[CertificateDer<'_>],
+		_server_name: &ServerName<'_>,
+		_ocsp: &[u8],
+		_now: UnixTime,
+	) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+		let fingerprint = digest(&SHA256, &end_entity);
+		if fingerprint.as_ref() == self.fingerprint.as_slice() {
+			Ok(rustls::client::danger::ServerCertVerified::assertion())
+		} else {
+			Err(rustls::Error::General("fingerprint mismatch".into()))
+		}
+	}
+
+	fn verify_tls12_signature(
+		&self,
+		message: &[u8],
+		cert: &CertificateDer<'_>,
+		dss: &rustls::DigitallySignedStruct,
+	) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+		rustls::crypto::verify_tls12_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+	}
+
+	fn verify_tls13_signature(
+		&self,
+		message: &[u8],
+		cert: &CertificateDer<'_>,
+		dss: &rustls::DigitallySignedStruct,
+	) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+		rustls::crypto::verify_tls13_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+	}
+
+	fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+		self.provider.signature_verification_algorithms.supported_schemes()
 	}
 }

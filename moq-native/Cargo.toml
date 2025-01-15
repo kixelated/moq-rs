@@ -23,6 +23,7 @@ ring = "0.17"
 webpki = "0.22"
 rcgen = "0.13"
 time = "0.3"
+reqwest = "0.12"
 
 hex = "0.4"
 url = "2"

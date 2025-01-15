@@ -97,7 +97,7 @@ impl Cluster {
 
 				// Connect to the root node.
 				let addr = Url::parse(&format!("https://{}", addr)).context("invalid root URL")?;
-				let root = self.client.connect(&addr).await.context("failed to connect to root")?;
+				let root = self.client.connect(addr).await.context("failed to connect to root")?;
 
 				let mut root = moq_transfork::Session::connect(root)
 					.await
@@ -155,7 +155,7 @@ impl Cluster {
 
 		// Connect to the remote node.
 		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
-		let conn = self.client.connect(&url).await.context("failed to connect to remote")?;
+		let conn = self.client.connect(url).await.context("failed to connect to remote")?;
 
 		let mut session = moq_transfork::Session::connect(conn)
 			.await

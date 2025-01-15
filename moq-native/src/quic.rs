@@ -171,23 +171,8 @@ pub struct Client {
 }
 
 impl Client {
-	pub async fn connect(&self, url: &Url) -> anyhow::Result<web_transport::Session> {
+	pub async fn connect(&self, mut url: Url) -> anyhow::Result<web_transport::Session> {
 		let mut config = self.config.clone();
-
-		let alpn = match url.scheme() {
-			"https" => web_transport::quinn::ALPN,
-			"moqf" => moq_transfork::ALPN,
-			_ => anyhow::bail!("url scheme must be 'https' or 'moqf'"),
-		};
-
-		// TODO support connecting to both ALPNs at the same time
-		config.alpn_protocols = vec![alpn.to_vec()];
-
-		config.key_log = Arc::new(rustls::KeyLogFile::new());
-
-		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
-		let mut config = quinn::ClientConfig::new(Arc::new(config));
-		config.transport_config(self.transport.clone());
 
 		let host = url.host().context("invalid DNS name")?.to_string();
 		let port = url.port().unwrap_or(443);
@@ -199,13 +184,50 @@ impl Client {
 			.next()
 			.context("no DNS entries")?;
 
+		if url.scheme() == "http" {
+			// Perform a HTTP request to fetch the certificate fingerprint.
+			let mut fingerprint = url.clone();
+			fingerprint.set_path("/fingerprint");
+
+			tracing::warn!(url = %fingerprint, "performing insecure HTTP request for certificate");
+
+			let resp = reqwest::get(fingerprint.as_str())
+				.await
+				.context("failed to fetch fingerprint")?
+				.error_for_status()
+				.context("fingerprint request failed")?;
+
+			let fingerprint = resp.text().await.context("failed to read fingerprint")?;
+			let fingerprint = hex::decode(fingerprint.trim()).context("invalid fingerprint")?;
+
+			let verifier = tls::FingerprintVerifier::new(config.crypto_provider().clone(), fingerprint);
+			config.dangerous().set_certificate_verifier(Arc::new(verifier));
+
+			//
+			url.set_scheme("https").expect("failed to set scheme");
+		}
+
+		let alpn = match url.scheme() {
+			"https" => web_transport::quinn::ALPN,
+			"moqf" => moq_transfork::ALPN,
+			_ => anyhow::bail!("url scheme must be 'http', 'https', or 'moqf'"),
+		};
+
+		// TODO support connecting to both ALPNs at the same time
+		config.alpn_protocols = vec![alpn.to_vec()];
+		config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
+		let mut config = quinn::ClientConfig::new(Arc::new(config));
+		config.transport_config(self.transport.clone());
+
 		tracing::debug!(%url, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
 
 		let connection = self.quic.connect_with(config, ip, &host)?.await?;
 		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
-			"https" => web_transport::quinn::Session::connect(connection, url).await?,
+			"https" => web_transport::quinn::Session::connect(connection, &url).await?,
 			"moqf" => connection.into(),
 			_ => unreachable!(),
 		};
