@@ -58,7 +58,7 @@ pub struct Config {
 
 impl Args {
 	pub fn load(&self) -> anyhow::Result<Config> {
-		let provider = Arc::new(rustls::crypto::ring::default_provider());
+		let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
 		let mut serve = ServeCerts::default();
 
 		// Load the certificate and key files based on their index.
