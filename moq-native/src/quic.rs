@@ -129,7 +129,7 @@ impl Server {
 		let alpn = String::from_utf8(alpn).context("failed to decode ALPN")?;
 		let host = handshake.server_name.unwrap_or_default();
 
-		tracing::debug!(%host, ip = %conn.remote_address(), %alpn, "connecting");
+		tracing::debug!(%host, ip = %conn.remote_address(), %alpn, "accepting");
 
 		// Wait for the QUIC connection to be established.
 		let conn = conn.await.context("failed to establish QUIC connection")?;

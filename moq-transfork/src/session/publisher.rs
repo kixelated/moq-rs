@@ -93,20 +93,17 @@ impl Publisher {
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(path) => {
-					tracing::debug!(?path, "announce");
-					stream
-						.writer
-						.encode(&message::Announce::Active { suffix: path })
-						.await?;
+				Announced::Active(suffix) => {
+					tracing::debug!(?prefix, ?suffix, "announce");
+					stream.writer.encode(&message::Announce::Active { suffix }).await?;
 				}
-				Announced::Ended(path) => {
-					tracing::debug!(?path, "unannounce");
-					stream.writer.encode(&message::Announce::Ended { suffix: path }).await?;
+				Announced::Ended(suffix) => {
+					tracing::debug!(?prefix, ?suffix, "unannounce");
+					stream.writer.encode(&message::Announce::Ended { suffix }).await?;
 				}
 				Announced::Live => {
 					// Indicate that we're caught up to live.
-					tracing::debug!("live");
+					tracing::debug!(?prefix, "live");
 					stream.writer.encode(&message::Announce::Live).await?;
 				}
 			}
