@@ -249,7 +249,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baton"
-version = "0.1.1"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07d1e996140e7f9b33421c076a4ec5de8eb9b81e8b6810a3eadf67b7e7a8d85c"
 dependencies = [
  "baton-derive",
  "tokio",
@@ -257,7 +259,9 @@ dependencies = [
 
 [[package]]
 name = "baton-derive"
-version = "0.1.1"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a78a981083cc2a1436ec52b4e9ecbf8536a2e6e6470a3a8257376971a6d8fb"
 dependencies = [
  "quote",
  "syn",
@@ -1643,7 +1647,6 @@ version = "0.3.11"
 dependencies = [
  "baton",
  "console_error_panic_hook",
- "derive_more",
  "gloo-console",
  "gloo-net",
  "hex",
@@ -3054,7 +3057,9 @@ dependencies = [
 
 [[package]]
 name = "web-codecs"
-version = "0.3.2"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "294dfa949f7d28cba1b2b59c581e46f4e87f45fec52d3ea021e2cbd1acc8d983"
 dependencies = [
  "bytes",
  "derive_more",
@@ -3068,7 +3073,9 @@ dependencies = [
 
 [[package]]
 name = "web-streams"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64b009237ac7dbc6e1cc55bb5f0e511f6895b086899cb42ad3645d524c9aea1a"
 dependencies = [
  "thiserror 1.0.69",
  "wasm-bindgen",

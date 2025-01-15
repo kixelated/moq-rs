@@ -22,16 +22,15 @@ gloo-console = "0.3"
 
 moq-karp = { version = "0.11", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
-web-streams = { version = "0.1", path = "../../web-rs/web-streams" }
-web-codecs = { version = "0.3.2", path = "../../web-rs/web-codecs" }
+web-streams = "0.1.1"
+web-codecs = "0.3.3"
 tokio = { version = "1", features = ["sync"] }
 
 js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
-baton = { version = "0.1.1", path = "../../baton/baton", features = ["derive"] }
-derive_more = { version = "1", features = ["display"] }
+baton = "0.2"
 
 [dependencies.web-sys]
 version = "0.3.77"

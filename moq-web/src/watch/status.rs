@@ -1,10 +1,9 @@
 use baton::Baton;
-use derive_more::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::Error;
 
-#[derive(Debug, Default, Copy, Clone, Display)]
+#[derive(Debug, Default, Copy, Clone)]
 #[wasm_bindgen]
 pub enum WatchState {
 	#[default]
