@@ -27,13 +27,18 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/moq-web-v}
           jq ".version=\"$VERSION\"" package.json > temp.json && mv temp.json package.json
 
-      - name: Build/Publish NPM Package
+      - name: Authenticate with npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+
+
+      - name: Build/Publish NPM Package
+        run: |
           npm install
           npm run pack
-          npm publish
+          npm publish --access public
 
       - name: Trigger quic.video update
         env:
