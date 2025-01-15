@@ -1,20 +1,24 @@
-import * as Moq from "..";
+import { Watch } from "../watch";
+import type { WatchState } from "../watch";
 
 export class MoqWatchElement extends HTMLElement {
-	#watch: Moq.Watch;
+	#watch: Watch;
 
 	static get observedAttributes() {
-		return ["url"];
+		return ["url", "paused", "volume"];
 	}
 
 	constructor() {
 		super();
 
-		this.#watch = new Moq.Watch();
+		this.#watch = new Watch();
 
-		this.#watch.on_state((state: Moq.WatchState) => {
-			this.dispatchEvent(new CustomEvent("moq-state", { detail: state }));
-		});
+		const states = this.#watch.state();
+		(async () => {
+			for await (const state of states) {
+				this.dispatchEvent(new CustomEvent("moq-state", { detail: state }));
+			}
+		})();
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.innerHTML = `
@@ -34,10 +38,6 @@ export class MoqWatchElement extends HTMLElement {
 		`;
 	}
 
-	setAttr(name: string, oldValue?: string, newValue?: string) {
-		this.attributeChangedCallback(name, oldValue, newValue);
-	}
-
 	connectedCallback() {
 		const canvas = this.shadowRoot?.querySelector("canvas");
 		if (!canvas) {
@@ -47,26 +47,26 @@ export class MoqWatchElement extends HTMLElement {
 		this.#watch.canvas = canvas as HTMLCanvasElement;
 
 		for (const name of MoqWatchElement.observedAttributes) {
-			const value = this.getAttribute(name) ?? undefined;
+			const value = this.getAttribute(name);
 			if (value !== undefined) {
-				this.attributeChangedCallback(name, undefined, value);
+				this.attributeChangedCallback(name, null, value);
 			}
 		}
 	}
 
 	disconnectedCallback() {
-		this.#watch.canvas = undefined;
+		this.#watch.canvas = null;
 		this.#watch.close();
 	}
 
-	attributeChangedCallback(name: string, old?: string, value?: string) {
+	attributeChangedCallback(name: string, old: string | null, value: string | null) {
 		if (old === value) {
 			return;
 		}
 
 		switch (name) {
 			case "url":
-				this.#watch.url = value ?? undefined;
+				this.#watch.url = value;
 				break;
 		}
 	}
@@ -103,7 +103,7 @@ export class MoqWatchElement extends HTMLElement {
 		this.setAttribute("volume", value.toString());
 	}
 
-	get error(): string | undefined {
+	get error(): string | null {
 		return this.#watch.error;
 	}
 }
@@ -116,6 +116,6 @@ declare global {
 	}
 
 	interface GlobalEventHandlersEventMap {
-		"moq-state": CustomEvent<Moq.WatchState>;
+		"moq-state": CustomEvent<WatchState>;
 	}
 }

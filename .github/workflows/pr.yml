@@ -64,5 +64,5 @@ jobs:
 
       - uses: actions/setup-node@v4
       - run: npm install
-      - run: npm run pack
+      - run: npm run build
       - run: npm pack

@@ -2,11 +2,11 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_codecs::VideoFrame;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::OffscreenCanvas;
 
 struct State {
 	scheduled: bool,
-	canvas: Option<HtmlCanvasElement>,
+	canvas: Option<OffscreenCanvas>,
 	queue: VecDeque<VideoFrame>,
 	draw: Option<Closure<dyn FnMut()>>,
 }
@@ -59,10 +59,18 @@ impl Renderer {
 		canvas.set_width(frame.display_width());
 		canvas.set_height(frame.display_height());
 
-		// TODO error handling lul
-		let ctx = canvas.get_context("2d").unwrap().unwrap();
+		// Tell the browser that we're not going to use the alpha channel for better performance.
+		// We need to create a JsValue until web_sys implements a proper way to create the options.
+		// let options = { alpha: false };
+		let options = js_sys::Object::new();
+		js_sys::Reflect::set(&options, &"alpha".into(), &false.into()).unwrap();
 
-		if let Some(ctx) = ctx.dyn_ref::<CanvasRenderingContext2d>() {
+		let ctx = canvas
+			.get_context_with_context_options("2d", &options)
+			.unwrap()
+			.unwrap();
+
+		if let Some(ctx) = ctx.dyn_ref::<web_sys::OffscreenCanvasRenderingContext2d>() {
 			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
 
@@ -88,14 +96,26 @@ impl Renderer {
 		state.scheduled = true;
 	}
 
-	pub fn canvas(&mut self, canvas: Option<HtmlCanvasElement>) {
+	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {
 		self.state.borrow_mut().canvas = canvas;
 	}
 }
 
+// Based on: https://rustwasm.github.io/wasm-bindgen/examples/request-animation-frame.html
+// But with Worker support, which could contribute back to gloo_render.
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	web_sys::window()
-		.unwrap()
-		.request_animation_frame(f.as_ref().unchecked_ref())
-		.expect("should register `requestAnimationFrame` on Window");
+	let global = js_sys::global();
+	if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+		// Main thread
+		window
+			.request_animation_frame(f.as_ref().unchecked_ref())
+			.expect("should register `requestAnimationFrame` on Window");
+	} else if let Some(worker) = global.dyn_ref::<web_sys::DedicatedWorkerGlobalScope>() {
+		// Dedicated Worker
+		worker
+			.request_animation_frame(f.as_ref().unchecked_ref())
+			.expect("should register `requestAnimationFrame` on DedicatedWorkerGlobalScope");
+	} else {
+		unimplemented!("Unsupported context: neither Window nor DedicatedWorkerGlobalScope");
+	}
 }

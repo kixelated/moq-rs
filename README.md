@@ -91,7 +91,7 @@ You can also test the package locally by linking.
 Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
-npm run pack
+npm run build
 npm link
 
 # In your other package
