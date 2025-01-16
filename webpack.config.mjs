@@ -1,15 +1,15 @@
 // @ts-check
 
 import path from "node:path";
+
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "@rspack/cli";
 import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig({
+const config = {
 	entry: "./moq-web/src/demo/index.ts",
 	output: {
 		path: path.resolve(__dirname, "dist"),
@@ -33,17 +33,9 @@ export default defineConfig({
 	module: {
 		rules: [
 			{
-				test: /\.ts$/,
+				test: /\.ts(x)?$/,
+				loader: "ts-loader",
 				exclude: /node_modules/,
-				loader: "builtin:swc-loader",
-				options: {
-					jsc: {
-						parser: {
-							syntax: "typescript",
-						},
-					},
-				},
-				type: "javascript/auto",
 			},
 		],
 	},
@@ -55,4 +47,6 @@ export default defineConfig({
 		hot: false,
 		liveReload: false,
 	},
-});
+};
+
+export default config;
