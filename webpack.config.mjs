@@ -21,7 +21,9 @@ const config = {
 		}),
 		new WasmPackPlugin({
 			crateDirectory: path.resolve(__dirname, "moq-web"),
-			outDir: path.resolve(__dirname, "pkg"),
+			outDir: path.resolve(__dirname, "dist"),
+			args: "--log-level warn",
+			outName: "rust",
 		}),
 	],
 	mode: "development",
@@ -41,6 +43,9 @@ const config = {
 	},
 	resolve: {
 		extensions: [".ts", ".js"],
+		alias: {
+			"@dist": path.resolve(__dirname, "dist"),
+		},
 	},
 	devServer: {
 		open: true,
