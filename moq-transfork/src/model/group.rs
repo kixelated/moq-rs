@@ -121,6 +121,9 @@ pub struct GroupConsumer {
 	// The number of frames we've read.
 	// NOTE: Cloned readers inherit this offset, but then run in parallel.
 	index: usize,
+
+	// Used to make read_frame cancel safe.
+	active: Option<FrameConsumer>,
 }
 
 impl GroupConsumer {
@@ -129,19 +132,35 @@ impl GroupConsumer {
 			state,
 			info: group,
 			index: 0,
+			active: None,
 		}
 	}
 
 	// Read the next frame.
 	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, Error> {
-		Ok(match self.next_frame().await? {
-			Some(mut reader) => Some(reader.read_all().await?),
-			None => None,
-		})
+		// In order to be cancel safe, we need to save the active frame.
+		// That way if this method gets caneclled, we can resume where we left off.
+		if self.active.is_none() {
+			self.active = match self.next_frame().await? {
+				Some(frame) => Some(frame),
+				None => return Ok(None),
+			};
+		};
+
+		// Read the frame in one go, which is cancel safe.
+		let frame = self.active.as_mut().unwrap().read_all().await?;
+		self.active = None;
+
+		Ok(Some(frame))
 	}
 
 	// Return a reader for the next frame.
 	pub async fn next_frame(&mut self) -> Result<Option<FrameConsumer>, Error> {
+		// Just in case someone called read_frame, cancelled it, then called next_frame.
+		if let Some(frame) = self.active.take() {
+			return Ok(Some(frame));
+		}
+
 		loop {
 			{
 				let state = self.state.borrow_and_update();
@@ -161,11 +180,13 @@ impl GroupConsumer {
 	}
 
 	// Return the current index of the frame in the group
+	// TODO remove this IMO
 	pub fn frame_index(&self) -> usize {
 		self.index
 	}
 
 	// Return the current total number of frames in the group
+	// TODO remove this IMO
 	pub fn frame_count(&self) -> usize {
 		self.state.borrow().frames.len()
 	}

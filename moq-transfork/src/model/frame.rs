@@ -132,19 +132,26 @@ impl FrameConsumer {
 		}
 	}
 
-	// Return all of the chunks concatenated together.
+	// Return all of the remaining chunks concatenated together.
 	pub async fn read_all(&mut self) -> Result<Bytes, Error> {
-		let first = self.read().await?.unwrap_or_else(Bytes::new);
-		if first.len() == self.size {
-			// If there's one chunk, return it without allocating.
-			return Ok(first);
-		}
+		// Wait until the writer is done before even attempting to read.
+		// That way this function can be cancelled without consuming half of the frame.
+		if let Ok(err) = self.state.wait_for(|s| s.closed.is_err()).await {
+			return Err(err.closed.clone().unwrap_err());
+		};
 
-		let mut buf = BytesMut::with_capacity(2 * first.len());
-		buf.extend_from_slice(&first);
+		// Get all of the remaining chunks.
+		let state = self.state.borrow_and_update();
+		let chunks = &state.chunks[self.index..];
+		self.index = state.chunks.len();
 
-		while let Some(chunk) = self.read().await? {
-			buf.extend_from_slice(&chunk);
+		// We know the final size so we can allocate the buffer upfront.
+		let size = chunks.iter().map(Bytes::len).sum();
+		let mut buf = BytesMut::with_capacity(size);
+
+		// Copy the chunks into the buffer.
+		for chunk in chunks {
+			buf.extend_from_slice(chunk);
 		}
 
 		Ok(buf.freeze())

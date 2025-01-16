@@ -69,8 +69,16 @@ impl TrackConsumer {
 		loop {
 			tokio::select! {
 				biased;
-				Some(res) = async { self.group.as_mut()?.read_frame().await.transpose() } => {
-					let raw = res?;
+				Some(res) = async { Some(self.group.as_mut()?.read_frame().await) } => {
+					let raw = match res? {
+						// Got the next frame.
+						Some(raw) => raw,
+						None => {
+							// Group ended cleanly, set to None to instantly move to the next group.
+							self.group = None;
+							continue;
+						}
+					};
 
 					let index = self.group.as_ref().unwrap().frame_index() - 1;
 					let keyframe = index == 0;
@@ -97,8 +105,13 @@ impl TrackConsumer {
 							continue;
 						},
 						// TODO use a configurable latency before moving to the next group.
-						_ => self.group = Some(group),
-					}
+						Some(existing) => {
+							tracing::warn!(old = ?existing.sequence, new = ?group.sequence, "skipping group");
+						},
+						_ => {},
+					};
+
+					self.group = Some(group);
 				},
 				else => return Ok(None),
 			}
