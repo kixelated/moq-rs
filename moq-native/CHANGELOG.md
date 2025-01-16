@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.1...moq-native-v0.6.2) - 2025-01-16
+
+### Other
+
+- Retry connections to cluster nodes ([#290](https://github.com/kixelated/moq-rs/pull/290))
+- Switch to aws_lc_rs ([#287](https://github.com/kixelated/moq-rs/pull/287))
+- Support fetching fingerprint via native clients. ([#286](https://github.com/kixelated/moq-rs/pull/286))
+- Initial WASM contribute ([#283](https://github.com/kixelated/moq-rs/pull/283))
+
 ## [0.6.1](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.0...moq-native-v0.6.1) - 2025-01-13
 
 ### Other

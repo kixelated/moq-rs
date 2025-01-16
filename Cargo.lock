@@ -1535,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "moq-async"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "tokio",
@@ -1545,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.5.19"
+version = "0.5.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1559,7 +1559,7 @@ dependencies = [
 
 [[package]]
 name = "moq-gst"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1575,7 +1575,7 @@ dependencies = [
 
 [[package]]
 name = "moq-karp"
-version = "0.11.3"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1625,7 +1625,7 @@ dependencies = [
 
 [[package]]
 name = "moq-relay"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "anyhow",
  "axum",
@@ -1642,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "moq-transfork"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "bytes",
  "futures",
@@ -1657,7 +1657,7 @@ dependencies = [
 
 [[package]]
 name = "moq-web"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "baton",
  "console_error_panic_hook",
@@ -3269,12 +3269,12 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c40fc5e0612fe8795624acd9b9fb5530993ffb2ccac439e18f19e6fc1c27b0b9"
+checksum = "5d8d0a2fb0901c7f3b29e371a43b855efd52fd33b893be336f629f8398814c01"
 dependencies = [
  "bytes",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
  "url",
  "web-transport-quinn",
  "web-transport-wasm",

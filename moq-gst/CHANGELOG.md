@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/kixelated/moq-rs/compare/moq-gst-v0.1.4...moq-gst-v0.1.5) - 2025-01-16
+
+### Other
+
+- Support fetching fingerprint via native clients. ([#286](https://github.com/kixelated/moq-rs/pull/286))
+- Initial WASM contribute ([#283](https://github.com/kixelated/moq-rs/pull/283))
+
 ## [0.1.4](https://github.com/kixelated/moq-rs/compare/moq-gst-v0.1.3...moq-gst-v0.1.4) - 2025-01-13
 
 ### Other

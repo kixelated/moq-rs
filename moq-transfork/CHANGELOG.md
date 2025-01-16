@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.2...moq-transfork-v0.8.3) - 2025-01-16
+
+### Other
+
+- Retry connections to cluster nodes ([#290](https://github.com/kixelated/moq-rs/pull/290))
+- Initial WASM contribute ([#283](https://github.com/kixelated/moq-rs/pull/283))
+
 ## [0.8.2](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.1...moq-transfork-v0.8.2) - 2025-01-13
 
 ### Other
