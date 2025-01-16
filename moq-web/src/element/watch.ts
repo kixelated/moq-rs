@@ -11,12 +11,13 @@ export class MoqWatchElement extends HTMLElement {
 	constructor() {
 		super();
 
+		// TODO only create when connected?
 		this.#watch = new Watch();
 
 		const states = this.#watch.state();
 		(async () => {
 			for await (const state of states) {
-				this.dispatchEvent(new CustomEvent("moq-state", { detail: state }));
+				this.dispatchEvent(new CustomEvent("moq-watch-state", { detail: state }));
 			}
 		})();
 
@@ -116,6 +117,6 @@ declare global {
 	}
 
 	interface GlobalEventHandlersEventMap {
-		"moq-state": CustomEvent<WatchState>;
+		"moq-watch-state": CustomEvent<WatchState>;
 	}
 }

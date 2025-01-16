@@ -1,8 +1,24 @@
+use baton::Baton;
 use moq_karp::{moq_transfork::Path, BroadcastConsumer};
+use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
-use super::{ControlsRecv, Renderer, StatusSend, Video, WatchState};
+use super::{Renderer, Video, WatchState};
 use crate::{Connect, Error, Result};
+
+#[derive(Debug, Default, Baton)]
+pub struct Controls {
+	pub url: Option<Url>,
+	pub paused: bool,
+	pub volume: f64,
+	pub canvas: Option<web_sys::OffscreenCanvas>,
+}
+
+#[derive(Debug, Default, Baton)]
+pub struct Status {
+	pub state: WatchState,
+	pub error: Option<Error>,
+}
 
 pub struct Backend {
 	controls: ControlsRecv,
@@ -44,33 +60,39 @@ impl Backend {
 
 	async fn run(&mut self) -> Result<()> {
 		loop {
-			let connect = self.connect.as_mut();
-			let broadcast = self.broadcast.as_mut();
-			let video = self.video.as_mut();
-
 			tokio::select! {
-				Some(Some(url)) = self.controls.url.next() => {
-					// Connect using the base of the URL.
-					let mut addr = url.clone();
-					addr.set_fragment(None);
-					addr.set_query(None);
-					addr.set_path("");
+				url = self.controls.url.next() => {
+					let url = url.ok_or(Error::Closed)?;
 
-					self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
-					self.connect = Some(Connect::new(addr));
 					self.broadcast = None;
 					self.video = None;
 
-					self.status.state.set(WatchState::Connecting);
+					if let Some(url) = url {
+						// Connect using the base of the URL.
+						let mut addr = url.clone();
+						addr.set_fragment(None);
+						addr.set_query(None);
+						addr.set_path("");
+
+						self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
+						self.connect = Some(Connect::new(addr));
+
+						self.status.state.set(WatchState::Connecting);
+					} else {
+						self.path = Path::default();
+						self.connect = None;
+
+						self.status.state.set(WatchState::Idle);
+					}
 				},
-				Some(session) = async move { Some(connect?.established().await) } => {
+				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let broadcast = moq_karp::BroadcastConsumer::new(session?, self.path.clone());
 					self.status.state.set(WatchState::Connected);
 
 					self.broadcast = Some(broadcast);
 					self.connect = None;
 				},
-				Some(catalog) = async move { Some(broadcast?.catalog().await) } => {
+				Some(catalog) = async { Some(self.broadcast.as_mut()?.catalog().await) } => {
 					let catalog = match catalog? {
 						Some(catalog) => catalog,
 						None => {
@@ -94,14 +116,12 @@ impl Backend {
 						self.video = None;
 					}
 				},
-				Some(frame) = async move { video?.frame().await.transpose() } => {
+				Some(frame) = async { self.video.as_mut()?.frame().await.transpose() } => {
 					let frame = frame?;
 					self.renderer.render(frame);
 				},
-				Some(true) = self.controls.close.next() => {
-					return Ok(());
-				},
-				Some(canvas) = self.controls.canvas.next() => {
+				canvas = self.controls.canvas.next() => {
+					let canvas = canvas.ok_or(Error::Closed)?;
 					self.renderer.canvas(canvas.clone());
 				},
 				else => return Ok(()),

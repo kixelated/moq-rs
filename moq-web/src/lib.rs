@@ -5,10 +5,9 @@ mod watch;
 
 pub use error::*;
 pub use publish::*;
+pub use watch::*;
 
 pub(crate) use session::*;
-
-pub use watch::Watch;
 
 use wasm_bindgen::prelude::*;
 

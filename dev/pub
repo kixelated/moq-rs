@@ -31,8 +31,8 @@ URL="${URL:-"$SCHEME://$ADDR/$NAME"}"
 # Default to a source video
 INPUT="${INPUT:-dev/bbb.fmp4}"
 
-# A crude hack to let the relay grab the cargo lock first.
-sleep 0.1
+# A crude hack to let the relay grab the cargo lock first when using /dev/all
+sleep 0.5
 
 # Run ffmpeg and pipe the output to moq-pub
 ffmpeg -hide_banner -v quiet \

@@ -81,20 +81,24 @@ export class Watch {
 	}
 
 	async close() {
-		this.#watch.then((watch) => watch.close());
+		this.#watch.then((watch) => watch.free());
 	}
 
 	async *state(): AsyncGenerator<WatchState> {
 		const watch = await this.#watch;
 		const states = await Comlink.proxy(watch.states());
 
-		while (true) {
-			const next = await states.next();
-			if (!next) {
-				return;
-			}
+		try {
+			while (true) {
+				const next = await states.next();
+				if (!next) {
+					return;
+				}
 
-			yield next;
+				yield next;
+			}
+		} finally {
+			states.free();
 		}
 	}
 

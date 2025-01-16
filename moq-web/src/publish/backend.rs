@@ -1,8 +1,25 @@
+use baton::Baton;
 use moq_karp::{moq_transfork::Path, BroadcastProducer, TrackProducer};
+use url::Url;
 use wasm_bindgen::JsCast;
+use web_sys::{HtmlVideoElement, MediaStream};
 
-use super::{ControlsRecv, PublishState, StatusSend, Video};
+use super::{PublishState, Video};
 use crate::{Connect, Error, Result};
+
+#[derive(Debug, Default, Clone, Baton)]
+pub struct Controls {
+	pub url: Option<Url>,
+	pub volume: f64,
+	pub media: Option<MediaStream>,
+	pub preview: Option<HtmlVideoElement>,
+}
+
+#[derive(Debug, Default, Clone, Baton)]
+pub struct Status {
+	pub state: PublishState,
+	pub error: Option<Error>,
+}
 
 pub struct Backend {
 	controls: ControlsRecv,
@@ -42,25 +59,33 @@ impl Backend {
 
 	pub async fn run(&mut self) -> Result<()> {
 		loop {
-			let connect = self.connect.as_mut();
-			let mut video = self.video.as_mut();
-
 			tokio::select! {
-				Some(Some(url)) = self.controls.url.next() => {
-					// Connect using the base of the URL.
-					let mut addr = url.clone();
-					addr.set_fragment(None);
-					addr.set_query(None);
-					addr.set_path("");
+				url = self.controls.url.next() => {
+					let url = url.ok_or(Error::Closed)?;
 
-					self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
-					self.connect = Some(Connect::new(addr));
+					// Close the current broadcast.
 					self.broadcast = None;
 					self.video = None;
 
-					self.status.state.set(PublishState::Connecting);
+					if let Some(url) = url {
+						// Connect using the base of the URL.
+						let mut addr = url.clone();
+						addr.set_fragment(None);
+						addr.set_query(None);
+						addr.set_path("");
+
+						self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
+						self.connect = Some(Connect::new(addr));
+
+						self.status.state.set(PublishState::Connecting);
+					} else {
+						self.path = Path::default();
+						self.connect = None;
+
+						self.status.state.set(PublishState::Idle);
+					}
 				},
-				Some(session) = async move { Some(connect?.established().await) } => {
+				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let mut broadcast = moq_karp::BroadcastProducer::new(session?, self.path.clone())?;
 					if let Some(video) = self.video.as_mut() {
 						self.video_track = Some(broadcast.publish_video(video.info().clone())?);
@@ -71,8 +96,9 @@ impl Backend {
 
 					self.status.state.set(PublishState::Connected);
 				},
-				Some(true) = self.controls.close.next() => return Ok(()),
-				Some(media) = self.controls.media.next() => {
+				media = self.controls.media.next() => {
+					let media = media.ok_or(Error::Closed)?;
+
 					// Close the existing video stream.
 					self.video.take();
 					self.video_track.take();
@@ -92,7 +118,7 @@ impl Backend {
 						}
 					}
 				},
-				Some(frame) = async move { Some(video.as_mut()?.frame().await) } => {
+				Some(frame) = async { Some(self.video.as_mut()?.frame().await) } => {
 					match frame? {
 						None => { self.video = None; }
 						Some(frame) => {

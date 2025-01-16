@@ -42,10 +42,6 @@ impl Watch {
 		self.controls.volume.set(volume);
 	}
 
-	pub fn close(&mut self) {
-		self.controls.close.set(true);
-	}
-
 	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {
 		self.controls.canvas.set(canvas);
 	}
