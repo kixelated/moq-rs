@@ -27,14 +27,5 @@ if [ -n "${HOST-}" ]; then
 	ARGS="$ARGS --host $HOST"
 fi
 
-# Forward signals to the actual process
-# Not sure why only the relay needs this?
-cleanup() {
-  kill -TERM "$child" 2>/dev/null
-}
-trap cleanup SIGINT SIGTERM
-
 # Run the relay and forward any arguments
-cargo run --bin moq-relay -- --bind "$BIND" --tls-self-sign "$BIND" --cluster-node "$BIND" --tls-disable-verify --dev $ARGS "$@" &
-child=$!
-wait "$child"
+cargo run --bin moq-relay -- --bind "$BIND" --tls-self-sign "$BIND" --cluster-node "$BIND" --tls-disable-verify --dev $ARGS "$@"
