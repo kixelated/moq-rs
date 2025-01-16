@@ -45,7 +45,7 @@ impl Video {
 
 		let info = moq_karp::Video {
 			track: moq_karp::Track { name, priority: 2 },
-			codec: config.codec.try_into().unwrap(),
+			codec: config.codec.into(),
 			description: decoder_config.description,
 			resolution: moq_karp::Dimensions {
 				width: config.resolution.width,
@@ -114,7 +114,7 @@ impl Video {
 
 		// A list of codecs and profiles sorted in preferred order.
 		// TODO automate this list by looping over profile/level pairs
-		const VIDEO_CODECS: &[&'static str] = &[
+		const VIDEO_CODECS: &[&str] = &[
 			// AV1 Main Profile, level 3.0, Main tier, 8 bits
 			"av01.0.04M.08",
 			// HEVC Main10 Profile, Main Tier, Level 4.0

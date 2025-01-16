@@ -48,7 +48,7 @@ jobs:
       # Make sure u guys don't write bad code
       - run: cargo check --all --verbose
       - run: cargo test --all --verbose
-      - run: cargo clippy --all --no-deps
+      - run: cargo clippy --all --no-deps -- -D warnings
       - run: cargo fmt --all --check
 
       # Check for unused dependencies
