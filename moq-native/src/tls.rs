@@ -293,7 +293,7 @@ impl rustls::client::danger::ServerCertVerifier for FingerprintVerifier {
 		_ocsp: &[u8],
 		_now: UnixTime,
 	) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-		let fingerprint = digest(&SHA256, &end_entity);
+		let fingerprint = digest(&SHA256, end_entity);
 		if fingerprint.as_ref() == self.fingerprint.as_slice() {
 			Ok(rustls::client::danger::ServerCertVerified::assertion())
 		} else {

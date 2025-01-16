@@ -62,7 +62,7 @@ impl Connect {
 			"http" => {
 				// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
 				// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
-				let fingerprint = Self::fingerprint(&addr).await?;
+				let fingerprint = Self::fingerprint(addr).await?;
 				let client = client.server_certificate_hashes(vec![fingerprint]);
 
 				// Make a copy of the address, changing it from HTTP to HTTPS for WebTransport:
@@ -70,7 +70,7 @@ impl Connect {
 				let _ = addr.set_scheme("https");
 				client.connect(&addr).await?
 			}
-			"https" => client.connect(&addr).await?,
+			"https" => client.connect(addr).await?,
 			_ => return Err(Error::InvalidUrl),
 		};
 
