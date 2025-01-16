@@ -2,58 +2,65 @@
 	"name": "@kixelated/moq",
 	"version": "0.0.1",
 	"type": "module",
-	"module": "./dist/src/index.js",
-	"types": "./dist/src/index.d.ts",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
-			"types": "./dist/src/index.d.ts",
-			"import": "./dist/src/index.js"
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
 		},
 		"./video": {
-			"types": "./dist/src/element/video.d.ts",
-			"import": "./dist/src/element/video.js"
+			"types": "./dist/element/video.d.ts",
+			"import": "./dist/element/video.js"
 		},
 		"./publish": {
-			"types": "./dist/src/element/publish.d.ts",
-			"import": "./dist/src/element/publish.js"
+			"types": "./dist/element/publish.d.ts",
+			"import": "./dist/element/publish.js"
 		},
 		"./watch": {
-			"types": "./dist/src/element/watch.d.ts",
-			"import": "./dist/src/element/watch.js"
+			"types": "./dist/element/watch.d.ts",
+			"import": "./dist/element/watch.js"
 		}
 	},
-	"sideEffects": ["./dist/src/element/video.js", "./dist/src/element/publish.js", "./dist/src/element/watch.js"],
-	"files": ["dist", "pkg", "README.md", "LICENSE*"],
+	"sideEffects": [
+		"./dist/element/video.js",
+		"./dist/element/publish.js",
+		"./dist/element/watch.js",
+		"./dist/rust.js",
+		"./dist/snippets/*"
+	],
+	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel --race relay pub web",
 		"cluster": "npm-run-all --print-label --parallel --race relay relay-leaf pub-leaf web",
-
 		"relay": "./dev/relay",
 		"relay-leaf": "PORT=4444 ./dev/relay --cluster-root localhost:4443",
 		"pub": "./dev/pub",
 		"pub-leaf": "PORT=4444 ./dev/pub",
 		"gst": "./dev/gst",
 		"clock": "./dev/clock",
-		"web": "rspack serve",
-
+		"web": "webpack serve",
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
 		"fmt": "biome format --write && cargo fmt --all",
-
-		"build": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index && rm pkg/.gitignore && tsc"
+		"build": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json && tsc && tsc-alias"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
-		"@rspack/cli": "^1.0.14",
-		"@rspack/core": "^1.0.14",
+		"@types/dom-mediacapture-transform": "^0.1.10",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"html-webpack-plugin": "^5.6.0",
-		"typescript": "^5.6.3",
+		"npm-run-all": "^4.1.5",
+		"ts-loader": "^9.5.2",
+		"ts-node": "^10.9.2",
+		"tsc-alias": "^1.8.10",
+		"typescript": "^5.7.3",
 		"wasm-pack": "^0.13.1",
-		"@types/dom-mediacapture-transform": "^0.1.10",
-		"npm-run-all": "^4.1.5"
+		"webpack": "^5.97.1",
+		"webpack-cli": "^6.0.1",
+		"webpack-dev-server": "^5.2.0"
 	}
 }

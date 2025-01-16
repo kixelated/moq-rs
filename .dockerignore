@@ -9,7 +9,6 @@
 
 # Build stuff
 **/node_modules
-**/pkg
 **/target
 **/dist
 

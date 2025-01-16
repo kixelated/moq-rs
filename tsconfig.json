@@ -7,7 +7,7 @@
 		"moduleResolution": "Bundler",
 
 		/* Emit Options */
-		"outDir": "dist/src",
+		"outDir": "dist",
 		"declaration": true,
 		"sourceMap": true,
 
@@ -20,8 +20,12 @@
 		"isolatedModules": true,
 
 		/* Experimental Features */
-		"useDefineForClassFields": true
+		"useDefineForClassFields": true,
+
+		"paths": {
+			"@dist/*": ["./dist/*"]
+		}
 	},
 	"include": ["moq-web/src"],
-	"exclude": ["node_modules", "pkg"]
+	"exclude": ["node_modules"]
 }
