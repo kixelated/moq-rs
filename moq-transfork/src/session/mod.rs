@@ -175,13 +175,8 @@ impl Session {
 		self.subscriber.subscribe(track)
 	}
 
-	/// Discover any tracks published by the remote.
-	pub fn announced(&self) -> AnnouncedConsumer {
-		self.announced_prefix(Path::default())
-	}
-
 	/// Discover any tracks published by the remote matching a prefix.
-	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
+	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
 		self.subscriber.announced(prefix)
 	}
 

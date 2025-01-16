@@ -23,10 +23,8 @@ impl Connection {
 		session.announce(self.cluster.remotes.announced());
 
 		// Add any announcements to the cluster, indicating we're the origin.
-		self.cluster
-			.locals
-			.announce(session.announced(), Some(session.clone()))
-			.await;
+		let all = session.announced(moq_transfork::Path::default());
+		self.cluster.locals.announce(all, Some(session.clone())).await;
 
 		Ok(())
 	}

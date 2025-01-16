@@ -156,7 +156,7 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: Path) -> Self {
-		let announced = session.announced_prefix(path.clone());
+		let announced = session.announced(path.clone());
 
 		Self {
 			session,
