@@ -136,11 +136,8 @@ impl FrameConsumer {
 	pub async fn read_all(&mut self) -> Result<Bytes, Error> {
 		// Wait until the writer is done before even attempting to read.
 		// That way this function can be cancelled without consuming half of the frame.
-		match self.state.wait_for(|s| s.closed.is_err()).await {
-			// The writer closed the stream with an error.
-			Ok(err) => return Err(err.closed.clone().unwrap_err()),
-			// The writer dropped the stream, so the frame was written successfully.
-			Err(_) => (),
+		if let Ok(err) = self.state.wait_for(|s| s.closed.is_err()).await {
+			return Err(err.closed.clone().unwrap_err());
 		};
 
 		// Get all of the remaining chunks.
