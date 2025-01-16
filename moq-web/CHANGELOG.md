@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.12](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.11...moq-web-v0.3.12) - 2025-01-16
+
+### Other
+
+- Element fixes ([#289](https://github.com/kixelated/moq-rs/pull/289))
+- Move playback back to a Worker. ([#288](https://github.com/kixelated/moq-rs/pull/288))
+- Initial WASM contribute ([#283](https://github.com/kixelated/moq-rs/pull/283))
+
 ## [0.3.11](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.10...moq-web-v0.3.11) - 2025-01-13
 
 ### Other

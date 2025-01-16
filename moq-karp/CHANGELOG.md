@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.3...moq-karp-v0.12.0) - 2025-01-16
+
+### Other
+
+- Support fetching fingerprint via native clients. ([#286](https://github.com/kixelated/moq-rs/pull/286))
+- Initial WASM contribute ([#283](https://github.com/kixelated/moq-rs/pull/283))
+
 ## [0.11.3](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.2...moq-karp-v0.11.3) - 2025-01-13
 
 ### Other

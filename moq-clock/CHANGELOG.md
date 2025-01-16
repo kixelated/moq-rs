@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.20](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.19...moq-clock-v0.5.20) - 2025-01-16
+
+### Other
+
+- Support fetching fingerprint via native clients. ([#286](https://github.com/kixelated/moq-rs/pull/286))
+
 ## [0.5.19](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.18...moq-clock-v0.5.19) - 2025-01-13
 
 ### Other
