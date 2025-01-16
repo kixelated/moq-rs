@@ -1496,7 +1496,7 @@ dependencies = [
 
 [[package]]
 name = "moq-gst"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "moq-web"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "baton",
  "console_error_panic_hook",
