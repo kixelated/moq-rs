@@ -57,6 +57,12 @@ impl Watch {
 	}
 }
 
+impl Default for Watch {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[derive(Debug, Default, Copy, Clone)]
 #[wasm_bindgen]
 pub enum WatchState {

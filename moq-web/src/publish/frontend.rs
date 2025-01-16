@@ -78,3 +78,9 @@ impl Publish {
 		self.controls.close.set(true);
 	}
 }
+
+impl Default for Publish {
+	fn default() -> Self {
+		Self::new()
+	}
+}
