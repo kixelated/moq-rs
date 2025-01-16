@@ -8,6 +8,7 @@ The application determines the trade-off between latency and quality, potentiall
 
 See [quic.video](https://quic.video) for more information.
 Note: this project is a [fork of the IETF draft](https://quic.video/blog/transfork) to speed up development.
+If you're curious about the protocol, check out the current [specification](https://github.com/kixelated/moq-drafts).
 
 The project is split into a few crates:
 
@@ -19,7 +20,6 @@ The project is split into a few crates:
 -   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
 -   [moq-native](moq-native): Helpers to configure the native MoQ tools.
 
-There are additional components that have been split into other repositories for development reasons:
 
 
 # Usage

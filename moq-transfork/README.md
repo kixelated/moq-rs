@@ -7,4 +7,4 @@
 A Rust implementation of (a fork of) the proposed IETF standard.
 
 [Specification](https://datatracker.ietf.org/doc/draft-lcurley-moq-transfork/)
-[Github](https://github.com/kixelated/moq-transfork)
+[Github](https://github.com/kixelated/moq-drafts)
