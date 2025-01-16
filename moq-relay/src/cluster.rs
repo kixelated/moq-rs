@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
 use clap::Parser;
 use moq_native::quic;
@@ -92,12 +94,12 @@ impl Cluster {
 
 		// If we're using a root node, then we have to connect to it.
 		let mut announced = match root.as_ref() {
-			Some(addr) if Some(addr) != node.as_ref() => {
-				tracing::info!(?addr, "connecting to root");
+			Some(root) if Some(root) != node.as_ref() => {
+				tracing::info!(?root, "connecting to root");
 
 				// Connect to the root node.
-				let addr = Url::parse(&format!("https://{}", addr)).context("invalid root URL")?;
-				let root = self.client.connect(addr).await.context("failed to connect to root")?;
+				let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
+				let root = self.client.connect(root).await.context("failed to connect to root")?;
 
 				let mut root = moq_transfork::Session::connect(root)
 					.await
@@ -129,20 +131,53 @@ impl Cluster {
 			}
 		};
 
+		// Keep track of the active remotes.
+		let mut remotes = HashMap::new();
+
 		// Discover other origins.
 		// NOTE: The root node will connect to all other nodes as a client, ignoring the existing (server) connection.
 		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
 		while let Some(announce) = announced.next().await {
-			// TODO handle Ended?
-			if let Announced::Active(path) = &announce {
-				// Extract the hostname from the first part of the path.
-				let host = path.first().context("missing node")?.to_string();
-				if Some(&host) == node.as_ref() {
-					// Skip ourselves.
-					continue;
-				}
+			match announce {
+				Announced::Active(path) => {
+					// Extract the hostname from the first part of the path.
+					let host = path.first().context("missing node")?.to_string();
+					if Some(&host) == node.as_ref() {
+						// Skip ourselves.
+						continue;
+					}
 
-				tokio::spawn(self.clone().run_remote(host).in_current_span());
+					tracing::info!(?host, "discovered origin");
+
+					let mut this = self.clone();
+					let remote = host.clone();
+
+					let handle = tokio::spawn(
+						async move {
+							loop {
+								if let Err(err) = this.run_remote(&remote).await {
+									tracing::error!(?err, "remote error, retrying");
+								}
+
+								// TODO smarter backoff
+								tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+							}
+						}
+						.in_current_span(),
+					);
+
+					remotes.insert(host, handle);
+				}
+				Announced::Ended(path) => {
+					let host = path.first().context("missing node")?.to_string();
+					if let Some(handle) = remotes.remove(&host) {
+						tracing::warn!(?host, "terminating remote");
+						handle.abort();
+					}
+				}
+				Announced::Live => {
+					// Ignore.
+				}
 			}
 		}
 
@@ -150,18 +185,17 @@ impl Cluster {
 	}
 
 	#[tracing::instrument("remote", skip_all, err, fields(%host))]
-	async fn run_remote(mut self, host: String) -> anyhow::Result<()> {
-		tracing::info!("discovered origin");
+	async fn run_remote(&mut self, host: &str) -> anyhow::Result<()> {
+		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
 
 		// Connect to the remote node.
-		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
 		let conn = self.client.connect(url).await.context("failed to connect to remote")?;
 
 		let mut session = moq_transfork::Session::connect(conn)
 			.await
 			.context("failed to establish session")?;
 
-		session.route(self.router);
+		session.route(self.router.clone());
 
 		// NOTE: We only announce local tracks to remote nodes.
 		// Otherwise there would be conflicts and we wouldn't know which node is the origin.
