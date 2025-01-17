@@ -122,16 +122,14 @@ impl Publisher {
 		let track = Track {
 			path: subscribe.path,
 			priority: subscribe.priority,
-			group_expires: subscribe.group_expires,
-			group_order: subscribe.group_order,
+			order: subscribe.group_order,
 		};
 
 		let mut track = self.get_track(track).await?;
 
 		let info = message::Info {
 			group_latest: track.latest_group(),
-			group_expires: track.group_expires,
-			group_order: track.group_order,
+			group_order: track.order,
 			track_priority: track.priority,
 		};
 
@@ -277,8 +275,7 @@ impl Publisher {
 		let info = message::Info {
 			group_latest: track.latest_group(),
 			track_priority: track.priority,
-			group_expires: track.group_expires,
-			group_order: track.group_order,
+			group_order: track.order,
 		};
 
 		stream.writer.encode(&info).await?;

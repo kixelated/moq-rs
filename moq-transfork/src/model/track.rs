@@ -18,7 +18,7 @@ use super::{Group, GroupConsumer, GroupProducer, Path};
 pub use crate::message::GroupOrder;
 use crate::Error;
 
-use std::{cmp::Ordering, ops, sync::Arc, time};
+use std::{cmp::Ordering, ops, sync::Arc};
 
 /// A track, a collection of indepedent groups (streams) with a specified order/priority.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -30,10 +30,7 @@ pub struct Track {
 	pub priority: i8,
 
 	/// The preferred order to deliver groups in the track.
-	pub group_order: GroupOrder,
-
-	/// The duration after which a group is considered expired.
-	pub group_expires: time::Duration,
+	pub order: GroupOrder,
 }
 
 impl Track {
@@ -64,8 +61,7 @@ impl Default for Track {
 		Self {
 			path: Default::default(),
 			priority: 0,
-			group_order: GroupOrder::Desc,
-			group_expires: time::Duration::ZERO,
+			order: GroupOrder::Desc,
 		}
 	}
 }
@@ -99,12 +95,7 @@ impl TrackBuilder {
 	}
 
 	pub fn group_order(mut self, order: GroupOrder) -> Self {
-		self.track.group_order = order;
-		self
-	}
-
-	pub fn group_expires(mut self, expires: time::Duration) -> Self {
-		self.track.group_expires = expires;
+		self.track.order = order;
 		self
 	}
 
@@ -243,7 +234,7 @@ impl TrackConsumer {
 	}
 
 	// NOTE: This can return groups out of order.
-	// TODO obey order and expires
+	// TODO obey order
 	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>, Error> {
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self

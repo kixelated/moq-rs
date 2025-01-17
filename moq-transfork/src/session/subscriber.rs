@@ -148,8 +148,7 @@ impl Subscriber {
 			path: track.path.clone(),
 			priority: track.priority,
 
-			group_order: track.group_order,
-			group_expires: track.group_expires,
+			group_order: track.order,
 
 			// TODO
 			group_min: None,
