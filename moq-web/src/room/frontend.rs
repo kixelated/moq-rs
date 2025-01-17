@@ -1,0 +1,95 @@
+use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer};
+use url::Url;
+use wasm_bindgen::prelude::*;
+
+use super::{Backend, Controls, ControlsSend};
+use crate::{Error, Result};
+
+#[wasm_bindgen]
+pub struct Room {
+	controls: ControlsSend,
+	announced: AnnouncedConsumer,
+}
+
+#[wasm_bindgen]
+impl Room {
+	#[wasm_bindgen(constructor)]
+	pub fn new() -> Self {
+		let producer = AnnouncedProducer::new();
+		let consumer = producer.subscribe();
+
+		let controls = Controls::default().baton();
+
+		let backend = Backend::new(controls.1, producer);
+		backend.start();
+
+		Self {
+			controls: controls.0,
+			announced: consumer,
+		}
+	}
+
+	#[wasm_bindgen(setter)]
+	pub fn set_url(&mut self, url: Option<String>) -> Result<()> {
+		let url = match url {
+			Some(url) => Url::parse(&url).map_err(|_| Error::InvalidUrl(url.to_string()))?.into(),
+			None => None,
+		};
+		self.controls.url.set(url);
+
+		Ok(())
+	}
+
+	pub fn announced(&self) -> RoomAnnounced {
+		RoomAnnounced::new(self.announced.clone())
+	}
+}
+
+impl Default for Room {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub enum RoomAction {
+	Join,
+	Leave,
+	Live,
+}
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct RoomAnnounce {
+	pub action: RoomAction,
+	pub name: String,
+}
+
+#[wasm_bindgen]
+pub struct RoomAnnounced {
+	inner: AnnouncedConsumer,
+}
+
+#[wasm_bindgen]
+impl RoomAnnounced {
+	fn new(inner: AnnouncedConsumer) -> Self {
+		Self { inner }
+	}
+
+	pub async fn next(&mut self) -> Option<RoomAnnounce> {
+		Some(match self.inner.next().await? {
+			Announced::Active(suffix) => RoomAnnounce {
+				action: RoomAction::Join,
+				name: suffix[0].clone(),
+			},
+			Announced::Ended(suffix) => RoomAnnounce {
+				action: RoomAction::Leave,
+				name: suffix[0].clone(),
+			},
+			Announced::Live => RoomAnnounce {
+				action: RoomAction::Live,
+				name: "".to_string(),
+			},
+		})
+	}
+}

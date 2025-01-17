@@ -29,7 +29,10 @@ impl Watch {
 	}
 
 	pub fn url(&mut self, url: Option<String>) -> Result<()> {
-		let url = url.map(|u| Url::parse(&u)).transpose().map_err(|_| Error::InvalidUrl)?;
+		let url = match url {
+			Some(url) => Url::parse(&url).map_err(|_| Error::InvalidUrl(url.to_string()))?.into(),
+			None => None,
+		};
 		self.controls.url.set(url);
 		Ok(())
 	}
@@ -40,10 +43,6 @@ impl Watch {
 
 	pub fn volume(&mut self, volume: f64) {
 		self.controls.volume.set(volume);
-	}
-
-	pub fn close(&mut self) {
-		self.controls.close.set(true);
 	}
 
 	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {

@@ -66,7 +66,7 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	disconnectedCallback() {
-		this.#publish?.close();
+		this.#publish.free();
 	}
 
 	attributeChangedCallback(name: string, old?: string, value?: string) {

@@ -71,7 +71,7 @@ impl Connect {
 				client.connect(&addr).await?
 			}
 			"https" => client.connect(addr).await?,
-			_ => return Err(Error::InvalidUrl),
+			_ => return Err(Error::InvalidUrl(addr.to_string())),
 		};
 
 		let session = moq_transfork::Session::connect(session).await?;

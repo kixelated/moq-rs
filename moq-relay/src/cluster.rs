@@ -111,7 +111,7 @@ impl Cluster {
 				tracing::info!(?origins, "waiting for prefix");
 
 				// Subscribe to available origins.
-				root.announced_prefix(origins.clone())
+				root.announced(origins.clone())
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
@@ -202,7 +202,8 @@ impl Cluster {
 		session.announce(self.locals.announced());
 
 		// Add any tracks to the list of remotes for routing.
-		self.remotes.announce(session.announced(), Some(session.clone())).await;
+		let all = session.announced(Path::default());
+		self.remotes.announce(all, Some(session.clone())).await;
 
 		Ok(())
 	}

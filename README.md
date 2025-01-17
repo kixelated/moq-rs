@@ -37,12 +37,12 @@ There's a few scripts in the [dev](dev) directory to help you get started.
 You can run them directly in separate terminals or use the `all` script to run them all at once.
 
 ```sh
-# Run the relay, publisher, and web server:
+# Run the relay, a demo movie, and web server:
 ./dev/all
 
 # Or run each individually in separate terminals:
 ./dev/relay
-./dev/pub
+./dev/bbb
 ./dev/web
 ```
 

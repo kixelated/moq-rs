@@ -21,8 +21,8 @@ pub enum Error {
 	#[error("karp error: {0}")]
 	Karp(#[from] moq_karp::Error),
 
-	#[error("invalid url")]
-	InvalidUrl,
+	#[error("invalid url: {0}")]
+	InvalidUrl(String),
 
 	#[error("invalid fingerprint")]
 	InvalidFingerprint,

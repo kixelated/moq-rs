@@ -1,14 +1,15 @@
 mod error;
 mod publish;
+mod room;
 mod session;
 mod watch;
 
 pub use error::*;
 pub use publish::*;
+pub use room::*;
+pub use watch::*;
 
 pub(crate) use session::*;
-
-pub use watch::Watch;
 
 use wasm_bindgen::prelude::*;
 
@@ -19,7 +20,7 @@ pub fn start() {
 	console_error_panic_hook::set_once();
 
 	let config = wasm_tracing::WASMLayerConfigBuilder::new()
-		.set_max_level(tracing::Level::WARN)
+		.set_max_level(tracing::Level::DEBUG)
 		.build();
 	wasm_tracing::set_as_global_default_with_config(config);
 }

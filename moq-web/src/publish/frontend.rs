@@ -34,7 +34,10 @@ impl Publish {
 
 	#[wasm_bindgen(setter)]
 	pub fn set_url(&mut self, url: Option<String>) -> Result<()> {
-		let url = url.map(|u| Url::parse(&u)).transpose().map_err(|_| Error::InvalidUrl)?;
+		let url = match url {
+			Some(url) => Url::parse(&url).map_err(|_| Error::InvalidUrl(url.to_string()))?.into(),
+			None => None,
+		};
 		self.controls.url.set(url);
 		Ok(())
 	}
@@ -68,19 +71,20 @@ impl Publish {
 	pub fn set_volume(&mut self, volume: f64) {
 		self.controls.volume.set(volume);
 	}
-
-	#[wasm_bindgen(getter)]
-	pub fn closed(&self) -> bool {
-		self.controls.close.get()
-	}
-
-	pub fn close(&mut self) {
-		self.controls.close.set(true);
-	}
 }
 
 impl Default for Publish {
 	fn default() -> Self {
 		Self::new()
 	}
+}
+
+#[derive(Debug, Default, Copy, Clone)]
+#[wasm_bindgen]
+pub enum PublishState {
+	#[default]
+	Idle,
+	Connecting,
+	Connected,
+	Closed,
 }
