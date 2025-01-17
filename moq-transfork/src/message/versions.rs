@@ -31,7 +31,13 @@ impl Version {
 	/// <https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-02.html>
 	pub const FORK_02: Version = Version(0xff0bad02);
 
-	pub const CURRENT: Version = Version::FORK_02;
+	/// <https://www.ietf.org/archive/id/draft-lcurley-moq-transfork-03.html>
+	pub const FORK_03: Version = Version(0xff0bad03);
+
+	/// Unpublished: <https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html>
+	pub const FORK_04: Version = Version(0xff0bad04);
+
+	pub const CURRENT: Version = Version::FORK_04;
 }
 
 impl From<u64> for Version {

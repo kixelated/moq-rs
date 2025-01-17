@@ -33,8 +33,7 @@ impl BroadcastProducer {
 		let catalog = moq_transfork::Track {
 			path: full,
 			priority: -1,
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
+			order: moq_transfork::GroupOrder::Desc,
 		}
 		.produce();
 
@@ -61,8 +60,7 @@ impl BroadcastProducer {
 			path,
 			priority: info.track.priority,
 			// TODO add these to the catalog and support higher latencies.
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
+			order: moq_transfork::GroupOrder::Desc,
 		}
 		.produce();
 
@@ -95,8 +93,7 @@ impl BroadcastProducer {
 			path,
 			priority: info.track.priority,
 			// TODO add these to the catalog and support higher latencies.
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
+			order: moq_transfork::GroupOrder::Desc,
 		}
 		.produce();
 
@@ -230,8 +227,7 @@ impl BroadcastConsumer {
 		let track = moq_transfork::Track {
 			path,
 			priority: -1,
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
+			order: moq_transfork::GroupOrder::Desc,
 		};
 
 		self.catalog_track = Some(self.session.subscribe(track));
@@ -261,8 +257,7 @@ impl BroadcastConsumer {
 			priority: track.priority,
 
 			// TODO add these to the catalog and support higher latencies.
-			group_order: moq_transfork::GroupOrder::Desc,
-			group_expires: std::time::Duration::ZERO,
+			order: moq_transfork::GroupOrder::Desc,
 		};
 
 		let track = self.session.subscribe(track);
