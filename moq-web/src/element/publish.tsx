@@ -2,12 +2,15 @@ import * as Moq from "..";
 
 import { jsx, jsxFragment } from "./jsx";
 
+const observedAttributes = ["url", "preview"] as const;
+type ObservedAttribute = (typeof observedAttributes)[number];
+
 export class MoqPublishElement extends HTMLElement {
 	#publish: Moq.Publish;
 	#preview: HTMLVideoElement;
 
 	static get observedAttributes() {
-		return ["url", "preview"];
+		return observedAttributes;
 	}
 
 	constructor() {
@@ -45,10 +48,6 @@ export class MoqPublishElement extends HTMLElement {
 		this.#publish.media = await navigator.mediaDevices.getDisplayMedia({ video: true });
 	}
 
-	setAttr(name: string, oldValue?: string, newValue?: string) {
-		this.attributeChangedCallback(name, oldValue, newValue);
-	}
-
 	connectedCallback() {
 		for (const name of MoqPublishElement.observedAttributes) {
 			const value = this.getAttribute(name) ?? undefined;
@@ -62,7 +61,7 @@ export class MoqPublishElement extends HTMLElement {
 		this.#publish.free();
 	}
 
-	attributeChangedCallback(name: string, old?: string, value?: string) {
+	attributeChangedCallback(name: ObservedAttribute, old?: string, value?: string) {
 		if (old === value) {
 			return;
 		}
@@ -78,6 +77,11 @@ export class MoqPublishElement extends HTMLElement {
 					this.#preview.srcObject = null;
 				}
 				break;
+			default: {
+				// Exhaustiveness check ensures all attributes are handled
+				const _exhaustive: never = name;
+				throw new Error(`Unhandled attribute: ${_exhaustive}`);
+			}
 		}
 	}
 

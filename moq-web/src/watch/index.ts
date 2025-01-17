@@ -80,7 +80,8 @@ export class Watch {
 		this.#watch.then((watch) => watch.canvas(canvas ? Comlink.transfer(canvas, [canvas]) : null));
 	}
 
-	async close() {
+	// Don't call any other methods after calling free().
+	async free() {
 		this.#watch.then((watch) => watch.free());
 	}
 
