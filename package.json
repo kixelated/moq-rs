@@ -34,6 +34,7 @@
 		"all": "npm-run-all --print-label --parallel --race relay bbb web",
 		"relay": "./dev/relay",
 		"bbb": "./dev/bbb",
+		"tos": "./dev/tos",
 		"gst": "./dev/gst",
 		"clock": "./dev/clock",
 		"web": "webpack serve",

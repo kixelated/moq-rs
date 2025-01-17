@@ -3,6 +3,7 @@
 type JSXProps<T extends keyof HTMLElementTagNameMap> = Partial<HTMLElementTagNameMap[T]> & {
 	children?: (Node | string)[];
 	ref?: (el: HTMLElementTagNameMap[T]) => void;
+	css?: Partial<CSSStyleDeclaration>;
 };
 
 export function jsx(tag: typeof jsxFragment, props: null, ...children: (Node | string)[]): DocumentFragment;
@@ -25,7 +26,9 @@ export function jsx(tag: any, props: any, ...children: any[]): HTMLElement | Doc
 			if (key === "children") continue;
 
 			if (key === "ref" && typeof value === "function") {
-				props.ref(element);
+				value(element);
+			} else if (key === "css" && typeof value === "object") {
+				Object.assign(element.style, value);
 			} else if (key.startsWith("on") && typeof value === "function") {
 				const eventName = key.slice(2).toLowerCase(); // e.g., onClick -> click
 				element.addEventListener(eventName, value as EventListener);

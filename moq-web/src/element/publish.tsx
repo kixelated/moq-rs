@@ -14,31 +14,14 @@ export class MoqPublishElement extends HTMLElement {
 		super();
 
 		this.#publish = new Moq.Publish();
-		this.#preview = (<video />) as HTMLVideoElement;
+		this.#preview = (<video css={{ display: "block", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(
 			<>
-				<style>{`
-					:host {
-						display: block;
-						position: relative;
-					}
-
-					video {
-						display: block;
-						max-width: 100%;
-						height: auto;
-					}
-
-					#controls {
-						margin-top: 10px;
-					}
-				`}</style>
-
 				{this.#preview}
 
-				<div id="controls">
+				<div id="controls" css={{ marginTop: "10px" }}>
 					<button type="button" onclick={() => this.#shareCamera()}>
 						Share Camera
 					</button>
@@ -52,6 +35,7 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	async #shareCamera() {
+		// TODO configure the constraints
 		this.#publish.media = await navigator.mediaDevices.getUserMedia({
 			video: true,
 		});

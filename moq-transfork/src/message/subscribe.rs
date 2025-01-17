@@ -1,5 +1,3 @@
-use std::time;
-
 use crate::{
 	coding::{Decode, DecodeError, Encode},
 	message::group,
@@ -16,7 +14,6 @@ pub struct Subscribe {
 	pub priority: i8,
 
 	pub group_order: group::GroupOrder,
-	pub group_expires: time::Duration,
 	pub group_min: Option<u64>,
 	pub group_max: Option<u64>,
 }
@@ -28,7 +25,6 @@ impl Decode for Subscribe {
 		let priority = i8::decode(r)?;
 
 		let group_order = group::GroupOrder::decode(r)?;
-		let group_expires = time::Duration::decode(r)?;
 		let group_min = match u64::decode(r)? {
 			0 => None,
 			n => Some(n - 1),
@@ -44,7 +40,6 @@ impl Decode for Subscribe {
 			priority,
 
 			group_order,
-			group_expires,
 			group_min,
 			group_max,
 		})
@@ -58,7 +53,6 @@ impl Encode for Subscribe {
 		self.priority.encode(w);
 
 		self.group_order.encode(w);
-		self.group_expires.encode(w);
 		self.group_min.map(|v| v + 1).unwrap_or(0).encode(w);
 		self.group_max.map(|v| v + 1).unwrap_or(0).encode(w);
 	}
@@ -69,7 +63,6 @@ pub struct SubscribeUpdate {
 	pub priority: u64,
 
 	pub group_order: group::GroupOrder,
-	pub group_expires: time::Duration,
 	pub group_min: Option<u64>,
 	pub group_max: Option<u64>,
 }
@@ -78,7 +71,6 @@ impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let priority = u64::decode(r)?;
 		let group_order = group::GroupOrder::decode(r)?;
-		let group_expires = time::Duration::decode(r)?;
 		let group_min = match u64::decode(r)? {
 			0 => None,
 			n => Some(n - 1),
@@ -91,7 +83,6 @@ impl Decode for SubscribeUpdate {
 		Ok(Self {
 			priority,
 			group_order,
-			group_expires,
 			group_min,
 			group_max,
 		})

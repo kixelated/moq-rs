@@ -5,6 +5,7 @@ declare namespace JSX {
 		[K in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[K]> & {
 			children?: (Node | string)[];
 			ref?: (el: HTMLElementTagNameMap[T]) => void;
+			css?: Partial<CSSStyleDeclaration>;
 		};
 	};
 }
