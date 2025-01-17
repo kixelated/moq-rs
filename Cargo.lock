@@ -148,9 +148,9 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.12.0"
+version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f409eb70b561706bf8abba8ca9c112729c481595893fd06a2dd9af8ed8441148"
+checksum = "1ea835662a0af02443aa1396d39be523bbf8f11ee6fad20329607c480bea48c3"
 dependencies = [
  "aws-lc-sys",
  "paste",
@@ -160,9 +160,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.24.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "923ded50f602b3007e5e63e3f094c479d9c8a9b42d7f4034e4afe456aa48bfd2"
+checksum = "71b2ddd3ada61a305e1d8bb6c005d1eaa7d14d903681edfc400406d523a9b491"
 dependencies = [
  "bindgen",
  "cc",
@@ -317,9 +317,9 @@ checksum = "325918d6fe32f23b19878fe4b34794ae41fc19ddbe53b10571a4874d44ffd39b"
 
 [[package]]
 name = "cc"
-version = "1.2.9"
+version = "1.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8293772165d9345bdaaa39b45b2109591e63fe5e6fbc23c6ff930a048aa310b"
+checksum = "13208fcbb66eaeffe09b99fffbe1af420f00a7b35aa99ad683dfc1aa76145229"
 dependencies = [
  "jobserver",
  "libc",
@@ -1482,7 +1482,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.5.21"
+version = "0.5.22"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "moq-karp"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1537,7 +1537,7 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -1562,7 +1562,7 @@ dependencies = [
 
 [[package]]
 name = "moq-relay"
-version = "0.6.19"
+version = "0.6.20"
 dependencies = [
  "anyhow",
  "axum",
@@ -1579,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "moq-transfork"
-version = "0.8.3"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "futures",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "moq-web"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "baton",
  "console_error_panic_hook",
@@ -2925,9 +2925,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "valuable"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "version-compare"

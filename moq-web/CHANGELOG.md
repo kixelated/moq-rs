@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.14](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.13...moq-web-v0.3.14) - 2025-01-17
+
+### Other
+
+- Add initial <moq-meet> element ([#302](https://github.com/kixelated/moq-rs/pull/302))
+- Switch to webpack ([#301](https://github.com/kixelated/moq-rs/pull/301))
+
 ## [0.3.13](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.12...moq-web-v0.3.13) - 2025-01-16
 
 ### Other
