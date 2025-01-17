@@ -4,18 +4,10 @@ set -euo pipefail
 # Change directory to the root of the project
 cd "$(dirname "$0")/.."
 
-# Download the Big Buck Bunny video if it doesn't exist
-if [ ! -f dev/bbb.fmp4 ]; then
-	if [ ! -f dev/bbb.mp4 ]; then
-		echo "Downloading ya boye Big Buck Bunny..."
-		wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O dev/bbb.mp4
-	fi
-
-	echo "Converting to a (properly) fragmented MP4..."
-	ffmpeg -i dev/bbb.mp4 \
-		-c copy \
-		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		dev/bbb.fmp4
+# Error if INPUT or NAME is unset
+if [ -z "${INPUT:-}" ] || [ -z "${NAME:-}" ]; then
+	echo "Usage: use ./dev/bbb or ./dev/tos"
+	exit 1
 fi
 
 # Connect to localhost by default.
@@ -24,12 +16,7 @@ PORT="${PORT:-4443}"
 ADDR="${ADDR:-$HOST:$PORT}"
 SCHEME="${SCHEME:-http}"
 
-# Use the default "demo/bbb" for the broadcast.
-NAME="${NAME:-demo/bbb}"
 URL="${URL:-"$SCHEME://$ADDR/$NAME"}"
-
-# Default to a source video
-INPUT="${INPUT:-dev/bbb.fmp4}"
 
 # A crude hack to let the relay grab the cargo lock first when using /dev/all
 sleep 0.5

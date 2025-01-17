@@ -70,6 +70,14 @@ impl AnnouncedProducer {
 		AnnouncedConsumer::new(self.state.subscribe(), prefix)
 	}
 
+	/// Clear all announced tracks.
+	pub fn reset(&mut self) {
+		self.state.send_modify(|state| {
+			state.active.clear();
+			state.live = false;
+		});
+	}
+
 	pub async fn closed(&self) {
 		self.state.closed().await;
 	}

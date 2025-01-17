@@ -74,7 +74,7 @@ impl Backend {
 						addr.set_query(None);
 						addr.set_path("");
 
-						self.path = url.path_segments().ok_or(Error::InvalidUrl)?.collect();
+						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
 						self.connect = Some(Connect::new(addr));
 
 						self.status.state.set(WatchState::Connecting);
