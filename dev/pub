@@ -21,6 +21,10 @@ URL="${URL:-"$SCHEME://$ADDR/$NAME"}"
 # A crude hack to let the relay grab the cargo lock first when using /dev/all
 sleep 0.5
 
+# Pre-build the binary so we don't queue media while compiling
+# This is just to avoid the obvious fast forwarding when a player is waiting for the broadcast.
+cargo build --bin moq-karp
+
 # Run ffmpeg and pipe the output to moq-pub
 ffmpeg -hide_banner -v quiet \
 	-stream_loop -1 -re \
