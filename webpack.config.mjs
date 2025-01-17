@@ -42,7 +42,7 @@ const config = {
 		],
 	},
 	resolve: {
-		extensions: [".ts", ".js"],
+		extensions: [".ts", ".tsx", ".js"],
 		alias: {
 			"@dist": path.resolve(__dirname, "dist"),
 		},

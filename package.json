@@ -32,17 +32,14 @@
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel --race relay bbb web",
-
 		"relay": "./dev/relay",
 		"bbb": "./dev/bbb",
 		"gst": "./dev/gst",
 		"clock": "./dev/clock",
 		"web": "webpack serve",
-
 		"cluster": "npm-run-all --print-label --parallel --race relay cluster:leaf cluster:bbb web",
 		"cluster:leaf": "PORT=4444 ./dev/relay --cluster-root localhost:4443",
 		"cluster:bbb": "PORT=4444 ./dev/bbb",
-
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
 		"fmt": "biome format --write && cargo fmt --all",

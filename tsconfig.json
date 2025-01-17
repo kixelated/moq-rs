@@ -22,6 +22,11 @@
 		/* Experimental Features */
 		"useDefineForClassFields": true,
 
+		// JSX
+		"jsx": "react",
+		"jsxFactory": "jsx",
+		"jsxFragmentFactory": "jsxFragment",
+
 		"paths": {
 			"@dist/*": ["./dist/*"]
 		}

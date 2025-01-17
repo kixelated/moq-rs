@@ -1,3 +1,5 @@
+use std::collections::{hash_map::Entry, HashMap};
+
 use baton::Baton;
 use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Path};
 use url::Url;
@@ -18,6 +20,7 @@ pub struct Backend {
 	announced: Option<AnnouncedConsumer>,
 
 	producer: AnnouncedProducer,
+	unique: HashMap<String, usize>,
 }
 
 impl Backend {
@@ -29,6 +32,7 @@ impl Backend {
 			room: Path::default(),
 			connect: None,
 			announced: None,
+			unique: HashMap::new(),
 		}
 	}
 
@@ -84,18 +88,39 @@ impl Backend {
 	}
 
 	fn announced(&mut self, suffix: Path) {
+		// TODO only announce a single level deep
 		if suffix.len() != 2 {
 			return;
 		}
 
-		self.producer.announce(suffix);
+		// Annoying that we have to do this.
+		let name = suffix.first().cloned().unwrap();
+		match self.unique.entry(name.clone()) {
+			Entry::Occupied(mut entry) => {
+				*entry.get_mut() += 1;
+			}
+			Entry::Vacant(entry) => {
+				entry.insert(1);
+				self.producer.announce(Path::new().push(name));
+			}
+		}
 	}
 
 	fn unannounced(&mut self, suffix: Path) {
+		// TODO only announce a single level deep
 		if suffix.len() != 2 {
 			return;
 		}
 
-		self.producer.unannounce(&suffix);
+		// Annoying that we have to do this.
+		let name = suffix.first().unwrap();
+		if let Entry::Occupied(mut entry) = self.unique.entry(name.clone()) {
+			*entry.get_mut() -= 1;
+
+			if *entry.get() == 0 {
+				entry.remove();
+				self.producer.unannounce(&Path::new().push(name));
+			}
+		}
 	}
 }
