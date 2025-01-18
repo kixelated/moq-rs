@@ -1,7 +1,13 @@
 import type { RoomAnnounced } from "@dist/rust";
 import { Room, RoomAction } from "@dist/rust";
-import { MoqPublishElement } from "./publish";
-import { MoqWatchElement } from "./watch";
+
+import type { MoqPublishElement } from "./publish";
+import type { MoqWatchElement } from "./watch";
+
+import { jsx } from "./jsx";
+
+const observedAttributes = ["room", "publish"] as const;
+type ObservedAttribute = (typeof observedAttributes)[number];
 
 export class MoqMeetElement extends HTMLElement {
 	#room: Room;
@@ -10,43 +16,36 @@ export class MoqMeetElement extends HTMLElement {
 	#broadcasts: HTMLDivElement;
 
 	static get observedAttributes() {
-		return ["room", "name"];
+		return observedAttributes;
 	}
 
 	constructor() {
 		super();
 
 		this.#room = new Room();
-		this.#publish = new MoqPublishElement();
+		this.#publish = (<moq-publish />) as MoqPublishElement;
 
 		const announced = this.#room.announced();
 		this.#runAnnounced(announced).finally(() => announced.free());
 
 		const shadow = this.attachShadow({ mode: "open" });
-		shadow.innerHTML = `
-			<style type="text/css">
-				.broadcasts {
-					display: flex;
-					gap: 8px;
-					align-items: center;
 
-					moq-watch, moq-publish {
-						border-radius: 0.375rem;
-						overflow: hidden;
-					}
-				}
-
-			</style>
-		`;
-
-		this.#broadcasts = document.createElement("div");
-		this.#broadcasts.className = "broadcasts";
-		this.#broadcasts.appendChild(this.#publish);
+		this.#broadcasts = (
+			<div
+				css={{
+					display: "flex",
+					gap: "8px",
+					alignItems: "center",
+				}}
+			/>
+		) as HTMLDivElement;
 
 		shadow.appendChild(this.#broadcasts);
 	}
 
 	connectedCallback() {
+		this.#broadcasts.appendChild(this.#publish);
+
 		for (const name of MoqMeetElement.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== undefined) {
@@ -55,9 +54,11 @@ export class MoqMeetElement extends HTMLElement {
 		}
 	}
 
-	disconnectedCallback() {}
+	disconnectedCallback() {
+		this.#broadcasts.remove();
+	}
 
-	attributeChangedCallback(name: string, old: string | null, value: string | null) {
+	attributeChangedCallback(name: ObservedAttribute, old: string | null, value: string | null) {
 		if (old === value) {
 			return;
 		}
@@ -66,9 +67,9 @@ export class MoqMeetElement extends HTMLElement {
 			// biome-ignore lint/suspicious/noFallthroughSwitchClause: Update the publish URL when the room or name changes.
 			case "room":
 				this.#room.url = value;
-			case "name":
-				if (this.room && this.name) {
-					this.#publish.url = `${this.room}/${this.name}`;
+			case "publish":
+				if (this.room && this.publish) {
+					this.#publish.url = `${this.room}/${this.publish}`;
 				} else {
 					this.#publish.url = null;
 				}
@@ -98,26 +99,31 @@ export class MoqMeetElement extends HTMLElement {
 	}
 
 	#join(name: string) {
-		if (name === this.name) {
+		if (name === this.publish) {
 			// TODO use this as a signal that we're officially in the room.
 			return;
 		}
 
-		const watch = new MoqWatchElement();
-		watch.id = name;
-		watch.url = `${this.room}/${name}`;
+		const watch = (
+			<moq-watch
+				id={`broadcast-${name}`}
+				url={`${this.room}/${name}`}
+				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
+			/>
+		) as MoqWatchElement;
 
 		this.#broadcasts.appendChild(watch);
 	}
 
 	#leave(name: string) {
-		if (name === this.name) {
+		if (name === this.publish) {
 			// TODO use this as a signal that we got kicked out of the room.
 			// Sucks to suck.
 			return;
 		}
 
-		const watch = this.#broadcasts.querySelector(`#${name}`) as MoqWatchElement | null;
+		const id = `#broadcast-${name}`;
+		const watch = this.#broadcasts.querySelector(id) as MoqWatchElement | null;
 		if (!watch) {
 			throw new Error("user not found");
 		}
@@ -137,15 +143,15 @@ export class MoqMeetElement extends HTMLElement {
 		}
 	}
 
-	get name(): string | null {
-		return this.getAttribute("name");
+	get publish(): string | null {
+		return this.getAttribute("publish");
 	}
 
-	set name(value: string | null) {
+	set publish(value: string | null) {
 		if (value === null || value === "") {
-			this.removeAttribute("name");
+			this.removeAttribute("publish");
 		} else {
-			this.setAttribute("name", value);
+			this.setAttribute("publish", value);
 		}
 	}
 }
