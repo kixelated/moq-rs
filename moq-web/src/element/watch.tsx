@@ -2,6 +2,7 @@ import { Watch } from "..";
 import type { WatchState } from "..";
 
 import { jsx } from "./jsx";
+import { attribute } from "./component";
 
 const observedAttributes = ["url", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
@@ -10,6 +11,16 @@ export class MoqWatchElement extends HTMLElement {
 	#watch: Watch | null;
 	#canvas: OffscreenCanvas;
 
+	@attribute
+	accessor url = "";
+
+	@attribute
+	accessor paused = false;
+
+	@attribute
+	accessor volume = 1;
+
+	// TODO Make this automatically generated via @attribute?
 	static get observedAttributes() {
 		return observedAttributes;
 	}
@@ -87,38 +98,6 @@ export class MoqWatchElement extends HTMLElement {
 				throw new Error(`Unhandled attribute: ${_exhaustive}`);
 			}
 		}
-	}
-
-	get url(): string | null {
-		return this.getAttribute("url");
-	}
-
-	set url(value: string | null) {
-		if (value === null || value === "") {
-			this.removeAttribute("url");
-		} else {
-			this.setAttribute("url", value);
-		}
-	}
-
-	get paused(): boolean {
-		return this.getAttribute("paused") !== null;
-	}
-
-	set paused(value: boolean) {
-		if (value) {
-			this.setAttribute("paused", "");
-		} else {
-			this.removeAttribute("paused");
-		}
-	}
-
-	get volume(): number {
-		return Number.parseFloat(this.getAttribute("volume") ?? "1");
-	}
-
-	set volume(value: number) {
-		this.setAttribute("volume", value.toString());
 	}
 }
 

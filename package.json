@@ -29,7 +29,11 @@
 		"./dist/rust.js",
 		"./dist/snippets/*"
 	],
-	"files": ["dist", "README.md", "LICENSE*"],
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE*"
+	],
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel --race relay bbb web",
 		"relay": "./dev/relay",
@@ -51,9 +55,13 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
+		"@shoelace-style/shoelace": "^2.19.1",
 		"@types/dom-mediacapture-transform": "^0.1.10",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
+		"copy-webpack-plugin": "^12.0.2",
+		"css-loader": "^7.1.2",
 		"html-webpack-plugin": "^5.6.0",
+		"mini-css-extract-plugin": "^2.9.2",
 		"npm-run-all": "^4.1.5",
 		"ts-loader": "^9.5.2",
 		"ts-node": "^10.9.2",

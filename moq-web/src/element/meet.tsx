@@ -1,19 +1,23 @@
 import type { RoomAnnounced } from "@dist/rust";
 import { Room, RoomAction } from "@dist/rust";
 
-import type { MoqPublishElement } from "./publish";
+import { MoqPublishElement } from "./publish";
 import type { MoqWatchElement } from "./watch";
 
 import { jsx } from "./jsx";
+import { attribute } from "./component";
 
-const observedAttributes = ["room", "publish"] as const;
+const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
 export class MoqMeetElement extends HTMLElement {
-	#room: Room;
-	#publish: MoqPublishElement;
+	#room: Room | null = null;
 
+	#publish?: MoqPublishElement;
 	#broadcasts: HTMLDivElement;
+
+	@attribute
+	accessor room = "";
 
 	static get observedAttributes() {
 		return observedAttributes;
@@ -22,29 +26,26 @@ export class MoqMeetElement extends HTMLElement {
 	constructor() {
 		super();
 
-		this.#room = new Room();
-		this.#publish = (<moq-publish />) as MoqPublishElement;
-
-		const announced = this.#room.announced();
-		this.#runAnnounced(announced).finally(() => announced.free());
-
 		const shadow = this.attachShadow({ mode: "open" });
 
-		this.#broadcasts = (
-			<div
-				css={{
-					display: "flex",
-					gap: "8px",
-					alignItems: "center",
-				}}
-			/>
-		) as HTMLDivElement;
+		this.#publish = (<moq-publish />) as MoqPublishElement;
+
+		const publishSlot = (<slot />) as HTMLSlotElement;
+		publishSlot.addEventListener("slotchange", () => {
+			this.#publish = publishSlot.assignedNodes().find((node) => node instanceof MoqPublishElement);
+		});
+
+		this.#broadcasts = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
 
 		shadow.appendChild(this.#broadcasts);
+		shadow.appendChild(publishSlot);
 	}
 
 	connectedCallback() {
-		this.#broadcasts.appendChild(this.#publish);
+		this.#room = new Room();
+
+		const announced = this.#room.announced();
+		this.#runAnnounced(announced).finally(() => announced.free());
 
 		for (const name of MoqMeetElement.observedAttributes) {
 			const value = this.getAttribute(name);
@@ -55,25 +56,28 @@ export class MoqMeetElement extends HTMLElement {
 	}
 
 	disconnectedCallback() {
-		this.#broadcasts.remove();
+		this.#room?.free();
+		this.#room = null;
 	}
 
 	attributeChangedCallback(name: ObservedAttribute, old: string | null, value: string | null) {
+		if (!this.#room) {
+			return;
+		}
+
 		if (old === value) {
 			return;
 		}
 
 		switch (name) {
-			// biome-ignore lint/suspicious/noFallthroughSwitchClause: Update the publish URL when the room or name changes.
 			case "room":
 				this.#room.url = value;
-			case "publish":
-				if (this.room && this.publish) {
-					this.#publish.url = `${this.room}/${this.publish}`;
-				} else {
-					this.#publish.url = null;
-				}
 				break;
+			default: {
+				// Exhaustiveness check ensures all attributes are handled
+				const _exhaustive: never = name;
+				throw new Error(`Unhandled attribute: ${_exhaustive}`);
+			}
 		}
 	}
 
@@ -98,9 +102,11 @@ export class MoqMeetElement extends HTMLElement {
 		}
 	}
 
+	#updatePublish() {}
+
 	#join(name: string) {
-		if (name === this.publish) {
-			// TODO use this as a signal that we're officially in the room.
+		if (this.#publish?.url.endsWith(`/${name}`)) {
+			this.#broadcasts.appendChild(this.#publish);
 			return;
 		}
 
@@ -112,47 +118,23 @@ export class MoqMeetElement extends HTMLElement {
 			/>
 		) as MoqWatchElement;
 
-		this.#broadcasts.appendChild(watch);
+		this.appendChild(watch);
 	}
 
 	#leave(name: string) {
-		if (name === this.publish) {
-			// TODO use this as a signal that we got kicked out of the room.
-			// Sucks to suck.
+		if (this.#publish?.url.endsWith(`/${name}`)) {
+			// We got kicked out of the room.
+			this.#broadcasts.removeChild(this.#publish);
 			return;
 		}
 
 		const id = `#broadcast-${name}`;
-		const watch = this.#broadcasts.querySelector(id) as MoqWatchElement | null;
+		const watch = this.querySelector(id) as MoqWatchElement | null;
 		if (!watch) {
 			throw new Error("user not found");
 		}
 
 		watch.remove();
-	}
-
-	get room(): string | null {
-		return this.getAttribute("room");
-	}
-
-	set room(value: string | null) {
-		if (value === null || value === "") {
-			this.removeAttribute("room");
-		} else {
-			this.setAttribute("room", value);
-		}
-	}
-
-	get publish(): string | null {
-		return this.getAttribute("publish");
-	}
-
-	set publish(value: string | null) {
-		if (value === null || value === "") {
-			this.removeAttribute("publish");
-		} else {
-			this.setAttribute("publish", value);
-		}
 	}
 }
 

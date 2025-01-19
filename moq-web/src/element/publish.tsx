@@ -1,4 +1,5 @@
 import * as Moq from "..";
+import { attribute } from "./component";
 
 import { jsx, jsxFragment } from "./jsx";
 
@@ -6,8 +7,15 @@ const observedAttributes = ["url", "preview"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
 export class MoqPublishElement extends HTMLElement {
-	#publish: Moq.Publish;
+	#publish: Moq.Publish | null;
 	#preview: HTMLVideoElement;
+	#media: MediaStream | null = null;
+
+	@attribute
+	accessor url = "";
+
+	@attribute
+	accessor preview = false;
 
 	static get observedAttributes() {
 		return observedAttributes;
@@ -17,7 +25,7 @@ export class MoqPublishElement extends HTMLElement {
 		super();
 
 		this.#publish = new Moq.Publish();
-		this.#preview = (<video css={{ display: "block", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
+		this.#preview = (<video css={{ display: "none", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(
@@ -26,11 +34,11 @@ export class MoqPublishElement extends HTMLElement {
 
 				<div id="controls" css={{ marginTop: "10px" }}>
 					<button type="button" onclick={() => this.#shareCamera()}>
-						Share Camera
+						Camera
 					</button>
 
 					<button type="button" onclick={() => this.#shareScreen()}>
-						Share Screen
+						Screen
 					</button>
 				</div>
 			</>,
@@ -39,16 +47,40 @@ export class MoqPublishElement extends HTMLElement {
 
 	async #shareCamera() {
 		// TODO configure the constraints
-		this.#publish.media = await navigator.mediaDevices.getUserMedia({
+		this.#media = await navigator.mediaDevices.getUserMedia({
 			video: true,
 		});
+
+		if (!this.#publish) {
+			// Removed from DOM during await.
+			return;
+		}
+
+		this.#publish.media = this.#media;
+		if (this.preview) {
+			this.#preview.srcObject = this.#media;
+		}
 	}
 
 	async #shareScreen() {
-		this.#publish.media = await navigator.mediaDevices.getDisplayMedia({ video: true });
+		this.#media = await navigator.mediaDevices.getDisplayMedia({ video: true });
+
+		if (!this.#publish) {
+			// Removed from DOM during await.
+			return;
+		}
+
+		this.#publish.media = this.#media;
+		if (this.preview) {
+			this.#preview.srcObject = this.#media;
+		}
 	}
 
 	connectedCallback() {
+		if (!this.#publish) {
+			this.#publish = new Moq.Publish();
+		}
+
 		for (const name of MoqPublishElement.observedAttributes) {
 			const value = this.getAttribute(name) ?? undefined;
 			if (value !== undefined) {
@@ -58,10 +90,15 @@ export class MoqPublishElement extends HTMLElement {
 	}
 
 	disconnectedCallback() {
-		this.#publish.free();
+		this.#publish?.free();
+		this.#publish = null;
 	}
 
 	attributeChangedCallback(name: ObservedAttribute, old?: string, value?: string) {
+		if (!this.#publish) {
+			return;
+		}
+
 		if (old === value) {
 			return;
 		}
@@ -72,8 +109,10 @@ export class MoqPublishElement extends HTMLElement {
 				break;
 			case "preview":
 				if (value) {
+					this.#preview.style.display = "block";
 					this.#preview.srcObject = this.#publish.media ?? null;
 				} else {
+					this.#preview.style.display = "none";
 					this.#preview.srcObject = null;
 				}
 				break;
@@ -82,30 +121,6 @@ export class MoqPublishElement extends HTMLElement {
 				const _exhaustive: never = name;
 				throw new Error(`Unhandled attribute: ${_exhaustive}`);
 			}
-		}
-	}
-
-	get url(): string | null {
-		return this.getAttribute("url");
-	}
-
-	set url(value: string | null) {
-		if (value === null || value === "") {
-			this.removeAttribute("url");
-		} else {
-			this.setAttribute("url", value);
-		}
-	}
-
-	get preview(): boolean {
-		return this.getAttribute("preview") !== null;
-	}
-
-	set preview(value: boolean) {
-		if (value) {
-			this.setAttribute("preview", "");
-		} else {
-			this.removeAttribute("preview");
 		}
 	}
 }
