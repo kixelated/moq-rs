@@ -26,14 +26,11 @@
 		"./dist/element/video.js",
 		"./dist/element/publish.js",
 		"./dist/element/watch.js",
+		"./dist/element/meet.js",
 		"./dist/rust.js",
 		"./dist/snippets/*"
 	],
-	"files": [
-		"dist",
-		"README.md",
-		"LICENSE*"
-	],
+	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel --race relay bbb web",
 		"relay": "./dev/relay",
@@ -67,6 +64,7 @@
 		"ts-node": "^10.9.2",
 		"tsc-alias": "^1.8.10",
 		"typescript": "^5.7.3",
+		"unique-names-generator": "^4.7.1",
 		"wasm-pack": "^0.13.1",
 		"webpack": "^5.97.1",
 		"webpack-cli": "^6.0.1",

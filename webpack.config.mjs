@@ -1,5 +1,3 @@
-// @ts-check
-
 import path from "node:path";
 
 import { fileURLToPath } from "node:url";
@@ -27,7 +25,6 @@ const config = {
 			args: "--log-level warn",
 			outName: "rust",
 		}),
-		// These are optional; just for the demo
 		new MiniCssExtractPlugin(),
 		new CopyPlugin({
 			patterns: [

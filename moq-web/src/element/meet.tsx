@@ -118,7 +118,7 @@ export class MoqMeetElement extends HTMLElement {
 			/>
 		) as MoqWatchElement;
 
-		this.appendChild(watch);
+		this.#broadcasts.appendChild(watch);
 	}
 
 	#leave(name: string) {
@@ -129,12 +129,10 @@ export class MoqMeetElement extends HTMLElement {
 		}
 
 		const id = `#broadcast-${name}`;
-		const watch = this.querySelector(id) as MoqWatchElement | null;
-		if (!watch) {
-			throw new Error("user not found");
+		const watch = this.#broadcasts.querySelector(id) as MoqWatchElement | null;
+		if (watch) {
+			watch.remove();
 		}
-
-		watch.remove();
 	}
 }
 

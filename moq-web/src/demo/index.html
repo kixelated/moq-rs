@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="sl-theme-dark">
 
 <head>
 	<meta charset="utf-8">
@@ -16,10 +16,37 @@
 
 <body>
 	<!--<moq-watch url="http://localhost:4443/demo/bbb" />-->
+	<!--<moq-publish url="http://localhost:4443/demo/me" media="camera" />-->
 
-	<moq-meet room="http://localhost:4443/demo">
-		<moq-publish url="http://localhost:4443/demo/me" />
-	</moq-meet>
+	<form style="display: flex; justify-content: center; gap: 16px; margin-bottom: 8px;">
+		<sl-tooltip content="The broadcast name. Use the same name to resume a broadcast after a crash/reload."
+			placement="bottom-start">
+			<sl-input id="name" placeholder="name" clearable></sl-input>
+		</sl-tooltip>
+
+		<sl-tooltip content="The media source. This can be changed dynamically." placement="bottom">
+			<sl-radio-group name="media" value="camera">
+				<sl-radio-button value="camera">
+					<sl-icon slot="prefix" name="camera" label="Camera"></sl-icon>
+				</sl-radio-button>
+				<sl-radio-button value="screen">
+					<sl-icon slot="prefix" name="display" label="Screen"></sl-icon>
+				</sl-radio-button>
+				<sl-radio-button value="">
+					<sl-icon slot="prefix" name="x" label="None"></sl-icon>
+				</sl-radio-button>
+			</sl-radio-group>
+		</sl-tooltip>
+
+		<sl-tooltip content="Connect and start broadcasting!" placement="bottom-end">
+			<sl-button variant="primary">
+				Join
+				<sl-icon slot="suffix" name="play"></sl-icon>
+			</sl-button>
+		</sl-tooltip>
+	</form>
+
+	<!--<moq-meet id="meet" room="http://localhost:4443/demo"></moq-meet>-->
 </body>
 
 </html>

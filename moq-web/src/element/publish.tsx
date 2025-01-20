@@ -3,7 +3,7 @@ import { attribute } from "./component";
 
 import { jsx, jsxFragment } from "./jsx";
 
-const observedAttributes = ["url", "preview"] as const;
+const observedAttributes = ["url", "media"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
 export class MoqPublishElement extends HTMLElement {
@@ -15,7 +15,7 @@ export class MoqPublishElement extends HTMLElement {
 	accessor url = "";
 
 	@attribute
-	accessor preview = false;
+	accessor media: "camera" | "screen" | "" = "";
 
 	static get observedAttributes() {
 		return observedAttributes;
@@ -25,24 +25,10 @@ export class MoqPublishElement extends HTMLElement {
 		super();
 
 		this.#publish = new Moq.Publish();
-		this.#preview = (<video css={{ display: "none", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
+		this.#preview = (<video css={{ display: "block", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
 
 		const shadow = this.attachShadow({ mode: "open" });
-		shadow.appendChild(
-			<>
-				{this.#preview}
-
-				<div id="controls" css={{ marginTop: "10px" }}>
-					<button type="button" onclick={() => this.#shareCamera()}>
-						Camera
-					</button>
-
-					<button type="button" onclick={() => this.#shareScreen()}>
-						Screen
-					</button>
-				</div>
-			</>,
-		);
+		shadow.appendChild(this.#preview);
 	}
 
 	async #shareCamera() {
@@ -57,9 +43,7 @@ export class MoqPublishElement extends HTMLElement {
 		}
 
 		this.#publish.media = this.#media;
-		if (this.preview) {
-			this.#preview.srcObject = this.#media;
-		}
+		this.#preview.srcObject = this.#media;
 	}
 
 	async #shareScreen() {
@@ -71,9 +55,7 @@ export class MoqPublishElement extends HTMLElement {
 		}
 
 		this.#publish.media = this.#media;
-		if (this.preview) {
-			this.#preview.srcObject = this.#media;
-		}
+		this.#preview.srcObject = this.#media;
 	}
 
 	connectedCallback() {
@@ -107,14 +89,18 @@ export class MoqPublishElement extends HTMLElement {
 			case "url":
 				this.#publish.url = value ?? undefined;
 				break;
-			case "preview":
-				if (value) {
-					this.#preview.style.display = "block";
-					this.#preview.srcObject = this.#publish.media ?? null;
+			case "media":
+				if (value === "camera") {
+					this.#shareCamera();
+				} else if (value === "screen") {
+					this.#shareScreen();
 				} else {
-					this.#preview.style.display = "none";
-					this.#preview.srcObject = null;
+					// biome-ignore lint/complexity/noForEach: media may be null
+					this.#media?.getTracks().forEach((track) => track.stop());
+					this.#media = null;
+					this.#publish.media = null;
 				}
+
 				break;
 			default: {
 				// Exhaustiveness check ensures all attributes are handled
