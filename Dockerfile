@@ -17,15 +17,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM rust:slim AS build-wasm
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs npm
+RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs pnpm
 
 # Install Rustup
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install -f wasm-bindgen-cli
 
 # Install node dependencies
-COPY package.json package-lock.json .
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm ci
 
 # Copy the rest
 COPY . ./
@@ -33,7 +33,7 @@ COPY . ./
 # Build it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
-	npm run build
+	pnpm build
 
 # moq-clock
 FROM debian:bookworm-slim AS moq-clock

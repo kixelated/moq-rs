@@ -1,73 +1,23 @@
 {
-	"name": "@kixelated/moq",
-	"version": "0.0.1",
-	"type": "module",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		},
-		"./video": {
-			"types": "./dist/element/video.d.ts",
-			"import": "./dist/element/video.js"
-		},
-		"./publish": {
-			"types": "./dist/element/publish.d.ts",
-			"import": "./dist/element/publish.js"
-		},
-		"./watch": {
-			"types": "./dist/element/watch.d.ts",
-			"import": "./dist/element/watch.js"
-		}
-	},
-	"sideEffects": [
-		"./dist/element/video.js",
-		"./dist/element/publish.js",
-		"./dist/element/watch.js",
-		"./dist/element/meet.js",
-		"./dist/rust.js",
-		"./dist/snippets/*"
-	],
-	"files": ["dist", "README.md", "LICENSE*"],
+	"name": "moq",
+	"workspaces": ["moq-web", "moq-demo"],
+	"private": true,
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel --race relay bbb web",
+		"web": "pnpm run -r --parallel dev",
 		"relay": "./dev/relay",
 		"bbb": "./dev/bbb",
-		"tos": "./dev/tos",
-		"gst": "./dev/gst",
-		"clock": "./dev/clock",
-		"web": "webpack serve",
 		"cluster": "npm-run-all --print-label --parallel --race relay cluster:leaf cluster:bbb web",
 		"cluster:leaf": "PORT=4444 ./dev/relay --cluster-root localhost:4443",
 		"cluster:bbb": "PORT=4444 ./dev/bbb",
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
 		"fmt": "biome format --write && cargo fmt --all",
-		"build": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json && tsc && tsc-alias"
-	},
-	"dependencies": {
-		"comlink": "^4.4.2"
+		"build": "pnpm build --recursive --parallel"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
-		"@shoelace-style/shoelace": "^2.19.1",
-		"@types/dom-mediacapture-transform": "^0.1.10",
-		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
-		"copy-webpack-plugin": "^12.0.2",
-		"css-loader": "^7.1.2",
-		"html-webpack-plugin": "^5.6.0",
-		"mini-css-extract-plugin": "^2.9.2",
-		"npm-run-all": "^4.1.5",
-		"ts-loader": "^9.5.2",
-		"ts-node": "^10.9.2",
-		"tsc-alias": "^1.8.10",
-		"typescript": "^5.7.3",
-		"unique-names-generator": "^4.7.1",
-		"wasm-pack": "^0.13.1",
-		"webpack": "^5.97.1",
-		"webpack-cli": "^6.0.1",
-		"webpack-dev-server": "^5.2.0"
-	}
+		"npm-run-all": "^4.1.5"
+	},
+	"packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b"
 }

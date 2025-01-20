@@ -4,9 +4,11 @@ set -euo pipefail
 # Change directory to root folder
 cd "$(dirname "$0")/.."
 
+# Install pnpm for anybody that doesn't have it
+corepack enable pnpm
+
 # Install any new dependencies
-npm i
+pnpm i
 
 # Run everything
-# Override the log level to only show warnings otherwise wasm-bindgen will spam the console
-RUST_LOG=warn npm run all
+pnpm all

@@ -1,7 +1,6 @@
 import * as Comlink from "comlink";
 import type { Bridge } from "./bridge";
-
-import type * as Rust from "@dist/rust";
+import type * as Rust from "../../dist/rust";
 
 export type { WatchState };
 type WatchState = Rust.WatchState;

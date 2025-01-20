@@ -1,17 +1,10 @@
 {
 	"compilerOptions": {
-		/* Basic Options */
 		"lib": ["DOM", "ES2020"],
 		"target": "ES2020",
 		"module": "ESNext",
-		"moduleResolution": "Bundler",
+		"moduleResolution": "node",
 
-		/* Emit Options */
-		"outDir": "dist",
-		"declaration": true,
-		"sourceMap": true,
-
-		/* type checking */
 		"strict": true,
 		// TODO: Enable when all code is refactored
 		//"noUnusedLocals": true,
@@ -19,19 +12,11 @@
 		"skipLibCheck": true,
 		"isolatedModules": true,
 
-		/* Experimental Features */
 		"useDefineForClassFields": true,
 
-		// JSX
-		"jsx": "react",
-		"jsxFactory": "jsx",
-		"jsxFragmentFactory": "jsxFragment",
-
-		"paths": {
-			"@dist/*": ["./dist/*"]
-		}
+		"jsx": "react"
 	},
 
-	"include": ["moq-web/src"],
+	"include": ["**/*"],
 	"exclude": ["node_modules"]
 }

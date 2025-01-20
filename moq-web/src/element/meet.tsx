@@ -1,5 +1,5 @@
-import type { RoomAnnounced } from "@dist/rust";
-import { Room, RoomAction } from "@dist/rust";
+import type { RoomAnnounced } from "../room";
+import { Room, RoomAction } from "../room";
 
 import { MoqPublishElement } from "./publish";
 import type { MoqWatchElement } from "./watch";
