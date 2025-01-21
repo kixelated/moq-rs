@@ -1,8 +1,8 @@
-import { Watch } from "../index.js";
-import type { WatchState } from "../index.js";
+import { Watch } from "..";
+import type { WatchState } from "..";
 
-import { jsx } from "./jsx.js";
-import { attribute } from "./component.js";
+import { jsx } from "./jsx";
+import { attribute } from "./component";
 
 const observedAttributes = ["url", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

@@ -2,6 +2,6 @@
 
 ## Setup
 ```bash
-pnpm install
-pnpm run dev
+npm install
+npm run dev
 ```

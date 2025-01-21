@@ -1,4 +1,4 @@
-import { MoqWatchElement } from "./watch.js";
+import { MoqWatchElement } from "./watch";
 
 const observedAttributes = ["src", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

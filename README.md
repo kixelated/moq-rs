@@ -80,21 +80,22 @@ For example:
 ```
 
 The package is a gross frankenstein of Rust+Typescript.
+To run the demo page:
 
 ```sh
-pnpm i
-pnpm run web
+npm i
+npm run dev
 ```
 
 You can also test the package locally by linking.
-Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
+Replace `npm` with your favorite package manager (ex. npm, yarn, bun); it might work.
 
 ```sh
-pnpm run build
-pnpm link
+npm run build
+npm link
 
 # In your other package
-pnpm link @kixelated/moq
+npm link @kixelated/moq
 ```
 
 See the [moq-web README](moq-web/README.md) for more information.

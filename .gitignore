@@ -21,7 +21,7 @@ dist
 *.key
 *.hex
 
-# We're using pnpm
+# We're using npm
 bun.lockb
 pnpm-lock.yaml
 package-lock.json

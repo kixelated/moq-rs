@@ -4,6 +4,7 @@
 		"target": "ES2020",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"allowJs": true,
 
 		"strict": true,
 		// TODO: Enable when all code is refactored
@@ -14,9 +15,27 @@
 
 		"useDefineForClassFields": true,
 
-		"jsx": "react"
+		/* Emit Options */
+		"baseUrl": ".",
+		"outDir": "dist",
+		"declaration": true,
+		"sourceMap": true,
+
+		// JSX
+		"jsx": "react",
+		"jsxFactory": "jsx",
+		"jsxFragmentFactory": "jsxFragment",
+
+		"paths": {
+			"@dist/*": ["dist/*"]
+		}
 	},
 
-	"include": ["**/*"],
-	"exclude": ["node_modules"]
+	"include": ["moq-web/src"],
+	"exclude": ["node_modules"],
+
+	"tsc-alias": {
+		"verbose": false,
+		"resolveFullPaths": true
+	}
 }

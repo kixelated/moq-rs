@@ -36,9 +36,9 @@ jobs:
 
       - name: Build/Publish NPM Package
         run: |
-          pnpm install
-          pnpm run build
-          pnpm publish --access public
+          npm install
+          npm run build
+          npm publish --access public
 
       - name: Trigger quic.video update
         env:

@@ -1,7 +1,7 @@
-import * as Moq from "../index.js";
-import { attribute } from "./component.js";
+import * as Moq from "..";
+import { attribute } from "./component";
 
-import { jsx } from "./jsx.js";
+import { jsx } from "./jsx";
 
 const observedAttributes = ["url", "media"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

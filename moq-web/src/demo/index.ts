@@ -1,6 +1,6 @@
 // For whatever reason, we need to export in order to avoid tree shaking.
 // TODO Figure out how to avoid this just like shoelace does.
-export { MoqMeetElement } from "@kixelated/moq/meet";
+export { MoqMeetElement } from "../element/meet";
 
 import "@shoelace-style/shoelace/dist/themes/light.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";

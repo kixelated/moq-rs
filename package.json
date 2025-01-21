@@ -1,10 +1,35 @@
 {
-	"name": "moq",
-	"workspaces": ["moq-web", "moq-demo"],
-	"private": true,
+	"name": "@kixelated/moq",
+	"version": "0.0.1",
+	"type": "module",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./video": {
+			"types": "./dist/element/video.d.ts",
+			"import": "./dist/element/video.js"
+		},
+		"./publish": {
+			"types": "./dist/element/publish.d.ts",
+			"import": "./dist/element/publish.js"
+		},
+		"./watch": {
+			"types": "./dist/element/watch.d.ts",
+			"import": "./dist/element/watch.js"
+		},
+		"./meet": {
+			"types": "./dist/element/meet.d.ts",
+			"import": "./dist/element/meet.js"
+		}
+	},
+	"sideEffects": ["./dist/element/*.js", "./dist/rust.*", "./dist/snippets/*"],
+	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"all": "npm-run-all --print-label --parallel relay bbb dev",
-		"dev": "pnpm -r --parallel dev",
 		"relay": "./dev/relay",
 		"bbb": "./dev/bbb",
 		"cluster": "npm-run-all --print-label --parallel --race relay cluster:leaf cluster:bbb web",
@@ -13,11 +38,33 @@
 		"check": "biome check && cargo check --all",
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
 		"fmt": "biome format --write && cargo fmt --all",
-		"build": "pnpm -r build"
+		"build": "npm-run-all --sequential build:wasm build:ts",
+		"build:wasm": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json",
+		"build:ts": "tsc && tsc-alias",
+		"dev": "webpack serve"
+	},
+	"dependencies": {
+		"comlink": "^4.4.2"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
-		"npm-run-all": "^4.1.5"
-	},
-	"packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b"
+		"@shoelace-style/shoelace": "^2.19.1",
+		"@types/dom-mediacapture-transform": "^0.1.10",
+		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
+		"chokidar-cli": "^3.0.0",
+		"copy-webpack-plugin": "^12.0.2",
+		"css-loader": "^7.1.2",
+		"html-webpack-plugin": "^5.6.0",
+		"mini-css-extract-plugin": "^2.9.2",
+		"npm-run-all": "^4.1.5",
+		"ts-loader": "^9.5.2",
+		"ts-node": "^10.9.2",
+		"tsc-alias": "^1.8.10",
+		"typescript": "^5.7.3",
+		"unique-names-generator": "^4.7.1",
+		"wasm-pack": "^0.13.1",
+		"webpack": "^5.97.1",
+		"webpack-cli": "^6.0.1",
+		"webpack-dev-server": "^5.2.0"
+	}
 }
