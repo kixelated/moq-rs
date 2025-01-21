@@ -21,9 +21,9 @@ dist
 *.key
 *.hex
 
-# We're using NPM
+# We're using pnpm
 bun.lockb
-yarn.lock
 pnpm-lock.yaml
+package-lock.json
 
 result

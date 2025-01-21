@@ -3,7 +3,7 @@
 		"lib": ["DOM", "ES2020"],
 		"target": "ES2020",
 		"module": "ESNext",
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
 
 		"strict": true,
 		// TODO: Enable when all code is refactored

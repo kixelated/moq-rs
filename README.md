@@ -29,7 +29,6 @@ The project is split into a few crates:
 
 ```sh
 rustup target add wasm32-unknown-unknown
-npm install
 ```
 
 ## Development
@@ -83,19 +82,19 @@ For example:
 The package is a gross frankenstein of Rust+Typescript.
 
 ```sh
-npm i
-npm run web
+pnpm i
+pnpm run web
 ```
 
 You can also test the package locally by linking.
 Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
-npm run build
-npm link
+pnpm run build
+pnpm link
 
 # In your other package
-npm link @kixelated/moq
+pnpm link @kixelated/moq
 ```
 
 See the [moq-web README](moq-web/README.md) for more information.

@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Install any new dependencies
-npm i
+pnpm i
 
 # Run everything
 # Override the log level to only show warnings otherwise wasm-bindgen will spam the console
-npm run cluster
+pnpm run cluster

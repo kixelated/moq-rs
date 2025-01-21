@@ -4,8 +4,11 @@ set -euo pipefail
 # Change directory to root folder
 cd "$(dirname "$0")/.."
 
+# Use pnpm to install dependencies
+corepack enable
+
 # Install any new dependencies
-npm i
+pnpm install
 
 # Run everything
-npm run dev
+pnpm run all

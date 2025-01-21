@@ -26,8 +26,16 @@
 			"import": "./dist/element/meet.js"
 		}
 	},
-	"sideEffects": ["./dist/element/*.js", "./dist/rust.js", "./dist/snippets/*"],
-	"files": ["dist", "README.md", "LICENSE*"],
+	"sideEffects": [
+		"./dist/element/*.js",
+		"./dist/rust.*",
+		"./dist/snippets/*"
+	],
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE*"
+	],
 	"scripts": {
 		"build": "npm-run-all --sequential build:wasm build:ts",
 		"build:wasm": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json",
