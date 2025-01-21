@@ -1,10 +1,13 @@
 import { Room, type RoomAnnounced, RoomAction } from "../room";
 
 import { MoqPublishElement } from "./publish";
-import type { MoqWatchElement } from "./watch";
+import { MoqWatchElement } from "./watch";
 
 import { jsx } from "./jsx";
 import { attribute } from "./component";
+
+// TODO A hack until I figure out how to prevent tree shaking.
+export { MoqPublishElement, MoqWatchElement };
 
 const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

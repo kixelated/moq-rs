@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { fileURLToPath } from "node:url";
+import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
 import CopyPlugin from "copy-webpack-plugin";
 import MiniCssExtractPlugin from "mini-css-extract-plugin";
@@ -15,6 +16,12 @@ const config = {
 		filename: "index.js",
 	},
 	plugins: [
+		new WasmPackPlugin({
+			crateDirectory: path.resolve(__dirname, "moq-web"),
+			outDir: path.resolve(__dirname, "dist"),
+			args: "--log-level warn",
+			outName: "rust",
+		}),
 		new HtmlWebpackPlugin({
 			template: "moq-web/src/demo/index.html",
 		}),
@@ -56,6 +63,8 @@ const config = {
 	},
 	devServer: {
 		open: true,
+		hot: false,
+		liveReload: false,
 	},
 	optimization: {
 		sideEffects: true,

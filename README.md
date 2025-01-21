@@ -84,11 +84,11 @@ To run the demo page:
 
 ```sh
 npm i
-npm run dev
+npm run web
 ```
 
 You can also test the package locally by linking.
-Replace `npm` with your favorite package manager (ex. npm, yarn, bun); it might work.
+Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
 npm run build

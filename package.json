@@ -29,7 +29,7 @@
 	"sideEffects": ["./dist/element/*.js", "./dist/rust.*", "./dist/snippets/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
-		"all": "npm-run-all --print-label --parallel relay bbb dev",
+		"all": "npm-run-all --print-label --parallel relay bbb web",
 		"relay": "./dev/relay",
 		"bbb": "./dev/bbb",
 		"cluster": "npm-run-all --print-label --parallel --race relay cluster:leaf cluster:bbb web",
@@ -41,7 +41,7 @@
 		"build": "npm-run-all --sequential build:wasm build:ts",
 		"build:wasm": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json",
 		"build:ts": "tsc && tsc-alias",
-		"dev": "webpack serve"
+		"web": "webpack serve"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2"
