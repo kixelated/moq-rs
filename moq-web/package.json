@@ -26,23 +26,15 @@
 			"import": "./dist/element/meet.js"
 		}
 	},
-	"sideEffects": [
-		"./dist/element/video.js",
-		"./dist/element/publish.js",
-		"./dist/element/watch.js",
-		"./dist/element/meet.js",
-		"./dist/rust.js",
-		"./dist/snippets/*"
-	],
+	"sideEffects": ["./dist/element/*.js", "./dist/rust.js", "./dist/snippets/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"build": "npm-run-all --sequential build:wasm build:ts",
 		"build:wasm": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json",
-		"build:ts": "tsc && tsc-alias",
-		"dev": "npm-run-all --parallel dev:wasm dev:ts dev:tsa",
-		"dev:wasm": "chokidar 'src/**/*.rs' Cargo.toml Cargo.lock --initial -i dist -i node_modules -c 'wasm-pack build --out-dir dist . --scope kixelated --out-name rust'",
-		"dev:ts": "tsc --watch",
-		"dev:tsa": "tsc-alias --watch"
+		"build:ts": "tsc",
+		"dev": "npm-run-all --parallel dev:wasm dev:ts",
+		"dev:wasm": "chokidar 'src/**/*.rs' Cargo.toml Cargo.lock --initial -i dist -c 'wasm-pack build --out-dir dist . --scope kixelated --out-name rust'",
+		"dev:ts": "tsc --watch --preserveWatchOutput"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2"
@@ -52,7 +44,6 @@
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"chokidar-cli": "^3.0.0",
 		"npm-run-all": "^4.1.5",
-		"tsc-alias": "^1.8.10",
 		"typescript": "^5.7.3",
 		"wasm-pack": "^0.13.1"
 	}

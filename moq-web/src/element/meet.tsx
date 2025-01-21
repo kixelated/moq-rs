@@ -1,11 +1,11 @@
-import type { RoomAnnounced } from "../room";
-import { Room, RoomAction } from "../room";
+import type { RoomAnnounced } from "../room/index.js";
+import { Room, RoomAction } from "../room/index.js";
 
-import { MoqPublishElement } from "./publish";
-import type { MoqWatchElement } from "./watch";
+import { MoqPublishElement } from "./publish.js";
+import type { MoqWatchElement } from "./watch.js";
 
-import { jsx } from "./jsx";
-import { attribute } from "./component";
+import { jsx } from "./jsx.js";
+import { attribute } from "./component.js";
 
 const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

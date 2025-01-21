@@ -9,9 +9,6 @@ import "@shoelace-style/shoelace/dist/components/radio-button/radio-button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
-import { setBasePath } from "@shoelace-style/shoelace/dist/utilities/base-path.js";
-setBasePath("/shoelace");
-
 import { uniqueNamesGenerator, type Config, adjectives, animals } from "unique-names-generator";
 
 const config: Config = {
@@ -27,7 +24,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const name = urlParams.get("name") || defaultName;
 
 function init() {
-	const nameInput = document.getElementById("name") as HTMLInputElement | null;
+	const nameInput = document.getElementById("broadcast") as HTMLInputElement | null;
 	if (!nameInput) {
 		throw new Error("Name input not found");
 	}

@@ -23,8 +23,8 @@ const config = {
 			patterns: [
 				// Copy Shoelace assets to dist/shoelace
 				{
-					from: path.resolve(__dirname, "node_modules/@shoelace-style/shoelace/dist/assets"),
-					to: path.resolve(__dirname, "dist/shoelace/assets"),
+					from: path.resolve(__dirname, "../node_modules/@shoelace-style/shoelace/dist/assets"),
+					to: path.resolve(__dirname, "dist/assets"),
 				},
 			],
 		}),
@@ -53,8 +53,9 @@ const config = {
 	},
 	devServer: {
 		open: true,
-		hot: false,
-		liveReload: false,
+	},
+	optimization: {
+		sideEffects: true,
 	},
 };
 

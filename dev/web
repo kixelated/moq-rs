@@ -4,12 +4,9 @@ set -euo pipefail
 # Change directory to root folder
 cd "$(dirname "$0")/.."
 
-# Install pnpm for anybody that doesn't have it
-corepack enable pnpm
-
 # Install any new dependencies
-pnpm i
+npm i
 
 # Start the development server
 # Override the log level to only show warnings otherwise wasm-bindgen will spam the console
-pnpm -r dev
+npm run web
