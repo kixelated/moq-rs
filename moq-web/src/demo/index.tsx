@@ -16,16 +16,14 @@ import type SlInput from "@shoelace-style/shoelace/dist/components/input/input.j
 import type SlRadioButton from "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
 
 import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
-import { attribute } from "../element/component";
+import { attribute, element, Element } from "../element/component";
 import { jsx } from "../element/jsx";
 
 // TODO This is a tree shaking work-around.
 export { MoqMeet, MoqPublish, MoqWatch };
 
-const observedAttributes = ["media", "room", "join"] as const;
-type ObservedAttribute = (typeof observedAttributes)[number];
-
-export class MoqDemo extends HTMLElement {
+@element("moq-demo")
+export class MoqDemo extends Element {
 	#meet: MoqMeet;
 	#publish: MoqPublish;
 	#leave: SlButton;
@@ -41,11 +39,6 @@ export class MoqDemo extends HTMLElement {
 
 	@attribute
 	accessor name = "";
-
-	// TODO Make this automatically generated via @attribute?
-	static get observedAttributes() {
-		return observedAttributes;
-	}
 
 	constructor() {
 		super();
@@ -148,43 +141,28 @@ export class MoqDemo extends HTMLElement {
 		shadow.appendChild(this.#meet);
 	}
 
-	attributeChangedCallback(name: ObservedAttribute, old: string | null, value: string | null) {
-		if (old === value) {
-			return;
+	roomChange(value: string) {
+		this.#meet.room = value;
+	}
+
+	mediaChange(value: string) {
+		if (value !== "camera" && value !== "screen" && value !== "") {
+			throw new Error(`Invalid media: ${value}`);
 		}
 
-		switch (name) {
-			case "room":
-				this.#meet.room = value ?? "";
-				break;
-			case "media":
-				if (value === "camera" || value === "screen" || value === null) {
-					this.#publish.media = value ?? "";
-				} else {
-					throw new Error(`Unsupported media: ${value}`);
-				}
+		this.#publish.media = value ?? "";
+	}
 
-				break;
-			case "join":
-				if (value !== null) {
-					this.#publish.url = `${this.#meet.room}/${this.name}`;
-					this.#leave.style.display = "";
-				} else {
-					this.#publish.url = "";
-					this.#leave.style.display = "none";
-				}
-
-				break;
-			default: {
-				// Exhaustiveness check ensures all attributes are handled
-				const _exhaustive: never = name;
-				throw new Error(`Unhandled attribute: ${_exhaustive}`);
-			}
+	joinChange(value: boolean) {
+		if (value) {
+			this.#publish.url = `${this.#meet.room}/${this.name}`;
+			this.#leave.style.display = "";
+		} else {
+			this.#publish.url = "";
+			this.#leave.style.display = "none";
 		}
 	}
 }
-
-customElements.define("moq-demo", MoqDemo);
 
 declare global {
 	interface HTMLElementTagNameMap {

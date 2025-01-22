@@ -1,13 +1,11 @@
 import * as Moq from "..";
-import { attribute } from "./component";
+import { element, attribute, Element } from "./component";
 
 import { jsx } from "./jsx";
 
-const observedAttributes = ["url", "media", "preview"] as const;
-type ObservedAttribute = (typeof observedAttributes)[number];
-
-export class MoqPublish extends HTMLElement {
-	#publish: Moq.Publish | null;
+@element("moq-publish")
+export class MoqPublish extends Element {
+	#publish: Moq.Publish;
 	#preview: HTMLVideoElement;
 	#media: MediaStream | null = null;
 
@@ -19,10 +17,6 @@ export class MoqPublish extends HTMLElement {
 
 	@attribute
 	accessor preview = false;
-
-	static get observedAttributes() {
-		return observedAttributes;
-	}
 
 	constructor() {
 		super();
@@ -49,99 +43,25 @@ export class MoqPublish extends HTMLElement {
 		shadow.appendChild(this.#preview);
 	}
 
-	async #shareCamera() {
-		// TODO configure the constraints
-		this.#media = await navigator.mediaDevices.getUserMedia({
-			video: true,
-		});
-
-		if (!this.#publish) {
-			// Removed from DOM during await.
-			return;
-		}
-
-		this.#publish.media = this.#media;
-		this.#preview.srcObject = this.#media;
+	urlChange(value: string) {
+		this.#publish.url = value;
 	}
 
-	async #shareScreen() {
-		this.#media = await navigator.mediaDevices.getDisplayMedia({ video: true });
-
-		if (!this.#publish) {
-			// Removed from DOM during await.
-			return;
+	mediaChange(value: string) {
+		if (value !== "camera" && value !== "screen" && value !== "") {
+			throw new Error(`Invalid media: ${value}`);
 		}
 
-		this.#publish.media = this.#media;
-		this.#preview.srcObject = this.#media;
+		this.#publish.media = value === "" ? null : this.#media;
 	}
 
-	connectedCallback() {
-		if (!this.#publish) {
-			this.#publish = new Moq.Publish();
-		}
-
-		for (const name of MoqPublish.observedAttributes) {
-			const value = this.getAttribute(name) ?? undefined;
-			if (value !== undefined) {
-				this.attributeChangedCallback(name, undefined, value);
-			}
-		}
-	}
-
-	disconnectedCallback() {
-		this.#publish?.free();
-		this.#publish = null;
-	}
-
-	attributeChangedCallback(name: ObservedAttribute, old?: string, value?: string) {
-		if (!this.#publish) {
-			return;
-		}
-
-		if (old === value) {
-			return;
-		}
-
-		switch (name) {
-			case "url":
-				this.#publish.url = value ?? undefined;
-				break;
-			case "media":
-				if (value === "camera") {
-					this.#shareCamera();
-				} else if (value === "screen") {
-					this.#shareScreen();
-				} else {
-					// biome-ignore lint/complexity/noForEach: media may be null
-					this.#media?.getTracks().forEach((track) => track.stop());
-					this.#media = null;
-					this.#publish.media = null;
-				}
-
-				break;
-			case "preview":
-				if (value === null) {
-					this.#preview.style.display = "none";
-				} else {
-					this.#preview.style.display = "";
-				}
-				break;
-			default: {
-				// Exhaustiveness check ensures all attributes are handled
-				const _exhaustive: never = name;
-				throw new Error(`Unhandled attribute: ${_exhaustive}`);
-			}
-		}
+	previewChange(value: boolean) {
+		this.#preview.style.display = value ? "" : "none";
 	}
 }
-
-customElements.define("moq-publish", MoqPublish);
 
 declare global {
 	interface HTMLElementTagNameMap {
 		"moq-publish": MoqPublish;
 	}
 }
-
-export default MoqPublish;

@@ -1,14 +1,12 @@
 import { Watch } from "..";
 import type { WatchState } from "..";
 
-import { attribute } from "./component";
+import { attribute, element, Element } from "./component";
 import { jsx } from "./jsx";
 
-const observedAttributes = ["url", "paused", "volume"] as const;
-type ObservedAttribute = (typeof observedAttributes)[number];
-
-export class MoqWatch extends HTMLElement {
-	#watch: Watch | null;
+@element("moq-watch")
+export class MoqWatch extends Element {
+	#watch: Watch;
 	#canvas: OffscreenCanvas;
 
 	@attribute
@@ -19,11 +17,6 @@ export class MoqWatch extends HTMLElement {
 
 	@attribute
 	accessor volume = 1;
-
-	// TODO Make this automatically generated via @attribute?
-	static get observedAttributes() {
-		return observedAttributes;
-	}
 
 	constructor() {
 		super();
@@ -55,68 +48,24 @@ export class MoqWatch extends HTMLElement {
 		this.#watch.canvas = this.#canvas;
 	}
 
-	connectedCallback() {
-		// If we were disconnected, we need to reinitialize the Watch.
-		if (this.#watch === null) {
-			this.#watch = new Watch();
-			this.#watch.canvas = this.#canvas;
-		}
-
-		const states = this.#watch.state();
-		(async () => {
-			try {
-				for await (const state of states) {
-					this.dispatchEvent(new CustomEvent("moq-watch-state", { detail: state }));
-				}
-			} catch (err) {
-				// Used to clean up the WatchState so we don't leak memory.
-				states.throw(err);
-			}
-		})();
-
-		for (const name of MoqWatch.observedAttributes) {
-			const value = this.getAttribute(name);
-			if (value !== undefined) {
-				this.attributeChangedCallback(name, null, value);
-			}
+	urlChange(value: string) {
+		if (this.#watch) {
+			this.#watch.url = value;
 		}
 	}
 
-	disconnectedCallback() {
-		this.#watch?.free();
-		this.#watch = null;
+	pausedChange(value: boolean) {
+		if (this.#watch) {
+			this.#watch.paused = value;
+		}
 	}
 
-	attributeChangedCallback(name: ObservedAttribute, old: string | null, value: string | null) {
-		// Not readded to the DOM yet.
-		if (this.#watch === null) {
-			return;
-		}
-
-		if (old === value) {
-			return;
-		}
-
-		switch (name) {
-			case "url":
-				this.#watch.url = value;
-				break;
-			case "paused":
-				// TODO
-				break;
-			case "volume":
-				// TODO
-				break;
-			default: {
-				// Exhaustiveness check ensures all attributes are handled
-				const _exhaustive: never = name;
-				throw new Error(`Unhandled attribute: ${_exhaustive}`);
-			}
+	volumeChange(value: number) {
+		if (this.#watch) {
+			this.#watch.volume = value;
 		}
 	}
 }
-
-customElements.define("moq-watch", MoqWatch);
 
 declare global {
 	interface HTMLElementTagNameMap {
