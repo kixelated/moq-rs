@@ -1,23 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="sl-theme-dark">
 
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
-	<style type="text/css">
-		moq-watch {
-			border-radius: 0.375rem;
-			overflow: hidden;
-		}
-	</style>
 </head>
 
-<body style="display: flex">
-	<!--<moq-publish url="http://localhost:4443/demo/me" />-->
-	<!--<moq-watch url="http://localhost:4443/demo/bbb" />-->
+<body>
+	<!-- A web component defined in index.tsx -->
+	<moq-demo room="http://localhost:4443/demo" />
 
-	<moq-meet room="http://localhost:4443/demo" />
+	<!-- Too complicated? You can use components directly in HTML instead:
+	<moq-meet    room="http://localhost:4443/demo" />
+	<moq-publish url="http://localhost:4443/demo/me" />
+	<moq-watch   url="http://localhost:4443/demo/me" />
+	-->
 </body>
 
 </html>

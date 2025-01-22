@@ -29,7 +29,6 @@ The project is split into a few crates:
 
 ```sh
 rustup target add wasm32-unknown-unknown
-npm install
 ```
 
 ## Development
@@ -81,6 +80,7 @@ For example:
 ```
 
 The package is a gross frankenstein of Rust+Typescript.
+To run the demo page:
 
 ```sh
 npm i

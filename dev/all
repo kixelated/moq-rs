@@ -5,8 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Install any new dependencies
-npm i
+npm install
 
 # Run everything
-# Override the log level to only show warnings otherwise wasm-bindgen will spam the console
-RUST_LOG=warn npm run all
+npm run all

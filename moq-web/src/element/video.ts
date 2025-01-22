@@ -1,12 +1,13 @@
-import * as Moq from "..";
+import { MoqWatch } from "./watch";
 
-import { MoqWatchElement } from "./watch";
+const observedAttributes = ["src", "paused", "volume"] as const;
+type ObservedAttribute = (typeof observedAttributes)[number];
 
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
-export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
-	#watch: MoqWatchElement;
+export class MoqVideo extends HTMLElement implements HTMLVideoElement {
+	#watch: MoqWatch;
 
 	// These only matter at init
 	playsInline = true;
@@ -72,25 +73,25 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	}
 
 	static get observedAttributes() {
-		return ["src", "paused", "volume"];
+		return observedAttributes;
 	}
 
 	// Attributes we only check once on init.
-	static get initAttrbiutes() {
+	static get initAttributes() {
 		return ["autoplay"];
 	}
 
 	constructor() {
 		super();
 
-		this.#watch = new MoqWatchElement();
+		this.#watch = new MoqWatch();
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(this.#watch);
 	}
 
 	connectedCallback() {
-		for (const name of MoqVideoElement.initAttrbiutes.concat(...MoqVideoElement.observedAttributes)) {
+		for (const name of MoqVideo.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
 				this.attributeChangedCallback(name, null, this.getAttribute(name));
@@ -104,14 +105,14 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 
 	disconnectedCallback() {}
 
-	attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+	attributeChangedCallback(name: ObservedAttribute, oldValue: string | null, newValue: string | null) {
 		if (oldValue === newValue) {
 			return;
 		}
 
 		switch (name) {
 			case "src":
-				this.#watch.url = newValue;
+				this.#watch.url = newValue || "";
 				break;
 			case "volume":
 				this.#watch.volume = Number.parseFloat(newValue ?? "1");
@@ -119,6 +120,11 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 			case "paused":
 				this.#watch.paused = newValue !== null;
 				break;
+			default: {
+				// Exhaustiveness check ensures all attributes are handled
+				const _exhaustive: never = name;
+				throw new Error(`Unhandled attribute: ${_exhaustive}`);
+			}
 		}
 	}
 
@@ -352,11 +358,13 @@ function emptyTextTracks(): TextTrackList {
 }
 
 // Register the custom element.
-customElements.define("moq-video", MoqVideoElement);
+customElements.define("moq-video", MoqVideo);
 
 // Add our type to the typescript global scope.
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-video": MoqVideoElement;
+		"moq-video": MoqVideo;
 	}
 }
+
+export default MoqVideo;

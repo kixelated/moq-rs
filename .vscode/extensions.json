@@ -1,0 +1,8 @@
+{
+	"recommendations": [
+		"rust-lang.rust-analyzer",
+		"ms-vscode.vscode-typescript-next",
+		"biomejs.biome",
+		"EditorConfig.EditorConfig"
+	]
+}

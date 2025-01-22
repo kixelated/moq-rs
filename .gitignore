@@ -21,7 +21,7 @@ dist
 *.key
 *.hex
 
-# We're using NPM
+# We're using npm
 bun.lockb
 yarn.lock
 pnpm-lock.yaml
