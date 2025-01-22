@@ -28,9 +28,24 @@ export class MoqWatchElement extends HTMLElement {
 	constructor() {
 		super();
 
-		const canvas = (<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} />) as HTMLCanvasElement;
+		const style = (
+			<style>
+				{`
+				:host {
+					display: block;
+					overflow: hidden;
+					position: relative;
+				}
+				`}
+			</style>
+		);
+
+		const canvas = (
+			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
+		) as HTMLCanvasElement;
 
 		const shadow = this.attachShadow({ mode: "open" });
+		shadow.appendChild(style);
 		shadow.appendChild(canvas);
 
 		this.#canvas = canvas.transferControlToOffscreen();

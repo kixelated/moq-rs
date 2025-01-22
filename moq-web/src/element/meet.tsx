@@ -1,13 +1,9 @@
 import { Room, type RoomAnnounced, RoomAction } from "../room";
 
-import { MoqPublishElement } from "./publish";
-import { MoqWatchElement } from "./watch";
+import type { MoqWatchElement } from "./watch";
 
 import { jsx } from "./jsx";
 import { attribute } from "./component";
-
-// TODO A hack until I figure out how to prevent tree shaking.
-export { MoqPublishElement, MoqWatchElement };
 
 const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
@@ -15,7 +11,6 @@ type ObservedAttribute = (typeof observedAttributes)[number];
 export class MoqMeetElement extends HTMLElement {
 	#room: Room | null = null;
 
-	#publish?: MoqPublishElement;
 	#broadcasts: HTMLDivElement;
 
 	@attribute
@@ -28,19 +23,22 @@ export class MoqMeetElement extends HTMLElement {
 	constructor() {
 		super();
 
+		const style = (
+			<style>
+				{`
+				:host {
+					display: block;
+					overflow: hidden;
+					position: relative;
+				}
+				`}
+			</style>
+		);
+
 		const shadow = this.attachShadow({ mode: "open" });
-
-		this.#publish = (<moq-publish />) as MoqPublishElement;
-
-		const publishSlot = (<slot />) as HTMLSlotElement;
-		publishSlot.addEventListener("slotchange", () => {
-			this.#publish = publishSlot.assignedNodes().find((node) => node instanceof MoqPublishElement);
-		});
-
 		this.#broadcasts = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
-
+		shadow.appendChild(style);
 		shadow.appendChild(this.#broadcasts);
-		shadow.appendChild(publishSlot);
 	}
 
 	connectedCallback() {
@@ -104,14 +102,7 @@ export class MoqMeetElement extends HTMLElement {
 		}
 	}
 
-	#updatePublish() {}
-
 	#join(name: string) {
-		if (this.#publish?.url.endsWith(`/${name}`)) {
-			this.#broadcasts.appendChild(this.#publish);
-			return;
-		}
-
 		const watch = (
 			<moq-watch
 				id={`broadcast-${name}`}
@@ -124,12 +115,6 @@ export class MoqMeetElement extends HTMLElement {
 	}
 
 	#leave(name: string) {
-		if (this.#publish?.url.endsWith(`/${name}`)) {
-			// We got kicked out of the room.
-			this.#broadcasts.removeChild(this.#publish);
-			return;
-		}
-
 		const id = `#broadcast-${name}`;
 		const watch = this.#broadcasts.querySelector(id) as MoqWatchElement | null;
 		if (watch) {

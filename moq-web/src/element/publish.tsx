@@ -3,7 +3,7 @@ import { attribute } from "./component";
 
 import { jsx } from "./jsx";
 
-const observedAttributes = ["url", "media"] as const;
+const observedAttributes = ["url", "media", "preview"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
 export class MoqPublishElement extends HTMLElement {
@@ -17,6 +17,9 @@ export class MoqPublishElement extends HTMLElement {
 	@attribute
 	accessor media: "camera" | "screen" | "" = "";
 
+	@attribute
+	accessor preview = false;
+
 	static get observedAttributes() {
 		return observedAttributes;
 	}
@@ -24,10 +27,25 @@ export class MoqPublishElement extends HTMLElement {
 	constructor() {
 		super();
 
+		const style = (
+			<style>
+				{`
+				:host {
+					display: block;
+					overflow: hidden;
+					position: relative;
+				}
+				`}
+			</style>
+		);
+
 		this.#publish = new Moq.Publish();
-		this.#preview = (<video css={{ display: "block", maxWidth: "100%", height: "auto" }} />) as HTMLVideoElement;
+		this.#preview = (
+			<video css={{ objectFit: "contain", maxWidth: "100%", maxHeight: "100%", display: "none" }} autoplay />
+		) as HTMLVideoElement;
 
 		const shadow = this.attachShadow({ mode: "open" });
+		shadow.appendChild(style);
 		shadow.appendChild(this.#preview);
 	}
 
@@ -101,6 +119,13 @@ export class MoqPublishElement extends HTMLElement {
 					this.#publish.media = null;
 				}
 
+				break;
+			case "preview":
+				if (value === null) {
+					this.#preview.style.display = "none";
+				} else {
+					this.#preview.style.display = "";
+				}
 				break;
 			default: {
 				// Exhaustiveness check ensures all attributes are handled
