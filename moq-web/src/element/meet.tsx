@@ -2,23 +2,16 @@ import { Room, RoomAction, type RoomAnnounced } from "../room";
 
 import type { MoqWatch } from "./watch";
 
-import { attribute } from "./component";
+import { attribute, Element, element } from "./component";
 import { jsx } from "./jsx";
 
-const observedAttributes = ["room"] as const;
-type ObservedAttribute = (typeof observedAttributes)[number];
-
-export class MoqMeet extends HTMLElement {
-	#room: Room | null = null;
-
+@element("moq-meet")
+export class MoqMeet extends Element {
+	#room: Room;
 	#broadcasts: HTMLDivElement;
 
 	@attribute
 	accessor room = "";
-
-	static get observedAttributes() {
-		return observedAttributes;
-	}
 
 	constructor() {
 		super();
@@ -35,50 +28,18 @@ export class MoqMeet extends HTMLElement {
 			</style>
 		);
 
+		this.#room = new Room();
+		const announced = this.#room.announced();
+		this.#runAnnounced(announced).finally(() => announced.free());
+
 		const shadow = this.attachShadow({ mode: "open" });
 		this.#broadcasts = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
 		shadow.appendChild(style);
 		shadow.appendChild(this.#broadcasts);
 	}
 
-	connectedCallback() {
-		this.#room = new Room();
-
-		const announced = this.#room.announced();
-		this.#runAnnounced(announced).finally(() => announced.free());
-
-		for (const name of MoqMeet.observedAttributes) {
-			const value = this.getAttribute(name);
-			if (value !== undefined) {
-				this.attributeChangedCallback(name, null, value);
-			}
-		}
-	}
-
-	disconnectedCallback() {
-		this.#room?.free();
-		this.#room = null;
-	}
-
-	attributeChangedCallback(name: ObservedAttribute, old: string | null, value: string | null) {
-		if (!this.#room) {
-			return;
-		}
-
-		if (old === value) {
-			return;
-		}
-
-		switch (name) {
-			case "room":
-				this.#room.url = value;
-				break;
-			default: {
-				// Exhaustiveness check ensures all attributes are handled
-				const _exhaustive: never = name;
-				throw new Error(`Unhandled attribute: ${_exhaustive}`);
-			}
-		}
+	roomChange(value: string) {
+		this.#room.url = value;
 	}
 
 	async #runAnnounced(announced: RoomAnnounced) {
@@ -122,8 +83,6 @@ export class MoqMeet extends HTMLElement {
 		}
 	}
 }
-
-customElements.define("moq-meet", MoqMeet);
 
 declare global {
 	interface HTMLElementTagNameMap {

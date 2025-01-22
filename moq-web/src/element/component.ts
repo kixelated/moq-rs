@@ -1,3 +1,62 @@
+const attributesMetadataKey = Symbol("attributes");
+
+// Ensure metadata is enabled. TypeScript does not polyfill
+// Symbol.metadata, so we must ensure that it exists.
+(Symbol as { metadata: symbol }).metadata ??= Symbol("metadata");
+
+interface ClassDecoratorTarget {
+	new (): Element;
+}
+
+export function element(name: string) {
+	return (construct: ClassDecoratorTarget, context: ClassDecoratorContext) => {
+		context.addInitializer(() => {
+			customElements.define(name, construct);
+		});
+	};
+}
+
+export class Element extends HTMLElement {
+	static get observedAttributes(): string[] {
+		// biome-ignore lint/complexity/noThisInStatic: Required for inheritance
+		const metadata = this[Symbol.metadata];
+		if (!metadata) {
+			return [];
+		}
+
+		const attributes = metadata[attributesMetadataKey] as Map<string, AttributeType> | undefined;
+		if (!attributes) {
+			return [];
+		}
+
+		return Array.from(attributes.keys());
+	}
+
+	connectedCallback() {
+		for (const [name] of Object.entries(Element.observedAttributes)) {
+			const value = this.getAttribute(name);
+			this.attributeChangedCallback(name, null, value);
+		}
+	}
+
+	attributeChangedCallback(name: string, old: string | null, value: string | null) {
+		if (old === value) {
+			return;
+		}
+
+		const handler = `${name}Change` as const;
+
+		// biome-ignore lint/suspicious/noExplicitAny: Accessor must exist
+		const typed = (this as any)[name];
+
+		// biome-ignore lint/suspicious/noExplicitAny: Look for optional `xxxChange` method
+		const f = (this as any)[handler];
+		if (typeof f === "function") {
+			f.bind(this)(typed);
+		}
+	}
+}
+
 export type AttributeType = string | number | boolean;
 
 // Pretty proud of this one.
@@ -15,26 +74,28 @@ export type AttributeType = string | number | boolean;
 // We use the HTMLElement.getAttribute method to get the value of the attribute.
 // In this case, if <element muted> then get() returns true.
 // If we then set `element.muted=false`, it will remove the attribute.
-export function attribute<T extends AttributeType>(
-	value: {
-		get: () => T;
-		set: (value: T) => void;
-	},
-	context: ClassAccessorDecoratorContext,
-) {
+export function attribute<C extends Element, V extends AttributeType>(
+	target: ClassAccessorDecoratorTarget<C, V>,
+	context: ClassAccessorDecoratorContext<C, V>,
+): ClassAccessorDecoratorResult<C, V> {
 	const name = String(context.name);
-	let init: T;
+
+	// biome-ignore lint/suspicious/noAssignInExpressions: Simpler than multiple lines
+	const attributes = ((context.metadata[attributesMetadataKey] as Set<string> | undefined) ??= new Set());
+	attributes.add(name);
+
+	let init: V;
 
 	return {
-		init(value: T): T {
+		init(value: V): V {
 			init = value;
 			return value;
 		},
-		get(this: HTMLElement): T {
+		get(this: C): V {
 			const value = this.getAttribute(name);
 			return stringToAttribute(value, init);
 		},
-		set(this: HTMLElement, newValue: T) {
+		set(this: C, newValue: V) {
 			if (newValue === init) {
 				this.removeAttribute(name);
 			} else {
