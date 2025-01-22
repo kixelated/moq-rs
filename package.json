@@ -39,7 +39,7 @@
 		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
 		"fmt": "biome format --write && cargo fmt --all",
 		"build": "npm-run-all --sequential build:wasm build:ts",
-		"build:wasm": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/README.md dist/package.json",
+		"build:wasm": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json",
 		"build:ts": "tsc && tsc-alias",
 		"web": "webpack serve"
 	},

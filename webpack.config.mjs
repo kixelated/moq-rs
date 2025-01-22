@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { fileURLToPath } from "node:url";
 import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
-import HtmlWebpackPlugin from "html-webpack-plugin";
 import CopyPlugin from "copy-webpack-plugin";
+import HtmlWebpackPlugin from "html-webpack-plugin";
 import MiniCssExtractPlugin from "mini-css-extract-plugin";
 
 const __filename = fileURLToPath(import.meta.url);

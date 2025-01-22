@@ -1,9 +1,9 @@
-import { Room, type RoomAnnounced, RoomAction } from "../room";
+import { Room, RoomAction, type RoomAnnounced } from "../room";
 
 import type { MoqWatch } from "./watch";
 
-import { jsx } from "./jsx";
 import { attribute } from "./component";
+import { jsx } from "./jsx";
 
 const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

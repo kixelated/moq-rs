@@ -11,13 +11,13 @@ import "@shoelace-style/shoelace/dist/components/radio-button/radio-button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
+import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
 import type SlInput from "@shoelace-style/shoelace/dist/components/input/input.js";
 import type SlRadioButton from "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
-import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
 
-import { uniqueNamesGenerator, adjectives, animals } from "unique-names-generator";
-import { jsx } from "../element/jsx";
+import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
 import { attribute } from "../element/component";
+import { jsx } from "../element/jsx";
 
 // TODO This is a tree shaking work-around.
 export { MoqMeet, MoqPublish, MoqWatch };
