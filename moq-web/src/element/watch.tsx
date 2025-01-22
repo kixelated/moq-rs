@@ -7,7 +7,7 @@ import { attribute } from "./component";
 const observedAttributes = ["url", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
-export class MoqWatchElement extends HTMLElement {
+export class MoqWatch extends HTMLElement {
 	#watch: Watch | null;
 	#canvas: OffscreenCanvas;
 
@@ -74,7 +74,7 @@ export class MoqWatchElement extends HTMLElement {
 			}
 		})();
 
-		for (const name of MoqWatchElement.observedAttributes) {
+		for (const name of MoqWatch.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== undefined) {
 				this.attributeChangedCallback(name, null, value);
@@ -116,14 +116,16 @@ export class MoqWatchElement extends HTMLElement {
 	}
 }
 
-customElements.define("moq-watch", MoqWatchElement);
+customElements.define("moq-watch", MoqWatch);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-watch": MoqWatchElement;
+		"moq-watch": MoqWatch;
 	}
 
 	interface GlobalEventHandlersEventMap {
 		"moq-watch-state": CustomEvent<WatchState>;
 	}
 }
+
+export default MoqWatch;

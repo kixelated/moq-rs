@@ -1,6 +1,6 @@
 import { Room, type RoomAnnounced, RoomAction } from "../room";
 
-import type { MoqWatchElement } from "./watch";
+import type { MoqWatch } from "./watch";
 
 import { jsx } from "./jsx";
 import { attribute } from "./component";
@@ -8,7 +8,7 @@ import { attribute } from "./component";
 const observedAttributes = ["room"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
-export class MoqMeetElement extends HTMLElement {
+export class MoqMeet extends HTMLElement {
 	#room: Room | null = null;
 
 	#broadcasts: HTMLDivElement;
@@ -47,7 +47,7 @@ export class MoqMeetElement extends HTMLElement {
 		const announced = this.#room.announced();
 		this.#runAnnounced(announced).finally(() => announced.free());
 
-		for (const name of MoqMeetElement.observedAttributes) {
+		for (const name of MoqMeet.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== undefined) {
 				this.attributeChangedCallback(name, null, value);
@@ -109,24 +109,26 @@ export class MoqMeetElement extends HTMLElement {
 				url={`${this.room}/${name}`}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
-		) as MoqWatchElement;
+		) as MoqWatch;
 
 		this.#broadcasts.appendChild(watch);
 	}
 
 	#leave(name: string) {
 		const id = `#broadcast-${name}`;
-		const watch = this.#broadcasts.querySelector(id) as MoqWatchElement | null;
+		const watch = this.#broadcasts.querySelector(id) as MoqWatch | null;
 		if (watch) {
 			watch.remove();
 		}
 	}
 }
 
-customElements.define("moq-meet", MoqMeetElement);
+customElements.define("moq-meet", MoqMeet);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-meet": MoqMeetElement;
+		"moq-meet": MoqMeet;
 	}
 }
+
+export default MoqMeet;

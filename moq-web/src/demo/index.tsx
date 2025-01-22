@@ -1,6 +1,6 @@
-import { MoqMeetElement } from "../element/meet";
-import { MoqPublishElement } from "../element/publish";
-import { MoqWatchElement } from "../element/watch";
+import { MoqMeet } from "../element/meet";
+import { MoqPublish } from "../element/publish";
+import { MoqWatch } from "../element/watch";
 
 import "@shoelace-style/shoelace/dist/themes/light.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";
@@ -20,14 +20,14 @@ import { jsx } from "../element/jsx";
 import { attribute } from "../element/component";
 
 // TODO This is a tree shaking work-around.
-export { MoqMeetElement, MoqPublishElement, MoqWatchElement };
+export { MoqMeet, MoqPublish, MoqWatch };
 
 const observedAttributes = ["media", "room", "join"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
-export class MoqDemoElement extends HTMLElement {
-	#meet: MoqMeetElement;
-	#publish: MoqPublishElement;
+export class MoqDemo extends HTMLElement {
+	#meet: MoqMeet;
+	#publish: MoqPublish;
 	#leave: SlButton;
 
 	@attribute
@@ -50,7 +50,7 @@ export class MoqDemoElement extends HTMLElement {
 	constructor() {
 		super();
 
-		this.#publish = (<moq-publish />) as MoqPublishElement;
+		this.#publish = (<moq-publish />) as MoqPublish;
 
 		// Use the ?name parameter or generate a random name.
 		const urlParams = new URLSearchParams(window.location.search);
@@ -116,7 +116,7 @@ export class MoqDemoElement extends HTMLElement {
 		});
 
 		// Let the caller slot the <moq-meet> element so they have access to it.
-		this.#meet = new MoqMeetElement();
+		this.#meet = new MoqMeet();
 
 		shadow.appendChild(this.#publish);
 		shadow.appendChild(
@@ -184,10 +184,10 @@ export class MoqDemoElement extends HTMLElement {
 	}
 }
 
-customElements.define("moq-demo", MoqDemoElement);
+customElements.define("moq-demo", MoqDemo);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-demo": MoqDemoElement;
+		"moq-demo": MoqDemo;
 	}
 }

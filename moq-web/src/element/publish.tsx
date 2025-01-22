@@ -6,7 +6,7 @@ import { jsx } from "./jsx";
 const observedAttributes = ["url", "media", "preview"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
 
-export class MoqPublishElement extends HTMLElement {
+export class MoqPublish extends HTMLElement {
 	#publish: Moq.Publish | null;
 	#preview: HTMLVideoElement;
 	#media: MediaStream | null = null;
@@ -81,7 +81,7 @@ export class MoqPublishElement extends HTMLElement {
 			this.#publish = new Moq.Publish();
 		}
 
-		for (const name of MoqPublishElement.observedAttributes) {
+		for (const name of MoqPublish.observedAttributes) {
 			const value = this.getAttribute(name) ?? undefined;
 			if (value !== undefined) {
 				this.attributeChangedCallback(name, undefined, value);
@@ -136,10 +136,12 @@ export class MoqPublishElement extends HTMLElement {
 	}
 }
 
-customElements.define("moq-publish", MoqPublishElement);
+customElements.define("moq-publish", MoqPublish);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-publish": MoqPublishElement;
+		"moq-publish": MoqPublish;
 	}
 }
+
+export default MoqPublish;
