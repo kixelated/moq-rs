@@ -9,7 +9,7 @@ use crate::Path;
 enum AnnounceStatus {
 	Ended = 0,
 	Active = 1,
-	Wait = 2,
+	Live = 2,
 }
 
 /// Sent by the publisher to announce the availability of a track.
@@ -29,7 +29,7 @@ impl Decode for Announce {
 			AnnounceStatus::Active => Self::Active {
 				suffix: Path::decode(r)?,
 			},
-			AnnounceStatus::Wait => Self::Live,
+			AnnounceStatus::Live => Self::Live,
 		})
 	}
 }
@@ -45,7 +45,7 @@ impl Encode for Announce {
 				AnnounceStatus::Active.encode(w);
 				suffix.encode(w);
 			}
-			Self::Live => AnnounceStatus::Wait.encode(w),
+			Self::Live => AnnounceStatus::Live.encode(w),
 		}
 	}
 }
@@ -76,6 +76,7 @@ impl Decode for AnnounceStatus {
 		match status {
 			0 => Ok(Self::Ended),
 			1 => Ok(Self::Active),
+			2 => Ok(Self::Live),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
