@@ -124,6 +124,11 @@ impl Backend {
 					let canvas = canvas.ok_or(Error::Closed)?;
 					self.renderer.canvas(canvas.clone());
 				},
+				// TODO temporarily unsubscribe on pause
+				paused = self.controls.paused.next() => {
+					let paused = paused.ok_or(Error::Closed)?;
+					self.renderer.paused(paused);
+				},
 				else => return Ok(()),
 			}
 		}

@@ -6,6 +6,8 @@ use web_sys::OffscreenCanvas;
 
 struct State {
 	scheduled: bool,
+	paused: bool,
+
 	canvas: Option<OffscreenCanvas>,
 	queue: VecDeque<VideoFrame>,
 	draw: Option<Closure<dyn FnMut()>>,
@@ -20,6 +22,7 @@ impl Renderer {
 	pub fn new() -> Self {
 		let state = Rc::new(RefCell::new(State {
 			scheduled: false,
+			paused: false,
 			canvas: None,
 			queue: Default::default(),
 			draw: None,
@@ -38,6 +41,10 @@ impl Renderer {
 
 	pub fn render(&mut self, frame: VideoFrame) {
 		let mut state = self.state.borrow_mut();
+		if state.paused {
+			return;
+		}
+
 		state.queue.push_back(frame);
 		drop(state);
 
@@ -98,6 +105,13 @@ impl Renderer {
 
 	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {
 		self.state.borrow_mut().canvas = canvas;
+	}
+
+	pub fn paused(&mut self, paused: bool) {
+		if paused {
+			self.state.borrow_mut().queue.clear();
+		}
+		self.state.borrow_mut().paused = paused;
 	}
 }
 

@@ -12,7 +12,6 @@ pub struct Controls {
 	pub url: Option<Url>,
 	pub volume: f64,
 	pub media: Option<MediaStream>,
-	pub preview: Option<HtmlVideoElement>,
 }
 
 #[derive(Debug, Default, Clone, Baton)]
