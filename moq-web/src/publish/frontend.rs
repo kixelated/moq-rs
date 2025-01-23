@@ -1,6 +1,6 @@
 use url::Url;
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlVideoElement, MediaStream};
+use web_sys::MediaStream;
 
 use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
 use crate::{Error, Result};

@@ -1,7 +1,7 @@
 import { Watch } from "..";
 import type { WatchState } from "..";
 
-import { attribute, element, Element } from "./component";
+import { Element, attribute, element } from "./component";
 import { jsx } from "./jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";

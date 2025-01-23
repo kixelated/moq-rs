@@ -1,5 +1,5 @@
 import * as Moq from "..";
-import { element, attribute, Element } from "./component";
+import { Element, attribute, element } from "./component";
 
 import { jsx } from "./jsx";
 

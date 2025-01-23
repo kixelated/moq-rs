@@ -2,7 +2,7 @@ import { Room, RoomAction, type RoomAnnounced } from "../room";
 
 import type { MoqWatch } from "./watch";
 
-import { attribute, Element, element } from "./component";
+import { Element, attribute, element } from "./component";
 import { jsx } from "./jsx";
 
 @element("moq-meet")
