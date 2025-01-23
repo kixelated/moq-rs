@@ -2,16 +2,20 @@ import { Room, RoomAction, type RoomAnnounced } from "../room";
 
 import type { MoqWatch } from "./watch";
 
-import { attribute, Element, element } from "./component";
+import { Element, attribute, element } from "./component";
 import { jsx } from "./jsx";
 
 @element("moq-meet")
 export class MoqMeet extends Element {
 	#room: Room;
-	#broadcasts: HTMLDivElement;
+	#container: HTMLDivElement;
+	#broadcasts: Set<MoqWatch> = new Set();
 
 	@attribute
 	accessor room = "";
+
+	@attribute
+	accessor controls = false;
 
 	constructor() {
 		super();
@@ -33,13 +37,19 @@ export class MoqMeet extends Element {
 		this.#runAnnounced(announced).finally(() => announced.free());
 
 		const shadow = this.attachShadow({ mode: "open" });
-		this.#broadcasts = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
+		this.#container = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
 		shadow.appendChild(style);
-		shadow.appendChild(this.#broadcasts);
+		shadow.appendChild(this.#container);
 	}
 
 	roomChange(value: string) {
 		this.#room.url = value;
+	}
+
+	controlsChange(value: boolean) {
+		for (const broadcast of this.#broadcasts) {
+			broadcast.controls = value;
+		}
 	}
 
 	async #runAnnounced(announced: RoomAnnounced) {
@@ -68,19 +78,26 @@ export class MoqMeet extends Element {
 			<moq-watch
 				id={`broadcast-${name}`}
 				url={`${this.room}/${name}`}
+				controls={this.controls}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
 		) as MoqWatch;
 
-		this.#broadcasts.appendChild(watch);
+		this.#container.appendChild(watch);
+		this.#broadcasts.add(watch);
 	}
 
 	#leave(name: string) {
 		const id = `#broadcast-${name}`;
-		const watch = this.#broadcasts.querySelector(id) as MoqWatch | null;
-		if (watch) {
-			watch.remove();
+
+		const watch = this.#container.querySelector(id) as MoqWatch | null;
+		if (!watch) {
+			console.warn(`Broadcast not found: ${id}`);
+			return;
 		}
+
+		watch.remove();
+		this.#broadcasts.delete(watch);
 	}
 }
 

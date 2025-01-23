@@ -2,7 +2,7 @@ use baton::Baton;
 use moq_karp::{moq_transfork::Path, BroadcastProducer, TrackProducer};
 use url::Url;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlVideoElement, MediaStream};
+use web_sys::MediaStream;
 
 use super::{PublishState, Video};
 use crate::{Connect, Error, Result};
@@ -12,7 +12,6 @@ pub struct Controls {
 	pub url: Option<Url>,
 	pub volume: f64,
 	pub media: Option<MediaStream>,
-	pub preview: Option<HtmlVideoElement>,
 }
 
 #[derive(Debug, Default, Clone, Baton)]

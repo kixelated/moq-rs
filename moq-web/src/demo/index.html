@@ -5,17 +5,25 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 0;
+		}
+
+		moq-publish,
+		moq-meet {
+			margin: 8px;
+		}
+	</style>
 </head>
 
 <body>
-	<!-- A web component defined in index.tsx -->
-	<moq-demo room="http://localhost:4443/demo" />
+	<!-- Publish our own broadcast -->
+	<moq-publish url="http://localhost:4443/demo/me" controls></moq-publish>
 
-	<!-- Too complicated? You can use components directly in HTML instead:
-	<moq-meet    room="http://localhost:4443/demo" />
-	<moq-publish url="http://localhost:4443/demo/me" />
-	<moq-watch   url="http://localhost:4443/demo/me" />
-	-->
+	<!-- Show all participants under the /demo prefix -->
+	<moq-meet room="http://localhost:4443/demo" controls></moq-meet>
 </body>
 
 </html>

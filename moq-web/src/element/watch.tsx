@@ -1,13 +1,23 @@
 import { Watch } from "..";
 import type { WatchState } from "..";
 
-import { attribute, element, Element } from "./component";
+import { Element, attribute, element } from "./component";
 import { jsx } from "./jsx";
+
+import "@shoelace-style/shoelace/dist/components/button/button.js";
+import "@shoelace-style/shoelace/dist/components/icon/icon.js";
+
+import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
+import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-watch")
 export class MoqWatch extends Element {
 	#watch: Watch;
 	#canvas: OffscreenCanvas;
+	#controls: HTMLDivElement;
+
+	#pause: SlButton;
+	#fullscreen: SlButton;
 
 	@attribute
 	accessor url = "";
@@ -18,6 +28,12 @@ export class MoqWatch extends Element {
 	@attribute
 	accessor volume = 1;
 
+	@attribute
+	accessor controls = false;
+
+	@attribute
+	accessor fullscreen = false;
+
 	constructor() {
 		super();
 
@@ -25,9 +41,11 @@ export class MoqWatch extends Element {
 			<style>
 				{`
 				:host {
-					display: block;
+					display: flex;
 					overflow: hidden;
 					position: relative;
+					justify-content: center;
+					align-items: center;
 				}
 				`}
 			</style>
@@ -37,9 +55,50 @@ export class MoqWatch extends Element {
 			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
 		) as HTMLCanvasElement;
 
+		this.#pause = (
+			<sl-button
+				css={{ background: "black", borderRadius: "8px" }}
+				onclick={() => {
+					this.paused = !this.paused;
+				}}
+			>
+				<sl-icon name="pause" label="Pause" />
+			</sl-button>
+		) as SlButton;
+
+		this.#fullscreen = (
+			<sl-button
+				onclick={() => {
+					this.fullscreen = !this.fullscreen;
+				}}
+			>
+				<sl-icon name="fullscreen" label="Fullscreen" />
+			</sl-button>
+		) as SlButton;
+
+		this.#controls = (
+			<div
+				css={{
+					display: "none",
+					position: "absolute",
+					bottom: "0",
+					left: "0",
+					right: "0",
+					justifyContent: "space-between",
+					alignItems: "center",
+					padding: "8px",
+					gap: "8px",
+				}}
+			>
+				{this.#pause}
+				{this.#fullscreen}
+			</div>
+		) as HTMLDivElement;
+
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 		shadow.appendChild(canvas);
+		shadow.appendChild(this.#controls);
 
 		this.#canvas = canvas.transferControlToOffscreen();
 
@@ -49,20 +108,42 @@ export class MoqWatch extends Element {
 	}
 
 	urlChange(value: string) {
-		if (this.#watch) {
-			this.#watch.url = value;
-		}
+		this.#watch.url = value;
 	}
 
 	pausedChange(value: boolean) {
-		if (this.#watch) {
-			this.#watch.paused = value;
+		this.#watch.paused = value;
+
+		const icon = this.#pause.firstChild as SlIcon;
+		if (value) {
+			icon.name = "play";
+			icon.label = "Play";
+		} else {
+			icon.name = "pause";
+			icon.label = "Pause";
 		}
 	}
 
 	volumeChange(value: number) {
-		if (this.#watch) {
-			this.#watch.volume = value;
+		this.#watch.volume = value;
+	}
+
+	controlsChange(value: boolean) {
+		this.#controls.style.display = value ? "flex" : "none";
+	}
+
+	async fullscreenChange(value: boolean) {
+		const icon = this.#fullscreen.firstChild as SlIcon;
+		if (value) {
+			icon.name = "fullscreen-exit";
+			icon.label = "Exit Fullscreen";
+			this.requestFullscreen().catch(() => {
+				this.fullscreen = false;
+			});
+		} else {
+			icon.name = "fullscreen";
+			icon.label = "Fullscreen";
+			document.exitFullscreen().catch(() => {});
 		}
 	}
 }

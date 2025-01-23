@@ -32,13 +32,6 @@ export class Element extends HTMLElement {
 		return Array.from(attributes.keys());
 	}
 
-	connectedCallback() {
-		for (const [name] of Object.entries(Element.observedAttributes)) {
-			const value = this.getAttribute(name);
-			this.attributeChangedCallback(name, null, value);
-		}
-	}
-
 	attributeChangedCallback(name: string, old: string | null, value: string | null) {
 		if (old === value) {
 			return;
@@ -107,16 +100,14 @@ export function attribute<C extends Element, V extends AttributeType>(
 }
 
 function attributeToString(value: AttributeType): string {
-	if (typeof value === "string") {
-		return value;
+	switch (typeof value) {
+		case "string":
+			return value;
+		case "number":
+			return value.toString();
+		case "boolean":
+			return "";
 	}
-	if (typeof value === "number") {
-		return value.toString();
-	}
-	if (typeof value === "boolean") {
-		return "";
-	}
-	throw new Error("Unsupported attribute type");
 }
 
 function stringToAttribute<T extends AttributeType>(value: string | null, init: T): T {

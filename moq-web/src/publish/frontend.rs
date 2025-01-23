@@ -1,6 +1,6 @@
 use url::Url;
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlVideoElement, MediaStream};
+use web_sys::MediaStream;
 
 use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
 use crate::{Error, Result};
@@ -40,16 +40,6 @@ impl Publish {
 		};
 		self.controls.url.set(url);
 		Ok(())
-	}
-
-	#[wasm_bindgen(getter)]
-	pub fn preview(&self) -> Option<HtmlVideoElement> {
-		self.controls.preview.get()
-	}
-
-	#[wasm_bindgen(setter)]
-	pub fn set_preview(&mut self, preview: Option<HtmlVideoElement>) {
-		self.controls.preview.set(preview)
 	}
 
 	#[wasm_bindgen(getter)]
