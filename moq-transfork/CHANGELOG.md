@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.3...moq-transfork-v0.9.0) - 2025-01-24
+
+### Other
+
+- Meet status and various fixes ([#310](https://github.com/kixelated/moq-rs/pull/310))
+- Remove group expires. ([#303](https://github.com/kixelated/moq-rs/pull/303))
+- Add initial <moq-meet> element ([#302](https://github.com/kixelated/moq-rs/pull/302))
+- Update some repo URLs. ([#299](https://github.com/kixelated/moq-rs/pull/299))
+
 ## [0.8.3](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.2...moq-transfork-v0.8.3) - 2025-01-16
 
 ### Other
