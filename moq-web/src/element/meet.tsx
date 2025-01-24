@@ -29,11 +29,9 @@ export class MoqMeet extends Element {
 			<style>
 				{`
 				:host {
-					display: flex;
-					flex-direction: column;
+					display: block;
 					position: relative;
-					justify-content: center;
-					align-items: center;
+					overflow: hidden;
 				}
 				`}
 			</style>
