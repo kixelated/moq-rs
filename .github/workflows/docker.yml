@@ -1,4 +1,4 @@
-name: Publish Docker Images
+name: Docker
 
 on:
   push:
@@ -12,7 +12,8 @@ env:
 
 jobs:
   deploy:
-    name: Publish Docker Image
+    name: Release
+
     runs-on: ubuntu-latest
     permissions:
       contents: read

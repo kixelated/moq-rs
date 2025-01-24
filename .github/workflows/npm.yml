@@ -1,4 +1,4 @@
-name: Publish NPM Package
+name: NPM
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
 
 jobs:
   release:
+    name: Release
+
     runs-on: ubuntu-latest
 
     defaults:
