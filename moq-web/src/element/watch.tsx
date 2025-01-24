@@ -41,10 +41,9 @@ export class MoqWatch extends Element {
 			<style>
 				{`
 				:host {
-					display: flex;
+					display: block;
 					position: relative;
-					justify-content: center;
-					align-items: center;
+					overflow: hidden;
 				}
 
 				:host(:not([controls])) #controls {
