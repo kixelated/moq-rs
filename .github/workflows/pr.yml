@@ -15,10 +15,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install Just to run CI scripts
+      - uses: extractions/setup-just@v2
+
       # Install Rust with clippy/rustfmt
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
+
+      # Install Machete to find unused dependencies
+      - run: cargo install cargo-machete
+
+      # Install Node for moq-web
+      - uses: actions/setup-node@v4
 
       # Annoying: we need gstreamer installed to compile moq-gst
       - name: Setup GStreamer
@@ -46,23 +55,7 @@ jobs:
       - run: echo "RUSTFLAGS=--cfg=web_sys_unstable_apis" >> $GITHUB_ENV
 
       # Make sure u guys don't write bad code
-      - run: cargo check --all --verbose
-      - run: cargo test --all --verbose
-      - run: cargo clippy --all --no-deps -- -D warnings
-      - run: cargo fmt --all --check
+      - run: just check
 
-      # Check for unused dependencies
-      - uses: bnjbvr/cargo-machete@main
-
-  # Make sure the NPM package is good to go
-  npm:
-    name: Javascript Checks
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-      - run: npm install
-      - run: npm run build
-      - run: npm pack
+      # Make sure the project builds
+      - run: just build

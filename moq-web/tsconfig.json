@@ -31,7 +31,7 @@
 		}
 	},
 
-	"include": ["moq-web/src"],
+	"include": ["src"],
 	"exclude": ["node_modules"],
 
 	"tsc-alias": {

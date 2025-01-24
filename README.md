@@ -13,7 +13,7 @@ If you're curious about the protocol, check out the current [specification](http
 The project is split into a few crates:
 
 -   [moq-relay](moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
-- [moq-web](moq-web): A web client utilizing Rust and WASM. Supports both consuming media (and soon publishing).
+- [moq-web](moq-web): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
 -   [moq-transfork](moq-transfork): The underlying network protocol. It can be used by live applications that need real-time and scale, even if they're not media.
 - [moq-karp](moq-karp): The underlying media protocol powered by moq-transfork. It includes a CLI for importing/exporting to other formats, for example integrating with ffmpeg.
 - [moq-gst](moq-gst): A gstreamer plugin for producing Karp broadcasts. Note: ffmpeg is supported via moq-karp directly.
@@ -24,25 +24,23 @@ The project is split into a few crates:
 
 # Usage
 ## Requirements
-- [Rust](https://www.rust-lang.org/tools/install) + WASM target
+- [Rust](https://www.rust-lang.org/tools/install)
+- WASM target: `rustup target add wasm32-unknown-unknown`
+- [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
 - [Node + NPM](https://nodejs.org/)
 
-```sh
-rustup target add wasm32-unknown-unknown
-```
-
 ## Development
-There's a few scripts in the [dev](dev) directory to help you get started.
-You can run them directly in separate terminals or use the `all` script to run them all at once.
+We use `just` to simplify the development process.
+Check out the [Justfile](justfile) or run `just` to see the available commands.
 
 ```sh
 # Run the relay, a demo movie, and web server:
-./dev/all
+just all
 
 # Or run each individually in separate terminals:
-./dev/relay
-./dev/bbb
-./dev/web
+just relay
+just bbb
+just web
 ```
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
@@ -53,13 +51,6 @@ Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
 [moq-relay](moq-relay) is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
 It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
-
-Notable arguments:
-
--   `--bind <ADDR>` Listen on this address, default: `[::]:4443`
--   `--tls-cert <CERT>` Use the certificate file at this path
--   `--tls-key <KEY>` Use the private key at this path
--   `--announce <URL>` Forward all announcements to this address, typically a root relay.
 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
@@ -73,24 +64,24 @@ For example:
 
 ```html
 <script type="module">
-	import '@kixelated/moq/video'
+	import '@kixelated/moq/watch'
 </script>
 
-<moq-video src="https://relay.quic.video/demo/bbb"></moq-video>
+<moq-watch url="https://relay.quic.video/demo/bbb"></moq-watch>
 ```
 
 The package is a gross frankenstein of Rust+Typescript.
 To run the demo page:
 
 ```sh
-npm i
-npm run web
+just web
 ```
 
 You can also test the package locally by linking.
 Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
+# In the moq-web directory
 npm run build
 npm link
 
@@ -110,7 +101,7 @@ The crate includes a binary that accepts fMP4 with a few restrictions:
 -   `fragment_per_frame`: (optional) Each frame should be a separate fragment to minimize latency.
 
 This can be used in conjunction with ffmpeg to publish media to a MoQ relay.
-See [dev/pub](dev/pub) for the required ffmpeg flags.
+See the [Justfile](./justfile) for the required ffmpeg flags.
 
 Alternatively, see [moq-gst](./moq-gst) for a gstreamer plugin.
 

@@ -29,19 +29,10 @@
 	"sideEffects": ["./dist/element/*.js", "./dist/rust.*", "./dist/snippets/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
-		"all": "npm-run-all --print-label --parallel relay bbb web",
-		"relay": "./dev/relay",
-		"bbb": "./dev/bbb",
-		"cluster": "npm-run-all --print-label --parallel --race relay cluster:leaf cluster:bbb web",
-		"cluster:leaf": "PORT=4444 ./dev/relay --cluster-root localhost:4443",
-		"cluster:bbb": "PORT=4444 ./dev/bbb",
-		"check": "biome check && cargo check --all",
-		"fix": "biome check --write && cargo clippy --all --fix --allow-dirty --allow-staged && cargo fmt --all",
-		"fmt": "biome format --write && cargo fmt --all",
-		"build": "npm-run-all --sequential build:wasm build:ts",
-		"build:wasm": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json",
-		"build:ts": "tsc && tsc-alias",
-		"web": "webpack serve"
+		"build": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
+		"dev": "webpack serve",
+		"check": "biome check && tsc --noEmit",
+		"fix": "biome check --write"
 	},
 	"dependencies": {
 		"comlink": "^4.4.2"
@@ -56,7 +47,6 @@
 		"css-loader": "^7.1.2",
 		"html-webpack-plugin": "^5.6.0",
 		"mini-css-extract-plugin": "^2.9.2",
-		"npm-run-all": "^4.1.5",
 		"ts-loader": "^9.5.2",
 		"ts-node": "^10.9.2",
 		"tsc-alias": "^1.8.10",
@@ -65,6 +55,7 @@
 		"wasm-pack": "^0.13.1",
 		"webpack": "^5.97.1",
 		"webpack-cli": "^6.0.1",
-		"webpack-dev-server": "^5.2.0"
+		"webpack-dev-server": "^5.2.0",
+		"concurrently": "^9.1.2"
 	}
 }
