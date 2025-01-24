@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.12.1...moq-karp-v0.12.2) - 2025-01-24
+
+### Other
+
+- Remove group expires. ([#303](https://github.com/kixelated/moq-rs/pull/303))
+- Add initial <moq-meet> element ([#302](https://github.com/kixelated/moq-rs/pull/302))
+
 ## [0.12.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.11.3...moq-karp-v0.12.0) - 2025-01-16
 
 ### Other

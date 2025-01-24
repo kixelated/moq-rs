@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.20](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.19...moq-relay-v0.6.20) - 2025-01-24
+
+### Other
+
+- Add initial <moq-meet> element ([#302](https://github.com/kixelated/moq-rs/pull/302))
+
 ## [0.6.18](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.17...moq-relay-v0.6.18) - 2025-01-16
 
 ### Other
