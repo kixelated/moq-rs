@@ -1,5 +1,3 @@
-name: PR Checks
-
 on:
   pull_request:
     branches: ["main"]
@@ -8,8 +6,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  native:
-    name: Native Checks
+  check:
+    name: Check
     runs-on: ubuntu-latest
 
     steps:

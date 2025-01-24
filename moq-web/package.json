@@ -31,7 +31,7 @@
 	"scripts": {
 		"build": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
 		"dev": "webpack serve",
-		"check": "biome check && tsc --noEmit",
+		"check": "biome check",
 		"fix": "biome check --write"
 	},
 	"dependencies": {
