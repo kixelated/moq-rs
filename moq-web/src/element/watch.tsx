@@ -42,11 +42,27 @@ export class MoqWatch extends Element {
 				{`
 				:host {
 					display: flex;
-					overflow: hidden;
 					position: relative;
 					justify-content: center;
 					align-items: center;
 				}
+
+				:host(:not([controls])) #controls {
+					display: none;
+				}
+
+				:host([controls]) #controls {
+					display: flex;
+					transform: translate(0, 100%);
+					transition: opacity 0.3s ease, transform 0.3s ease;
+					opacity: 0;
+				}
+
+				:host(:hover) #controls {
+					transform: translate(0);
+					opacity: 1;
+				}
+
 				`}
 			</style>
 		);
@@ -78,8 +94,8 @@ export class MoqWatch extends Element {
 
 		this.#controls = (
 			<div
+				id="controls"
 				css={{
-					display: "none",
 					position: "absolute",
 					bottom: "0",
 					left: "0",
@@ -126,10 +142,6 @@ export class MoqWatch extends Element {
 
 	volumeChange(value: number) {
 		this.#watch.volume = value;
-	}
-
-	controlsChange(value: boolean) {
-		this.#controls.style.display = value ? "flex" : "none";
 	}
 
 	async fullscreenChange(value: boolean) {

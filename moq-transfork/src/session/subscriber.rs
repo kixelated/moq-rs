@@ -48,10 +48,12 @@ impl Subscriber {
 				}
 			};
 
-			Self::run_announce(&mut stream, prefix, producer)
+			if let Err(err) = Self::run_announce(&mut stream, prefix, producer)
 				.await
 				.or_close(&mut stream)
-				.ok();
+			{
+				tracing::warn!(?err, "announced error");
+			}
 		});
 
 		consumer
@@ -126,10 +128,9 @@ impl Subscriber {
 
 		spawn(async move {
 			if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
-				this.run_subscribe(id, writer, &mut stream)
-					.await
-					.or_close(&mut stream)
-					.ok();
+				if let Err(err) = this.run_subscribe(id, writer, &mut stream).await.or_close(&mut stream) {
+					tracing::warn!(?err, "subscribe error");
+				}
 			}
 
 			this.subscribes.lock().remove(&id);

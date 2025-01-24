@@ -22,9 +22,13 @@ pub(super) struct Publisher {
 
 impl Publisher {
 	pub fn new(session: web_transport::Session) -> Self {
+		// We start the publisher in live mode because we're producing content.
+		let mut announced = AnnouncedProducer::new();
+		announced.live();
+
 		Self {
 			session,
-			announced: Default::default(),
+			announced,
 			tracks: Default::default(),
 			router: Default::default(),
 		}
