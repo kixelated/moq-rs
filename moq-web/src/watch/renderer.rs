@@ -2,13 +2,14 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use wasm_bindgen::{prelude::Closure, JsCast};
 use web_codecs::VideoFrame;
-use web_sys::OffscreenCanvas;
+use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 struct State {
 	scheduled: bool,
 	paused: bool,
 
 	canvas: Option<OffscreenCanvas>,
+	context: Option<OffscreenCanvasRenderingContext2d>,
 	queue: VecDeque<VideoFrame>,
 	draw: Option<Closure<dyn FnMut()>>,
 }
@@ -24,6 +25,7 @@ impl Renderer {
 			scheduled: false,
 			paused: false,
 			canvas: None,
+			context: None,
 			queue: Default::default(),
 			draw: None,
 		}));
@@ -57,28 +59,14 @@ impl Renderer {
 
 		let frame = state.queue.pop_front().unwrap();
 
-		let canvas = match &mut state.canvas {
-			Some(canvas) => canvas,
-			None => return,
-		};
+		if let Some(canvas) = &mut state.canvas {
+			// TODO don't change the canvas size on each frame.
+			canvas.set_width(frame.display_width());
+			canvas.set_height(frame.display_height());
+		}
 
-		// TODO don't change the canvas size?
-		canvas.set_width(frame.display_width());
-		canvas.set_height(frame.display_height());
-
-		// Tell the browser that we're not going to use the alpha channel for better performance.
-		// We need to create a JsValue until web_sys implements a proper way to create the options.
-		// let options = { alpha: false };
-		let options = js_sys::Object::new();
-		js_sys::Reflect::set(&options, &"alpha".into(), &false.into()).unwrap();
-
-		let ctx = canvas
-			.get_context_with_context_options("2d", &options)
-			.unwrap()
-			.unwrap();
-
-		if let Some(ctx) = ctx.dyn_ref::<web_sys::OffscreenCanvasRenderingContext2d>() {
-			ctx.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
+		if let Some(context) = &mut state.context {
+			context.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
 
 		drop(state);
@@ -104,7 +92,31 @@ impl Renderer {
 	}
 
 	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {
-		self.state.borrow_mut().canvas = canvas;
+		let mut state = self.state.borrow_mut();
+
+		let canvas = match canvas {
+			Some(canvas) => canvas,
+			None => {
+				state.canvas = None;
+				state.context = None;
+				return;
+			}
+		};
+
+		// Tell the browser that we're not going to use the alpha channel for better performance.
+		// We need to create a JsValue until web_sys implements a proper way to create the options.
+		// let options = { alpha: false };
+		let options = js_sys::Object::new();
+		js_sys::Reflect::set(&options, &"alpha".into(), &false.into()).unwrap();
+
+		let ctx: web_sys::OffscreenCanvasRenderingContext2d = canvas
+			.get_context_with_context_options("2d", &options)
+			.unwrap()
+			.unwrap()
+			.unchecked_into();
+
+		state.context = Some(ctx);
+		state.canvas = Some(canvas);
 	}
 
 	pub fn paused(&mut self, paused: bool) {
