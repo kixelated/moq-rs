@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-# Change directory to root folder
-cd "$(dirname "$0")/.."
+echo "Use 'just' instead of these dev scripts.";
+echo "https://github.com/casey/just?tab=readme-ov-file#installation"
 
-# Install any new dependencies
-npm install
-
-# Run everything
-npm run all
+exit 1;

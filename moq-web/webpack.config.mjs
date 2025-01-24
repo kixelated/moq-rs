@@ -10,20 +10,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const config = {
-	entry: "./moq-web/src/demo/index.ts",
+	entry: "./src/demo/index.ts",
 	output: {
 		path: path.resolve(__dirname, "dist"),
 		filename: "index.js",
 	},
 	plugins: [
 		new WasmPackPlugin({
-			crateDirectory: path.resolve(__dirname, "moq-web"),
+			crateDirectory: __dirname,
 			outDir: path.resolve(__dirname, "dist"),
 			args: "--log-level warn",
 			outName: "rust",
 		}),
 		new HtmlWebpackPlugin({
-			template: "moq-web/src/demo/index.html",
+			template: "src/demo/index.html",
 		}),
 		new MiniCssExtractPlugin(),
 		new CopyPlugin({

@@ -79,7 +79,15 @@ export class MoqPublish extends Element {
 
 		this.#publish = new Moq.Publish();
 		this.#preview = (
-			<video css={{ objectFit: "contain", maxWidth: "100%", maxHeight: "100%", display: "none" }} autoplay />
+			<video
+				css={{
+					objectFit: "contain",
+					maxWidth: "100%",
+					maxHeight: "100%",
+					display: "none",
+				}}
+				autoplay
+			/>
 		) as HTMLVideoElement;
 
 		const shadow = this.attachShadow({ mode: "open" });

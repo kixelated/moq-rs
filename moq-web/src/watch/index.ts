@@ -12,7 +12,9 @@ let cached: Promise<Comlink.Remote<Bridge>> | null = null;
 function init(): Promise<Comlink.Remote<Bridge>> {
 	if (!cached) {
 		cached = new Promise((resolve) => {
-			const worker = new Worker(new URL("./bridge", import.meta.url), { type: "module" });
+			const worker = new Worker(new URL("./bridge", import.meta.url), {
+				type: "module",
+			});
 			worker.addEventListener(
 				"message",
 				(event) => {

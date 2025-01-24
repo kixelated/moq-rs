@@ -1,4 +1,4 @@
-name: Version and Publish Crates
+name: Release
 
 permissions:
   pull-requests: write
@@ -11,6 +11,8 @@ on:
 
 jobs:
   release:
+    name: Plz
+
     runs-on: ubuntu-latest
     steps:
       # Generating a GitHub token, so that PRs and tags created by

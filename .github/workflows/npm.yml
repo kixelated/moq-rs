@@ -1,4 +1,4 @@
-name: Publish NPM Package
+name: NPM
 
 on:
   push:
@@ -7,18 +7,17 @@ on:
 
 jobs:
   release:
+    name: Release
+
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: moq-web
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Generate GitHub token
-        uses: actions/create-github-app-token@v1
-        id: generate-token
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - uses: actions/setup-node@v4
 
@@ -39,19 +38,3 @@ jobs:
           npm install
           npm run build
           npm publish --access public
-
-      - name: Trigger quic.video update
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/moq-web-v}
-          curl -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/kixelated/quic.video/actions/workflows/update.yml/dispatches \
-            -d "$(jq -n --arg version "$VERSION" '{
-              ref: "main",
-              inputs: {
-                npm_version: $version
-              }
-            }')"

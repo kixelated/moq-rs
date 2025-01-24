@@ -3,6 +3,7 @@
 		"rust-lang.rust-analyzer",
 		"ms-vscode.vscode-typescript-next",
 		"biomejs.biome",
-		"EditorConfig.EditorConfig"
+		"EditorConfig.EditorConfig",
+		"nefrob.vscode-just-syntax"
 	]
 }
