@@ -50,7 +50,6 @@ impl Backend {
 	pub fn start(mut self) {
 		spawn_local(async move {
 			if let Err(err) = self.run().await {
-				tracing::error!(?err, "backend error");
 				self.status.error.set(Some(err));
 			}
 
@@ -86,6 +85,7 @@ impl Backend {
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
+					tracing::info!("connected");
 					let broadcast = moq_karp::BroadcastConsumer::new(session?, self.path.clone());
 					self.status.state.set(WatchState::Connected);
 
@@ -105,7 +105,7 @@ impl Backend {
 					};
 
 					// NOTE: We fire this event every time the catalog changes.
-					self.status.state.set(WatchState::Playing);
+					self.status.state.set(WatchState::Live);
 
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {

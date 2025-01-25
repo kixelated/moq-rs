@@ -239,7 +239,7 @@ impl TrackConsumer {
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self
 			.state
-			.wait_for(|state| state.latest.as_ref().map(|latest| latest.sequence) != self.prev || state.closed.is_err())
+			.wait_for(|state| state.latest.as_ref().map(|group| group.sequence) != self.prev || state.closed.is_err())
 			.await
 		{
 			Ok(state) => state,

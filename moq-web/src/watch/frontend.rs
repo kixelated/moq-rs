@@ -49,9 +49,13 @@ impl Watch {
 		self.controls.canvas.set(canvas);
 	}
 
+	pub fn error(&self) -> Option<String> {
+		self.status.error.get().map(|e| e.to_string())
+	}
+
 	pub fn states(&self) -> WatchStates {
 		WatchStates {
-			status: self.status.state.clone(),
+			state: self.status.state.clone(),
 		}
 	}
 }
@@ -69,7 +73,7 @@ pub enum WatchState {
 	Idle,
 	Connecting,
 	Connected,
-	Playing,
+	Live,
 	Offline,
 	Error,
 }
@@ -77,12 +81,12 @@ pub enum WatchState {
 // Unfortunately, we need this wrapper because `wasm_bindgen` doesn't support generics.
 #[wasm_bindgen]
 pub struct WatchStates {
-	status: baton::Recv<WatchState>,
+	state: baton::Recv<WatchState>,
 }
 
 #[wasm_bindgen]
 impl WatchStates {
 	pub async fn next(&mut self) -> Option<WatchState> {
-		self.status.next().await
+		self.state.next().await
 	}
 }

@@ -1,4 +1,4 @@
-import type * as Rust from "@rust";
+import * as Rust from "@rust";
 import * as Comlink from "comlink";
 import type { Bridge } from "./bridge";
 
@@ -30,34 +30,18 @@ const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
 	);
 });
 
-/*
-	async *state(): AsyncGenerator<WatchState> {
-		const watch = await this.#watch;
-		const states = await Comlink.proxy(watch.states());
-
-		try {
-			while (true) {
-				const next = await states.next();
-				if (!next) {
-					return;
-				}
-
-				yield next;
-			}
-		} finally {
-			states.free();
-		}
-	}
-		*/
-
 @element("moq-watch")
 export class MoqWatch extends Element {
 	#watch: Promise<Comlink.Remote<Rust.Watch>>;
 	#canvas: OffscreenCanvas;
-	#controls: HTMLDivElement;
 
+	// Optional controls
+	#controls: HTMLDivElement;
 	#pause: SlButton;
 	#fullscreen: SlButton;
+
+	// Optional status dialog
+	#status: HTMLDivElement;
 
 	@attribute
 	accessor url = "";
@@ -70,6 +54,9 @@ export class MoqWatch extends Element {
 
 	@attribute
 	accessor controls = false;
+
+	@attribute
+	accessor status = false;
 
 	@attribute
 	accessor fullscreen = false;
@@ -86,7 +73,14 @@ export class MoqWatch extends Element {
 					overflow: hidden;
 				}
 
-				:host(:not([controls])) #controls {
+				:host([status]) #status {
+					display: flex;
+					gap: 8px;
+					justify-content: center;
+					font-family: var(--sl-font-sans);
+				}
+
+				:host(:not([status])) #status  {
 					display: none;
 				}
 
@@ -95,6 +89,10 @@ export class MoqWatch extends Element {
 					transform: translate(0, 100%);
 					transition: opacity 0.3s ease, transform 0.3s ease;
 					opacity: 0;
+				}
+
+				:host(:not([controls])) #controls {
+					display: none;
 				}
 
 				:host(:hover) #controls {
@@ -107,12 +105,10 @@ export class MoqWatch extends Element {
 		);
 
 		const canvas = (
-			<canvas
-				css={{ display: "block", maxWidth: "100%", height: "auto" }}
-				width={0}
-				height={0}
-			/>
+			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
 		) as HTMLCanvasElement;
+
+		this.#status = (<div id="status" />) as HTMLDivElement;
 
 		this.#pause = (
 			<sl-button
@@ -156,15 +152,16 @@ export class MoqWatch extends Element {
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
+		shadow.appendChild(this.#status);
 		shadow.appendChild(canvas);
 		shadow.appendChild(this.#controls);
 
 		this.#canvas = canvas.transferControlToOffscreen();
 
 		this.#watch = worker.then((api) => api.watch());
-		this.#watch.then((watch) =>
-			watch.canvas(Comlink.transfer(this.#canvas, [this.#canvas])),
-		);
+		this.#watch.then((watch) => watch.canvas(Comlink.transfer(this.#canvas, [this.#canvas])));
+
+		this.#runStatus();
 	}
 
 	urlChange(value: string) {
@@ -203,6 +200,54 @@ export class MoqWatch extends Element {
 			icon.name = "fullscreen";
 			icon.label = "Fullscreen";
 			document.exitFullscreen().catch(() => {});
+		}
+	}
+
+	async #runStatus() {
+		this.#status.replaceChildren(<sl-spinner />, "Loading WASM Worker...");
+		const watch = await this.#watch;
+
+		const states = await Comlink.proxy(watch.states());
+		while (true) {
+			const next = await states.next();
+			if (next === undefined) {
+				return;
+			}
+
+			switch (next) {
+				case Rust.WatchState.Idle:
+					this.#status.replaceChildren();
+					break;
+				case Rust.WatchState.Connecting:
+					this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
+					break;
+				case Rust.WatchState.Connected:
+					this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcast...");
+					break;
+				case Rust.WatchState.Live:
+					this.#status.replaceChildren();
+					break;
+				case Rust.WatchState.Offline:
+					this.#status.replaceChildren("Offline");
+					break;
+				case Rust.WatchState.Error: {
+					const err = (await watch.error()) || "unknown";
+					this.#status.replaceChildren(
+						<sl-alert variant="danger" open css={{ width: "100%" }}>
+							<sl-icon slot="icon" name="exclamation-octagon" />
+							<strong>Error</strong>
+							<br />
+							{err}
+						</sl-alert>,
+					);
+
+					break;
+				}
+				default: {
+					const _exhaustive: never = next;
+					throw new Error(`Unhandled state: ${_exhaustive}`);
+				}
+			}
 		}
 	}
 }

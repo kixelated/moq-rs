@@ -3,6 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
+export RUST_LOG := "info"
 
 # List all of the available commands.
 default:
@@ -10,7 +11,7 @@ default:
 
 # Run the relay, web server, and publish bbb.
 all:
-	cd moq-web && npm i && npx concurrently --kill-others --names srv,web,bbb --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	cd moq-web && npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:
@@ -46,7 +47,7 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/{{name}}"
+		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
 # Publish a video using gstreamer to the localhost relay server
 gst name:
