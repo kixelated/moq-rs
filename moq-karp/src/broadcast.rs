@@ -201,12 +201,10 @@ impl BroadcastConsumer {
 					}
 				},
 				Some(group) = async { self.catalog_track.as_mut()?.next_group().await.transpose() } => {
-					tracing::info!(?group, ?self.path, "loaded catalog group");
 					// Use the new group.
 					self.catalog_group.replace(group?);
 				},
 				Some(frame) = async { self.catalog_group.as_mut()?.read_frame().await.transpose() } => {
-					tracing::info!(?frame, ?self.path, "loaded catalog frame");
 					let catalog = Catalog::from_slice(&frame?)?;
 					self.catalog_group.take(); // We don't support deltas yet
 					return Ok(Some(catalog));

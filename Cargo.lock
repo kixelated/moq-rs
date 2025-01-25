@@ -1518,6 +1518,7 @@ dependencies = [
  "bytes",
  "clap",
  "derive_more",
+ "futures",
  "hex",
  "lazy_static",
  "moq-async",

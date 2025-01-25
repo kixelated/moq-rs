@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Error, Result};
@@ -358,7 +358,7 @@ impl Import {
 				} else {
 					match self.last_keyframe.get(&track_id) {
 						// Force an audio keyframe at least every 10 seconds, but ideally at video keyframes
-						Some(prev) => timestamp - *prev > Timestamp::from_seconds(10),
+						Some(prev) => timestamp - *prev > Duration::from_secs(10),
 						None => true,
 					}
 				};
@@ -391,7 +391,7 @@ impl Import {
 		if let (Some(min), Some(max)) = (min_timestamp, max_timestamp) {
 			let diff = max - min;
 
-			if diff > Timestamp::from_millis(1) {
+			if diff > Duration::from_millis(1) {
 				tracing::warn!("fMP4 introduced {:?} of latency", diff);
 			}
 		}
