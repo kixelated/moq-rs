@@ -10,7 +10,7 @@ default:
 
 # Run the relay, web server, and publish bbb.
 all:
-	cd moq-web && npm i && npx concurrently --kill-others --names srv,web,bbb --prefix-colors auto "just relay" "just web" "just bbb"
+	cd moq-web && npm i && npx concurrently --kill-others --names srv,web,bbb --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:

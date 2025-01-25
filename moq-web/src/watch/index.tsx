@@ -1,8 +1,9 @@
-import { Watch } from "..";
-import type { WatchState } from "..";
+import type * as Rust from "@rust";
+import * as Comlink from "comlink";
+import type { Bridge } from "./bridge";
 
-import { Element, attribute, element } from "./component";
-import { jsx } from "./jsx";
+import { Element, attribute, element } from "../element/component";
+import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
@@ -10,9 +11,48 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
 import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
+export type { WatchState };
+type WatchState = Rust.WatchState;
+
+// Create a new worker instance that is shared between all instances of the Watch class.
+// We wait until the worker is fully initialized before we return the proxy.
+const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
+	const worker = new Worker(new URL("./bridge", import.meta.url), {
+		type: "module",
+	});
+	worker.addEventListener(
+		"message",
+		(event) => {
+			const proxy: Comlink.Remote<Bridge> = Comlink.wrap(worker);
+			resolve(proxy);
+		},
+		{ once: true },
+	);
+});
+
+/*
+	async *state(): AsyncGenerator<WatchState> {
+		const watch = await this.#watch;
+		const states = await Comlink.proxy(watch.states());
+
+		try {
+			while (true) {
+				const next = await states.next();
+				if (!next) {
+					return;
+				}
+
+				yield next;
+			}
+		} finally {
+			states.free();
+		}
+	}
+		*/
+
 @element("moq-watch")
 export class MoqWatch extends Element {
-	#watch: Watch;
+	#watch: Promise<Comlink.Remote<Rust.Watch>>;
 	#canvas: OffscreenCanvas;
 	#controls: HTMLDivElement;
 
@@ -67,7 +107,11 @@ export class MoqWatch extends Element {
 		);
 
 		const canvas = (
-			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
+			<canvas
+				css={{ display: "block", maxWidth: "100%", height: "auto" }}
+				width={0}
+				height={0}
+			/>
 		) as HTMLCanvasElement;
 
 		this.#pause = (
@@ -117,17 +161,18 @@ export class MoqWatch extends Element {
 
 		this.#canvas = canvas.transferControlToOffscreen();
 
-		// We initialize the Watch here before getting added to the DOM so we could preload.
-		this.#watch = new Watch();
-		this.#watch.canvas = this.#canvas;
+		this.#watch = worker.then((api) => api.watch());
+		this.#watch.then((watch) =>
+			watch.canvas(Comlink.transfer(this.#canvas, [this.#canvas])),
+		);
 	}
 
 	urlChange(value: string) {
-		this.#watch.url = value;
+		this.#watch.then((watch) => watch.url(value));
 	}
 
 	pausedChange(value: boolean) {
-		this.#watch.paused = value;
+		this.#watch.then((watch) => watch.paused(value));
 
 		const icon = this.#pause.firstChild as SlIcon;
 		if (value) {
@@ -140,7 +185,10 @@ export class MoqWatch extends Element {
 	}
 
 	volumeChange(value: number) {
-		this.#watch.volume = value;
+		if (value < 0 || value > 1) {
+			throw new RangeError("volume must be between 0 and 1");
+		}
+		this.#watch.then((watch) => watch.volume(value));
 	}
 
 	async fullscreenChange(value: boolean) {
@@ -162,10 +210,6 @@ export class MoqWatch extends Element {
 declare global {
 	interface HTMLElementTagNameMap {
 		"moq-watch": MoqWatch;
-	}
-
-	interface GlobalEventHandlersEventMap {
-		"moq-watch-state": CustomEvent<WatchState>;
 	}
 }
 

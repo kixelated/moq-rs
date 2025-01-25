@@ -30,7 +30,10 @@ const config = {
 			patterns: [
 				// Copy Shoelace assets to dist/shoelace
 				{
-					from: path.resolve(__dirname, "node_modules/@shoelace-style/shoelace/dist/assets"),
+					from: path.resolve(
+						__dirname,
+						"node_modules/@shoelace-style/shoelace/dist/assets",
+					),
 					to: path.resolve(__dirname, "dist/assets"),
 				},
 			],
@@ -58,7 +61,7 @@ const config = {
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],
 		alias: {
-			"@dist": path.resolve(__dirname, "dist"),
+			"@rust": path.resolve(__dirname, "dist", "rust"),
 		},
 	},
 	devServer: {

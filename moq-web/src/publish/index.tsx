@@ -1,7 +1,8 @@
-import * as Moq from "..";
-import { Element, attribute, element } from "./component";
+import * as Rust from "@rust";
 
-import { jsx } from "./jsx";
+import { Element, attribute, element } from "../element/component";
+
+import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/themes/light.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";
@@ -12,7 +13,7 @@ import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
 @element("moq-publish")
 export class MoqPublish extends Element {
-	#publish: Moq.Publish;
+	#publish: Rust.Publish;
 	#preview: HTMLVideoElement;
 	#controls: HTMLDivElement;
 
@@ -64,7 +65,10 @@ export class MoqPublish extends Element {
 							<sl-icon slot="prefix" name="display" label="Screen" />
 						</sl-radio-button>
 					</sl-tooltip>
-					<sl-tooltip content="Publish nothing (for now), but still join the meeting." placement="bottom">
+					<sl-tooltip
+						content="Publish nothing (for now), but still join the meeting."
+						placement="bottom"
+					>
 						<sl-radio-button
 							onclick={() => {
 								this.media = "";
@@ -77,7 +81,7 @@ export class MoqPublish extends Element {
 			</div>
 		) as HTMLDivElement;
 
-		this.#publish = new Moq.Publish();
+		this.#publish = new Rust.Publish();
 		this.#preview = (
 			<video
 				css={{

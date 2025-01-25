@@ -26,7 +26,7 @@
 			"import": "./dist/element/meet.js"
 		}
 	},
-	"sideEffects": ["./dist/element/*.js", "./dist/rust.*", "./dist/snippets/*"],
+	"sideEffects": ["./dist/rust.*", "./dist/snippets/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"build": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",

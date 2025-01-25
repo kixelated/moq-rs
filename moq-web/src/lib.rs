@@ -1,12 +1,12 @@
 mod error;
+mod meet;
 mod publish;
-mod room;
 mod session;
 mod watch;
 
 pub use error::*;
+pub use meet::*;
 pub use publish::*;
-pub use room::*;
 pub use watch::*;
 
 pub(crate) use session::*;

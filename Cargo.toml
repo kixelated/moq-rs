@@ -23,8 +23,8 @@ resolver = "2"
 
 [workspace.dependencies]
 # Make it easy to test web-transport changes
-#web-transport = { path = "../web-transport-rs/web-transport" }
-web-transport = "0.7"
+web-transport = { path = "../web-transport-rs/web-transport" }
+#web-transport = "0.7"
 
 [profile.release.package.moq-web]
 # Tell `rustc` to optimize for small code size.

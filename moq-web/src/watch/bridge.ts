@@ -1,7 +1,7 @@
 import * as Comlink from "comlink";
 
-import * as Rust from "@dist/rust";
-export type { Watch } from "@dist/rust";
+import * as Rust from "@rust";
+export type { Watch } from "@rust";
 
 export class Bridge {
 	async watch(): Promise<Rust.Watch & Comlink.ProxyMarked> {

@@ -1,9 +1,8 @@
-import { Room, RoomAction, type RoomAnnounced } from "../room";
+import * as Rust from "@rust";
+import type { MoqWatch } from "..";
 
-import type { MoqWatch } from "./watch";
-
-import { Element, attribute, element } from "./component";
-import { jsx } from "./jsx";
+import { Element, attribute, element } from "../element/component";
+import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";
@@ -11,7 +10,7 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet")
 export class MoqMeet extends Element {
-	#room: Room;
+	#room: Rust.Room;
 	#container: HTMLDivElement;
 	#broadcasts: Set<MoqWatch> = new Set();
 	#status: HTMLDivElement;
@@ -39,9 +38,11 @@ export class MoqMeet extends Element {
 
 		this.#status = (<div />) as HTMLDivElement;
 
-		this.#container = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
+		this.#container = (
+			<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />
+		) as HTMLDivElement;
 
-		this.#room = new Room();
+		this.#room = new Rust.Room();
 		const announced = this.#room.announced();
 		this.#runAnnounced(announced).finally(() => announced.free());
 
@@ -61,7 +62,7 @@ export class MoqMeet extends Element {
 		}
 	}
 
-	async #runAnnounced(announced: RoomAnnounced) {
+	async #runAnnounced(announced: Rust.RoomAnnounced) {
 		this.#status.replaceChildren(<sl-spinner />);
 
 		let live = false;
@@ -84,19 +85,23 @@ export class MoqMeet extends Element {
 			this.#status.replaceChildren();
 
 			switch (announce.action) {
-				case RoomAction.Join:
+				case Rust.RoomAction.Join:
 					this.#join(announce.name);
 					break;
-				case RoomAction.Leave:
+				case Rust.RoomAction.Leave:
 					this.#leave(announce.name);
 					break;
-				case RoomAction.Live:
+				case Rust.RoomAction.Live:
 					live = true;
 					break;
 			}
 
 			if (live && this.#broadcasts.size === 0) {
-				this.#status.replaceChildren(<span css={{ fontFamily: "var(--sl-font-sans)" }}>"🦗 nobody is here 🦗"</span>);
+				this.#status.replaceChildren(
+					<span css={{ fontFamily: "var(--sl-font-sans)" }}>
+						"🦗 nobody is here 🦗"
+					</span>,
+				);
 			}
 		}
 	}

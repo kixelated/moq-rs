@@ -3093,8 +3093,6 @@ dependencies = [
 [[package]]
 name = "web-transport"
 version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d8d0a2fb0901c7f3b29e371a43b855efd52fd33b893be336f629f8398814c01"
 dependencies = [
  "bytes",
  "thiserror 2.0.11",
@@ -3106,8 +3104,6 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c564e589056437e3a73383f4e0903965879087c9ee0f715e562bbf4e47c08b75"
 dependencies = [
  "bytes",
  "http",
@@ -3118,8 +3114,6 @@ dependencies = [
 [[package]]
 name = "web-transport-quinn"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7de093dd0658c60edcaba035c867d75eede6ae3fadb51971e6849180a2599e78"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -3129,7 +3123,7 @@ dependencies = [
  "quinn",
  "quinn-proto",
  "rustls",
- "rustls-platform-verifier",
+ "rustls-native-certs 0.8.1",
  "thiserror 2.0.11",
  "tokio",
  "url",
@@ -3139,8 +3133,6 @@ dependencies = [
 [[package]]
 name = "web-transport-wasm"
 version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8331dfac13f1cb199a2bb727c4572c22b872d9e0d99ed7130c3bce76a77fa49f"
 dependencies = [
  "bytes",
  "js-sys",
