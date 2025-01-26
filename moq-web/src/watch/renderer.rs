@@ -1,12 +1,18 @@
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Instant};
 
+use moq_karp::Dimensions;
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_codecs::VideoFrame;
+use web_codecs::{Timestamp, VideoFrame};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 struct State {
 	scheduled: bool,
 	paused: bool,
+	resolution: Dimensions,
+
+	// Used to determine which frame to render next.
+	reference: Option<(Instant, Timestamp)>,
+	max_buffer: std::time::Duration,
 
 	canvas: Option<OffscreenCanvas>,
 	context: Option<OffscreenCanvasRenderingContext2d>,
@@ -26,6 +32,8 @@ impl Renderer {
 			paused: false,
 			canvas: None,
 			context: None,
+			reference: None,
+			resolution: Default::default(),
 			queue: Default::default(),
 			draw: None,
 		}));
@@ -57,17 +65,45 @@ impl Renderer {
 		let mut state = self.state.borrow_mut();
 		state.scheduled = false;
 
-		let frame = state.queue.pop_front().unwrap();
+		// Enforce the max buffer.
+		let mut front = state.queue.front().map(|f| f.timestamp()).unwrap();
+		let back = state.queue.back().map(|f| f.timestamp()).unwrap();
 
-		if let Some(canvas) = &mut state.canvas {
-			// TODO don't change the canvas size on each frame.
-			canvas.set_width(frame.display_width());
-			canvas.set_height(frame.display_height());
+		while back - front > state.max_buffer {
+			let dropped = state.queue.pop_front().unwrap();
+			front = state.queue.front().map(|f| f.timestamp()).unwrap();
+
+			if let Some(reference) = state.reference.as_mut() {
+				reference.1 += (front - dropped.timestamp());
+			}
+		}
+
+		let now = Instant::now();
+		if state.reference.is_none() {
+			state.reference = Some((now, state.queue.front().unwrap().timestamp()));
+		}
+		let reference = state.reference.unwrap();
+
+		// Compute the expected timestamp for this instant.
+		let expected = reference.1 + (now - reference.0);
+
+		// We want to draw a frame if the *next* frame has a higher timestamp than expected.
+		let mut frame: VideoFrame;
+		loop {
+			frame = state.queue.pop_front().unwrap();
+			match state.queue.front() {
+				// Continue looping if the next timestamp is too old.
+				Some(next) if next.timestamp() < expected => (),
+				_ => break,
+			}
 		}
 
 		if let Some(context) = &mut state.context {
 			context.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
+
+		// Push the frame back into the front of the queue for when the screen reference rate is higher than FPS.
+		state.queue.push_front(frame);
 
 		drop(state);
 
@@ -103,6 +139,13 @@ impl Renderer {
 			}
 		};
 
+		let resolution = state.resolution;
+
+		if let Some(canvas) = state.canvas.as_mut() {
+			canvas.set_width(resolution.width);
+			canvas.set_height(resolution.height);
+		}
+
 		// Tell the browser that we're not going to use the alpha channel for better performance.
 		// We need to create a JsValue until web_sys implements a proper way to create the options.
 		// let options = { alpha: false };
@@ -120,10 +163,24 @@ impl Renderer {
 	}
 
 	pub fn paused(&mut self, paused: bool) {
-		if paused {
-			self.state.borrow_mut().queue.clear();
+		let mut state = self.state.borrow_mut();
+		state.queue.clear();
+		state.reference = None;
+		state.paused = paused;
+	}
+
+	pub fn resolution(&mut self, resolution: Dimensions) {
+		let mut state = self.state.borrow_mut();
+		state.resolution = resolution;
+
+		if let Some(canvas) = state.canvas.as_mut() {
+			canvas.set_width(resolution.width);
+			canvas.set_height(resolution.height);
 		}
-		self.state.borrow_mut().paused = paused;
+	}
+
+	pub fn max_buffer(&mut self, duration: std::time::Duration) {
+		self.state.borrow_mut().max_buffer = duration;
 	}
 }
 

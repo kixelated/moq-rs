@@ -3045,9 +3045,7 @@ dependencies = [
 
 [[package]]
 name = "web-codecs"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "294dfa949f7d28cba1b2b59c581e46f4e87f45fec52d3ea021e2cbd1acc8d983"
+version = "0.3.2"
 dependencies = [
  "bytes",
  "derive_more",

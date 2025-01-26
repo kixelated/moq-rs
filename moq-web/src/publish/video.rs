@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use moq_async::FuturesExt;
 
 use crate::{Error, Result};
@@ -108,7 +110,7 @@ impl Video {
 			display: Some(resolution),
 			latency_optimized: Some(true), // TODO configurable
 			frame_rate: settings.get_frame_rate(),
-			max_gop_duration: Some(web_codecs::Duration::from_seconds(2)),
+			max_gop_duration: Some(Duration::from_secs(2)),
 			..Default::default()
 		};
 

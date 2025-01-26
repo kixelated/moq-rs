@@ -3,6 +3,8 @@ use moq_async::FuturesExt;
 use crate::Result;
 
 pub struct Video {
+	info: moq_karp::Video,
+
 	track: moq_karp::TrackConsumer,
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
@@ -25,6 +27,7 @@ impl Video {
 
 		Ok(Self {
 			track,
+			info,
 			decoder,
 			decoded,
 		})
@@ -54,5 +57,13 @@ impl Video {
 impl Drop for Video {
 	fn drop(&mut self) {
 		tracing::info!("dropping video");
+	}
+}
+
+impl std::ops::Deref for Video {
+	type Target = moq_karp::Video;
+
+	fn deref(&self) -> &Self::Target {
+		&self.info
 	}
 }

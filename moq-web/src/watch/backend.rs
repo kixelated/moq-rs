@@ -110,11 +110,15 @@ impl Backend {
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {
 						let track = self.broadcast.as_mut().unwrap().track(&info.track)?;
+						self.renderer.resolution(info.resolution);
+
 						let video = Video::new(track, info.clone())?;
 						self.video = Some(video);
 					} else {
+						self.renderer.resolution(Default::default());
 						self.video = None;
 					}
+
 				},
 				Some(frame) = async { self.video.as_mut()?.frame().await.transpose() } => {
 					let frame = frame?;

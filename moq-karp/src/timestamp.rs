@@ -1,6 +1,7 @@
+use derive_more::{From, Into};
 use std::{fmt, ops, time::Duration};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, From, Into)]
 pub struct Timestamp(Duration);
 
 impl Timestamp {
