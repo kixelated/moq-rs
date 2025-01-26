@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::{coding::*, message, Error};
+use crate::Error;
+use moq_transfork_proto::{coding::Encode, message};
 
 use moq_async::Close;
 
@@ -44,7 +45,7 @@ impl Writer {
 }
 
 impl Close<Error> for Writer {
-	fn close(&mut self, err: Error) {
-		self.stream.reset(err.to_code());
+	fn close(&mut self, _err: Error) {
+		self.stream.reset(1)
 	}
 }

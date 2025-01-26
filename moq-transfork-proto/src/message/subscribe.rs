@@ -1,8 +1,9 @@
 use crate::{
 	coding::{Decode, DecodeError, Encode},
 	message::group,
-	Path,
 };
+
+use super::Path;
 
 /// Sent by the subscriber to request all future objects for the given track.
 ///

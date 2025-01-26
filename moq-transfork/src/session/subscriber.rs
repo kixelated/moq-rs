@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::{
-	message,
 	model::{Track, TrackConsumer},
-	AnnouncedProducer, Error, Path, TrackProducer,
+	AnnouncedProducer, Error, TrackProducer,
 };
+use moq_transfork_proto::message;
 
 use moq_async::{spawn, Lock, OrClose};
 
@@ -17,7 +17,7 @@ use super::{AnnouncedConsumer, Reader, Stream};
 pub(super) struct Subscriber {
 	session: web_transport::Session,
 
-	tracks: Lock<HashMap<Path, TrackProducer>>,
+	tracks: Lock<HashMap<message::Path, TrackProducer>>,
 	subscribes: Lock<HashMap<u64, TrackProducer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
@@ -34,7 +34,7 @@ impl Subscriber {
 	}
 
 	/// Discover any tracks matching a prefix.
-	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
+	pub fn announced(&self, prefix: message::Path) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.subscribe_prefix(prefix.clone());
 
@@ -59,7 +59,11 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(stream: &mut Stream, prefix: Path, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announce(
+		stream: &mut Stream,
+		prefix: message::Path,
+		mut announced: AnnouncedProducer,
+	) -> Result<(), Error> {
 		stream
 			.writer
 			.encode(&message::AnnouncePlease { prefix: prefix.clone() })
@@ -85,7 +89,7 @@ impl Subscriber {
 
 	fn recv_announce(
 		announce: message::Announce,
-		prefix: &Path,
+		prefix: &message::Path,
 		announced: &mut AnnouncedProducer,
 	) -> Result<(), Error> {
 		match announce {

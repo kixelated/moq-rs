@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::coding::*;
+
 #[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Path {
 	parts: Vec<String>,
@@ -98,5 +100,20 @@ impl<S: ToString> FromIterator<S> for Path {
 impl From<Vec<String>> for Path {
 	fn from(parts: Vec<String>) -> Self {
 		Self { parts }
+	}
+}
+
+impl Encode for Path {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.len().encode(w);
+		for part in self.iter() {
+			part.encode(w);
+		}
+	}
+}
+
+impl Decode for Path {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		Ok(Vec::<String>::decode(r)?.into_iter().collect())
 	}
 }

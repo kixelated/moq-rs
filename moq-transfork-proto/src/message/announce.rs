@@ -1,7 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+use super::Path;
 use crate::coding::*;
-use crate::Path;
 
 /// Send by the publisher, used to determine the message that follows.
 #[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]

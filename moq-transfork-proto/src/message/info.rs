@@ -1,6 +1,6 @@
 use super::GroupOrder;
+use super::Path;
 use crate::coding::*;
-use crate::Path;
 
 #[derive(Clone, Debug)]
 pub struct Info {

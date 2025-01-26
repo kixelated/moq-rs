@@ -1,6 +1,6 @@
 use std::fmt;
 
-use moq_transfork::coding::*;
+use moq_transfork_proto::coding::*;
 
 use derive_more::{Add, AddAssign, Debug, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign, Sum};
 

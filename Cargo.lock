@@ -1523,6 +1523,7 @@ dependencies = [
  "moq-async",
  "moq-native",
  "moq-transfork",
+ "moq-transfork-proto",
  "mp4-atom",
  "regex",
  "serde",
@@ -1584,12 +1585,23 @@ dependencies = [
  "bytes",
  "futures",
  "moq-async",
+ "moq-transfork-proto",
  "num_enum",
  "thiserror 2.0.11",
  "tokio",
  "tracing",
  "wasm-bindgen-futures",
  "web-transport",
+]
+
+[[package]]
+name = "moq-transfork-proto"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "num_enum",
+ "thiserror 2.0.11",
+ "tracing",
 ]
 
 [[package]]

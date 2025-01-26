@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"moq-transfork",
+	"moq-transfork-proto",
 	"moq-relay",
 	"moq-clock",
 	"moq-native",
@@ -11,6 +12,7 @@ members = [
 ]
 default-members = [
 	"moq-transfork",
+	"moq-transfork-proto",
 	"moq-relay",
 	"moq-clock",
 	"moq-native",

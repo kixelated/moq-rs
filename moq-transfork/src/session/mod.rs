@@ -1,4 +1,5 @@
-use crate::{message, AnnouncedConsumer, Error, Path, RouterConsumer, Track, TrackConsumer};
+use crate::{AnnouncedConsumer, Error, RouterConsumer, Track, TrackConsumer};
+use moq_transfork_proto::message;
 
 use moq_async::{spawn, Close, OrClose};
 
@@ -45,7 +46,7 @@ impl Session {
 
 			if let Err(err) = res {
 				tracing::warn!(?err, "terminated");
-				session.close(err.to_code(), &err.to_string());
+				session.close(1, &err.to_string());
 			}
 		});
 
@@ -124,7 +125,7 @@ impl Session {
 	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
 		let kind = stream.decode().await?;
 		match kind {
-			message::DataType::Group => subscriber.recv_group(stream).await,
+			message::DataType::Group => Ok(subscriber.recv_group(stream).await?),
 		}
 	}
 
@@ -176,13 +177,13 @@ impl Session {
 	}
 
 	/// Discover any tracks published by the remote matching a prefix.
-	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
+	pub fn announced(&self, prefix: message::Path) -> AnnouncedConsumer {
 		self.subscriber.announced(prefix)
 	}
 
 	/// Close the underlying WebTransport session.
 	pub fn close(mut self, err: Error) {
-		self.webtransport.close(err.to_code(), &err.to_string());
+		self.webtransport.close(1, &err.to_string());
 	}
 
 	/// Block until the WebTransport session is closed.

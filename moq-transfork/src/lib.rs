@@ -36,8 +36,6 @@ mod error;
 mod model;
 mod session;
 
-pub mod coding;
-pub mod message;
 pub use error::*;
 pub use model::*;
 pub use session::*;

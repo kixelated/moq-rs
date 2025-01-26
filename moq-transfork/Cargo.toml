@@ -16,6 +16,8 @@ bytes = "1"
 thiserror = "2"
 tracing = "0.1"
 
+moq-transfork-proto = { path = "../moq-transfork-proto" }
+
 tokio = { version = "1.43", features = [
 	"macros",
 	"io-util",

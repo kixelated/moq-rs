@@ -1,5 +1,6 @@
 use super::{Close, Reader, Writer};
-use crate::{message, Error};
+use crate::Error;
+use moq_transfork_proto::message;
 
 pub(super) struct Stream {
 	pub writer: Writer,

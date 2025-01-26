@@ -2,7 +2,8 @@ use std::{cmp, fmt, io};
 
 use bytes::{Buf, Bytes, BytesMut};
 
-use crate::{coding::*, Error};
+use crate::Error;
+use moq_transfork_proto::coding::*;
 
 use super::Close;
 
@@ -87,7 +88,7 @@ impl Reader {
 }
 
 impl Close<Error> for Reader {
-	fn close(&mut self, err: Error) {
-		self.stream.stop(err.to_code());
+	fn close(&mut self, _err: Error) {
+		self.stream.stop(1)
 	}
 }

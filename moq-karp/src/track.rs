@@ -1,7 +1,7 @@
 use crate::{Error, Frame, Timestamp};
 use serde::{Deserialize, Serialize};
 
-use moq_transfork::coding::*;
+use moq_transfork_proto::coding::*;
 
 use derive_more::Debug;
 

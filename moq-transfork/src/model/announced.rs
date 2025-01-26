@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use tokio::sync::watch;
 
-use super::Path;
+use moq_transfork_proto::message::Path;
 
 /// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]

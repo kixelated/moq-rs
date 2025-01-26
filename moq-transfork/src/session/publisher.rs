@@ -2,10 +2,11 @@ use std::collections::{hash_map, HashMap};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
+use moq_transfork_proto::message;
+
 use crate::{
-	message,
 	model::{GroupConsumer, Track, TrackConsumer},
-	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, RouterConsumer,
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, RouterConsumer,
 };
 
 use moq_async::{spawn, FuturesExt, Lock, OrClose};
@@ -16,7 +17,7 @@ use super::{Stream, Writer};
 pub(super) struct Publisher {
 	session: web_transport::Session,
 	announced: AnnouncedProducer,
-	tracks: Lock<HashMap<Path, TrackConsumer>>,
+	tracks: Lock<HashMap<message::Path, TrackConsumer>>,
 	router: Lock<Option<RouterConsumer>>,
 }
 
@@ -173,7 +174,7 @@ impl Publisher {
 						let drop = message::GroupDrop {
 							sequence: group.sequence,
 							count: 0,
-							code: err.to_code(),
+							code: 1, // TODO
 						};
 
 						stream.writer.encode(&drop).await?;
