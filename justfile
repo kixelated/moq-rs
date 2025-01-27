@@ -14,7 +14,7 @@ all:
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "localhost:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
 
 # Download and stream the Big Buck Bunny video
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
@@ -46,7 +46,7 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/{{name}}"
+		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
 # Publish a video using gstreamer to the localhost relay server
 gst name:
