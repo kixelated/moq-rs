@@ -130,8 +130,15 @@ impl Render {
 			return;
 		}
 
-		// Check if the buffer is too full.
-		while self.duration().unwrap() > Self::MAX_LATENCY {
+		// If paused, only buffer enough frames to allow instant playback at the current latency.
+		// If not paused, we apply an upperbound that is mostly relevant when the tab is backgrounded.
+		let latency = match self.state {
+			RenderState::Paused => self.latency,
+			_ => Self::MAX_LATENCY,
+		};
+
+		// Drop frames if the buffer is too full.
+		while self.duration().unwrap() > latency {
 			self.latency_ref = None;
 			self.queue.pop_front();
 		}

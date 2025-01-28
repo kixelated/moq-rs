@@ -50,6 +50,7 @@ export class MoqWatch extends Element {
 	#menu: HTMLElement;
 	#fullscreen: SlButton;
 	#buffering: HTMLElement;
+	#paused: HTMLElement;
 
 	// Optional status dialog
 	#status: HTMLDivElement;
@@ -138,21 +139,21 @@ export class MoqWatch extends Element {
 
 		const targetBuffer = (
 			<sl-range
-				label="Target Buffer Duration"
-				helpText="Increase delay to smooth network jitter."
+				label="Target Latency"
 				min={0}
 				max={4000}
 				step={100}
 				tooltipFormatter={(value) => `${(value / 1000).toFixed(1)}s`}
 			/>
 		) as SlRange;
+
 		targetBuffer.addEventListener("sl-change", () => {
 			this.#watch.then((watch) => watch.set_latency(targetBuffer.value));
 		});
 
 		this.#menu = (
 			<sl-tooltip content="Settings">
-				<sl-dropdown placement="top-start" distance={2}>
+				<sl-dropdown placement="top-start" distance={2} hoist>
 					<sl-button slot="trigger">
 						<sl-icon name="gear" label="Settings" />
 					</sl-button>
@@ -204,25 +205,42 @@ export class MoqWatch extends Element {
 		this.#buffering = (
 			<div
 				css={{
+					padding: "16px",
+					background: "rgba(0, 0, 0, 0.7)",
+					borderRadius: "8px",
+				}}
+			>
+				<sl-spinner css={{ fontSize: "2em" }} />
+			</div>
+		);
+
+		this.#paused = (
+			<div
+				css={{
+					padding: "16px",
+					background: "rgba(0, 0, 0, 0.7)",
+					borderRadius: "8px",
+				}}
+			>
+				<sl-icon name="pause" css={{ fontSize: "2em" }} />
+			</div>
+		);
+
+		const centered = (
+			<div
+				css={{
 					position: "absolute",
 					top: "0",
 					left: "0",
 					right: "0",
 					bottom: "0",
-					display: "none",
 					alignItems: "center",
 					justifyContent: "center",
+					display: "flex",
 				}}
 			>
-				<div
-					css={{
-						padding: "16px",
-						background: "rgba(0, 0, 0, 0.7)",
-						borderRadius: "8px",
-					}}
-				>
-					<sl-spinner />
-				</div>
+				{this.#buffering}
+				{this.#paused}
 			</div>
 		);
 
@@ -230,8 +248,8 @@ export class MoqWatch extends Element {
 		shadow.appendChild(style);
 		shadow.appendChild(this.#status);
 		shadow.appendChild(canvas);
+		shadow.appendChild(centered);
 		shadow.appendChild(this.#controls);
-		shadow.appendChild(this.#buffering);
 
 		this.#canvas = canvas.transferControlToOffscreen();
 
@@ -337,24 +355,12 @@ export class MoqWatch extends Element {
 
 			for (;;) {
 				const state = await status.render_state();
-				console.log(state);
-				switch (state) {
-					case Rust.RenderState.Buffering:
-						this.#buffering.style.display = "flex";
-						break;
-					case Rust.RenderState.Live:
-					case Rust.RenderState.Paused:
-					case Rust.RenderState.None:
-						this.#buffering.style.display = "none";
-						break;
-					default: {
-						const _exhaustive: never = state;
-						throw new Error(`Unhandled state: ${_exhaustive}`);
-					}
-				}
+				this.#buffering.style.display = state === Rust.RenderState.Buffering ? "flex" : "none";
+				this.#paused.style.display = state === Rust.RenderState.Paused ? "flex" : "none";
 			}
 		} catch (err) {
 			this.#buffering.style.display = "none";
+			this.#paused.style.display = "none";
 		}
 	}
 
