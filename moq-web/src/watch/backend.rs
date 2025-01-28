@@ -104,7 +104,7 @@ impl Backend {
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {
 						let mut track = self.broadcast.as_mut().unwrap().track(&info.track)?;
-						track.set_latency(*self.controls.latency.get());
+						track.set_latency(self.controls.latency.get());
 						self.renderer.set_resolution(info.resolution);
 
 						let video = Video::new(track, info.clone())?;
@@ -123,7 +123,9 @@ impl Backend {
 				},
 				latency = self.controls.latency.next() => {
 					let latency = latency.ok_or(Error::Closed)?;
-					self.video.as_mut().map(|v| v.track.set_latency(*latency));
+					if let Some(video) = self.video.as_mut() {
+						 video.track.set_latency(latency);
+					}
 				},
 				else => return Ok(()),
 			}

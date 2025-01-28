@@ -114,14 +114,14 @@ impl WatchStatus {
 	pub async fn backend_state(&mut self) -> Result<BackendState> {
 		match self.status.backend.next().await {
 			None => Err(self.error().await),
-			Some(state) => Ok(*state),
+			Some(state) => Ok(state),
 		}
 	}
 
 	pub async fn render_state(&mut self) -> Result<RenderState> {
 		match self.status.render.next().await {
 			None => Err(self.error().await),
-			Some(state) => Ok(*state),
+			Some(state) => Ok(state),
 		}
 	}
 

@@ -292,13 +292,13 @@ impl Renderer {
 		loop {
 			tokio::select! {
 				Some(paused) = controls.paused.next() => {
-					self.state.borrow_mut().set_paused(*paused);
+					self.state.borrow_mut().set_paused(paused);
 				},
 				Some(latency) = controls.latency.next() => {
-					self.state.borrow_mut().set_latency(*latency);
+					self.state.borrow_mut().set_latency(latency);
 				},
 				Some(canvas) = controls.canvas.next() => {
-					self.state.borrow_mut().set_canvas(canvas.clone());
+					self.state.borrow_mut().set_canvas(canvas);
 				},
 				else => break,
 			}

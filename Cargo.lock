@@ -250,7 +250,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baton"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6660dd92cb154f7232d93a66df1e17578ae2058864829c93d23d525018b5394"
 dependencies = [
  "baton-derive",
  "tokio",
@@ -258,7 +260,9 @@ dependencies = [
 
 [[package]]
 name = "baton-derive"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2771aaa087ac2d81e1ab8c0801051c51b2bc3f25408914f62ac981162df60284"
 dependencies = [
  "quote",
  "syn",
@@ -3042,7 +3046,9 @@ dependencies = [
 
 [[package]]
 name = "web-codecs"
-version = "0.3.2"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df91b767e289cfd167c3269c2fdf191784029b4f410f665cda6380a8d590ba2"
 dependencies = [
  "bytes",
  "derive_more",
@@ -3088,7 +3094,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.7.1"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb58dedc815e32a60ea6f239654bcc9b5bba00bd31ff882b67e0eacff719e401"
 dependencies = [
  "bytes",
  "thiserror 2.0.11",
@@ -3100,6 +3108,8 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c564e589056437e3a73383f4e0903965879087c9ee0f715e562bbf4e47c08b75"
 dependencies = [
  "bytes",
  "http",
@@ -3109,7 +3119,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-quinn"
-version = "0.4.1"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61937694cad3742f278b38af267bb84b749efaca0c94ab1fcacadfb6aa544065"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -3128,7 +3140,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-wasm"
-version = "0.4.3"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d707071216133d89c5ce876c7b5ba48fb874ef6555ba56b9cf4a0fbb8e66ac0"
 dependencies = [
  "bytes",
  "js-sys",

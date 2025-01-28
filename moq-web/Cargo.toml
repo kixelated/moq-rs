@@ -22,7 +22,7 @@ gloo-net = "0.6"
 moq-karp = { version = "0.12", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
 web-streams = "0.1.1"
-web-codecs = { path = "../../web-rs/web-codecs" }
+web-codecs = "0.3.4"
 web-time = "1"
 tokio = { version = "1", features = ["sync"] }
 
@@ -30,7 +30,7 @@ js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
-baton = { path = "../../baton/baton" }
+baton = "0.2.1"
 
 [dependencies.web-sys]
 version = "0.3.77"

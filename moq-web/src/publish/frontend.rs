@@ -100,6 +100,6 @@ pub struct PublishStates {
 #[wasm_bindgen]
 impl PublishStates {
 	pub async fn next(&mut self) -> Option<PublishState> {
-		self.state.next().await.copied()
+		self.state.next().await
 	}
 }

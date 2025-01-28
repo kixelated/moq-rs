@@ -105,11 +105,7 @@ export class MoqVideo extends HTMLElement implements HTMLVideoElement {
 
 	disconnectedCallback() {}
 
-	attributeChangedCallback(
-		name: ObservedAttribute,
-		oldValue: string | null,
-		newValue: string | null,
-	) {
+	attributeChangedCallback(name: ObservedAttribute, oldValue: string | null, newValue: string | null) {
 		if (oldValue === newValue) {
 			return;
 		}
@@ -268,11 +264,7 @@ export class MoqVideo extends HTMLElement implements HTMLVideoElement {
 		throw new Error("Method not implemented.");
 	}
 
-	addTextTrack(
-		kind: TextTrackKind,
-		label?: string,
-		language?: string,
-	): TextTrack {
+	addTextTrack(kind: TextTrackKind, label?: string, language?: string): TextTrack {
 		throw new Error("Method not implemented.");
 	}
 
@@ -309,9 +301,7 @@ function emptyRemotePlayback(): RemotePlayback {
 		prompt: (): Promise<void> => {
 			throw new Error("Function not implemented.");
 		},
-		watchAvailability: (
-			callback: RemotePlaybackAvailabilityCallback,
-		): Promise<number> => {
+		watchAvailability: (callback: RemotePlaybackAvailabilityCallback): Promise<number> => {
 			throw new Error("Function not implemented.");
 		},
 		addEventListener: <K extends keyof RemotePlaybackEventMap>(
