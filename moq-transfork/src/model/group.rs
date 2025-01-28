@@ -179,18 +179,6 @@ impl GroupConsumer {
 		}
 	}
 
-	// Return the current index of the frame in the group
-	// TODO remove this IMO
-	pub fn frame_index(&self) -> usize {
-		self.index
-	}
-
-	// Return the current total number of frames in the group
-	// TODO remove this IMO
-	pub fn frame_count(&self) -> usize {
-		self.state.borrow().frames.len()
-	}
-
 	pub async fn closed(&self) -> Result<(), Error> {
 		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
 			Ok(state) => state.closed.clone(),

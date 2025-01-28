@@ -1,4 +1,4 @@
-import { MoqWatch } from "./watch";
+import { MoqWatch } from "../";
 
 const observedAttributes = ["src", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];

@@ -3,6 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
+export RUST_LOG := "info"
 
 # List all of the available commands.
 default:
@@ -10,7 +11,7 @@ default:
 
 # Run the relay, web server, and publish bbb.
 all:
-	cd moq-web && npm i && npx concurrently --kill-others --names srv,web,bbb --prefix-colors auto "just relay" "just web" "just bbb"
+	cd moq-web && npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:

@@ -31,6 +31,7 @@ thiserror = "2"
 tracing = "0.1"
 lazy_static = "1"
 regex = "1"
+futures = "0.3"
 
 tokio = { version = "1.43", features = ["macros"] }
 
@@ -43,16 +44,7 @@ anyhow = { version = "1", features = ["backtrace"], optional = true }
 
 [dependencies.derive_more]
 version = "1"
-features = [
-	"add",
-	"add_assign",
-	"mul",
-	"mul_assign",
-	"sum",
-	"from",
-	"display",
-	"debug",
-]
+features = ["from", "display", "debug", "into"]
 
 [features]
 cli = ["moq-native", "tokio/full", "clap", "anyhow"]

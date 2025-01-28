@@ -3,7 +3,8 @@ use moq_async::FuturesExt;
 use crate::Result;
 
 pub struct Video {
-	track: moq_karp::TrackConsumer,
+	pub track: moq_karp::TrackConsumer,
+
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
 }

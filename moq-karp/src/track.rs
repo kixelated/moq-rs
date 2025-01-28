@@ -1,4 +1,7 @@
-use crate::{Error, Frame, Timestamp};
+use std::collections::VecDeque;
+
+use crate::{Error, Frame, GroupConsumer, Timestamp};
+use futures::{stream::FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use moq_transfork::coding::*;
@@ -56,79 +59,94 @@ impl TrackProducer {
 #[debug("{:?}", track.path)]
 pub struct TrackConsumer {
 	track: moq_transfork::TrackConsumer,
-	group: Option<moq_transfork::GroupConsumer>,
+
+	// The current group that we are reading from.
+	current: Option<GroupConsumer>,
+
+	// Future groups that we are monitoring, deciding based on [latency] whether to skip.
+	pending: VecDeque<GroupConsumer>,
+
+	// The maximum timestamp seen thus far, or zero because that's easier than None.
+	max_timestamp: Timestamp,
+
+	// The maximum buffer size before skipping a group.
+	latency: std::time::Duration,
 }
 
 impl TrackConsumer {
 	pub fn new(track: moq_transfork::TrackConsumer) -> Self {
-		Self { track, group: None }
+		Self {
+			track,
+			current: None,
+			pending: VecDeque::new(),
+			max_timestamp: Timestamp::default(),
+			latency: std::time::Duration::ZERO,
+		}
 	}
 
 	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub async fn read(&mut self) -> Result<Option<Frame>, Error> {
 		loop {
+			let cutoff = self.max_timestamp + self.latency;
+
+			// Keep track of all pending groups, buffering until we detect a timestamp far enough in the future.
+			// This is a race; only the first group will succeed.
+			// TODO is there a way to do this without FuturesUnordered?
+			let mut buffering = FuturesUnordered::new();
+			for (index, pending) in self.pending.iter_mut().enumerate() {
+				buffering.push(async move { (index, pending.buffer_frames_until(cutoff).await) })
+			}
+
 			tokio::select! {
 				biased;
-				Some(res) = async { Some(self.group.as_mut()?.read_frame().await) } => {
-					let raw = match res? {
+				Some(res) = async { Some(self.current.as_mut()?.read_frame().await) } => {
+					drop(buffering);
+
+					match res? {
 						// Got the next frame.
-						Some(raw) => raw,
+						Some(frame) => return Ok(Some(frame)),
 						None => {
-							// Group ended cleanly, set to None to instantly move to the next group.
-							self.group = None;
+							// Group ended cleanly, instantly move to the next group.
+							self.current = self.pending.pop_front();
 							continue;
 						}
 					};
-
-					let index = self.group.as_ref().unwrap().frame_index() - 1;
-					let keyframe = index == 0;
-					let frame =  self.decode_frame(raw, keyframe)?;
-
-					// Get some information about the group for logging
-					let group = self.group.as_ref().unwrap();
-					let group = group.sequence;
-
-					if keyframe {
-						tracing::debug!(?frame, ?group, "decoded keyframe");
-					} else {
-						tracing::trace!(?frame, ?group, ?index, "decoded frame");
-					}
-
-					return Ok(Some(frame));
 				},
 				Some(res) = async { self.track.next_group().await.transpose() } => {
-					let group = res?;
+					let group = GroupConsumer::new(res?);
+					drop(buffering);
 
-					match &self.group {
-						Some(existing) if group.sequence < existing.sequence => {
+					match self.current.as_ref() {
+						Some(current) if group.sequence < current.sequence => {
 							// Ignore old groups
-							continue;
+							tracing::warn!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
 						},
-						// TODO use a configurable latency before moving to the next group.
-						Some(existing) => {
-							tracing::warn!(old = ?existing.sequence, new = ?group.sequence, "skipping group");
+						Some(_) => {
+							// Insert into pending based on the sequence number ascending.
+							let index = self.pending.partition_point(|g| g.sequence < group.sequence);
+							self.pending.insert(index, group);
 						},
-						_ => {},
+						None => self.current = Some(group),
 					};
-
-					self.group = Some(group);
 				},
+				Some((index, timestamp)) = buffering.next() => {
+					tracing::warn!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
+					drop(buffering);
+
+					if index > 0 {
+						self.pending.drain(0..index);
+						tracing::warn!(count = index, "skipping additional groups");
+					}
+
+					self.current = self.pending.pop_front();
+				}
 				else => return Ok(None),
 			}
 		}
 	}
 
-	fn decode_frame(&self, mut payload: Bytes, keyframe: bool) -> Result<Frame, Error> {
-		let micros = u64::decode(&mut payload)?;
-		let timestamp = Timestamp::from_micros(micros);
-
-		let frame = Frame {
-			keyframe,
-			timestamp,
-			payload,
-		};
-
-		Ok(frame)
+	pub fn set_latency(&mut self, max: std::time::Duration) {
+		self.latency = max;
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {

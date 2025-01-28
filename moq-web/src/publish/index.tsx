@@ -1,7 +1,8 @@
-import * as Moq from "..";
-import { Element, attribute, element } from "./component";
+import * as Rust from "@rust";
 
-import { jsx } from "./jsx";
+import { Element, attribute, element } from "../element/component";
+
+import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/themes/light.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";
@@ -12,9 +13,16 @@ import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
 @element("moq-publish")
 export class MoqPublish extends Element {
-	#publish: Moq.Publish;
+	#publish: Rust.Publish;
+
+	// Optional preview (pre-encoding)
 	#preview: HTMLVideoElement;
+
+	// Optional controls
 	#controls: HTMLDivElement;
+
+	// Optional status dialog
+	#status: HTMLDivElement;
 
 	@attribute
 	accessor url = "";
@@ -28,6 +36,9 @@ export class MoqPublish extends Element {
 	@attribute
 	accessor controls = false;
 
+	@attribute
+	accessor status = false;
+
 	constructor() {
 		super();
 
@@ -39,9 +50,23 @@ export class MoqPublish extends Element {
 					overflow: hidden;
 					position: relative;
 				}
+
+				:host([status]) #status {
+					display: flex;
+					gap: 8px;
+					justify-content: center;
+					font-family: var(--sl-font-sans);
+				}
+
+				:host(:not([status])) #status  {
+					display: none;
+				}
+
 				`}
 			</style>
 		);
+
+		this.#status = (<div id="status" />) as HTMLDivElement;
 
 		this.#controls = (
 			<div css={{ display: "none", justifyContent: "center" }}>
@@ -77,7 +102,7 @@ export class MoqPublish extends Element {
 			</div>
 		) as HTMLDivElement;
 
-		this.#publish = new Moq.Publish();
+		this.#publish = new Rust.Publish();
 		this.#preview = (
 			<video
 				css={{
@@ -92,8 +117,11 @@ export class MoqPublish extends Element {
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
+		shadow.appendChild(this.#status);
 		shadow.appendChild(this.#controls);
 		shadow.appendChild(this.#preview);
+
+		this.#runStatus();
 	}
 
 	urlChange(value: string) {
@@ -129,6 +157,51 @@ export class MoqPublish extends Element {
 
 	controlsChange(value: boolean) {
 		this.#controls.style.display = value ? "flex" : "none";
+	}
+
+	async #runStatus() {
+		this.#status.replaceChildren(<sl-spinner />, "Loading WASM Worker...");
+
+		const states = await this.#publish.states();
+		while (true) {
+			const next = await states.next();
+			if (next === undefined) {
+				return;
+			}
+
+			switch (next) {
+				case Rust.PublishState.Idle:
+					this.#status.replaceChildren();
+					break;
+				case Rust.PublishState.Connecting:
+					this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
+					break;
+				case Rust.PublishState.Connected:
+					this.#status.replaceChildren();
+					break;
+				case Rust.PublishState.Live:
+					// TODO live icon
+					this.#status.replaceChildren();
+					break;
+				case Rust.PublishState.Error: {
+					const err = this.#publish.error || "unknown";
+					this.#status.replaceChildren(
+						<sl-alert variant="danger" open css={{ width: "100%" }}>
+							<sl-icon slot="icon" name="exclamation-octagon" />
+							<strong>Error</strong>
+							<br />
+							{err}
+						</sl-alert>,
+					);
+
+					break;
+				}
+				default: {
+					const _exhaustive: never = next;
+					throw new Error(`Unhandled state: ${_exhaustive}`);
+				}
+			}
+		}
 	}
 }
 

@@ -14,11 +14,6 @@ pub struct BroadcastProducer {
 	catalog: Lock<CatalogProducer>,
 }
 
-struct CatalogProducer {
-	current: Catalog,
-	track: moq_transfork::TrackProducer,
-}
-
 impl BroadcastProducer {
 	pub fn new(mut session: Session, path: Path) -> Result<Self> {
 		// Generate a "unique" ID for this broadcast session.
@@ -37,13 +32,10 @@ impl BroadcastProducer {
 		}
 		.produce();
 
-		// Publish the catalog, even though it's currently empty.
+		// Publish the catalog track, even if it's empty.
 		session.publish(catalog.1)?;
 
-		let catalog = Lock::new(CatalogProducer {
-			current: Catalog::default(),
-			track: catalog.0,
-		});
+		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
 
 		Ok(Self {
 			session,
@@ -68,7 +60,7 @@ impl BroadcastProducer {
 
 		let mut catalog = self.catalog.lock();
 		catalog.current.video.push(info.clone());
-		catalog.update()?;
+		catalog.publish()?;
 
 		let producer = TrackProducer::new(producer);
 		let consumer = producer.subscribe();
@@ -80,7 +72,7 @@ impl BroadcastProducer {
 
 			let mut catalog = catalog.lock();
 			catalog.current.video.retain(|v| v.track != info.track);
-			catalog.update().unwrap();
+			catalog.publish().unwrap();
 		});
 
 		Ok(producer)
@@ -101,7 +93,7 @@ impl BroadcastProducer {
 
 		let mut catalog = self.catalog.lock();
 		catalog.current.audio.push(info.clone());
-		catalog.update()?;
+		catalog.publish()?;
 
 		let producer = TrackProducer::new(producer);
 		let consumer = producer.subscribe();
@@ -113,15 +105,32 @@ impl BroadcastProducer {
 
 			let mut catalog = catalog.lock();
 			catalog.current.audio.retain(|v| v.track != info.track);
-			catalog.update().unwrap();
+			catalog.publish().unwrap();
 		});
 
 		Ok(producer)
 	}
 }
 
+struct CatalogProducer {
+	current: Catalog,
+	track: moq_transfork::TrackProducer,
+}
+
 impl CatalogProducer {
-	fn update(&mut self) -> Result<()> {
+	fn new(track: moq_transfork::TrackProducer) -> Result<Self> {
+		let mut this = Self {
+			current: Catalog::default(),
+			track,
+		};
+
+		// Perform the initial publish
+		this.publish()?;
+
+		Ok(this)
+	}
+
+	fn publish(&mut self) -> Result<()> {
 		let frame = self.current.to_string()?;
 
 		let mut group = self.track.append_group();

@@ -250,9 +250,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baton"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07d1e996140e7f9b33421c076a4ec5de8eb9b81e8b6810a3eadf67b7e7a8d85c"
+checksum = "c6660dd92cb154f7232d93a66df1e17578ae2058864829c93d23d525018b5394"
 dependencies = [
  "baton-derive",
  "tokio",
@@ -260,9 +260,9 @@ dependencies = [
 
 [[package]]
 name = "baton-derive"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0a78a981083cc2a1436ec52b4e9ecbf8536a2e6e6470a3a8257376971a6d8fb"
+checksum = "2771aaa087ac2d81e1ab8c0801051c51b2bc3f25408914f62ac981162df60284"
 dependencies = [
  "quote",
  "syn",
@@ -1518,6 +1518,7 @@ dependencies = [
  "bytes",
  "clap",
  "derive_more",
+ "futures",
  "hex",
  "lazy_static",
  "moq-async",
@@ -1613,6 +1614,7 @@ dependencies = [
  "web-codecs",
  "web-streams",
  "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -3044,9 +3046,9 @@ dependencies = [
 
 [[package]]
 name = "web-codecs"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "294dfa949f7d28cba1b2b59c581e46f4e87f45fec52d3ea021e2cbd1acc8d983"
+checksum = "3df91b767e289cfd167c3269c2fdf191784029b4f410f665cda6380a8d590ba2"
 dependencies = [
  "bytes",
  "derive_more",
@@ -3092,9 +3094,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d8d0a2fb0901c7f3b29e371a43b855efd52fd33b893be336f629f8398814c01"
+checksum = "bb58dedc815e32a60ea6f239654bcc9b5bba00bd31ff882b67e0eacff719e401"
 dependencies = [
  "bytes",
  "thiserror 2.0.11",
@@ -3117,9 +3119,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-quinn"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7de093dd0658c60edcaba035c867d75eede6ae3fadb51971e6849180a2599e78"
+checksum = "61937694cad3742f278b38af267bb84b749efaca0c94ab1fcacadfb6aa544065"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -3129,7 +3131,7 @@ dependencies = [
  "quinn",
  "quinn-proto",
  "rustls",
- "rustls-platform-verifier",
+ "rustls-native-certs 0.8.1",
  "thiserror 2.0.11",
  "tokio",
  "url",
@@ -3138,9 +3140,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-wasm"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8331dfac13f1cb199a2bb727c4572c22b872d9e0d99ed7130c3bce76a77fa49f"
+checksum = "6d707071216133d89c5ce876c7b5ba48fb874ef6555ba56b9cf4a0fbb8e66ac0"
 dependencies = [
  "bytes",
  "js-sys",

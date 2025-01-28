@@ -27,7 +27,7 @@
 		"jsxFragmentFactory": "jsxFragment",
 
 		"paths": {
-			"@dist/*": ["dist/*"]
+			"@rust": ["dist/rust"]
 		}
 	},
 

@@ -56,21 +56,25 @@ impl Connect {
 	}
 
 	async fn run(addr: &Url) -> Result<moq_transfork::Session> {
-		let client = web_transport::Client::new().congestion_control(web_transport::CongestionControl::LowLatency);
+		let client =
+			web_transport::ClientBuilder::new().with_congestion_control(web_transport::CongestionControl::LowLatency);
 
 		let session = match addr.scheme() {
 			"http" => {
 				// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
 				// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
 				let fingerprint = Self::fingerprint(addr).await?;
-				let client = client.server_certificate_hashes(vec![fingerprint]);
+				let client = client.with_server_certificate_hashes(vec![fingerprint])?;
 
 				// Make a copy of the address, changing it from HTTP to HTTPS for WebTransport:
 				let mut addr = addr.clone();
 				let _ = addr.set_scheme("https");
 				client.connect(&addr).await?
 			}
-			"https" => client.connect(addr).await?,
+			"https" => {
+				let client = client.with_system_roots()?;
+				client.connect(addr).await?
+			}
 			_ => return Err(Error::InvalidUrl(addr.to_string())),
 		};
 

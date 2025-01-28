@@ -58,7 +58,7 @@ const config = {
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],
 		alias: {
-			"@dist": path.resolve(__dirname, "dist"),
+			"@rust": path.resolve(__dirname, "dist", "rust"),
 		},
 	},
 	devServer: {

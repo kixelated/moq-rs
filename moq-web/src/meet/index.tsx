@@ -1,9 +1,8 @@
-import { Room, RoomAction, type RoomAnnounced } from "../room";
+import * as Rust from "@rust";
+import type { MoqWatch } from "..";
 
-import type { MoqWatch } from "./watch";
-
-import { Element, attribute, element } from "./component";
-import { jsx } from "./jsx";
+import { Element, attribute, element } from "../element/component";
+import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";
@@ -11,7 +10,7 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet")
 export class MoqMeet extends Element {
-	#room: Room;
+	#room: Rust.Room;
 	#container: HTMLDivElement;
 	#broadcasts: Set<MoqWatch> = new Set();
 	#status: HTMLDivElement;
@@ -21,6 +20,9 @@ export class MoqMeet extends Element {
 
 	@attribute
 	accessor controls = false;
+
+	@attribute
+	accessor status = false;
 
 	constructor() {
 		super();
@@ -33,15 +35,26 @@ export class MoqMeet extends Element {
 					position: relative;
 					overflow: hidden;
 				}
+
+				:host([status]) #status {
+					display: flex;
+					gap: 8px;
+					justify-content: center;
+					font-family: var(--sl-font-sans);
+				}
+
+				:host(:not([status])) #status  {
+					display: none;
+				}
 				`}
 			</style>
 		);
 
-		this.#status = (<div />) as HTMLDivElement;
+		this.#status = (<div id="status" />) as HTMLDivElement;
 
 		this.#container = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
 
-		this.#room = new Room();
+		this.#room = new Rust.Room();
 		const announced = this.#room.announced();
 		this.#runAnnounced(announced).finally(() => announced.free());
 
@@ -61,8 +74,14 @@ export class MoqMeet extends Element {
 		}
 	}
 
-	async #runAnnounced(announced: RoomAnnounced) {
-		this.#status.replaceChildren(<sl-spinner />);
+	statusChange(value: boolean) {
+		for (const broadcast of this.#broadcasts) {
+			broadcast.status = value;
+		}
+	}
+
+	async #runAnnounced(announced: Rust.RoomAnnounced) {
+		this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcasts...");
 
 		let live = false;
 
@@ -75,7 +94,7 @@ export class MoqMeet extends Element {
 						<sl-icon slot="icon" name="exclamation-octagon" />
 						<strong>Disconnected</strong>
 						<br />
-						TODO get the error message
+						{this.#room.error || "Unknown error"}
 					</sl-alert>,
 				);
 				return;
@@ -84,19 +103,19 @@ export class MoqMeet extends Element {
 			this.#status.replaceChildren();
 
 			switch (announce.action) {
-				case RoomAction.Join:
+				case Rust.RoomAction.Join:
 					this.#join(announce.name);
 					break;
-				case RoomAction.Leave:
+				case Rust.RoomAction.Leave:
 					this.#leave(announce.name);
 					break;
-				case RoomAction.Live:
+				case Rust.RoomAction.Live:
 					live = true;
 					break;
 			}
 
 			if (live && this.#broadcasts.size === 0) {
-				this.#status.replaceChildren(<span css={{ fontFamily: "var(--sl-font-sans)" }}>"🦗 nobody is here 🦗"</span>);
+				this.#status.replaceChildren("🦗 nobody is here 🦗");
 			}
 		}
 	}
@@ -107,6 +126,7 @@ export class MoqMeet extends Element {
 				id={`broadcast-${name}`}
 				url={`${this.room}/${name}`}
 				controls={this.controls}
+				status={this.status}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
 		) as MoqWatch;

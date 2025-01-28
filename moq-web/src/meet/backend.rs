@@ -12,8 +12,14 @@ pub struct Controls {
 	pub url: Option<Url>,
 }
 
+#[derive(Debug, Default, Baton)]
+pub struct Status {
+	pub error: Option<Error>,
+}
+
 pub struct Backend {
 	controls: ControlsRecv,
+	status: StatusSend,
 
 	room: Path,
 	connect: Option<Connect>,
@@ -24,9 +30,10 @@ pub struct Backend {
 }
 
 impl Backend {
-	pub fn new(controls: ControlsRecv, producer: AnnouncedProducer) -> Self {
+	pub fn new(controls: ControlsRecv, status: StatusSend, producer: AnnouncedProducer) -> Self {
 		Self {
 			controls,
+			status,
 			producer,
 
 			room: Path::default(),
@@ -39,7 +46,7 @@ impl Backend {
 	pub fn start(mut self) {
 		spawn_local(async move {
 			if let Err(err) = self.run().await {
-				tracing::error!(?err, "backend error");
+				self.status.error.set(Some(err));
 			}
 		});
 	}

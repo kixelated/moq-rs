@@ -104,7 +104,6 @@ impl Subscriber {
 				}
 			}
 			message::Announce::Live => {
-				tracing::debug!("live");
 				announced.live();
 			}
 		};
