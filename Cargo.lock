@@ -1614,6 +1614,7 @@ dependencies = [
  "web-codecs",
  "web-streams",
  "web-sys",
+ "web-time",
 ]
 
 [[package]]

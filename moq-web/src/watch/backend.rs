@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use baton::Baton;
 use moq_karp::{moq_transfork::Path, BroadcastConsumer};
 use url::Url;
@@ -6,12 +8,31 @@ use wasm_bindgen_futures::spawn_local;
 use super::{Renderer, Video, WatchState};
 use crate::{Connect, Error, Result};
 
-#[derive(Debug, Default, Baton)]
+#[derive(Debug, Baton)]
 pub struct Controls {
 	pub url: Option<Url>,
 	pub paused: bool,
 	pub volume: f64,
 	pub canvas: Option<web_sys::OffscreenCanvas>,
+
+	// Play media faster until this latency is reached.
+	pub latency: Duration,
+
+	// Drop media if the latency exceeds this value.
+	pub latency_max: Duration,
+}
+
+impl Default for Controls {
+	fn default() -> Self {
+		Self {
+			url: None,
+			paused: false,
+			volume: 1.0,
+			canvas: None,
+			latency: Duration::ZERO,
+			latency_max: Duration::from_secs(10),
+		}
+	}
 }
 
 #[derive(Debug, Default, Baton)]
@@ -109,29 +130,35 @@ impl Backend {
 
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {
-						let track = self.broadcast.as_mut().unwrap().track(&info.track)?;
-						self.renderer.resolution(info.resolution);
+						let mut track = self.broadcast.as_mut().unwrap().track(&info.track)?;
+						track.set_latency(self.controls.latency.get());
+						self.renderer.set_resolution(info.resolution);
 
 						let video = Video::new(track, info.clone())?;
 						self.video = Some(video);
 					} else {
-						self.renderer.resolution(Default::default());
+						self.renderer.set_resolution(Default::default());
 						self.video = None;
 					}
 
 				},
 				Some(frame) = async { self.video.as_mut()?.frame().await.transpose() } => {
-					let frame = frame?;
-					self.renderer.render(frame);
+					self.renderer.push(frame?);
 				},
 				canvas = self.controls.canvas.next() => {
-					let canvas = canvas.ok_or(Error::Closed)?;
-					self.renderer.canvas(canvas.clone());
+					self.renderer.set_canvas(canvas.ok_or(Error::Closed)?.clone());
 				},
 				// TODO temporarily unsubscribe on pause
 				paused = self.controls.paused.next() => {
-					let paused = paused.ok_or(Error::Closed)?;
-					self.renderer.paused(paused);
+					self.renderer.set_paused(paused.ok_or(Error::Closed)?);
+				},
+				latency = self.controls.latency.next() => {
+					let latency = latency.ok_or(Error::Closed)?;
+					self.renderer.set_latency(latency);
+					self.video.as_mut().map(|v| v.track.set_latency(latency));
+				},
+				latency_max = self.controls.latency_max.next() => {
+					self.renderer.set_latency_max(latency_max.ok_or(Error::Closed)?);
 				},
 				else => return Ok(()),
 			}

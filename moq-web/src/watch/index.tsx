@@ -61,6 +61,16 @@ export class MoqWatch extends Element {
 	@attribute
 	accessor fullscreen = false;
 
+	// The target latency in ms.
+	// A higher value means more stable playback.
+	@attribute
+	accessor latency = 0;
+
+	// The maximum latency in ms.
+	// Rendering will be paused when backgrounded, and we will queue up at most this much data.
+	@attribute
+	accessor latency_max = 1000;
+
 	constructor() {
 		super();
 
@@ -159,17 +169,21 @@ export class MoqWatch extends Element {
 		this.#canvas = canvas.transferControlToOffscreen();
 
 		this.#watch = worker.then((api) => api.watch());
-		this.#watch.then((watch) => watch.canvas(Comlink.transfer(this.#canvas, [this.#canvas])));
+		this.#watch.then((watch) => {
+			watch.set_canvas(Comlink.transfer(this.#canvas, [this.#canvas]));
+			watch.set_latency(this.latency);
+			watch.set_latency_max(this.latency_max);
+		});
 
 		this.#runStatus();
 	}
 
 	urlChange(value: string) {
-		this.#watch.then((watch) => watch.url(value));
+		this.#watch.then((watch) => watch.set_url(value));
 	}
 
 	pausedChange(value: boolean) {
-		this.#watch.then((watch) => watch.paused(value));
+		this.#watch.then((watch) => watch.set_paused(value));
 
 		const icon = this.#pause.firstChild as SlIcon;
 		if (value) {
@@ -185,7 +199,7 @@ export class MoqWatch extends Element {
 		if (value < 0 || value > 1) {
 			throw new RangeError("volume must be between 0 and 1");
 		}
-		this.#watch.then((watch) => watch.volume(value));
+		this.#watch.then((watch) => watch.set_volume(value));
 	}
 
 	async fullscreenChange(value: boolean) {
@@ -249,6 +263,20 @@ export class MoqWatch extends Element {
 				}
 			}
 		}
+	}
+
+	async latencyChange(value: number) {
+		if (value < 0) {
+			throw new RangeError("latency must be greater than 0");
+		}
+		this.#watch.then((watch) => watch.set_latency(value));
+	}
+
+	async latencyMaxChange(value: number) {
+		if (value < 0) {
+			throw new RangeError("latency_max must be greater than 0");
+		}
+		this.#watch.then((watch) => watch.set_latency_max(value));
 	}
 }
 

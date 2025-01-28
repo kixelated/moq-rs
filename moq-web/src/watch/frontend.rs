@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use url::Url;
 use wasm_bindgen::prelude::*;
 
@@ -28,7 +30,7 @@ impl Watch {
 		}
 	}
 
-	pub fn url(&mut self, url: Option<String>) -> Result<()> {
+	pub fn set_url(&mut self, url: Option<String>) -> Result<()> {
 		let url = match url {
 			Some(url) => Url::parse(&url).map_err(|_| Error::InvalidUrl(url.to_string()))?.into(),
 			None => None,
@@ -37,16 +39,24 @@ impl Watch {
 		Ok(())
 	}
 
-	pub fn paused(&mut self, paused: bool) {
+	pub fn set_paused(&mut self, paused: bool) {
 		self.controls.paused.set(paused);
 	}
 
-	pub fn volume(&mut self, volume: f64) {
+	pub fn set_volume(&mut self, volume: f64) {
 		self.controls.volume.set(volume);
 	}
 
-	pub fn canvas(&mut self, canvas: Option<OffscreenCanvas>) {
+	pub fn set_canvas(&mut self, canvas: Option<OffscreenCanvas>) {
 		self.controls.canvas.set(canvas);
+	}
+
+	pub fn set_latency(&mut self, latency: u32) {
+		self.controls.latency.set(Duration::from_millis(latency as _));
+	}
+
+	pub fn set_latency_max(&mut self, latency_max: u32) {
+		self.controls.latency_max.set(Duration::from_millis(latency_max as _));
 	}
 
 	pub fn error(&self) -> Option<String> {

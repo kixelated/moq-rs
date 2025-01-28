@@ -63,14 +63,14 @@ pub struct TrackConsumer {
 	// The current group that we are reading from.
 	current: Option<GroupConsumer>,
 
-	// Future groups that we are monitoring, deciding based on max_buffer whether to skip.
+	// Future groups that we are monitoring, deciding based on [latency] whether to skip.
 	pending: VecDeque<GroupConsumer>,
 
 	// The maximum timestamp seen thus far, or zero because that's easier than None.
 	max_timestamp: Timestamp,
 
 	// The maximum buffer size before skipping a group.
-	max_buffer: std::time::Duration,
+	latency: std::time::Duration,
 }
 
 impl TrackConsumer {
@@ -80,14 +80,14 @@ impl TrackConsumer {
 			current: None,
 			pending: VecDeque::new(),
 			max_timestamp: Timestamp::default(),
-			max_buffer: std::time::Duration::ZERO,
+			latency: std::time::Duration::ZERO,
 		}
 	}
 
 	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub async fn read(&mut self) -> Result<Option<Frame>, Error> {
 		loop {
-			let cutoff = self.max_timestamp + self.max_buffer;
+			let cutoff = self.max_timestamp + self.latency;
 
 			// Keep track of all pending groups, buffering until we detect a timestamp far enough in the future.
 			// This is a race; only the first group will succeed.
@@ -130,7 +130,7 @@ impl TrackConsumer {
 					};
 				},
 				Some((index, timestamp)) = buffering.next() => {
-					tracing::warn!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.max_buffer, "skipping slow group");
+					tracing::warn!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
 					drop(buffering);
 
 					if index > 0 {
@@ -145,8 +145,8 @@ impl TrackConsumer {
 		}
 	}
 
-	pub fn set_max_buffer(&mut self, max: std::time::Duration) {
-		self.max_buffer = max;
+	pub fn set_latency(&mut self, max: std::time::Duration) {
+		self.latency = max;
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {

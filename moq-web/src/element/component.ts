@@ -37,7 +37,9 @@ export class Element extends HTMLElement {
 			return;
 		}
 
-		const handler = `${name}Change` as const;
+		// Convert the attribute name to camelCase.
+		const camel = name.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+		const handler = `${camel}Change` as const;
 
 		// biome-ignore lint/suspicious/noExplicitAny: Accessor must exist
 		const typed = (this as any)[name];
