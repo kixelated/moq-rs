@@ -91,32 +91,19 @@ impl Render {
 
 		if let Some((wall_ref, pts_ref)) = self.latency_ref {
 			let wall_elapsed = now - wall_ref;
-			let pts_elapsed = frame.timestamp() - pts_ref;
 
-			tracing::info!(?wall_elapsed, ?pts_elapsed, diff = (wall_elapsed.as_millis() as i64 - pts_elapsed.as_millis() as i64), duration = ?self.duration(), "frame");
-
-			// If the frame needs to be rendered in the future, push it back and schedule another wakeup.
-			if pts_elapsed > wall_elapsed {
-				tracing::info!("delaying");
-				self.queue.push_front(frame);
-				self.schedule();
-				return;
-			}
-
-			let delay = wall_elapsed - pts_elapsed;
-			if delay > self.latency && !self.queue.is_empty() {
-				// Check if the next frame would put us closer to our target latency.
-				let next_elapsed = self.queue.front().unwrap().timestamp() - pts_ref;
-				if next_elapsed <= wall_elapsed {
-					// We can skip to the next frame.
-					// NOTE: We only skip 1 frame, meaning we play at (most) double the display framerate.
-					// TODO This should not be based on the refresh rate.
-					tracing::info!("skipping extra frame");
-					frame = self.queue.pop_front().unwrap();
+			while !self.queue.is_empty() {
+				let pts_elapsed = frame.timestamp() - pts_ref;
+				if wall_elapsed <= pts_elapsed {
+					break;
 				}
+
+				frame = self.queue.pop_front().unwrap();
+
+				// We know we're live because we're dropping unique frames.
+				self.set_live();
 			}
 		} else {
-			tracing::info!("first frame");
 			// This is the first frame, render it.
 			self.latency_ref = Some((now + self.latency, frame.timestamp()));
 		}
@@ -125,16 +112,13 @@ impl Render {
 			context.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
 
-		self.set_state(RenderState::Live);
-
-		// Cancel any existing timeout.
-		if let Some(handle) = self.timeout_handle {
-			cancel_timeout(handle);
+		// Add the frame back for consideration unless the buffer is too full.
+		if self.duration().unwrap_or_default() < self.latency {
+			self.queue.push_front(frame);
+		} else {
+			// We know we're live because we're dropping unique frames.
+			self.set_live();
 		}
-
-		// Set up a timeout to mark the stream as buffering after 1s
-		let timeout = self.timeout.as_ref().unwrap();
-		self.timeout_handle = set_timeout(timeout, Duration::from_secs(1)).into();
 
 		// Schedule the next frame.
 		self.schedule();
@@ -240,11 +224,25 @@ impl Render {
 	pub fn set_latency(&mut self, duration: Duration) {
 		self.latency = duration;
 		self.latency_ref = None;
+		self.set_state(RenderState::Buffering);
 	}
 
 	fn set_state(&mut self, state: RenderState) {
 		self.state = state;
 		self.status.render.update(state);
+	}
+
+	fn set_live(&mut self) {
+		self.set_state(RenderState::Live);
+
+		// Cancel any existing timeout.
+		if let Some(handle) = self.timeout_handle {
+			cancel_timeout(handle);
+		}
+
+		// Set up a timeout to mark the stream as buffering after 1s
+		let timeout = self.timeout.as_ref().unwrap();
+		self.timeout_handle = set_timeout(timeout, Duration::from_secs(1)).into();
 	}
 
 	// Called after 1s of no frames.
@@ -290,7 +288,6 @@ impl Renderer {
 					self.state.borrow_mut().set_paused(*paused);
 				},
 				Some(latency) = controls.latency.next() => {
-					tracing::info!("latency: {:?}", latency);
 					self.state.borrow_mut().set_latency(*latency);
 				},
 				Some(canvas) = controls.canvas.next() => {

@@ -14,6 +14,7 @@ import "@shoelace-style/shoelace/dist/components/menu/menu.js";
 import "@shoelace-style/shoelace/dist/components/menu-item/menu-item.js";
 import "@shoelace-style/shoelace/dist/components/range/range.js";
 import "@shoelace-style/shoelace/dist/components/badge/badge.js";
+import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 
 import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
 import type SlRange from "@shoelace-style/shoelace/dist/components/range/range.js";
@@ -115,11 +116,6 @@ export class MoqWatch extends Element {
 					opacity: 1;
 				}
 
-				sl-spinner {
-					--track-width: 8px
-					--font-size: 36px;
-				}
-
 				`}
 			</style>
 		);
@@ -212,16 +208,20 @@ export class MoqWatch extends Element {
 					top: "0",
 					left: "0",
 					right: "0",
-					padding: "8px",
+					bottom: "0",
 					display: "none",
 					alignItems: "center",
 					justifyContent: "center",
 				}}
 			>
-				<div css={{ padding: "8px", background: "rgba(0, 0, 0, 0.5)", color: "white", borderRadius: "4px" }}>
-					<sl-button size="large">
-						<sl-spinner />
-					</sl-button>
+				<div
+					css={{
+						padding: "16px",
+						background: "rgba(0, 0, 0, 0.7)",
+						borderRadius: "8px",
+					}}
+				>
+					<sl-spinner />
 				</div>
 			</div>
 		);
