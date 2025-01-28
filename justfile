@@ -15,7 +15,7 @@ all:
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "localhost:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
 
 # Download and stream the Big Buck Bunny video
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
