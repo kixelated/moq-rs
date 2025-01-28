@@ -64,7 +64,7 @@ impl Publish {
 
 	#[wasm_bindgen(getter)]
 	pub fn error(&self) -> Option<String> {
-		self.status.error.get().map(|e| e.to_string())
+		self.status.error.get().as_ref().map(|e| e.to_string())
 	}
 
 	pub fn states(&self) -> PublishStates {
@@ -100,6 +100,6 @@ pub struct PublishStates {
 #[wasm_bindgen]
 impl PublishStates {
 	pub async fn next(&mut self) -> Option<PublishState> {
-		self.state.next().await
+		self.state.next().await.copied()
 	}
 }

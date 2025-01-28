@@ -1,12 +1,46 @@
 use std::time::Duration;
 
+use baton::Baton;
 use url::Url;
 use wasm_bindgen::prelude::*;
 
 use web_sys::OffscreenCanvas;
 
-use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
+use super::{Backend, BackendState, RenderState};
 use crate::{Error, Result};
+
+// Sent from the frontend to the backend.
+#[derive(Debug, Baton)]
+
+pub(super) struct Controls {
+	pub url: Option<Url>,
+	pub paused: bool,
+	pub volume: f64,
+	pub canvas: Option<web_sys::OffscreenCanvas>,
+
+	// Play media faster until this latency is reached.
+	pub latency: Duration,
+}
+
+impl Default for Controls {
+	fn default() -> Self {
+		Self {
+			url: None,
+			paused: false,
+			volume: 1.0,
+			canvas: None,
+			latency: Duration::ZERO,
+		}
+	}
+}
+
+// Sent from the backend to the frontend.
+#[derive(Debug, Default, Baton)]
+pub(super) struct Status {
+	pub backend: BackendState,
+	pub render: RenderState,
+	pub error: Option<Error>,
+}
 
 #[wasm_bindgen]
 pub struct Watch {
@@ -55,17 +89,9 @@ impl Watch {
 		self.controls.latency.set(Duration::from_millis(latency as _));
 	}
 
-	pub fn set_latency_max(&mut self, latency_max: u32) {
-		self.controls.latency_max.set(Duration::from_millis(latency_max as _));
-	}
-
-	pub fn error(&self) -> Option<String> {
-		self.status.error.get().map(|e| e.to_string())
-	}
-
-	pub fn states(&self) -> WatchStates {
-		WatchStates {
-			state: self.status.state.clone(),
+	pub fn status(&self) -> WatchStatus {
+		WatchStatus {
+			status: self.status.clone(),
 		}
 	}
 }
@@ -76,27 +102,42 @@ impl Default for Watch {
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+// Unfortunately, we need wrappers because `wasm_bindgen` doesn't support many types.
 #[wasm_bindgen]
-pub enum WatchState {
-	#[default]
-	Idle,
-	Connecting,
-	Connected,
-	Live,
-	Offline,
-	Error,
-}
-
-// Unfortunately, we need this wrapper because `wasm_bindgen` doesn't support generics.
-#[wasm_bindgen]
-pub struct WatchStates {
-	state: baton::Recv<WatchState>,
+#[derive(Clone)]
+pub struct WatchStatus {
+	status: StatusRecv,
 }
 
 #[wasm_bindgen]
-impl WatchStates {
-	pub async fn next(&mut self) -> Option<WatchState> {
-		self.state.next().await
+impl WatchStatus {
+	pub async fn backend_state(&mut self) -> Result<BackendState> {
+		match self.status.backend.next().await {
+			None => Err(self.error().await),
+			Some(state) => Ok(*state),
+		}
+	}
+
+	pub async fn render_state(&mut self) -> Result<RenderState> {
+		match self.status.render.next().await {
+			None => Err(self.error().await),
+			Some(state) => Ok(*state),
+		}
+	}
+
+	async fn error(&mut self) -> Error {
+		if let Some(err) = self.status.error.get() {
+			return err.clone();
+		}
+
+		self.status
+			.error
+			.next()
+			.await
+			.as_ref()
+			.expect("status closed without error")
+			.as_ref()
+			.expect("error was set to None")
+			.clone()
 	}
 }

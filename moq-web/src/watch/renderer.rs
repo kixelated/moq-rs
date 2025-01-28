@@ -1,40 +1,69 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
 
 use moq_karp::Dimensions;
-use wasm_bindgen::{prelude::Closure, JsCast};
+use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::spawn_local;
 use web_codecs::{Timestamp, VideoFrame};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use web_time::Instant;
 
-struct Inner {
+use super::{ControlsRecv, StatusSend};
+
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[wasm_bindgen]
+pub enum RenderState {
+	// No video track has been configured.
+	#[default]
+	None,
+
+	// Rendering has been paused.
+	Paused,
+
+	// No frame has been received for >1s
+	Buffering,
+
+	// Rendering is active.
+	Live,
+}
+
+struct Render {
+	status: StatusSend,
+
+	state: RenderState,
 	scheduled: bool,
-	paused: bool,
 	resolution: Dimensions,
 
 	// Used to determine which frame to render next.
 	latency: Duration,
-	latency_max: Duration,
 	latency_ref: Option<(Instant, Timestamp)>,
 
 	canvas: Option<OffscreenCanvas>,
 	context: Option<OffscreenCanvasRenderingContext2d>,
 	queue: VecDeque<VideoFrame>,
 	draw: Option<Closure<dyn FnMut()>>,
+
+	// We keep triggering a 1s setTimeout to detect buffering.
+	timeout: Option<Closure<dyn FnMut()>>,
+	timeout_handle: Option<i32>,
 }
 
-impl Inner {
-	pub fn new() -> Self {
+impl Render {
+	const MAX_LATENCY: Duration = Duration::from_secs(10);
+
+	pub fn new(status: StatusSend) -> Self {
 		Self {
+			status,
 			scheduled: false,
-			paused: false,
+			state: RenderState::None,
 			canvas: None,
 			context: None,
 			resolution: Default::default(),
 			latency: Default::default(),
-			latency_max: Duration::from_secs(10),
 			latency_ref: None,
 			queue: Default::default(),
 			draw: None,
+			timeout: None,
+			timeout_handle: None,
 		}
 	}
 
@@ -45,36 +74,50 @@ impl Inner {
 	pub fn push(&mut self, frame: VideoFrame) {
 		self.queue.push_back(frame);
 		self.trim_buffer();
-
-		if !self.paused {
-			self.schedule();
-		}
+		self.schedule();
 	}
 
 	pub fn draw(&mut self) {
 		self.scheduled = false;
 
+		match self.state {
+			RenderState::Paused | RenderState::None => return,
+			RenderState::Live | RenderState::Buffering => (),
+		}
+
 		let now = Instant::now();
 
-		// We pop instead of using front().unwrap(), but we'll push the frame back when done.
-		let mut frame = match self.queue.pop_front() {
-			Some(frame) => frame,
-			None => return,
-		};
+		let mut frame = self.queue.pop_front().expect("rendered with no frames");
 
 		if let Some((wall_ref, pts_ref)) = self.latency_ref {
 			let wall_elapsed = now - wall_ref;
+			let pts_elapsed = frame.timestamp() - pts_ref;
 
-			while !self.queue.is_empty() {
-				let pts_elapsed = frame.timestamp() - pts_ref;
+			tracing::info!(?wall_elapsed, ?pts_elapsed, diff = (wall_elapsed.as_millis() as i64 - pts_elapsed.as_millis() as i64), duration = ?self.duration(), "frame");
 
-				if wall_elapsed <= pts_elapsed {
-					break;
+			// If the frame needs to be rendered in the future, push it back and schedule another wakeup.
+			if pts_elapsed > wall_elapsed {
+				tracing::info!("delaying");
+				self.queue.push_front(frame);
+				self.schedule();
+				return;
+			}
+
+			let delay = wall_elapsed - pts_elapsed;
+			if delay > self.latency && !self.queue.is_empty() {
+				// Check if the next frame would put us closer to our target latency.
+				let next_elapsed = self.queue.front().unwrap().timestamp() - pts_ref;
+				if next_elapsed <= wall_elapsed {
+					// We can skip to the next frame.
+					// NOTE: We only skip 1 frame, meaning we play at (most) double the display framerate.
+					// TODO This should not be based on the refresh rate.
+					tracing::info!("skipping extra frame");
+					frame = self.queue.pop_front().unwrap();
 				}
-
-				frame = self.queue.pop_front().unwrap();
 			}
 		} else {
+			tracing::info!("first frame");
+			// This is the first frame, render it.
 			self.latency_ref = Some((now + self.latency, frame.timestamp()));
 		}
 
@@ -82,10 +125,16 @@ impl Inner {
 			context.draw_image_with_video_frame(frame.inner(), 0.0, 0.0).unwrap();
 		}
 
-		// Add the frame back for consideration unless the buffer is too full.
-		if frame.timestamp() + self.latency >= self.queue.back().map(|f| f.timestamp()).unwrap_or_default() {
-			self.queue.push_front(frame);
+		self.set_state(RenderState::Live);
+
+		// Cancel any existing timeout.
+		if let Some(handle) = self.timeout_handle {
+			cancel_timeout(handle);
 		}
+
+		// Set up a timeout to mark the stream as buffering after 1s
+		let timeout = self.timeout.as_ref().unwrap();
+		self.timeout_handle = set_timeout(timeout, Duration::from_secs(1)).into();
 
 		// Schedule the next frame.
 		self.schedule();
@@ -98,21 +147,20 @@ impl Inner {
 		}
 
 		// Check if the buffer is too full.
-		let mut duration = self.duration().unwrap();
-		if duration > self.latency_max {
-			tracing::warn!(dropped = ?(duration - self.latency_max), "full buffer");
+		while self.duration().unwrap() > Self::MAX_LATENCY {
 			self.latency_ref = None;
-
-			while duration > self.latency_max {
-				self.queue.pop_front();
-				duration = self.duration().unwrap();
-			}
+			self.queue.pop_front();
 		}
 	}
 
 	pub fn schedule(&mut self) {
 		if self.scheduled {
 			return;
+		}
+
+		match self.state {
+			RenderState::Live | RenderState::Buffering => (),
+			_ => return,
 		}
 
 		if self.queue.is_empty() {
@@ -159,9 +207,17 @@ impl Inner {
 	}
 
 	pub fn set_paused(&mut self, paused: bool) {
-		self.queue.clear();
-		self.latency_ref = None;
-		self.paused = paused;
+		match paused {
+			true => {
+				self.queue.clear();
+				self.latency_ref = None;
+				self.set_state(RenderState::Paused);
+			}
+			false => {
+				self.set_state(RenderState::Buffering);
+				self.schedule();
+			}
+		};
 	}
 
 	pub fn set_resolution(&mut self, resolution: Dimensions) {
@@ -171,6 +227,14 @@ impl Inner {
 			canvas.set_width(resolution.width);
 			canvas.set_height(resolution.height);
 		}
+
+		if resolution == Default::default() {
+			self.set_state(RenderState::None);
+			self.queue.clear();
+		} else {
+			self.set_state(RenderState::Buffering);
+			self.schedule();
+		}
 	}
 
 	pub fn set_latency(&mut self, duration: Duration) {
@@ -178,59 +242,71 @@ impl Inner {
 		self.latency_ref = None;
 	}
 
-	pub fn set_latency_max(&mut self, duration: Duration) {
-		self.latency_max = duration;
-		self.trim_buffer();
+	fn set_state(&mut self, state: RenderState) {
+		self.state = state;
+		self.status.render.update(state);
 	}
-}
 
-impl Default for Inner {
-	fn default() -> Self {
-		Self::new()
+	// Called after 1s of no frames.
+	fn timeout(&mut self) {
+		if self.state == RenderState::Live {
+			self.set_state(RenderState::Buffering);
+		}
 	}
 }
 
 #[derive(Clone)]
 pub struct Renderer {
-	state: Rc<RefCell<Inner>>,
+	state: Rc<RefCell<Render>>,
 }
 
 impl Renderer {
-	pub fn new() -> Self {
-		let state = Rc::new(RefCell::new(Inner::default()));
+	pub fn new(controls: ControlsRecv, status: StatusSend) -> Self {
+		let render = Rc::new(RefCell::new(Render::new(status)));
+		let render2 = render.clone();
+		let render3 = render.clone();
 
-		let cloned = state.clone();
-		let f = Closure::wrap(Box::new(move || {
-			cloned.borrow_mut().draw();
-		}) as Box<dyn FnMut()>);
+		render.borrow_mut().draw = Closure::wrap(Box::new(move || {
+			render2.borrow_mut().draw();
+		}) as Box<dyn FnMut()>)
+		.into();
 
-		let this = Self { state };
-		this.state.borrow_mut().draw = Some(f);
+		render.borrow_mut().timeout = Closure::wrap(Box::new(move || {
+			render3.borrow_mut().timeout();
+		}) as Box<dyn FnMut()>)
+		.into();
+
+		let this = Self { state: render };
+		let this2 = this.clone();
+		spawn_local(async move { this2.run(controls).await });
+
 		this
+	}
+
+	async fn run(&self, mut controls: ControlsRecv) {
+		loop {
+			tokio::select! {
+				Some(paused) = controls.paused.next() => {
+					self.state.borrow_mut().set_paused(*paused);
+				},
+				Some(latency) = controls.latency.next() => {
+					tracing::info!("latency: {:?}", latency);
+					self.state.borrow_mut().set_latency(*latency);
+				},
+				Some(canvas) = controls.canvas.next() => {
+					self.state.borrow_mut().set_canvas(canvas.clone());
+				},
+				else => break,
+			}
+		}
+	}
+
+	pub fn set_resolution(&self, resolution: Dimensions) {
+		self.state.borrow_mut().set_resolution(resolution);
 	}
 
 	pub fn push(&mut self, frame: VideoFrame) {
 		self.state.borrow_mut().push(frame);
-	}
-
-	pub fn set_canvas(&mut self, canvas: Option<OffscreenCanvas>) {
-		self.state.borrow_mut().set_canvas(canvas);
-	}
-
-	pub fn set_paused(&mut self, paused: bool) {
-		self.state.borrow_mut().set_paused(paused);
-	}
-
-	pub fn set_resolution(&mut self, resolution: Dimensions) {
-		self.state.borrow_mut().set_resolution(resolution);
-	}
-
-	pub fn set_latency(&mut self, duration: Duration) {
-		self.state.borrow_mut().set_latency(duration);
-	}
-
-	pub fn set_latency_max(&mut self, duration: Duration) {
-		self.state.borrow_mut().set_latency_max(duration);
 	}
 }
 
@@ -248,6 +324,42 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 		worker
 			.request_animation_frame(f.as_ref().unchecked_ref())
 			.expect("should register `requestAnimationFrame` on DedicatedWorkerGlobalScope");
+	} else {
+		unimplemented!("Unsupported context: neither Window nor DedicatedWorkerGlobalScope");
+	}
+}
+
+fn set_timeout(f: &Closure<dyn FnMut()>, timeout: Duration) -> i32 {
+	let global = js_sys::global();
+	if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+		// Main thread
+		window
+			.set_timeout_with_callback_and_timeout_and_arguments_0(
+				f.as_ref().unchecked_ref(),
+				timeout.as_millis() as i32,
+			)
+			.expect("should register `setTimeout` on Window")
+	} else if let Some(worker) = global.dyn_ref::<web_sys::DedicatedWorkerGlobalScope>() {
+		// Dedicated Worker
+		worker
+			.set_timeout_with_callback_and_timeout_and_arguments_0(
+				f.as_ref().unchecked_ref(),
+				timeout.as_millis() as i32,
+			)
+			.expect("should register `setTimeout` on DedicatedWorkerGlobalScope")
+	} else {
+		unimplemented!("Unsupported context: neither Window nor DedicatedWorkerGlobalScope");
+	}
+}
+
+fn cancel_timeout(handle: i32) {
+	let global = js_sys::global();
+	if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+		// Main thread
+		window.clear_timeout_with_handle(handle);
+	} else if let Some(worker) = global.dyn_ref::<web_sys::DedicatedWorkerGlobalScope>() {
+		// Dedicated Worker
+		worker.clear_timeout_with_handle(handle);
 	} else {
 		unimplemented!("Unsupported context: neither Window nor DedicatedWorkerGlobalScope");
 	}

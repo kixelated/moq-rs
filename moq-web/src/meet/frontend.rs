@@ -49,7 +49,7 @@ impl Room {
 
 	#[wasm_bindgen(getter)]
 	pub fn error(&self) -> Option<String> {
-		self.status.error.get().map(|e| e.to_string())
+		self.status.error.get().as_ref().map(|e| e.to_string())
 	}
 }
 

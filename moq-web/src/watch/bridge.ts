@@ -8,9 +8,9 @@ export class Bridge {
 		// Proxy the Watch instance
 		const watch = Comlink.proxy(new Rust.Watch());
 
-		// Wrap the states() method to proxy its result
-		const states = watch.states.bind(watch);
-		watch.states = Comlink.proxy(() => Comlink.proxy(states()));
+		// Wrap the status() method to proxy its result
+		const status = watch.status.bind(watch);
+		watch.status = Comlink.proxy(() => Comlink.proxy(status()));
 
 		return watch;
 	}

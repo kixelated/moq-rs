@@ -7,12 +7,20 @@ import { jsx } from "../element/jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
+import "@shoelace-style/shoelace/dist/components/icon-button/icon-button.js";
+import "@shoelace-style/shoelace/dist/components/dropdown/dropdown.js";
+import "@shoelace-style/shoelace/dist/components/divider/divider.js";
+import "@shoelace-style/shoelace/dist/components/menu/menu.js";
+import "@shoelace-style/shoelace/dist/components/menu-item/menu-item.js";
+import "@shoelace-style/shoelace/dist/components/range/range.js";
+import "@shoelace-style/shoelace/dist/components/badge/badge.js";
 
 import type SlButton from "@shoelace-style/shoelace/dist/components/button/button.js";
+import type SlRange from "@shoelace-style/shoelace/dist/components/range/range.js";
 import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
-export type { WatchState };
-type WatchState = Rust.WatchState;
+export type { BackendState };
+type BackendState = Rust.BackendState;
 
 // Create a new worker instance that is shared between all instances of the Watch class.
 // We wait until the worker is fully initialized before we return the proxy.
@@ -38,7 +46,9 @@ export class MoqWatch extends Element {
 	// Optional controls
 	#controls: HTMLDivElement;
 	#pause: SlButton;
+	#menu: HTMLElement;
 	#fullscreen: SlButton;
+	#buffering: HTMLElement;
 
 	// Optional status dialog
 	#status: HTMLDivElement;
@@ -65,11 +75,6 @@ export class MoqWatch extends Element {
 	// A higher value means more stable playback.
 	@attribute
 	accessor latency = 0;
-
-	// The maximum latency in ms.
-	// Rendering will be paused when backgrounded, and we will queue up at most this much data.
-	@attribute
-	accessor latency_max = 1000;
 
 	constructor() {
 		super();
@@ -110,6 +115,11 @@ export class MoqWatch extends Element {
 					opacity: 1;
 				}
 
+				sl-spinner {
+					--track-width: 8px
+					--font-size: 36px;
+				}
+
 				`}
 			</style>
 		);
@@ -122,7 +132,6 @@ export class MoqWatch extends Element {
 
 		this.#pause = (
 			<sl-button
-				css={{ background: "black", borderRadius: "8px" }}
 				onclick={() => {
 					this.paused = !this.paused;
 				}}
@@ -130,6 +139,39 @@ export class MoqWatch extends Element {
 				<sl-icon name="pause" label="Pause" />
 			</sl-button>
 		) as SlButton;
+
+		const targetBuffer = (
+			<sl-range
+				label="Target Buffer Duration"
+				helpText="Increase delay to smooth network jitter."
+				min={0}
+				max={4000}
+				step={100}
+				tooltipFormatter={(value) => `${(value / 1000).toFixed(1)}s`}
+			/>
+		) as SlRange;
+		targetBuffer.addEventListener("sl-change", () => {
+			this.#watch.then((watch) => watch.set_latency(targetBuffer.value));
+		});
+
+		this.#menu = (
+			<sl-tooltip content="Settings">
+				<sl-dropdown placement="top-start" distance={2}>
+					<sl-button slot="trigger">
+						<sl-icon name="gear" label="Settings" />
+					</sl-button>
+
+					<sl-menu>
+						<sl-menu-item>
+							Latency
+							<sl-menu slot="submenu">
+								<sl-menu-item>{targetBuffer}</sl-menu-item>
+							</sl-menu>
+						</sl-menu-item>
+					</sl-menu>
+				</sl-dropdown>
+			</sl-tooltip>
+		);
 
 		this.#fullscreen = (
 			<sl-button
@@ -155,16 +197,41 @@ export class MoqWatch extends Element {
 					gap: "8px",
 				}}
 			>
-				{this.#pause}
-				{this.#fullscreen}
+				<div css={{ display: "flex", gap: "8px" }}>{this.#pause}</div>
+				<div css={{ display: "flex", gap: "8px" }}>
+					{this.#menu}
+					{this.#fullscreen}
+				</div>
 			</div>
 		) as HTMLDivElement;
+
+		this.#buffering = (
+			<div
+				css={{
+					position: "absolute",
+					top: "0",
+					left: "0",
+					right: "0",
+					padding: "8px",
+					display: "none",
+					alignItems: "center",
+					justifyContent: "center",
+				}}
+			>
+				<div css={{ padding: "8px", background: "rgba(0, 0, 0, 0.5)", color: "white", borderRadius: "4px" }}>
+					<sl-button size="large">
+						<sl-spinner />
+					</sl-button>
+				</div>
+			</div>
+		);
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 		shadow.appendChild(this.#status);
 		shadow.appendChild(canvas);
 		shadow.appendChild(this.#controls);
+		shadow.appendChild(this.#buffering);
 
 		this.#canvas = canvas.transferControlToOffscreen();
 
@@ -172,10 +239,10 @@ export class MoqWatch extends Element {
 		this.#watch.then((watch) => {
 			watch.set_canvas(Comlink.transfer(this.#canvas, [this.#canvas]));
 			watch.set_latency(this.latency);
-			watch.set_latency_max(this.latency_max);
 		});
 
-		this.#runStatus();
+		this.#runBackendStatus();
+		this.#runBuffering();
 	}
 
 	urlChange(value: string) {
@@ -217,51 +284,77 @@ export class MoqWatch extends Element {
 		}
 	}
 
-	async #runStatus() {
-		this.#status.replaceChildren(<sl-spinner />, "Loading WASM Worker...");
-		const watch = await this.#watch;
+	async #runBackendStatus() {
+		try {
+			this.#status.replaceChildren(<sl-spinner />, "Loading WASM Worker...");
+			const watch = await this.#watch;
 
-		const states = await Comlink.proxy(watch.states());
-		while (true) {
-			const next = await states.next();
-			if (next === undefined) {
-				return;
-			}
-
-			switch (next) {
-				case Rust.WatchState.Idle:
-					this.#status.replaceChildren();
-					break;
-				case Rust.WatchState.Connecting:
-					this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
-					break;
-				case Rust.WatchState.Connected:
-					this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcast...");
-					break;
-				case Rust.WatchState.Live:
-					this.#status.replaceChildren();
-					break;
-				case Rust.WatchState.Offline:
-					this.#status.replaceChildren("Offline");
-					break;
-				case Rust.WatchState.Error: {
-					const err = (await watch.error()) || "unknown";
-					this.#status.replaceChildren(
-						<sl-alert variant="danger" open css={{ width: "100%" }}>
-							<sl-icon slot="icon" name="exclamation-octagon" />
-							<strong>Error</strong>
-							<br />
-							{err}
-						</sl-alert>,
-					);
-
-					break;
+			const status = await Comlink.proxy(watch.status());
+			while (true) {
+				const next = await status.backend_state();
+				if (next === undefined) {
+					return;
 				}
-				default: {
-					const _exhaustive: never = next;
-					throw new Error(`Unhandled state: ${_exhaustive}`);
+
+				switch (next) {
+					case Rust.BackendState.Idle:
+						this.#status.replaceChildren();
+						break;
+					case Rust.BackendState.Connecting:
+						this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
+						break;
+					case Rust.BackendState.Connected:
+						this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcast...");
+						break;
+					case Rust.BackendState.Live:
+						this.#status.replaceChildren();
+						break;
+					case Rust.BackendState.Offline:
+						this.#status.replaceChildren("Offline");
+						break;
+					default: {
+						const _exhaustive: never = next;
+						throw new Error(`Unhandled state: ${_exhaustive}`);
+					}
 				}
 			}
+		} catch (err) {
+			this.#status.replaceChildren(
+				<sl-alert variant="danger" open css={{ width: "100%" }}>
+					<sl-icon slot="icon" name="exclamation-octagon" />
+					<strong>Error</strong>
+					<br />
+					{err}
+				</sl-alert>,
+			);
+		}
+	}
+
+	async #runBuffering() {
+		try {
+			const watch = await this.#watch;
+			const status = await watch.status();
+
+			for (;;) {
+				const state = await status.render_state();
+				console.log(state);
+				switch (state) {
+					case Rust.RenderState.Buffering:
+						this.#buffering.style.display = "flex";
+						break;
+					case Rust.RenderState.Live:
+					case Rust.RenderState.Paused:
+					case Rust.RenderState.None:
+						this.#buffering.style.display = "none";
+						break;
+					default: {
+						const _exhaustive: never = state;
+						throw new Error(`Unhandled state: ${_exhaustive}`);
+					}
+				}
+			}
+		} catch (err) {
+			this.#buffering.style.display = "none";
 		}
 	}
 
@@ -270,13 +363,6 @@ export class MoqWatch extends Element {
 			throw new RangeError("latency must be greater than 0");
 		}
 		this.#watch.then((watch) => watch.set_latency(value));
-	}
-
-	async latencyMaxChange(value: number) {
-		if (value < 0) {
-			throw new RangeError("latency_max must be greater than 0");
-		}
-		this.#watch.then((watch) => watch.set_latency_max(value));
 	}
 }
 

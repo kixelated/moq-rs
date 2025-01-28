@@ -30,7 +30,7 @@ js-sys = "0.3.77"
 url = "2"
 thiserror = "2"
 hex = "0.4"
-baton = "0.2"
+baton = { path = "../../baton/baton" }
 
 [dependencies.web-sys]
 version = "0.3.77"

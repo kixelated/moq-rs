@@ -1,44 +1,19 @@
-use std::time::Duration;
-
-use baton::Baton;
 use moq_karp::{moq_transfork::Path, BroadcastConsumer};
-use url::Url;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 
-use super::{Renderer, Video, WatchState};
+use super::{ControlsRecv, Renderer, StatusSend, Video};
 use crate::{Connect, Error, Result};
 
-#[derive(Debug, Baton)]
-pub struct Controls {
-	pub url: Option<Url>,
-	pub paused: bool,
-	pub volume: f64,
-	pub canvas: Option<web_sys::OffscreenCanvas>,
-
-	// Play media faster until this latency is reached.
-	pub latency: Duration,
-
-	// Drop media if the latency exceeds this value.
-	pub latency_max: Duration,
-}
-
-impl Default for Controls {
-	fn default() -> Self {
-		Self {
-			url: None,
-			paused: false,
-			volume: 1.0,
-			canvas: None,
-			latency: Duration::ZERO,
-			latency_max: Duration::from_secs(10),
-		}
-	}
-}
-
-#[derive(Debug, Default, Baton)]
-pub struct Status {
-	pub state: WatchState,
-	pub error: Option<Error>,
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[wasm_bindgen]
+pub enum BackendState {
+	#[default]
+	Idle,
+	Connecting,
+	Connected,
+	Live,
+	Offline,
 }
 
 pub struct Backend {
@@ -56,6 +31,8 @@ pub struct Backend {
 impl Backend {
 	pub fn new(controls: ControlsRecv, status: StatusSend) -> Self {
 		Self {
+			renderer: Renderer::new(controls.clone(), status.clone()),
+
 			controls,
 			status,
 
@@ -64,7 +41,6 @@ impl Backend {
 
 			broadcast: None,
 			video: None,
-			renderer: Renderer::new(),
 		}
 	}
 
@@ -73,8 +49,6 @@ impl Backend {
 			if let Err(err) = self.run().await {
 				self.status.error.set(Some(err));
 			}
-
-			self.status.state.set(WatchState::Error);
 		});
 	}
 
@@ -97,18 +71,17 @@ impl Backend {
 						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
 						self.connect = Some(Connect::new(addr));
 
-						self.status.state.set(WatchState::Connecting);
+						self.status.backend.set(BackendState::Connecting);
 					} else {
 						self.path = Path::default();
 						self.connect = None;
 
-						self.status.state.set(WatchState::Idle);
+						self.status.backend.set(BackendState::Idle);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
-					tracing::info!("connected");
 					let broadcast = moq_karp::BroadcastConsumer::new(session?, self.path.clone());
-					self.status.state.set(WatchState::Connected);
+					self.status.backend.set(BackendState::Connected);
 
 					self.broadcast = Some(broadcast);
 					self.connect = None;
@@ -119,19 +92,19 @@ impl Backend {
 						None => {
 							// There's no catalog, so the stream is offline.
 							// Note: We keep trying because the stream might come online later.
-							self.status.state.set(WatchState::Offline);
+							self.status.backend.set(BackendState::Offline);
 							self.video = None;
 							continue;
 						},
 					};
 
 					// NOTE: We fire this event every time the catalog changes.
-					self.status.state.set(WatchState::Live);
+					self.status.backend.set(BackendState::Live);
 
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {
 						let mut track = self.broadcast.as_mut().unwrap().track(&info.track)?;
-						track.set_latency(self.controls.latency.get());
+						track.set_latency(*self.controls.latency.get());
 						self.renderer.set_resolution(info.resolution);
 
 						let video = Video::new(track, info.clone())?;
@@ -145,20 +118,12 @@ impl Backend {
 				Some(frame) = async { self.video.as_mut()?.frame().await.transpose() } => {
 					self.renderer.push(frame?);
 				},
-				canvas = self.controls.canvas.next() => {
-					self.renderer.set_canvas(canvas.ok_or(Error::Closed)?.clone());
-				},
-				// TODO temporarily unsubscribe on pause
-				paused = self.controls.paused.next() => {
-					self.renderer.set_paused(paused.ok_or(Error::Closed)?);
+				_ = self.controls.paused.next() => {
+					// TODO temporarily unsubscribe on pause
 				},
 				latency = self.controls.latency.next() => {
 					let latency = latency.ok_or(Error::Closed)?;
-					self.renderer.set_latency(latency);
-					self.video.as_mut().map(|v| v.track.set_latency(latency));
-				},
-				latency_max = self.controls.latency_max.next() => {
-					self.renderer.set_latency_max(latency_max.ok_or(Error::Closed)?);
+					self.video.as_mut().map(|v| v.track.set_latency(*latency));
 				},
 				else => return Ok(()),
 			}
