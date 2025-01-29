@@ -96,6 +96,10 @@ fix:
 	cargo fmt --all
 	npm i && npm run fix
 
+# Build the binaries
+build: pack
+	cargo build
+
 # Build release NPM package
 pack:
 	npm i && npm run build
