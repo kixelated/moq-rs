@@ -2,7 +2,6 @@
 
 mod decode;
 mod encode;
-mod path;
 mod size;
 mod varint;
 

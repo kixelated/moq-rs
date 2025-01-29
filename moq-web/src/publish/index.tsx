@@ -2,17 +2,17 @@ import * as Rust from "@rust";
 
 import { Element, attribute, element } from "../element/component";
 
-import { jsx } from "../element/jsx";
+import { jsx, jsxFragment } from "../element/jsx";
 
-import "@shoelace-style/shoelace/dist/themes/light.css";
-import "@shoelace-style/shoelace/dist/themes/dark.css";
 import "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
 import "@shoelace-style/shoelace/dist/components/radio-button/radio-button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
+type MediaKind = "camera" | "screen" | "";
+
 @element("moq-publish")
-export class MoqPublish extends Element {
+export class MoqPublishElement extends Element {
 	#publish: Rust.Publish;
 
 	// Optional preview (pre-encoding)
@@ -28,7 +28,7 @@ export class MoqPublish extends Element {
 	accessor url = "";
 
 	@attribute
-	accessor media: "camera" | "screen" | "" = "";
+	accessor media: MediaKind = "";
 
 	@attribute
 	accessor preview = false;
@@ -69,7 +69,7 @@ export class MoqPublish extends Element {
 		this.#status = (<div id="status" />) as HTMLDivElement;
 
 		this.#controls = (
-			<div css={{ display: "none", justifyContent: "center" }}>
+			<div css={{ display: "none", justifyContent: "center", gap: "8px" }}>
 				<sl-radio-group>
 					<sl-tooltip content="Publish your webcam." placement="bottom">
 						<sl-radio-button
@@ -89,7 +89,7 @@ export class MoqPublish extends Element {
 							<sl-icon slot="prefix" name="display" label="Screen" />
 						</sl-radio-button>
 					</sl-tooltip>
-					<sl-tooltip content="Publish nothing (for now), but still join the meeting." placement="bottom">
+					<sl-tooltip content="Publish nothing and leave the meeting." placement="bottom">
 						<sl-radio-button
 							onclick={() => {
 								this.media = "";
@@ -124,11 +124,11 @@ export class MoqPublish extends Element {
 		this.#runStatus();
 	}
 
-	urlChange(value: string) {
-		this.#publish.url = value;
+	urlChange(url: string) {
+		this.#updateConnect();
 	}
 
-	async mediaChange(value: string) {
+	async mediaChange(value: MediaKind) {
 		let media: MediaStream | null;
 		switch (value) {
 			case "camera":
@@ -143,12 +143,15 @@ export class MoqPublish extends Element {
 				}
 				media = null;
 				break;
-			default:
+			default: {
+				const _: never = value;
 				throw new Error(`Invalid media kind: ${value}`);
+			}
 		}
 
 		this.#publish.media = media;
 		this.#preview.srcObject = media;
+		this.#updateConnect();
 	}
 
 	previewChange(value: boolean) {
@@ -157,6 +160,18 @@ export class MoqPublish extends Element {
 
 	controlsChange(value: boolean) {
 		this.#controls.style.display = value ? "flex" : "none";
+	}
+
+	#updateConnect() {
+		const media = this.media;
+		const url = this.url;
+
+		// Connect when the user has selected a url and media source.
+		if (media && url) {
+			this.#publish.url = url;
+		} else {
+			this.#publish.url = null;
+		}
 	}
 
 	async #runStatus() {
@@ -170,18 +185,8 @@ export class MoqPublish extends Element {
 			}
 
 			switch (next) {
-				case Rust.PublishState.Idle:
-					this.#status.replaceChildren();
-					break;
 				case Rust.PublishState.Connecting:
 					this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
-					break;
-				case Rust.PublishState.Connected:
-					this.#status.replaceChildren();
-					break;
-				case Rust.PublishState.Live:
-					// TODO live icon
-					this.#status.replaceChildren();
 					break;
 				case Rust.PublishState.Error: {
 					const err = this.#publish.error || "unknown";
@@ -196,6 +201,11 @@ export class MoqPublish extends Element {
 
 					break;
 				}
+				case Rust.PublishState.Idle:
+				case Rust.PublishState.Connected:
+				case Rust.PublishState.Live: // TODO live icon
+					this.#status.replaceChildren();
+					break;
 				default: {
 					const _exhaustive: never = next;
 					throw new Error(`Unhandled state: ${_exhaustive}`);
@@ -207,6 +217,8 @@ export class MoqPublish extends Element {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-publish": MoqPublish;
+		"moq-publish": MoqPublishElement;
 	}
 }
+
+export default MoqPublishElement;

@@ -40,7 +40,7 @@ const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
 });
 
 @element("moq-watch")
-export class MoqWatch extends Element {
+export class MoqWatchElement extends Element {
 	#watch: Promise<Comlink.Remote<Rust.Watch>>;
 	#canvas: OffscreenCanvas;
 
@@ -374,8 +374,8 @@ export class MoqWatch extends Element {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-watch": MoqWatch;
+		"moq-watch": MoqWatchElement;
 	}
 }
 
-export default MoqWatch;
+export default MoqWatchElement;

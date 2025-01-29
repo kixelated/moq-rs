@@ -19,11 +19,11 @@
 </head>
 
 <body>
-	<!-- Publish our own broadcast -->
-	<moq-publish url="http://localhost:4443/demo/me2" status controls></moq-publish>
+	<!-- Publish our own broadcast when the user selects media. -->
+	<moq-publish url="http://localhost:4443/demo/me" status controls></moq-publish>
 
 	<!-- Show all participants under the /demo prefix, including ourselves! -->
-	<moq-meet room="http://localhost:4443/demo2" status controls></moq-meet>
+	<moq-meet url="http://localhost:4443/demo" status controls></moq-meet>
 </body>
 
 </html>
