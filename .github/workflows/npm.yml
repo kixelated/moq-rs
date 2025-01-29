@@ -11,10 +11,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: moq-web
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,7 +27,6 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-
 
       - name: Build/Publish NPM Package
         run: |

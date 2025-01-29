@@ -14,32 +14,32 @@
 			"import": "./dist/element/video.js"
 		},
 		"./publish": {
-			"types": "./dist/element/publish.d.ts",
-			"import": "./dist/element/publish.js"
+			"types": "./dist/publish/index.d.ts",
+			"import": "./dist/publish/index.js"
 		},
 		"./watch": {
-			"types": "./dist/element/watch.d.ts",
-			"import": "./dist/element/watch.js"
+			"types": "./dist/watch/index.d.ts",
+			"import": "./dist/watch/index.js"
 		},
 		"./meet": {
-			"types": "./dist/element/meet.d.ts",
-			"import": "./dist/element/meet.js"
+			"types": "./dist/meet/index.d.ts",
+			"import": "./dist/meet/index.js"
 		}
 	},
 	"sideEffects": ["./dist/rust.*", "./dist/snippets/*"],
-	"files": ["dist", "README.md", "LICENSE*"],
+	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"build": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
+		"build": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated && rm pkg/.gitignore pkg/package.json && tsc && tsc-alias",
 		"dev": "webpack serve",
 		"check": "biome check",
 		"fix": "biome check --write"
 	},
 	"dependencies": {
-		"comlink": "^4.4.2"
+		"comlink": "^4.4.2",
+		"@shoelace-style/shoelace": "^2.19.1"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
-		"@shoelace-style/shoelace": "^2.19.1",
 		"@types/dom-mediacapture-transform": "^0.1.10",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"chokidar-cli": "^3.0.0",

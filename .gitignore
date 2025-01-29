@@ -12,7 +12,7 @@
 node_modules
 target
 dist
-
+pkg
 
 # Don't leak dev stuff
 *.mp4
