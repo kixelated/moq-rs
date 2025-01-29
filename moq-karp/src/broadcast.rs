@@ -45,6 +45,11 @@ impl BroadcastProducer {
 		})
 	}
 
+	/// Return the latest catalog.
+	pub fn catalog(&self) -> Catalog {
+		self.catalog.lock().current.clone()
+	}
+
 	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
 		let path = self.path.clone().push(self.id).push(&info.track.name);
 
@@ -156,6 +161,7 @@ pub struct BroadcastConsumer {
 	// True if we should None because the broadcast has ended.
 	ended: bool,
 
+	catalog_latest: Option<Catalog>,
 	catalog_track: Option<moq_transfork::TrackConsumer>,
 	catalog_group: Option<moq_transfork::GroupConsumer>,
 }
@@ -170,13 +176,18 @@ impl BroadcastConsumer {
 			announced,
 			current: None,
 			ended: false,
+			catalog_latest: None,
 			catalog_track: None,
 			catalog_group: None,
 		}
 	}
 
+	pub fn catalog(&self) -> Option<&Catalog> {
+		self.catalog_latest.as_ref()
+	}
+
 	/// Returns the latest catalog, or None if the channel is offline.
-	pub async fn catalog(&mut self) -> Result<Option<Catalog>> {
+	pub async fn next_catalog(&mut self) -> Result<Option<&Catalog>> {
 		loop {
 			if self.ended {
 				// Avoid returning None again.
@@ -205,9 +216,9 @@ impl BroadcastConsumer {
 					self.catalog_group.replace(group?);
 				},
 				Some(frame) = async { self.catalog_group.as_mut()?.read_frame().await.transpose() } => {
-					let catalog = Catalog::from_slice(&frame?)?;
+					self.catalog_latest = Some(Catalog::from_slice(&frame?)?);
 					self.catalog_group.take(); // We don't support deltas yet
-					return Ok(Some(catalog));
+					return Ok(self.catalog_latest.as_ref());
 				},
 				else => return Err(self.session.closed().await.into()),
 			}

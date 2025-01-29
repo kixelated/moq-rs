@@ -1,5 +1,5 @@
 import * as Rust from "@rust";
-import type { MoqWatch } from "..";
+import type { MoqWatchElement } from "..";
 
 import { Element, attribute, element } from "../element/component";
 import { jsx } from "../element/jsx";
@@ -9,14 +9,14 @@ import "@shoelace-style/shoelace/dist/components/alert/alert.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet")
-export class MoqMeet extends Element {
+export class MoqMeetElement extends Element {
 	#room: Rust.Room;
 	#container: HTMLDivElement;
-	#broadcasts: Set<MoqWatch> = new Set();
+	#broadcasts: Set<MoqWatchElement> = new Set();
 	#status: HTMLDivElement;
 
 	@attribute
-	accessor room = "";
+	accessor url = "";
 
 	@attribute
 	accessor controls = false;
@@ -64,8 +64,8 @@ export class MoqMeet extends Element {
 		shadow.appendChild(this.#container);
 	}
 
-	roomChange(value: string) {
-		this.#room.url = value;
+	urlChange(url: string) {
+		this.#room.url = url;
 	}
 
 	controlsChange(value: boolean) {
@@ -124,12 +124,12 @@ export class MoqMeet extends Element {
 		const watch = (
 			<moq-watch
 				id={`broadcast-${name}`}
-				url={`${this.room}/${name}`}
+				url={`${this.url}/${name}`}
 				controls={this.controls}
 				status={this.status}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
-		) as MoqWatch;
+		) as MoqWatchElement;
 
 		this.#container.appendChild(watch);
 		this.#broadcasts.add(watch);
@@ -138,7 +138,7 @@ export class MoqMeet extends Element {
 	#leave(name: string) {
 		const id = `#broadcast-${name}`;
 
-		const watch = this.#container.querySelector(id) as MoqWatch | null;
+		const watch = this.#container.querySelector(id) as MoqWatchElement | null;
 		if (!watch) {
 			console.warn(`Broadcast not found: ${id}`);
 			return;
@@ -151,8 +151,8 @@ export class MoqMeet extends Element {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-meet": MoqMeet;
+		"moq-meet": MoqMeetElement;
 	}
 }
 
-export default MoqMeet;
+export default MoqMeetElement;

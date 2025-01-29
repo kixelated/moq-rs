@@ -86,9 +86,9 @@ impl Backend {
 					self.broadcast = Some(broadcast);
 					self.connect = None;
 				},
-				Some(catalog) = async { Some(self.broadcast.as_mut()?.catalog().await) } => {
+				Some(catalog) = async { Some(self.broadcast.as_mut()?.next_catalog().await) } => {
 					let catalog = match catalog? {
-						Some(catalog) => catalog,
+						Some(catalog) => catalog.clone(),
 						None => {
 							// There's no catalog, so the stream is offline.
 							// Note: We keep trying because the stream might come online later.
