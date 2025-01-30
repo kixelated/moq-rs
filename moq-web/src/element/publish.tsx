@@ -47,8 +47,10 @@ export class MoqPublishElement extends Element {
 				{`
 				:host {
 					display: block;
-					overflow: hidden;
 					position: relative;
+
+					max-width: 100%;
+					max-height: 100%;
 				}
 
 				:host([status]) #status {
@@ -61,7 +63,6 @@ export class MoqPublishElement extends Element {
 				:host(:not([status])) #status  {
 					display: none;
 				}
-
 				`}
 			</style>
 		);

@@ -42,7 +42,9 @@ const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
 @element("moq-watch")
 export class MoqWatchElement extends Element {
 	#watch: Promise<Comlink.Remote<Rust.Watch>>;
-	#canvas: OffscreenCanvas;
+
+	#canvas: HTMLCanvasElement;
+	#offscreenCanvas: OffscreenCanvas;
 
 	// Optional controls
 	#controls: HTMLDivElement;
@@ -88,6 +90,11 @@ export class MoqWatchElement extends Element {
 					display: block;
 					position: relative;
 					overflow: hidden;
+
+					max-width: 100%;
+					max-height: 100%;
+
+					justify-content: center;
 				}
 
 				:host([status]) #status {
@@ -120,12 +127,6 @@ export class MoqWatchElement extends Element {
 				`}
 			</style>
 		);
-
-		const canvas = (
-			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
-		) as HTMLCanvasElement;
-
-		this.#status = (<div id="status" />) as HTMLDivElement;
 
 		this.#pause = (
 			<sl-button
@@ -180,28 +181,6 @@ export class MoqWatchElement extends Element {
 			</sl-button>
 		) as SlButton;
 
-		this.#controls = (
-			<div
-				id="controls"
-				css={{
-					position: "absolute",
-					bottom: "0",
-					left: "0",
-					right: "0",
-					justifyContent: "space-between",
-					alignItems: "center",
-					padding: "8px",
-					gap: "8px",
-				}}
-			>
-				<div css={{ display: "flex", gap: "8px" }}>{this.#pause}</div>
-				<div css={{ display: "flex", gap: "8px" }}>
-					{this.#menu}
-					{this.#fullscreen}
-				</div>
-			</div>
-		) as HTMLDivElement;
-
 		this.#buffering = (
 			<div
 				css={{
@@ -228,7 +207,15 @@ export class MoqWatchElement extends Element {
 			</div>
 		);
 
-		const centered = (
+		const shadow = this.attachShadow({ mode: "open" });
+		shadow.appendChild(style);
+
+		this.#status = shadow.appendChild(<div id="status" />) as HTMLDivElement;
+		this.#canvas = shadow.appendChild(
+			<canvas width={0} height={0} css={{ maxWidth: "100%", height: "auto" }} />,
+		) as HTMLCanvasElement;
+
+		shadow.appendChild(
 			<div
 				css={{
 					position: "absolute",
@@ -243,21 +230,36 @@ export class MoqWatchElement extends Element {
 			>
 				{this.#buffering}
 				{this.#paused}
-			</div>
+			</div>,
 		);
 
-		const shadow = this.attachShadow({ mode: "open" });
-		shadow.appendChild(style);
-		shadow.appendChild(this.#status);
-		shadow.appendChild(canvas);
-		shadow.appendChild(centered);
-		shadow.appendChild(this.#controls);
+		this.#controls = shadow.appendChild(
+			<div
+				id="controls"
+				css={{
+					position: "absolute",
+					bottom: "0",
+					left: "0",
+					right: "0",
+					justifyContent: "space-between",
+					alignItems: "center",
+					padding: "8px",
+					gap: "8px",
+				}}
+			>
+				<div css={{ display: "flex", gap: "8px" }}>{this.#pause}</div>
+				<div css={{ display: "flex", gap: "8px" }}>
+					{this.#menu}
+					{this.#fullscreen}
+				</div>
+			</div>,
+		) as HTMLDivElement;
 
-		this.#canvas = canvas.transferControlToOffscreen();
+		this.#offscreenCanvas = this.#canvas.transferControlToOffscreen();
 
 		this.#watch = worker.then((api) => api.watch());
 		this.#watch.then((watch) => {
-			watch.set_canvas(Comlink.transfer(this.#canvas, [this.#canvas]));
+			watch.set_canvas(Comlink.transfer(this.#offscreenCanvas, [this.#offscreenCanvas]));
 			watch.set_latency(this.latency);
 		});
 
