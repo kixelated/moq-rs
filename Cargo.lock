@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "moq-web"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "baton",
  "console_error_panic_hook",

@@ -80,7 +80,7 @@ check:
 
 # Automatically fix some issues.
 fix:
-	cargo clippy --all --fix --allow-dirty --allow-staged --all-targets --all-features
+	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
 

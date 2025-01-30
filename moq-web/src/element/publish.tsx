@@ -2,7 +2,7 @@ import * as Rust from "@rust";
 
 import { Element, attribute, element } from "./component";
 
-import { jsx, jsxFragment } from "./jsx";
+import { jsx } from "./jsx";
 
 import "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
 import "@shoelace-style/shoelace/dist/components/radio-button/radio-button.js";

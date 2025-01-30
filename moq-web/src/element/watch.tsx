@@ -26,7 +26,7 @@ type BackendState = Rust.BackendState;
 // Create a new worker instance that is shared between all instances of the Watch class.
 // We wait until the worker is fully initialized before we return the proxy.
 const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
-	const worker = new Worker(new URL("./bridge", import.meta.url), {
+	const worker = new Worker(new URL("../watch/bridge", import.meta.url), {
 		type: "module",
 	});
 	worker.addEventListener(
