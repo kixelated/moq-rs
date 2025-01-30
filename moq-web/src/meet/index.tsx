@@ -52,7 +52,17 @@ export class MoqMeetElement extends Element {
 
 		this.#status = (<div id="status" />) as HTMLDivElement;
 
-		this.#container = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
+		this.#container = (
+			<div
+				css={{
+					display: "grid",
+					gap: "8px",
+					width: "100%",
+					height: "100%",
+					placeItems: "center",
+				}}
+			/>
+		) as HTMLDivElement;
 
 		this.#room = new Rust.Room();
 		const announced = this.#room.announced();
@@ -133,6 +143,7 @@ export class MoqMeetElement extends Element {
 
 		this.#container.appendChild(watch);
 		this.#broadcasts.add(watch);
+		this.#updateGrid();
 	}
 
 	#leave(name: string) {
@@ -146,6 +157,20 @@ export class MoqMeetElement extends Element {
 
 		watch.remove();
 		this.#broadcasts.delete(watch);
+		this.#updateGrid();
+	}
+
+	#updateGrid() {
+		if (this.#broadcasts.size === 0) {
+			return;
+		}
+
+		// Calculate grid size (square root approximation)
+		const cols = Math.ceil(Math.sqrt(this.#broadcasts.size));
+		const rows = Math.ceil(this.#broadcasts.size / cols);
+
+		this.#container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+		this.#container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 	}
 }
 

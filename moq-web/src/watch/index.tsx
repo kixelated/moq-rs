@@ -88,6 +88,8 @@ export class MoqWatchElement extends Element {
 					display: block;
 					position: relative;
 					overflow: hidden;
+					max-width: 100%;
+					max-height: 100%;
 				}
 
 				:host([status]) #status {
@@ -122,7 +124,7 @@ export class MoqWatchElement extends Element {
 		);
 
 		const canvas = (
-			<canvas css={{ display: "block", maxWidth: "100%", height: "auto" }} width={0} height={0} />
+			<canvas css={{ display: "block", maxWidth: "100%", maxHeight: "100%" }} width={0} height={0} />
 		) as HTMLCanvasElement;
 
 		this.#status = (<div id="status" />) as HTMLDivElement;
