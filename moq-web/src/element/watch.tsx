@@ -1,9 +1,9 @@
 import * as Rust from "@rust";
 import * as Comlink from "comlink";
-import type { Bridge } from "./bridge";
+import type { Bridge } from "../watch/bridge";
 
-import { Element, attribute, element } from "../element/component";
-import { jsx } from "../element/jsx";
+import { Element, attribute, element } from "./component";
+import { jsx } from "./jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";

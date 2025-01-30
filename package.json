@@ -14,19 +14,19 @@
 			"import": "./dist/element/video.js"
 		},
 		"./publish": {
-			"types": "./dist/publish/index.d.ts",
-			"import": "./dist/publish/index.js"
+			"types": "./dist/element/publish.d.ts",
+			"import": "./dist/element/publish.js"
 		},
 		"./watch": {
-			"types": "./dist/watch/index.d.ts",
-			"import": "./dist/watch/index.js"
+			"types": "./dist/element/watch.d.ts",
+			"import": "./dist/element/watch.js"
 		},
 		"./meet": {
-			"types": "./dist/meet/index.d.ts",
-			"import": "./dist/meet/index.js"
+			"types": "./dist/element/meet.d.ts",
+			"import": "./dist/element/meet.js"
 		}
 	},
-	"sideEffects": ["./dist/rust.*", "./dist/snippets/*"],
+	"sideEffects": ["./dist/rust.*", "./dist/snippets/*", "./dist/element/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"build": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
