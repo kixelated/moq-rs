@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.4...moq-native-v0.6.5) - 2025-01-30
+
+### Other
+
+- Plane UI work ([#316](https://github.com/kixelated/moq-rs/pull/316))
+
 ## [0.6.4](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.3...moq-native-v0.6.4) - 2025-01-24
 
 ### Other

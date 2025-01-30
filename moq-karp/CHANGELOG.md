@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.12.2...moq-karp-v0.13.0) - 2025-01-30
+
+### Other
+
+- Misc fixes and changes. ([#317](https://github.com/kixelated/moq-rs/pull/317))
+- Plane UI work ([#316](https://github.com/kixelated/moq-rs/pull/316))
+
 ## [0.12.2](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.12.1...moq-karp-v0.12.2) - 2025-01-24
 
 ### Other
