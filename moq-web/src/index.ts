@@ -1,3 +1,3 @@
-export { MoqWatchElement } from "./watch";
-export { MoqMeetElement } from "./meet";
-export { MoqPublishElement } from "./publish";
+export { MoqWatchElement } from "./element/watch";
+export { MoqMeetElement } from "./element/meet";
+export { MoqPublishElement } from "./element/publish";

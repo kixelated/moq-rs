@@ -1,8 +1,8 @@
 import * as Rust from "@rust";
 import type { MoqWatchElement } from "..";
 
-import { Element, attribute, element } from "../element/component";
-import { jsx } from "../element/jsx";
+import { Element, attribute, element } from "./component";
+import { jsx } from "./jsx";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";

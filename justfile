@@ -80,7 +80,7 @@ check:
 
 # Automatically fix some issues.
 fix:
-	cargo clippy --all --fix --allow-dirty --allow-staged --all-targets --all-features
+	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
 
@@ -93,9 +93,9 @@ pack:
 	npm i && npm run build
 
 # Build and link the NPM package
-# TODO support more than just bun
+# TODO support more than just npm
 link: pack
-	bun link
+	npm link
 
 # Delete any ephemeral build files
 clean:

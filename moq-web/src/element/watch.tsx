@@ -1,9 +1,9 @@
 import * as Rust from "@rust";
 import * as Comlink from "comlink";
-import type { Bridge } from "./bridge";
+import type { Bridge } from "../watch/bridge";
 
-import { Element, attribute, element } from "../element/component";
-import { jsx } from "../element/jsx";
+import { Element, attribute, element } from "./component";
+import { jsx } from "./jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
@@ -26,7 +26,7 @@ type BackendState = Rust.BackendState;
 // Create a new worker instance that is shared between all instances of the Watch class.
 // We wait until the worker is fully initialized before we return the proxy.
 const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
-	const worker = new Worker(new URL("./bridge", import.meta.url), {
+	const worker = new Worker(new URL("../watch/bridge", import.meta.url), {
 		type: "module",
 	});
 	worker.addEventListener(
@@ -210,6 +210,7 @@ export class MoqWatchElement extends Element {
 					padding: "16px",
 					background: "rgba(0, 0, 0, 0.7)",
 					borderRadius: "8px",
+					display: "none",
 				}}
 			>
 				<sl-spinner css={{ fontSize: "2em" }} />
@@ -222,6 +223,7 @@ export class MoqWatchElement extends Element {
 					padding: "16px",
 					background: "rgba(0, 0, 0, 0.7)",
 					borderRadius: "8px",
+					display: "none",
 				}}
 			>
 				<sl-icon name="pause" css={{ fontSize: "2em" }} />
