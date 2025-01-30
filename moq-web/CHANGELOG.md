@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.15](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.14...moq-web-v0.3.15) - 2025-01-30
+
+### Other
+
+- Move package.json back so linking works. ([#318](https://github.com/kixelated/moq-rs/pull/318))
+- Misc fixes and changes. ([#317](https://github.com/kixelated/moq-rs/pull/317))
+- Plane UI work ([#316](https://github.com/kixelated/moq-rs/pull/316))
+
 ## [0.3.14](https://github.com/kixelated/moq-rs/compare/moq-web-v0.3.13...moq-web-v0.3.14) - 2025-01-24
 
 ### Other
