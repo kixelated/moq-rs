@@ -208,6 +208,7 @@ export class MoqWatchElement extends Element {
 					padding: "16px",
 					background: "rgba(0, 0, 0, 0.7)",
 					borderRadius: "8px",
+					display: "none",
 				}}
 			>
 				<sl-spinner css={{ fontSize: "2em" }} />
@@ -220,6 +221,7 @@ export class MoqWatchElement extends Element {
 					padding: "16px",
 					background: "rgba(0, 0, 0, 0.7)",
 					borderRadius: "8px",
+					display: "none",
 				}}
 			>
 				<sl-icon name="pause" css={{ fontSize: "2em" }} />
