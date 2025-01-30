@@ -5,19 +5,8 @@ members = [
 	"moq-clock",
 	"moq-native",
 	"moq-karp",
-	"moq-gst",
 	"moq-web",
 	"moq-async",
-]
-default-members = [
-	"moq-transfork",
-	"moq-relay",
-	"moq-clock",
-	"moq-native",
-	"moq-karp",
-	"moq-web",
-	"moq-async",
-	# "moq-gst", # Requires gstreamer is installed; annoying
 ]
 resolver = "2"
 
