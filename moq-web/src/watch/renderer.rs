@@ -174,13 +174,6 @@ impl Render {
 			}
 		};
 
-		let resolution = self.resolution;
-
-		if let Some(canvas) = self.canvas.as_mut() {
-			canvas.set_width(resolution.width);
-			canvas.set_height(resolution.height);
-		}
-
 		// Tell the browser that we're not going to use the alpha channel for better performance.
 		// We need to create a JsValue until web_sys implements a proper way to create the options.
 		// let options = { alpha: false };

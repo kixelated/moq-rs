@@ -11,7 +11,6 @@ use crate::{Error, Result};
 
 // Sent from the frontend to the backend.
 #[derive(Debug, Baton)]
-
 pub(super) struct Controls {
 	pub url: Option<Url>,
 	pub paused: bool,

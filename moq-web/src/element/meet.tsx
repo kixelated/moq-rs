@@ -33,7 +33,9 @@ export class MoqMeetElement extends Element {
 				:host {
 					display: block;
 					position: relative;
-					overflow: hidden;
+
+					max-width: 100%;
+					max-height: 100%;
 				}
 
 				:host([status]) #status {
@@ -57,8 +59,8 @@ export class MoqMeetElement extends Element {
 				css={{
 					display: "grid",
 					gap: "8px",
-					width: "100%",
-					height: "100%",
+					maxWidth: "100%",
+					maxHeight: "100%",
 					placeItems: "center",
 				}}
 			/>
