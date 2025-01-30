@@ -3,13 +3,13 @@
 	<style>
 		.arrow {
 			fill: #00BF2D;
-			stroke: #0d1117;
+			stroke: #0f172a;
 			stroke-width: 3px;
 		}
 
 		.text {
 			fill: #FBFBFB;
-			stroke: #0d1117;
+			stroke: #0f172a;
 			stroke-width: 3px;
 		}
 	</style>
