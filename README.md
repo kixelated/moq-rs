@@ -81,8 +81,7 @@ You can also test the package locally by linking.
 Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
-# In the moq-web directory
-npm run build
+just pack
 npm link
 
 # In your other package

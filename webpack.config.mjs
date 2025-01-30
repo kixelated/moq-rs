@@ -10,20 +10,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const config = {
-	entry: "./src/demo/index.ts",
+	entry: "./moq-web/src/demo/index.ts",
 	output: {
-		path: path.resolve(__dirname, "dist"),
+		path: path.resolve(__dirname, "out"),
 		filename: "index.js",
 	},
 	plugins: [
 		new WasmPackPlugin({
-			crateDirectory: __dirname,
-			outDir: path.resolve(__dirname, "dist"),
+			crateDirectory: path.resolve(__dirname, "moq-web"),
+			outDir: path.resolve(__dirname, "pkg"),
 			args: "--log-level warn",
-			outName: "rust",
+			outName: "index",
 		}),
 		new HtmlWebpackPlugin({
-			template: "src/demo/index.html",
+			template: "moq-web/src/demo/index.html",
 		}),
 		new MiniCssExtractPlugin(),
 		new CopyPlugin({
@@ -31,7 +31,7 @@ const config = {
 				// Copy Shoelace assets to dist/shoelace
 				{
 					from: path.resolve(__dirname, "node_modules/@shoelace-style/shoelace/dist/assets"),
-					to: path.resolve(__dirname, "dist/assets"),
+					to: path.resolve(__dirname, "out/assets"),
 				},
 			],
 		}),
@@ -58,7 +58,7 @@ const config = {
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],
 		alias: {
-			"@rust": path.resolve(__dirname, "dist", "rust"),
+			"@rust": path.resolve(__dirname, "pkg"),
 		},
 	},
 	devServer: {

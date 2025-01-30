@@ -11,7 +11,7 @@ default:
 
 # Run the relay, web server, and publish bbb.
 all:
-	cd moq-web && npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:
@@ -23,7 +23,7 @@ leaf:
 
 # Run a cluster of relay servers
 cluster:
-	cd moq-web && npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
+	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
 # Download and stream the Big Buck Bunny video
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
@@ -71,7 +71,7 @@ gst name:
 
 # Run the web server
 web:
-	cd moq-web && npm i && npm run dev
+	npm i && npm run dev
 
 # Publish the clock broadcast
 clock-pub:
@@ -88,15 +88,23 @@ check:
 	cargo clippy --all -- -D warnings
 	cargo fmt --all -- --check
 	cargo machete
-	cd moq-web && npm i && npm run check
+	npm i && npm run check
 
 # Automatically fix some issues.
 fix:
 	cargo clippy --all --fix --allow-dirty --allow-staged --all-targets --all-features
 	cargo fmt --all
-	cd moq-web && npm i && npm run fix
+	npm i && npm run fix
 
-# Build release binaries
-build:
-	cargo build --all --release
-	cd moq-web && npm i && npm run build
+# Build the binaries
+build: pack
+	cargo build
+
+# Build release NPM package
+pack:
+	npm i && npm run build
+
+# Build and link the NPM package
+# TODO support more than just bun
+link: pack
+	bun link

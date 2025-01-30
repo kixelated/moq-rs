@@ -27,11 +27,11 @@
 		"jsxFragmentFactory": "jsxFragment",
 
 		"paths": {
-			"@rust": ["dist/rust"]
+			"@rust": ["pkg"]
 		}
 	},
 
-	"include": ["src"],
+	"include": ["moq-web/src"],
 	"exclude": ["node_modules"],
 
 	"tsc-alias": {
