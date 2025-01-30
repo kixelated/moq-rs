@@ -29,7 +29,7 @@
 	"sideEffects": ["./dist/rust.*", "./dist/snippets/*"],
 	"files": ["dist", "pkg", "README.md", "LICENSE*"],
 	"scripts": {
-		"build": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated && rm pkg/.gitignore pkg/package.json && tsc && tsc-alias",
+		"build": "wasm-pack build --out-dir ../pkg moq-web --release --scope kixelated --out-name index && rm pkg/.gitignore pkg/package.json && tsc && tsc-alias",
 		"dev": "webpack serve",
 		"check": "biome check",
 		"fix": "biome check --write"
