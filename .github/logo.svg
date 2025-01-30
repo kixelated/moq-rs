@@ -4,13 +4,13 @@
 		.arrow {
 			fill: #00BF2D;
 			stroke: #0f172a;
-			stroke-width: 3px;
+			stroke-width: 4px;
 		}
 
 		.text {
 			fill: #FBFBFB;
 			stroke: #0f172a;
-			stroke-width: 3px;
+			stroke-width: 4px;
 		}
 	</style>
 <path class="arrow" opacity="1.000000" stroke="#0d1117" stroke-width="3px"

@@ -93,9 +93,9 @@ pack:
 	npm i && npm run build
 
 # Build and link the NPM package
-# TODO support more than just bun
+# TODO support more than just npm
 link: pack
-	bun link
+	npm link
 
 # Delete any ephemeral build files
 clean:
