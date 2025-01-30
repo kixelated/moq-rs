@@ -16,7 +16,6 @@ The project is split into a few crates:
 - [moq-web](moq-web): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
 -   [moq-transfork](moq-transfork): The underlying network protocol. It can be used by live applications that need real-time and scale, even if they're not media.
 - [moq-karp](moq-karp): The underlying media protocol powered by moq-transfork. It includes a CLI for importing/exporting to other formats, for example integrating with ffmpeg.
-- [moq-gst](moq-gst): A gstreamer plugin for producing Karp broadcasts. Note: ffmpeg is supported via moq-karp directly.
 -   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
 -   [moq-native](moq-native): Helpers to configure the native MoQ tools.
 
@@ -102,7 +101,7 @@ The crate includes a binary that accepts fMP4 with a few restrictions:
 This can be used in conjunction with ffmpeg to publish media to a MoQ relay.
 See the [Justfile](./justfile) for the required ffmpeg flags.
 
-Alternatively, see [moq-gst](./moq-gst) for a gstreamer plugin.
+Alternatively, see [moq-gst](https://github.com/kixelated/moq-gst) for a gstreamer plugin.
 
 ## moq-transfork
 

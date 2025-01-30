@@ -57,18 +57,6 @@ pub name:
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
-# Publish a video using gstreamer to the localhost relay server
-gst name:
-	# Build the gstreamer plugin
-	cargo build -p moq-gst
-	export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
-
-	# Run gstreamer and pipe the output to moq-karp
-	gst-launch-1.0 -v -e multifilesrc location="dev/{{name}}.fmp4" loop=true ! qtdemux name=demux \
-		demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="http://localhost:4443" room="demo" broadcast="{{name}}" \
-		demux.audio_0 ! aacparse ! queue ! mux.
-
-
 # Run the web server
 web:
 	npm i && npm run dev
