@@ -12,15 +12,15 @@ const __dirname = path.dirname(__filename);
 const config = {
 	entry: "./moq-web/src/demo/index.ts",
 	output: {
-		path: path.resolve(__dirname, "out"),
+		path: path.resolve(__dirname, "dist"),
 		filename: "index.js",
 	},
 	plugins: [
 		new WasmPackPlugin({
 			crateDirectory: path.resolve(__dirname, "moq-web"),
-			outDir: path.resolve(__dirname, "pkg"),
+			outDir: path.resolve(__dirname, "dist"),
 			args: "--log-level warn",
-			outName: "index",
+			outName: "rust",
 		}),
 		new HtmlWebpackPlugin({
 			template: "moq-web/src/demo/index.html",
@@ -31,7 +31,7 @@ const config = {
 				// Copy Shoelace assets to dist/shoelace
 				{
 					from: path.resolve(__dirname, "node_modules/@shoelace-style/shoelace/dist/assets"),
-					to: path.resolve(__dirname, "out/assets"),
+					to: path.resolve(__dirname, "dist/assets"),
 				},
 			],
 		}),
@@ -58,7 +58,7 @@ const config = {
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],
 		alias: {
-			"@rust": path.resolve(__dirname, "pkg"),
+			"@rust": path.resolve(__dirname, "dist", "rust"),
 		},
 	},
 	devServer: {

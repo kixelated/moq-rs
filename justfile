@@ -96,3 +96,7 @@ pack:
 # TODO support more than just bun
 link: pack
 	bun link
+
+# Delete any ephemeral build files
+clean:
+	rm -r dist
