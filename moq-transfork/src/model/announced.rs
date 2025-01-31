@@ -1,31 +1,259 @@
-use std::collections::BTreeSet;
-use tokio::sync::watch;
+use moq_async::{Lock, LockWeak};
+use std::{
+	collections::{BTreeSet, VecDeque},
+	fmt,
+};
+use tokio::sync::mpsc;
 
-use super::Path;
+pub use crate::message::Filter;
+use crate::message::FilterMatch;
 
 /// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announced {
-	// Indicates the track is active.
-	Active(Path),
+	// Indicates the track, returning the captured wildcard.
+	Active(AnnouncedMatch),
 
-	// Indicates the track is no longer active.
-	Ended(Path),
+	// Indicates the track is no longer active, returning the captured wildcard.
+	Ended(AnnouncedMatch),
 
 	// Indicates we're caught up to the current state of the world.
 	Live,
 }
 
+#[cfg(test)]
+impl Announced {
+	pub fn assert_active(&self, expected: &str) {
+		match self {
+			Announced::Active(m) => assert_eq!(m.capture(), expected),
+			_ => panic!("expected active announce"),
+		}
+	}
+
+	pub fn assert_ended(&self, expected: &str) {
+		match self {
+			Announced::Ended(m) => assert_eq!(m.capture(), expected),
+			_ => panic!("expected ended announce"),
+		}
+	}
+
+	pub fn assert_live(&self) {
+		match self {
+			Announced::Live => (),
+			_ => panic!("expected live announce"),
+		}
+	}
+}
+
+// An owned version of FilterMatch
+#[derive(Clone, PartialEq, Eq)]
+pub struct AnnouncedMatch {
+	full: String,
+	capture: (usize, usize),
+}
+
+impl AnnouncedMatch {
+	pub fn full(&self) -> &str {
+		&self.full
+	}
+
+	pub fn capture(&self) -> &str {
+		&self.full[self.capture.0..self.capture.1]
+	}
+
+	pub fn to_full(self) -> String {
+		self.full
+	}
+
+	pub fn to_capture(mut self) -> String {
+		self.full.truncate(self.capture.1);
+		self.full.split_off(self.capture.0)
+	}
+}
+
+impl From<FilterMatch<'_>> for AnnouncedMatch {
+	fn from(value: FilterMatch) -> Self {
+		AnnouncedMatch {
+			full: value.full().to_string(),
+			capture: value.capture_index(),
+		}
+	}
+}
+
+impl fmt::Debug for AnnouncedMatch {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("AnnouncedMatch")
+			.field("full", &self.full())
+			.field("capture", &self.capture())
+			.finish()
+	}
+}
+
 #[derive(Default)]
-struct State {
-	active: BTreeSet<Path>,
+struct ProducerState {
+	active: BTreeSet<String>,
+	consumers: Vec<(Lock<ConsumerState>, mpsc::Sender<()>)>,
 	live: bool,
 }
 
+impl ProducerState {
+	fn insert(&mut self, path: String) -> bool {
+		if !self.active.insert(path.clone()) {
+			return false;
+		}
+
+		let mut i = 0;
+
+		while let Some((consumer, notify)) = self.consumers.get(i) {
+			if !notify.is_closed() {
+				consumer.lock().insert(&path);
+				notify.try_send(()).ok();
+				i += 1;
+			} else {
+				self.consumers.swap_remove(i);
+			}
+		}
+
+		true
+	}
+
+	fn remove(&mut self, path: &str) -> bool {
+		if !self.active.remove(path) {
+			return false;
+		}
+
+		let mut i = 0;
+
+		while let Some((consumer, notify)) = self.consumers.get(i) {
+			if !notify.is_closed() {
+				consumer.lock().remove(&path);
+				notify.try_send(()).ok();
+				i += 1;
+			} else {
+				self.consumers.swap_remove(i);
+			}
+		}
+
+		true
+	}
+
+	fn live(&mut self) -> bool {
+		if self.live {
+			return false;
+		}
+
+		self.live = true;
+
+		let mut i = 0;
+		while let Some((consumer, notify)) = self.consumers.get(i) {
+			if !notify.is_closed() {
+				consumer.lock().live();
+				notify.try_send(()).ok();
+				i += 1;
+			} else {
+				self.consumers.swap_remove(i);
+			}
+		}
+
+		true
+	}
+
+	fn consumer(&mut self, filter: Filter) -> ConsumerState {
+		let mut added = VecDeque::new();
+
+		for active in &self.active {
+			if let Some(m) = filter.matches(active) {
+				added.push_back(m.into());
+			}
+		}
+
+		ConsumerState {
+			added,
+			removed: VecDeque::new(),
+			filter,
+			live: self.live,
+		}
+	}
+
+	fn subscribe(&mut self, consumer: Lock<ConsumerState>) -> mpsc::Receiver<()> {
+		let (tx, rx) = mpsc::channel(1);
+		self.consumers.push((consumer.clone(), tx));
+		rx
+	}
+}
+
+impl Drop for ProducerState {
+	fn drop(&mut self) {
+		for (consumer, notify) in &self.consumers {
+			let mut consumer = consumer.lock();
+			for path in &self.active {
+				consumer.remove(path);
+			}
+
+			notify.try_send(()).ok();
+		}
+	}
+}
+
+#[derive(Clone)]
+struct ConsumerState {
+	filter: Filter,
+	added: VecDeque<AnnouncedMatch>,
+	removed: VecDeque<AnnouncedMatch>,
+	live: bool,
+}
+
+impl ConsumerState {
+	pub fn insert(&mut self, path: &str) {
+		let added: AnnouncedMatch = match self.filter.matches(path) {
+			Some(m) => m.into(),
+			None => return,
+		};
+
+		// Remove any matches that haven't been consumed yet.
+		// TODO make this faster while maintaining order
+		if let Some(index) = self
+			.removed
+			.iter()
+			.position(|removed| removed.capture() == added.capture())
+		{
+			self.removed.remove(index);
+		} else {
+			self.added.push_back(added);
+		}
+	}
+
+	pub fn remove(&mut self, path: &str) {
+		let removed: AnnouncedMatch = match self.filter.matches(path) {
+			Some(m) => m.into(),
+			None => return,
+		};
+
+		// Remove any matches that haven't been consumed yet.
+		// TODO make this faster while maintaining insertion order.
+		if let Some(index) = self.added.iter().position(|added| added.capture() == removed.capture()) {
+			self.added.remove(index);
+		} else {
+			self.removed.push_back(removed);
+		}
+	}
+
+	pub fn live(&mut self) {
+		self.live = true;
+	}
+
+	pub fn reset(&mut self) {
+		self.added.clear();
+		self.removed.clear();
+		self.live = false;
+	}
+}
+
 /// Announces tracks to consumers over the network.
-#[derive(Clone, Default)]
+// TODO Cloning Producers is questionable. It might be better to chain them (consumer -> producer).
+#[derive(Default, Clone)]
 pub struct AnnouncedProducer {
-	state: watch::Sender<State>,
+	state: Lock<ProducerState>,
 }
 
 impl AnnouncedProducer {
@@ -34,382 +262,332 @@ impl AnnouncedProducer {
 	}
 
 	/// Announce a track, returning true if it's new.
-	pub fn announce(&mut self, path: Path) -> bool {
-		self.state.send_if_modified(|state| state.active.insert(path))
+	pub fn announce<T: ToString>(&mut self, path: T) -> bool {
+		let path = path.to_string();
+		let mut state = self.state.lock();
+		state.insert(path)
+	}
+
+	/// Check if a track is active.
+	pub fn is_active(&self, path: &str) -> bool {
+		self.state.lock().active.contains(path)
 	}
 
 	/// Stop announcing a track, returning true if it was active.
-	pub fn unannounce(&mut self, path: &Path) -> bool {
-		self.state.send_if_modified(|state| state.active.remove(path))
-	}
-
-	pub fn is_active(&self, path: &Path) -> bool {
-		self.state.borrow().active.contains(path)
+	pub fn unannounce(&mut self, path: &str) -> bool {
+		let mut state = self.state.lock();
+		state.remove(path)
 	}
 
 	/// Indicate that we're caught up to the current state of the world.
 	pub fn live(&mut self) -> bool {
-		self.state.send_if_modified(|state| {
-			let prev = state.live;
-			state.live = true;
-			!prev
-		})
+		let mut state = self.state.lock();
+		state.live()
 	}
 
-	pub fn is_live(&self) -> bool {
-		self.state.borrow().live
-	}
-
-	/// Subscribe to all announced tracks, including those already active.
-	pub fn subscribe(&self) -> AnnouncedConsumer {
-		self.subscribe_prefix(Path::default())
-	}
-
-	/// Subscribe to all announced tracks based on a prefix, including those already active.
-	pub fn subscribe_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		AnnouncedConsumer::new(self.state.subscribe(), prefix)
+	/// Subscribe to all announced tracks matching the (wildcard) filter.
+	pub fn subscribe<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+		let filter = filter.into();
+		let mut state = self.state.lock();
+		let consumer = Lock::new(state.consumer(filter));
+		let notify = state.subscribe(consumer.clone());
+		AnnouncedConsumer::new(self.state.downgrade(), consumer, notify)
 	}
 
 	/// Clear all announced tracks.
 	pub fn reset(&mut self) {
-		self.state.send_modify(|state| {
-			state.active.clear();
-			state.live = false;
-		});
+		let mut state = self.state.lock();
+
+		let mut i = 0;
+		while let Some((consumer, notify)) = state.consumers.get(i) {
+			if !notify.is_closed() {
+				consumer.lock().reset();
+				i += 1;
+			} else {
+				state.consumers.swap_remove(i);
+			}
+		}
 	}
 
+	/// Wait until all consumers have been dropped.
+	///
+	/// NOTE: subscribe can be called to unclose the producer.
 	pub async fn closed(&self) {
-		self.state.closed().await;
+		// Keep looping until all consumers are closed.
+		while let Some(notify) = self.closed_inner() {
+			notify.closed().await;
+		}
+	}
+
+	// Returns the closed notify of any consumer.
+	fn closed_inner(&self) -> Option<mpsc::Sender<()>> {
+		let mut state = self.state.lock();
+
+		while let Some((_, notify)) = state.consumers.last() {
+			if notify.is_closed() {
+				return Some(notify.clone());
+			}
+
+			state.consumers.pop();
+		}
+
+		None
 	}
 }
 
 /// Consumes announced tracks over the network matching an optional prefix.
-#[derive(Clone)]
 pub struct AnnouncedConsumer {
-	// The official list of active paths.
-	state: watch::Receiver<State>,
+	producer: LockWeak<ProducerState>,
+	state: Lock<ConsumerState>,
+	notify: mpsc::Receiver<()>,
 
-	// A set of updates that we haven't consumed yet.
-	active: BTreeSet<Path>,
-
-	// Only consume paths with this prefix.
-	prefix: Path,
-
-	// Indicates if the publisher is still active.
+	// True if we've returned that the track is live.
 	live: bool,
 }
 
 impl AnnouncedConsumer {
-	fn new(state: watch::Receiver<State>, prefix: Path) -> Self {
+	fn new(producer: LockWeak<ProducerState>, state: Lock<ConsumerState>, notify: mpsc::Receiver<()>) -> Self {
 		Self {
+			producer,
 			state,
-			active: BTreeSet::new(),
-			prefix,
+			notify,
 			live: false,
 		}
 	}
 
-	/// Returns the suffix of the next announced track received already.
-	fn try_next(&mut self) -> Option<Announced> {
-		let state = self.state.borrow();
-
-		// TODO this absolutely need to be optimized one day.
-		while let Some(removed) = self.active.difference(&state.active).next().cloned() {
-			self.active.remove(&removed);
-			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-				return Some(Announced::Ended(suffix));
-			}
-		}
-
-		while let Some(added) = state.active.difference(&self.active).next().cloned() {
-			self.active.insert(added.clone());
-			if let Some(suffix) = added.strip_prefix(&self.prefix) {
-				return Some(Announced::Active(suffix));
-			}
-		}
-
-		// Return the live marker if needed.
-		if state.live && !self.live {
-			self.live = true;
-			return Some(Announced::Live);
-		}
-
-		None
-	}
-
-	/// Returns the suffix of the next announced track.
+	/// Returns the next announced track.
 	pub async fn next(&mut self) -> Option<Announced> {
-		// NOTE: This just checks if the producer has been dropped.
-		// We're not actually using the `changed()` state properly.
-		while self.state.has_changed().is_ok() {
-			if let Some(announced) = self.try_next() {
-				return Some(announced);
+		loop {
+			{
+				let mut state = self.state.lock();
+
+				if let Some(removed) = state.removed.pop_front() {
+					return Some(Announced::Ended(removed));
+				}
+
+				if let Some(added) = state.added.pop_front() {
+					return Some(Announced::Active(added));
+				}
+
+				if !self.live && state.live {
+					self.live = true;
+					return Some(Announced::Live);
+				}
 			}
 
-			// Wait for any updates.
-			match self.state.changed().await {
-				Ok(_) => continue,
-				Err(_) => break,
+			self.notify.recv().await?;
+		}
+	}
+}
+
+// ugh
+// Cloning consumers is problematic because it encourages idle consumers.
+// It's also just a pain in the butt to implement.
+// TODO figure out a way to remove this.
+impl Clone for AnnouncedConsumer {
+	fn clone(&self) -> Self {
+		let consumer = Lock::new(self.state.lock().clone());
+
+		match self.producer.upgrade() {
+			Some(producer) => {
+				let mut producer = producer.lock();
+				let notify = producer.subscribe(consumer.clone());
+				AnnouncedConsumer::new(self.producer.clone(), consumer, notify)
+			}
+			None => {
+				let (_, notify) = mpsc::channel(1);
+				AnnouncedConsumer::new(self.producer.clone(), consumer, notify)
 			}
 		}
+	}
+}
 
-		// The publisher is closed, so return `Ended` for all active paths.
-		while let Some(removed) = self.active.pop_first() {
-			if let Some(suffix) = removed.strip_prefix(&self.prefix) {
-				return Some(Announced::Ended(suffix));
-			}
-		}
+#[cfg(test)]
+use futures::FutureExt;
 
-		None
+#[cfg(test)]
+impl AnnouncedConsumer {
+	fn assert_active(&mut self, capture: &str) {
+		self.next()
+			.now_or_never()
+			.expect("would have blocked")
+			.expect("no next announcement")
+			.assert_active(capture);
 	}
 
-	/// Returns the prefix in use.
-	pub fn prefix(&self) -> &Path {
-		&self.prefix
+	fn assert_ended(&mut self, capture: &str) {
+		self.next()
+			.now_or_never()
+			.expect("would have blocked")
+			.expect("no next announcement")
+			.assert_ended(capture);
+	}
+
+	fn assert_wait(&mut self) {
+		assert_eq!(self.next().now_or_never(), None);
+	}
+
+	fn assert_done(&mut self) {
+		assert_eq!(self.next().now_or_never(), Some(None));
+	}
+
+	fn assert_live(&mut self) {
+		self.next()
+			.now_or_never()
+			.expect("would have blocked")
+			.expect("no next announcement")
+			.assert_live();
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use std::collections::HashSet;
-
-	use futures::FutureExt;
-
 	use super::*;
 
 	#[test]
 	fn simple() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		let path = Path::default().push("a").push("b");
+		assert!(!producer.is_active("a/b"));
+		assert!(producer.announce("a/b"));
+		assert!(producer.is_active("a/b"));
 
-		assert!(!producer.is_active(&path));
-		assert!(producer.announce(path.clone()));
-		assert!(producer.is_active(&path));
+		consumer.assert_active("a/b");
 
-		let announced = consumer.next().now_or_never().unwrap().unwrap();
-		assert!(matches!(announced, Announced::Active(active) if active == path));
+		assert!(producer.unannounce("a/b"));
+		assert!(!producer.is_active("a/b"));
 
-		assert!(producer.unannounce(&path));
-		assert!(!producer.is_active(&path));
-
-		let announced = consumer.next().now_or_never().unwrap().unwrap();
-		assert!(matches!(announced, Announced::Ended(active) if active == path));
-
-		assert_eq!(consumer.next().now_or_never(), None);
+		consumer.assert_ended("a/b");
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn multi() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
+		assert!(producer.announce("a/b"));
+		assert!(producer.announce("a/c"));
+		assert!(producer.announce("d/e"));
 
-		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
-		for path in &paths {
-			assert!(!producer.is_active(path));
-			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(path));
-		}
-
-		// Make sure we get all of the paths only once.
-		while !paths.is_empty() {
-			let res = consumer.next().now_or_never().unwrap().unwrap();
-			match res {
-				Announced::Active(active) => assert!(paths.remove(&active)),
-				_ => panic!("unexpected announcement: {:?}", res),
-			}
-		}
-
-		assert_eq!(consumer.next().now_or_never(), None);
+		// Make sure we get all of the paths in order.
+		consumer.assert_active("a/b");
+		consumer.assert_active("a/c");
+		consumer.assert_active("d/e");
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn late() {
 		let mut producer = AnnouncedProducer::new();
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
-		for path in &paths {
-			assert!(!producer.is_active(path));
-			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(path));
-		}
+		assert!(producer.announce("a/b"));
+		assert!(producer.announce("a/c"));
 
 		// Subscribe after announcing.
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		// Make sure we get all of the paths only once.
-		while !paths.is_empty() {
-			let res = consumer.next().now_or_never().unwrap().unwrap();
-			match res {
-				Announced::Active(active) => assert!(paths.remove(&active)),
-				_ => panic!("unexpected announcement: {:?}", res),
-			}
-		}
+		assert!(producer.announce("d/e"));
+		assert!(producer.announce("d/d"));
 
-		assert_eq!(consumer.next().now_or_never(), None);
+		// Make sure we get all of the paths in order.
+		consumer.assert_active("a/b");
+		consumer.assert_active("a/c");
+		consumer.assert_active("d/e");
+		consumer.assert_active("d/d");
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn prefix() {
 		let mut producer = AnnouncedProducer::new();
-		let prefix = Path::default().push("a");
-		let mut consumer = producer.subscribe_prefix(prefix);
+		let mut consumer = producer.subscribe("a/*");
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
+		assert!(producer.announce("a/b"));
+		assert!(producer.announce("a/c"));
+		assert!(producer.announce("d/e"));
 
-		let suffix1 = Path::default().push("b");
-		let suffix2 = Path::default().push("c");
-
-		assert!(producer.announce(path1.clone()));
-		assert!(producer.announce(path2.clone()));
-		assert!(producer.announce(path3.clone()));
-
-		let mut expected: HashSet<Path> = HashSet::from_iter([suffix1, suffix2]);
-
-		while !expected.is_empty() {
-			let res = consumer.next().now_or_never().unwrap().unwrap();
-			match res {
-				Announced::Active(active) => assert!(expected.remove(&active)),
-				_ => panic!("unexpected announcement: {:?}", res),
-			}
-		}
-
-		assert_eq!(consumer.next().now_or_never(), None);
+		consumer.assert_active("b");
+		consumer.assert_active("c");
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn prefix_unannounce() {
 		let mut producer = AnnouncedProducer::new();
-		let prefix = Path::default().push("a");
-		let mut consumer = producer.subscribe_prefix(prefix);
+		let mut consumer = producer.subscribe("a/*");
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
+		assert!(producer.announce("a/b"));
+		assert!(producer.announce("a/c"));
+		assert!(producer.announce("d/e"));
 
-		let suffix1 = Path::default().push("b");
-		let suffix2 = Path::default().push("c");
+		consumer.assert_active("b");
+		consumer.assert_active("c");
+		consumer.assert_wait();
 
-		assert!(producer.announce(path1.clone()));
-		assert!(producer.announce(path2.clone()));
-		assert!(producer.announce(path3.clone()));
+		assert!(producer.unannounce("d/e"));
+		assert!(producer.unannounce("a/c"));
+		assert!(producer.unannounce("a/b"));
 
-		let res = match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Active(ended) if ended == suffix1 || ended == suffix2 => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		assert!(producer.unannounce(&path1));
-		assert!(producer.unannounce(&path2));
-		assert!(producer.unannounce(&path3));
-
-		match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Ended(ended) if ended == res => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		assert_eq!(consumer.next().now_or_never(), None);
+		consumer.assert_ended("c");
+		consumer.assert_ended("b");
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		let path = Path::default().push("a").push("b");
-
-		assert!(!producer.is_active(&path));
-		assert!(producer.announce(path.clone()));
-		assert!(producer.is_active(&path));
-		assert!(producer.unannounce(&path));
-		assert!(!producer.is_active(&path));
+		assert!(!producer.is_active("a/b"));
+		assert!(producer.announce("a/b"));
+		assert!(producer.is_active("a/b"));
+		assert!(producer.unannounce("a/b"));
+		assert!(!producer.is_active("a/b"));
 
 		// We missed it.
-		assert_eq!(consumer.next().now_or_never(), None);
+		consumer.assert_wait();
 	}
 
 	#[test]
 	fn dropped() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
+		producer.announce("a/b");
+		consumer.assert_active("a/b");
+		producer.announce("a/c");
+		consumer.assert_active("a/c");
 
-		producer.announce(path1.clone());
-		assert_eq!(
-			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path1.clone()))
-		);
-		producer.announce(path2.clone());
-		assert_eq!(
-			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path2.clone()))
-		);
-
-		// Don't consume path3 before dropping.
-		producer.announce(path3);
+		// Don't consume "d/e" before dropping.
+		producer.announce("d/e");
 		drop(producer);
 
-		let res = match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Ended(ended) if ended == path1 || ended == path2 => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		match consumer.next().now_or_never().unwrap().unwrap() {
-			Announced::Ended(res1) if res1 == res => panic!("duplicate announcement: {:?}", res1),
-			Announced::Ended(ended) if ended == path1 || ended == path2 => ended,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		// Since the producer is dropped, we immediately return None.
-		assert_eq!(consumer.next().now_or_never().unwrap(), None);
+		consumer.assert_ended("a/b");
+		consumer.assert_ended("a/c");
+		consumer.assert_done();
 	}
 
 	#[test]
 	fn live() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
+		let mut consumer = producer.subscribe("*");
 
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-		let path3 = Path::default().push("d").push("e");
-
-		producer.announce(path1.clone());
+		producer.announce("a/b");
 		producer.live();
-		producer.announce(path2.clone());
+		producer.announce("a/c");
 
-		assert_eq!(
-			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path1.clone()))
-		);
-		assert_eq!(
-			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path2.clone()))
-		);
-		// We actually get live after path2 because we were slow to consume.
-		assert_eq!(consumer.next().now_or_never().unwrap(), Some(Announced::Live));
+		consumer.assert_active("a/b");
+		consumer.assert_active("a/c");
+		// We actually get live after "a/c" because we were slow to consume.
+		consumer.assert_live();
 
 		producer.live(); // no-op
-		producer.announce(path3.clone());
+		producer.announce("d/e");
 
-		assert_eq!(
-			consumer.next().now_or_never().unwrap(),
-			Some(Announced::Active(path3.clone()))
-		);
-		assert_eq!(consumer.next().now_or_never(), None);
+		consumer.assert_active("d/e");
+		consumer.assert_wait();
 	}
 
 	#[tokio::test]
@@ -417,39 +595,24 @@ mod test {
 		tokio::time::pause();
 
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe();
-
-		let path1 = Path::default().push("a").push("b");
-		let path2 = Path::default().push("a").push("c");
-
-		let p1 = path1.clone();
-		let p2 = path2.clone();
+		let mut consumer = producer.subscribe("*");
 
 		tokio::spawn(async move {
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(p1.clone());
+			producer.announce("a/b");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(p2);
+			producer.announce("a/c");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.unannounce(&p1);
+			producer.unannounce("a/b");
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 			// Don't actually unannounce p2, just drop.
 			drop(producer);
 		});
 
-		let res = match consumer.next().await.unwrap() {
-			Announced::Active(active) if active == path1 || active == path2 => active,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		match consumer.next().await.unwrap() {
-			Announced::Active(dup) if dup == res => panic!("duplicate announcement: {:?}", dup),
-			Announced::Active(active) if active == path1 || active == path2 => active,
-			res => panic!("unexpected announcement: {:?}", res),
-		};
-
-		assert_eq!(consumer.next().await.unwrap(), Announced::Ended(path1));
-		assert_eq!(consumer.next().await.unwrap(), Announced::Ended(path2));
+		consumer.next().await.unwrap().assert_active("a/b");
+		consumer.next().await.unwrap().assert_active("a/c");
+		consumer.next().await.unwrap().assert_ended("a/b");
+		consumer.next().await.unwrap().assert_ended("a/c");
 		assert_eq!(consumer.next().await, None);
 	}
 }

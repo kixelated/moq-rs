@@ -1,7 +1,6 @@
 use crate::{
 	coding::{Decode, DecodeError, Encode},
 	message::group,
-	Path,
 };
 
 /// Sent by the subscriber to request all future objects for the given track.
@@ -10,7 +9,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Subscribe {
 	pub id: u64,
-	pub path: Path,
+	pub path: String,
 	pub priority: i8,
 
 	pub group_order: group::GroupOrder,
@@ -21,7 +20,7 @@ pub struct Subscribe {
 impl Decode for Subscribe {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let id = u64::decode(r)?;
-		let path = Path::decode(r)?;
+		let path = String::decode(r)?;
 		let priority = i8::decode(r)?;
 
 		let group_order = group::GroupOrder::decode(r)?;

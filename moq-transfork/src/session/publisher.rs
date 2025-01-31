@@ -5,7 +5,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use crate::{
 	message,
 	model::{GroupConsumer, Track, TrackConsumer},
-	Announced, AnnouncedConsumer, AnnouncedProducer, Error, Path, RouterConsumer,
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, RouterConsumer,
 };
 
 use moq_async::{spawn, FuturesExt, Lock, OrClose};
@@ -16,7 +16,7 @@ use super::{Stream, Writer};
 pub(super) struct Publisher {
 	session: web_transport::Session,
 	announced: AnnouncedProducer,
-	tracks: Lock<HashMap<Path, TrackConsumer>>,
+	tracks: Lock<HashMap<String, TrackConsumer>>,
 	router: Lock<Option<RouterConsumer>>,
 }
 
@@ -37,7 +37,7 @@ impl Publisher {
 	/// Publish a track.
 	#[tracing::instrument("publish", skip_all, err, fields(?track))]
 	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
-		if !self.announced.announce(track.path.clone()) {
+		if !self.announced.announce(&track.path) {
 			return Err(Error::Duplicate);
 		}
 
@@ -61,16 +61,18 @@ impl Publisher {
 	}
 
 	/// Announce the given tracks.
+	///
 	/// This is an advanced API for producing tracks dynamically.
 	/// NOTE: You may want to call [Self::route] to process any subscriptions for these paths.
-	pub fn announce(&mut self, mut announced: AnnouncedConsumer) {
+	/// [crate::AnnouncedConsumer] will automatically unannounce if the [crate::AnnouncedProducer] is dropped.
+	pub fn announce(&mut self, mut upstream: AnnouncedConsumer) {
 		let mut downstream = self.announced.clone();
 
 		spawn(async move {
-			while let Some(announced) = announced.next().await {
+			while let Some(announced) = upstream.next().await {
 				match announced {
-					Announced::Active(path) => downstream.announce(path.clone()),
-					Announced::Ended(path) => downstream.unannounce(&path),
+					Announced::Active(m) => downstream.announce(m.full()),
+					Announced::Ended(m) => downstream.unannounce(m.full()),
 
 					// Indicate that we're caught up to live.
 					Announced::Live => downstream.live(),
@@ -89,31 +91,28 @@ impl Publisher {
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnouncePlease>().await?;
-		let prefix = interest.prefix;
-		tracing::debug!(?prefix, "announce interest");
+		let filter = interest.filter;
+		tracing::debug!(?filter, "announce interest");
 
-		let mut announced = self.announced.subscribe_prefix(prefix.clone());
+		let mut announced = self.announced.subscribe(filter);
 
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(suffix) => {
-					tracing::debug!(?prefix, ?suffix, "announce");
-					stream.writer.encode(&message::Announce::Active { suffix }).await?;
+				Announced::Active(m) => {
+					let msg = message::Announce::Active(m.capture().to_string());
+					stream.writer.encode(&msg).await?;
 				}
-				Announced::Ended(suffix) => {
-					tracing::debug!(?prefix, ?suffix, "unannounce");
-					stream.writer.encode(&message::Announce::Ended { suffix }).await?;
+				Announced::Ended(m) => {
+					let msg = message::Announce::Ended(m.capture().to_string());
+					stream.writer.encode(&msg).await?;
 				}
 				Announced::Live => {
 					// Indicate that we're caught up to live.
-					tracing::debug!(?prefix, "live");
 					stream.writer.encode(&message::Announce::Live).await?;
 				}
 			}
 		}
-
-		tracing::info!(?prefix, "done");
 
 		Ok(())
 	}
@@ -244,25 +243,6 @@ impl Publisher {
 		// writer.finish().await?;
 
 		Ok(())
-	}
-
-	pub async fn recv_fetch(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let fetch = stream.reader.decode().await?;
-		self.serve_fetch(stream, fetch).await
-	}
-
-	#[tracing::instrument("fetch", skip_all, err, fields(track = ?fetch.path, group = fetch.group, offset = fetch.offset))]
-	async fn serve_fetch(&mut self, _stream: &mut Stream, fetch: message::Fetch) -> Result<(), Error> {
-		let track = Track {
-			path: fetch.path,
-			priority: fetch.priority,
-			..Default::default()
-		};
-
-		let track = self.get_track(track).await?;
-		let _group = track.get_group(fetch.group)?;
-
-		unimplemented!("TODO fetch");
 	}
 
 	pub async fn recv_info(&mut self, stream: &mut Stream) -> Result<(), Error> {

@@ -1,4 +1,4 @@
-use moq_karp::{moq_transfork::Path, BroadcastConsumer};
+use moq_karp::BroadcastConsumer;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 
@@ -20,8 +20,8 @@ pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
-	path: Path,
 	connect: Option<Connect>,
+	path: Option<String>,
 	broadcast: Option<BroadcastConsumer>,
 	video: Option<Video>,
 
@@ -36,7 +36,7 @@ impl Backend {
 			controls,
 			status,
 
-			path: Path::default(),
+			path: None,
 			connect: None,
 
 			broadcast: None,
@@ -68,19 +68,20 @@ impl Backend {
 						addr.set_query(None);
 						addr.set_path("");
 
-						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
+						self.path = Some(url.path().to_string());
 						self.connect = Some(Connect::new(addr));
 
 						self.status.backend.set(BackendState::Connecting);
 					} else {
-						self.path = Path::default();
+						self.path = None;
 						self.connect = None;
 
 						self.status.backend.set(BackendState::Idle);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
-					let broadcast = moq_karp::BroadcastConsumer::new(session?, self.path.clone());
+					let path = self.path.as_ref().unwrap().clone();
+					let broadcast = moq_karp::BroadcastConsumer::new(session?, path);
 					self.status.backend.set(BackendState::Connected);
 
 					self.broadcast = Some(broadcast);

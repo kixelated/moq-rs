@@ -17,7 +17,7 @@ impl Room {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Self {
 		let producer = AnnouncedProducer::new();
-		let consumer = producer.subscribe();
+		let consumer = producer.subscribe("*");
 
 		let controls = Controls::default().baton();
 		let status = Status::default().baton();
@@ -86,13 +86,13 @@ impl RoomAnnounced {
 
 	pub async fn next(&mut self) -> Option<RoomAnnounce> {
 		Some(match self.inner.next().await? {
-			Announced::Active(suffix) => RoomAnnounce {
+			Announced::Active(am) => RoomAnnounce {
 				action: RoomAction::Join,
-				name: suffix[0].clone(),
+				name: am.to_full(),
 			},
-			Announced::Ended(suffix) => RoomAnnounce {
+			Announced::Ended(am) => RoomAnnounce {
 				action: RoomAction::Leave,
-				name: suffix[0].clone(),
+				name: am.to_full(),
 			},
 			Announced::Live => RoomAnnounce {
 				action: RoomAction::Live,

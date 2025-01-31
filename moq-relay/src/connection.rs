@@ -19,11 +19,11 @@ impl Connection {
 		session.route(self.cluster.router);
 
 		// TODO things will get weird if locals and remotes announce the same path.
-		session.announce(self.cluster.locals.announced());
-		session.announce(self.cluster.remotes.announced());
+		session.announce(self.cluster.locals.announced("*"));
+		session.announce(self.cluster.remotes.announced("*"));
 
 		// Add any announcements to the cluster, indicating we're the origin.
-		let all = session.announced(moq_transfork::Path::default());
+		let all = session.announced("*");
 		self.cluster.locals.announce(all, Some(session.clone())).await;
 
 		Ok(())

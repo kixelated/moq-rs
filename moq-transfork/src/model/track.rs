@@ -14,7 +14,7 @@
 
 use tokio::sync::watch;
 
-use super::{Group, GroupConsumer, GroupProducer, Path};
+use super::{Group, GroupConsumer, GroupProducer};
 pub use crate::message::GroupOrder;
 use crate::Error;
 
@@ -24,7 +24,7 @@ use std::{cmp::Ordering, ops, sync::Arc};
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Track {
 	/// The path of the track.
-	pub path: Path,
+	pub path: String,
 
 	/// The priority of the track, relative to other tracks in the same session/broadcast.
 	pub priority: i8,
@@ -34,9 +34,9 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn new(path: Path) -> Self {
+	pub fn new<S: ToString>(path: S) -> Self {
 		Self {
-			path,
+			path: path.to_string(),
 			..Default::default()
 		}
 	}
@@ -84,8 +84,8 @@ impl TrackBuilder {
 		}
 	}
 
-	pub fn path<T: ToString>(mut self, part: T) -> Self {
-		self.track.path = self.track.path.push(part);
+	pub fn path<T: ToString>(mut self, path: T) -> Self {
+		self.track.path = path.to_string();
 		self
 	}
 

@@ -6,7 +6,7 @@ use std::{
 use crate::{
 	message,
 	model::{Track, TrackConsumer},
-	AnnouncedProducer, Error, Path, TrackProducer,
+	AnnouncedProducer, Error, Filter, TrackProducer,
 };
 
 use moq_async::{spawn, Lock, OrClose};
@@ -17,7 +17,7 @@ use super::{AnnouncedConsumer, Reader, Stream};
 pub(super) struct Subscriber {
 	session: web_transport::Session,
 
-	tracks: Lock<HashMap<Path, TrackProducer>>,
+	tracks: Lock<HashMap<String, TrackProducer>>,
 	subscribes: Lock<HashMap<u64, TrackProducer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
@@ -33,10 +33,11 @@ impl Subscriber {
 		}
 	}
 
-	/// Discover any tracks matching a prefix.
-	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
+	/// Discover any tracks matching a filter.
+	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+		let filter = filter.into();
 		let producer = AnnouncedProducer::default();
-		let consumer = producer.subscribe_prefix(prefix.clone());
+		let consumer = producer.subscribe(filter.clone());
 
 		let mut session = self.session.clone();
 		spawn(async move {
@@ -48,7 +49,7 @@ impl Subscriber {
 				}
 			};
 
-			if let Err(err) = Self::run_announce(&mut stream, prefix, producer)
+			if let Err(err) = Self::run_announce(&mut stream, filter, producer)
 				.await
 				.or_close(&mut stream)
 			{
@@ -59,20 +60,20 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(stream: &mut Stream, prefix: Path, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announce(stream: &mut Stream, filter: Filter, mut announced: AnnouncedProducer) -> Result<(), Error> {
 		stream
 			.writer
-			.encode(&message::AnnouncePlease { prefix: prefix.clone() })
+			.encode(&message::AnnouncePlease { filter: filter.clone() })
 			.await?;
 
-		tracing::debug!(?prefix, "waiting for announcements");
+		tracing::debug!(?filter, "waiting for announcements");
 
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
 						// Handle the announce
-						Some(announce) => Self::recv_announce(announce, &prefix, &mut announced)?,
+						Some(announce) => Self::recv_announce(announce, &filter, &mut announced)?,
 						// Stop if the stream has been closed
 						None => return Ok(()),
 					}
@@ -85,20 +86,18 @@ impl Subscriber {
 
 	fn recv_announce(
 		announce: message::Announce,
-		prefix: &Path,
+		filter: &Filter,
 		announced: &mut AnnouncedProducer,
 	) -> Result<(), Error> {
 		match announce {
-			message::Announce::Active { suffix } => {
-				let path = prefix.clone().append(&suffix);
-				tracing::debug!(?path, "active");
+			message::Announce::Active(capture) => {
+				let path = filter.reconstruct(&capture);
 				if !announced.announce(path) {
 					return Err(Error::Duplicate);
 				}
 			}
-			message::Announce::Ended { suffix } => {
-				let path = prefix.clone().append(&suffix);
-				tracing::debug!(?path, "unannounced");
+			message::Announce::Ended(capture) => {
+				let path = filter.reconstruct(&capture);
 				if !announced.unannounce(&path) {
 					return Err(Error::NotFound);
 				}

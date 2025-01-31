@@ -24,7 +24,7 @@ pub struct Config {
 
 	/// The path of the clock track.
 	#[arg(long, default_value = "clock")]
-	pub path: Vec<String>,
+	pub path: String,
 
 	/// The log configuration.
 	#[command(flatten)]
@@ -55,8 +55,7 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(config.url).await?;
 	let mut session = moq_transfork::Session::connect(session).await?;
 
-	let path = config.path.into_iter().collect();
-	let track = Track::new(path);
+	let track = Track::new(config.path);
 
 	match config.role {
 		Command::Publish => {

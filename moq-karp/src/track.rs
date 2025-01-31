@@ -26,7 +26,6 @@ impl TrackProducer {
 		Self { track, group: None }
 	}
 
-	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub fn write(&mut self, frame: Frame) {
 		let timestamp = frame.timestamp.as_micros();
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
@@ -84,7 +83,6 @@ impl TrackConsumer {
 		}
 	}
 
-	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub async fn read(&mut self) -> Result<Option<Frame>, Error> {
 		loop {
 			let cutoff = self.max_timestamp + self.latency;

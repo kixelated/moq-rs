@@ -24,6 +24,10 @@ impl<T> Lock<T> {
 			inner: self.inner.lock().unwrap(),
 		}
 	}
+
+	pub fn downgrade(&self) -> LockWeak<T> {
+		LockWeak::new(&self.inner)
+	}
 }
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
@@ -80,5 +84,51 @@ impl<T> DerefMut for LockGuard<'_, T> {
 impl<T: fmt::Debug> fmt::Debug for LockGuard<'_, T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.inner.fmt(f)
+	}
+}
+
+pub struct LockWeak<T> {
+	#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+	inner: std::sync::Weak<std::sync::Mutex<T>>,
+
+	#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+	inner: std::rc::Rc<std::cell::RefCell<T>>,
+}
+
+#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+impl<T> LockWeak<T> {
+	fn new(inner: &std::sync::Arc<std::sync::Mutex<T>>) -> Self {
+		Self {
+			inner: std::sync::Arc::downgrade(inner),
+		}
+	}
+
+	pub fn upgrade(&self) -> Option<Lock<T>> {
+		Some(Lock {
+			inner: self.inner.upgrade()?,
+		})
+	}
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+impl<T> LockWeak<T> {
+	fn new(inner: &std::sync::Rc<std::cell::RefCell<T>>) -> Self {
+		Self {
+			inner: std::sync::Rc::downgrade(inner),
+		}
+	}
+
+	pub fn upgrade(&self) -> Option<Lock<T>> {
+		Some(Lock {
+			inner: self.inner.upgrade()?,
+		})
+	}
+}
+
+impl<T> Clone for LockWeak<T> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+		}
 	}
 }

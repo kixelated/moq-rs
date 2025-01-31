@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Path, Session};
+use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Filter, Session};
 
 #[derive(Clone)]
 pub struct Origins {
@@ -11,7 +11,7 @@ pub struct Origins {
 	unique: AnnouncedProducer,
 
 	// Active routes based on path.
-	routes: Arc<Mutex<HashMap<Path, Vec<Option<Session>>>>>,
+	routes: Arc<Mutex<HashMap<String, Vec<Option<Session>>>>>,
 }
 
 impl Default for Origins {
@@ -32,8 +32,8 @@ impl Origins {
 	pub async fn announce(&mut self, mut announced: AnnouncedConsumer, origin: Option<Session>) {
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(path) => self.announce_track(path, origin.clone()),
-				Announced::Ended(path) => self.unannounce_track(path, &origin),
+				Announced::Active(am) => self.announce_track(am.to_full(), origin.clone()),
+				Announced::Ended(am) => self.unannounce_track(am.full(), &origin),
 				Announced::Live => {
 					// Ignore.
 				}
@@ -41,7 +41,7 @@ impl Origins {
 		}
 	}
 
-	fn announce_track(&mut self, path: Path, origin: Option<Session>) {
+	fn announce_track(&mut self, path: String, origin: Option<Session>) {
 		tracing::info!(?path, "announced origin");
 
 		let mut routes = self.routes.lock().unwrap();
@@ -54,11 +54,11 @@ impl Origins {
 		}
 	}
 
-	fn unannounce_track(&mut self, path: Path, origin: &Option<Session>) {
+	fn unannounce_track(&mut self, path: &str, origin: &Option<Session>) {
 		tracing::info!(?path, "unannounced origin");
 
 		let mut routes = self.routes.lock().unwrap();
-		let entry = match routes.entry(path.clone()) {
+		let entry = match routes.entry(path.to_string()) {
 			hash_map::Entry::Occupied(entry) => entry.into_mut(),
 			hash_map::Entry::Vacant(_) => return,
 		};
@@ -68,20 +68,16 @@ impl Origins {
 		entry.retain(|s| s != origin);
 
 		if entry.is_empty() {
-			routes.remove(&path);
+			routes.remove(path);
 			self.unique.unannounce(&path);
 		}
 	}
 
-	pub fn announced(&self) -> AnnouncedConsumer {
-		self.unique.subscribe()
+	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+		self.unique.subscribe(filter)
 	}
 
-	pub fn announced_prefix(&self, prefix: Path) -> AnnouncedConsumer {
-		self.unique.subscribe_prefix(prefix)
-	}
-
-	pub fn route(&self, path: &Path) -> Option<Session> {
+	pub fn route(&self, path: &str) -> Option<Session> {
 		// Return the session that most recently announced the path.
 		let routes = self.routes.lock().unwrap();
 

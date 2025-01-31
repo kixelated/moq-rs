@@ -1,4 +1,4 @@
-use crate::{message, AnnouncedConsumer, Error, Path, RouterConsumer, Track, TrackConsumer};
+use crate::{message, AnnouncedConsumer, Error, Filter, RouterConsumer, Track, TrackConsumer};
 
 use moq_async::{spawn, Close, OrClose};
 
@@ -148,7 +148,6 @@ impl Session {
 			message::ControlType::Session => Err(Error::UnexpectedStream(kind)),
 			message::ControlType::Announce => publisher.recv_announce(stream).await,
 			message::ControlType::Subscribe => publisher.recv_subscribe(stream).await,
-			message::ControlType::Fetch => publisher.recv_fetch(stream).await,
 			message::ControlType::Info => publisher.recv_info(stream).await,
 		}
 	}
@@ -159,12 +158,15 @@ impl Session {
 	}
 
 	/// Optionally announce the provided tracks.
+	///
 	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::route].
+	/// [AnnouncedConsumer] will automatically unannounce if the [crate::AnnouncedProducer] is dropped.
 	pub fn announce(&mut self, announced: AnnouncedConsumer) {
 		self.publisher.announce(announced);
 	}
 
 	/// Optionally route unknown paths.
+	///
 	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::announce].
 	pub fn route(&mut self, router: RouterConsumer) {
 		self.publisher.route(router);
@@ -176,8 +178,8 @@ impl Session {
 	}
 
 	/// Discover any tracks published by the remote matching a prefix.
-	pub fn announced(&self, prefix: Path) -> AnnouncedConsumer {
-		self.subscriber.announced(prefix)
+	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+		self.subscriber.announced(filter)
 	}
 
 	/// Close the underlying WebTransport session.

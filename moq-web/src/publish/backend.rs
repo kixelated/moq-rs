@@ -1,5 +1,5 @@
 use baton::Baton;
-use moq_karp::{moq_transfork::Path, BroadcastProducer, TrackProducer};
+use moq_karp::{BroadcastProducer, TrackProducer};
 use url::Url;
 use wasm_bindgen::JsCast;
 use web_sys::MediaStream;
@@ -25,7 +25,7 @@ pub struct Backend {
 	status: StatusSend,
 
 	connect: Option<Connect>,
-	path: Path,
+	path: Option<String>,
 	broadcast: Option<BroadcastProducer>,
 
 	video: Option<Video>,
@@ -38,7 +38,7 @@ impl Backend {
 			controls,
 			status,
 			connect: None,
-			path: Path::default(),
+			path: None,
 			broadcast: None,
 			video: None,
 			video_track: None,
@@ -72,19 +72,20 @@ impl Backend {
 						addr.set_query(None);
 						addr.set_path("");
 
-						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
+						self.path = Some(url.path().to_string());
 						self.connect = Some(Connect::new(addr));
 
 						self.status.state.set(PublishState::Connecting);
 					} else {
-						self.path = Path::default();
+						self.path = None;
 						self.connect = None;
 
 						self.status.state.set(PublishState::Idle);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
-					let mut broadcast = moq_karp::BroadcastProducer::new(session?, self.path.clone())?;
+					let path = self.path.as_ref().unwrap();
+					let mut broadcast = moq_karp::BroadcastProducer::new(session?, path.to_string())?;
 					if let Some(video) = self.video.as_mut() {
 						self.video_track = Some(broadcast.publish_video(video.info().clone())?);
 					}
