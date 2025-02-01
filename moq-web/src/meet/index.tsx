@@ -1,14 +1,18 @@
-import { Meet } from ".";
+import * as Rust from "@rust";
 
+import { type ConnectionStatus, convertConnectionStatus } from "../connection";
 import { MoqElement, attribute, element, jsx } from "../element";
-import type { WatchElement } from "../watch/element";
+import type { Watch } from "../watch";
+
+/// Live is fired once when all broadcasts have been discovered (on startup).
+export type MeetAction = "join" | "leave" | "live";
 
 @element("moq-meet")
-export class MeetElement extends MoqElement {
-	public readonly lib: Meet;
+export class Meet extends MoqElement {
+	#rust: Rust.Meet;
 
 	#container: HTMLDivElement;
-	#broadcasts: Set<WatchElement> = new Set();
+	#broadcasts: Set<Watch> = new Set();
 
 	@attribute
 	accessor url = "";
@@ -16,7 +20,7 @@ export class MeetElement extends MoqElement {
 	constructor() {
 		super();
 
-		this.lib = new Meet();
+		this.#rust = new Rust.Meet();
 
 		const style = (
 			<style>
@@ -52,11 +56,11 @@ export class MeetElement extends MoqElement {
 	}
 
 	urlChange(url: string) {
-		this.lib.url = url !== "" ? url : null;
+		this.#rust.url = url !== "" ? url : null;
 	}
 
 	async #run() {
-		for await (const [action, name] of this.lib.members()) {
+		for await (const [action, name] of this.members()) {
 			if (action === "join") {
 				this.#join(name);
 			} else if (action === "leave") {
@@ -72,7 +76,7 @@ export class MeetElement extends MoqElement {
 				url={`${this.url}/${name}`}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
-		) as WatchElement;
+		) as Watch;
 
 		this.#container.appendChild(watch);
 		this.#broadcasts.add(watch);
@@ -82,7 +86,7 @@ export class MeetElement extends MoqElement {
 	#leave(name: string) {
 		const id = `#broadcast-${name}`;
 
-		const watch = this.#container.querySelector(id) as WatchElement | null;
+		const watch = this.#container.querySelector(id) as Watch | null;
 		if (!watch) {
 			console.warn(`Broadcast not found: ${id}`);
 			return;
@@ -105,12 +109,46 @@ export class MeetElement extends MoqElement {
 		this.#container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
 		this.#container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 	}
+
+	async *connectionStatus(): AsyncGenerator<ConnectionStatus> {
+		const status = this.#rust.status();
+		for (;;) {
+			const next = await status.connection();
+			yield convertConnectionStatus(next);
+		}
+	}
+
+	async *members(): AsyncGenerator<[MeetAction, string]> {
+		const announced = this.#rust.announced();
+		while (true) {
+			const announce = await announced.next();
+			if (announce === undefined) {
+				return;
+			}
+
+			switch (announce.action) {
+				case Rust.MeetAction.Join:
+					yield ["join", announce.name];
+					break;
+				case Rust.MeetAction.Leave:
+					yield ["leave", announce.name];
+					break;
+				case Rust.MeetAction.Live:
+					yield ["live", ""];
+					break;
+				default: {
+					const _exhaustive: never = announce.action;
+					throw new Error(_exhaustive);
+				}
+			}
+		}
+	}
 }
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-meet": MeetElement;
+		"moq-meet": Meet;
 	}
 }
 
-export default MeetElement;
+export default Meet;

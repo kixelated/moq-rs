@@ -6,6 +6,8 @@ import * as Rust from "@rust";
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
 import type { Bridge } from "./bridge";
 
+import { attribute, MoqElement, element, jsx } from "../element";
+
 export type RendererStatus = "idle" | "paused" | "buffering" | "live";
 
 // Create a new worker instance that is shared between all instances of the Watch class.
@@ -24,72 +26,95 @@ const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
 	);
 });
 
-export class Watch {
+@element("moq-watch")
+export class Watch extends MoqElement {
 	#worker: Promise<Comlink.Remote<Rust.Watch>>;
-
-	#url: string | null = null;
 	#canvas: HTMLCanvasElement | null = null;
-	#paused = false;
-	#latency = 0;
-	#volume = 1;
+
+	@attribute
+	accessor url = "";
+
+	@attribute
+	accessor paused = false;
+
+	@attribute
+	accessor volume = 1;
+
+	@attribute
+	accessor latency = 0;
 
 	constructor() {
+		super();
+
 		this.#worker = worker.then((w) => w.watch());
-	}
 
-	get url(): string | null {
-		return this.#url;
-	}
+		const style = (
+			<style>
+				{`
+				:host {
+					display: block;
+					position: relative;
+					overflow: hidden;
 
-	set url(value: string | null) {
-		this.#worker.then((worker) => worker.url(value));
-		this.#url = value;
-	}
+					max-width: 100%;
+					max-height: 100%;
 
-	get canvas(): HTMLCanvasElement | null {
-		return this.#canvas;
-	}
+					justify-content: center;
+				}
+				`}
+			</style>
+		);
 
-	set canvas(value: HTMLCanvasElement | null) {
-		const offscreen = value ? value.transferControlToOffscreen() : null;
+		const shadow = this.attachShadow({ mode: "open" });
+		shadow.appendChild(style);
+
+		this.#canvas = shadow.appendChild(
+			<canvas width={0} height={0} css={{ maxWidth: "100%", height: "auto" }} />,
+		) as HTMLCanvasElement;
+
+		const offscreen = this.#canvas.transferControlToOffscreen();
 		this.#worker.then((worker) => worker.canvas(Comlink.transfer(offscreen, offscreen ? [offscreen] : [])));
-		this.#canvas = value;
+
+		// Set data- attributes and fire callbacks.
+		this.#runConnectionStatus();
+		this.#runRendererStatus();
 	}
 
-	get paused(): boolean {
-		return this.#paused;
+	private urlChange(value: string) {
+		this.#worker.then((worker) => worker.url(value));
 	}
 
-	set paused(value: boolean) {
+	private pausedChange(value: boolean) {
 		this.#worker.then((worker) => worker.paused(value));
-		this.#paused = value;
 	}
 
-	get latency(): number {
-		return this.#latency;
+	private volumeChange(value: number) {
+		if (value < 0 || value > 1) {
+			throw new RangeError("volume must be between 0 and 1");
+		}
+		this.#worker.then((worker) => worker.volume(value));
 	}
 
 	// Set the target latency in ms.
 	// A higher value means more stable playback.
-	set latency(ms: number) {
+	private latencyChange(ms: number) {
 		if (ms < 0) {
 			throw new RangeError("latency must be greater than 0");
 		}
 
 		this.#worker.then((worker) => worker.latency(ms));
-		this.#latency = ms;
 	}
 
-	get volume(): number {
-		return this.#volume;
-	}
-
-	set volume(value: number) {
-		if (value < 0 || value > 1) {
-			throw new RangeError("volume must be between 0 and 1");
+	async #runConnectionStatus() {
+		for await (const state of this.connectionStatus()) {
+			this.setAttribute("data-connection-status", state);
 		}
-		this.#worker.then((worker) => worker.volume(value));
-		this.#volume = value;
+	}
+
+	async #runRendererStatus() {
+		for await (const state of this.rendererStatus()) {
+			this.setAttribute("data-renderer-status", state);
+		}
 	}
 
 	async *connectionStatus(): AsyncGenerator<ConnectionStatus> {
@@ -127,6 +152,31 @@ export class Watch {
 				}
 			}
 		}
+	}
+}
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"moq-watch": Watch;
+	}
+}
+
+class ConnectionStatusEvent extends CustomEvent<ConnectionStatus> {
+	constructor(detail: ConnectionStatus) {
+		super("moq-connection", { detail, bubbles: true, composed: true });
+	}
+}
+
+class RendererStatusEvent extends CustomEvent<RendererStatus> {
+	constructor(detail: RendererStatus) {
+		super("moq-renderer", { detail, bubbles: true, composed: true });
+	}
+}
+
+declare global {
+	interface HTMLElementEventMap {
+		"moq-connection": ConnectionStatusEvent;
+		"moq-renderer": RendererStatusEvent;
 	}
 }
 

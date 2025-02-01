@@ -1,4 +1,4 @@
-import { PublishElement } from "./element";
+import { Publish } from ".";
 
 import { MoqElement, attribute, element } from "../element/component";
 
@@ -13,7 +13,7 @@ type MediaKind = "camera" | "screen" | "";
 
 @element("moq-publish-ui")
 export class PublishUi extends MoqElement {
-	#inner: PublishElement;
+	#inner: Publish;
 
 	#controls: HTMLDivElement;
 	#status: HTMLDivElement;
@@ -21,7 +21,7 @@ export class PublishUi extends MoqElement {
 	constructor() {
 		super();
 
-		this.#inner = new PublishElement();
+		this.#inner = new Publish();
 
 		const style = (
 			<style>
@@ -54,7 +54,7 @@ export class PublishUi extends MoqElement {
 					<sl-tooltip content="Publish your webcam." placement="bottom">
 						<sl-radio-button
 							onclick={() => {
-								this.#inner.media = "camera";
+								this.#inner.device = "camera";
 							}}
 						>
 							<sl-icon slot="prefix" name="camera" label="Camera" />
@@ -63,7 +63,7 @@ export class PublishUi extends MoqElement {
 					<sl-tooltip content="Publish a screen or window." placement="bottom">
 						<sl-radio-button
 							onclick={() => {
-								this.#inner.media = "screen";
+								this.#inner.device = "screen";
 							}}
 						>
 							<sl-icon slot="prefix" name="display" label="Screen" />
@@ -72,7 +72,7 @@ export class PublishUi extends MoqElement {
 					<sl-tooltip content="Publish nothing and leave the meeting." placement="bottom">
 						<sl-radio-button
 							onclick={() => {
-								this.#inner.media = "";
+								this.#inner.device = "";
 							}}
 						>
 							<sl-icon slot="prefix" name="x" label="None" />
@@ -95,7 +95,7 @@ export class PublishUi extends MoqElement {
 		this.#status.replaceChildren(<sl-spinner />, "Initiailizing...");
 
 		try {
-			for await (const status of this.#inner.lib.connectionStatus()) {
+			for await (const status of this.#inner.connectionStatus()) {
 				switch (status) {
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
@@ -129,8 +129,8 @@ export class PublishUi extends MoqElement {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-publish": PublishElement;
+		"moq-publish-ui": PublishUi;
 	}
 }
 
-export default PublishElement;
+export default PublishUi;

@@ -15,12 +15,11 @@ import type SlButton from "@shoelace-style/shoelace/dist/components/button/butto
 import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import type SlRange from "@shoelace-style/shoelace/dist/components/range/range.js";
 
-import type Watch from ".";
-import WatchElement from "./element";
+import Watch from ".";
 
 @element("moq-watch-ui")
 export class WatchUi extends MoqElement {
-	#watch: WatchElement;
+	#watch: Watch;
 
 	#controls: HTMLDivElement;
 	#pause: SlButton;
@@ -32,10 +31,6 @@ export class WatchUi extends MoqElement {
 
 	@attribute
 	accessor fullscreen = false;
-
-	get #lib(): Watch {
-		return this.#watch.lib;
-	}
 
 	constructor() {
 		super();
@@ -67,7 +62,7 @@ export class WatchUi extends MoqElement {
 			</style>
 		);
 
-		this.#watch = new WatchElement();
+		this.#watch = new Watch();
 
 		this.#pause = (
 			<sl-button>
@@ -88,7 +83,7 @@ export class WatchUi extends MoqElement {
 		) as SlRange;
 
 		targetBuffer.addEventListener("sl-change", () => {
-			this.#lib.latency = targetBuffer.value;
+			this.#watch.latency = targetBuffer.value;
 		});
 
 		this.#menu = (
@@ -208,8 +203,8 @@ export class WatchUi extends MoqElement {
 	}
 
 	#togglePause() {
-		const paused = !this.#lib.paused;
-		this.#lib.paused = paused;
+		const paused = !this.#watch.paused;
+		this.#watch.paused = paused;
 
 		const icon = this.#paused.firstChild as SlIcon;
 		if (paused) {
@@ -241,7 +236,7 @@ export class WatchUi extends MoqElement {
 		try {
 			this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
-			for await (const status of this.#lib.connectionStatus()) {
+			for await (const status of this.#watch.connectionStatus()) {
 				switch (status) {
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
@@ -278,7 +273,7 @@ export class WatchUi extends MoqElement {
 
 	async #runBuffering() {
 		try {
-			for await (const state of this.#lib.rendererStatus()) {
+			for await (const state of this.#watch.rendererStatus()) {
 				this.#buffering.style.display = state === "buffering" ? "flex" : "none";
 				this.#paused.style.display = state === "paused" ? "flex" : "none";
 			}
@@ -289,4 +284,10 @@ export class WatchUi extends MoqElement {
 	}
 }
 
-export default WatchElement;
+declare global {
+	interface HTMLElementTagNameMap {
+		"moq-watch-ui": WatchUi;
+	}
+}
+
+export default WatchUi;

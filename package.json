@@ -6,28 +6,28 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		"./video": {
-			"types": "./dist/video/element.d.ts",
-			"import": "./dist/video/element.js"
+			"types": "./dist/video/index.d.ts",
+			"import": "./dist/video/index.js"
 		},
 		"./publish": {
-			"types": "./dist/publish/element.d.ts",
-			"import": "./dist/publish/element.js"
+			"types": "./dist/publish/index.d.ts",
+			"import": "./dist/publish/index.js"
 		},
 		"./publish/ui": {
 			"types": "./dist/publish/ui.d.ts",
 			"import": "./dist/publish/ui.js"
 		},
 		"./watch": {
-			"types": "./dist/watch/element.d.ts",
-			"import": "./dist/watch/element.js"
+			"types": "./dist/watch/index.d.ts",
+			"import": "./dist/watch/index.js"
 		},
 		"./watch/ui": {
 			"types": "./dist/watch/ui.d.ts",
 			"import": "./dist/watch/ui.js"
 		},
 		"./meet": {
-			"types": "./dist/meet/element.d.ts",
-			"import": "./dist/meet/element.js"
+			"types": "./dist/meet/index.d.ts",
+			"import": "./dist/meet/index.js"
 		},
 		"./meet/ui": {
 			"types": "./dist/meet/ui.d.ts",

@@ -1,4 +1,4 @@
-import { MeetElement } from "./element";
+import { Meet } from ".";
 
 import { MoqElement, attribute, element } from "../element/component";
 import { jsx } from "../element/jsx";
@@ -9,7 +9,7 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet-ui")
 export class MeetUi extends MoqElement {
-	#meet: MeetElement;
+	#meet: Meet;
 	#status: HTMLDivElement;
 
 	constructor() {
@@ -40,7 +40,7 @@ export class MeetUi extends MoqElement {
 			/>
 		) as HTMLDivElement;
 
-		this.#meet = new MeetElement();
+		this.#meet = new Meet();
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
@@ -54,7 +54,7 @@ export class MeetUi extends MoqElement {
 		this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
 		try {
-			for await (const status of this.#meet.lib.connectionStatus()) {
+			for await (const status of this.#meet.connectionStatus()) {
 				switch (status) {
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
