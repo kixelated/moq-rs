@@ -22,11 +22,15 @@
 </head>
 
 <body>
-	<!-- Publish our own broadcast when the user selects media. -->
-	<moq-publish url="http://localhost:4443/demo/me" status controls></moq-publish>
+	<!-- Publish our own broadcast too. -->
+	<moq-publish-ui>
+		<moq-publish url="http://localhost:4443/demo/me"></moq-publish>
+	</moq-publish-ui>
 
-	<!-- Show all participants under the /demo prefix, including ourselves! -->
-	<moq-meet url="http://localhost:4443/demo" status controls></moq-meet>
+	<!-- Show all participants under the /demo prefix -->
+	<moq-meet-ui>
+		<moq-meet url="http://localhost:4443/demo"></moq-meet>
+	</moq-meet-ui>
 </body>
 
 </html>

@@ -5,23 +5,19 @@ use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, P
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::{Connect, Error, Result};
+use crate::{Connect, ConnectionStatus, Error, Result};
+
+use super::StatusSend;
 
 #[derive(Debug, Default, Baton)]
 pub struct Controls {
 	pub url: Option<Url>,
 }
 
-#[derive(Debug, Default, Baton)]
-pub struct Status {
-	pub error: Option<Error>,
-}
-
 pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
-	room: Path,
 	connect: Option<Connect>,
 	announced: Option<AnnouncedConsumer>,
 
@@ -36,7 +32,6 @@ impl Backend {
 			status,
 			producer,
 
-			room: Path::default(),
 			connect: None,
 			announced: None,
 			unique: HashMap::new(),
@@ -60,33 +55,27 @@ impl Backend {
 					// TODO unannounce existing entries?
 					self.announced = None;
 
-					if let Some(url) = url{
-						// Connect using the base of the URL.
-						let mut addr = url.clone();
-						addr.set_fragment(None);
-						addr.set_query(None);
-						addr.set_path("");
-
-						self.room = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
-						self.connect = Some(Connect::new(addr));
+					if let Some(url) = url {
+						self.connect = Some(Connect::new(url));
+						self.status.connection.update(ConnectionStatus::Connecting);
 					} else {
-						self.room = Path::default();
 						self.connect = None;
+						self.status.connection.update(ConnectionStatus::Disconnected);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let session = session?;
 					self.producer.reset();
-					tracing::info!(?self.room, "connected to remote");
-					self.announced = Some(session.announced(self.room.clone()));
-					self.connect = None;
+					let path = self.connect.take().unwrap().path;
+					self.announced = Some(session.announced(path));
+					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
 						Announced::Active(suffix) => self.announced(suffix),
 						Announced::Ended(suffix) => self.unannounced(suffix),
-						Announced::Live => { self.producer.live(); },
+						Announced::Live => self.live(),
 					}
 				},
 				else => return Ok(()),
@@ -111,6 +100,8 @@ impl Backend {
 				self.producer.announce(Path::new().push(name));
 			}
 		}
+
+		self.update_status();
 	}
 
 	fn unannounced(&mut self, suffix: Path) {
@@ -128,6 +119,21 @@ impl Backend {
 				entry.remove();
 				self.producer.unannounce(&Path::new().push(name));
 			}
+		}
+
+		self.update_status();
+	}
+
+	fn live(&mut self) {
+		self.producer.live();
+		self.update_status();
+	}
+
+	fn update_status(&mut self) {
+		if self.producer.is_empty() {
+			self.status.connection.update(ConnectionStatus::Offline);
+		} else {
+			self.status.connection.update(ConnectionStatus::Live);
 		}
 	}
 }

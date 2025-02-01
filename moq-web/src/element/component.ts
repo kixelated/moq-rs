@@ -4,19 +4,19 @@ const attributesMetadataKey = Symbol("attributes");
 // Symbol.metadata, so we must ensure that it exists.
 (Symbol as { metadata: symbol }).metadata ??= Symbol("metadata");
 
-interface ClassDecoratorTarget {
-	new (): Element;
+interface MoqClassDecoratorTarget {
+	new (): MoqElement;
 }
 
 export function element(name: string) {
-	return (construct: ClassDecoratorTarget, context: ClassDecoratorContext) => {
+	return (construct: MoqClassDecoratorTarget, context: ClassDecoratorContext) => {
 		context.addInitializer(() => {
 			customElements.define(name, construct);
 		});
 	};
 }
 
-export class Element extends HTMLElement {
+export class MoqElement extends HTMLElement {
 	static get observedAttributes(): string[] {
 		// biome-ignore lint/complexity/noThisInStatic: Required for inheritance
 		const metadata = this[Symbol.metadata];
@@ -39,26 +39,13 @@ export class Element extends HTMLElement {
 
 		// Convert the attribute name to camelCase and kebab-case.
 		const camel = name.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-		const kebab = name.replace(/_/g, "-");
-
 		const handler = `${camel}Change` as const;
 
 		// biome-ignore lint/suspicious/noExplicitAny: Accessor must exist
 		const typed = (this as any)[name];
 
-		// Fire custom events indicating the attribute has changed.
-
-		// This first event is generic; { name, value }
+		// Fire a custom events indicating an attribute has changed.
 		this.dispatchEvent(new MoqAttrEvent({ name, value: typed }));
-
-		// This second event is specific to the attribute.
-		this.dispatchEvent(
-			new CustomEvent(`moq-attr-${kebab}`, {
-				detail: typed,
-				bubbles: true,
-				composed: true,
-			}),
-		);
 
 		// biome-ignore lint/suspicious/noExplicitAny: Look for optional `xxxChange` method
 		const f = (this as any)[handler];

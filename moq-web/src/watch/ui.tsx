@@ -1,9 +1,4 @@
-import * as Rust from "@rust";
-import * as Comlink from "comlink";
-import type { Bridge } from "../watch/bridge";
-
-import { Element, attribute, element } from "./component";
-import { jsx } from "./jsx";
+import { MoqElement, attribute, element, jsx } from "../element";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
@@ -20,65 +15,27 @@ import type SlButton from "@shoelace-style/shoelace/dist/components/button/butto
 import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import type SlRange from "@shoelace-style/shoelace/dist/components/range/range.js";
 
-export type { BackendState };
-type BackendState = Rust.BackendState;
+import type Watch from ".";
+import WatchElement from "./element";
 
-// Create a new worker instance that is shared between all instances of the Watch class.
-// We wait until the worker is fully initialized before we return the proxy.
-const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
-	const worker = new Worker(new URL("../watch/bridge", import.meta.url), {
-		type: "module",
-	});
-	worker.addEventListener(
-		"message",
-		(event) => {
-			const proxy: Comlink.Remote<Bridge> = Comlink.wrap(worker);
-			resolve(proxy);
-		},
-		{ once: true },
-	);
-});
+@element("moq-watch-ui")
+export class WatchUi extends MoqElement {
+	#watch: WatchElement;
 
-@element("moq-watch")
-export class MoqWatchElement extends Element {
-	#watch: Promise<Comlink.Remote<Rust.Watch>>;
-
-	#canvas: HTMLCanvasElement;
-	#offscreenCanvas: OffscreenCanvas;
-
-	// Optional controls
 	#controls: HTMLDivElement;
 	#pause: SlButton;
 	#menu: HTMLElement;
 	#fullscreen: SlButton;
 	#buffering: HTMLElement;
 	#paused: HTMLElement;
-
-	// Optional status dialog
 	#status: HTMLDivElement;
-
-	@attribute
-	accessor url = "";
-
-	@attribute
-	accessor paused = false;
-
-	@attribute
-	accessor volume = 1;
-
-	@attribute
-	accessor controls = false;
-
-	@attribute
-	accessor status = false;
 
 	@attribute
 	accessor fullscreen = false;
 
-	// The target latency in ms.
-	// A higher value means more stable playback.
-	@attribute
-	accessor latency = 0;
+	get #lib(): Watch {
+		return this.#watch.lib;
+	}
 
 	constructor() {
 		super();
@@ -97,46 +54,28 @@ export class MoqWatchElement extends Element {
 					justify-content: center;
 				}
 
-				:host([status]) #status {
-					display: flex;
-					gap: 8px;
-					justify-content: center;
-					font-family: var(--sl-font-sans);
-				}
-
-				:host(:not([status])) #status  {
-					display: none;
-				}
-
-				:host([controls]) #controls {
-					display: flex;
-					transform: translate(0, 100%);
-					transition: opacity 0.3s ease, transform 0.3s ease;
-					opacity: 0;
-				}
-
-				:host(:not([controls])) #controls {
-					display: none;
+				:host #controls {
+					transform: "translate(0, 100%)",
+					opacity: "0",
 				}
 
 				:host(:hover) #controls {
 					transform: translate(0);
 					opacity: 1;
 				}
-
 				`}
 			</style>
 		);
 
+		this.#watch = new WatchElement();
+
 		this.#pause = (
-			<sl-button
-				onclick={() => {
-					this.paused = !this.paused;
-				}}
-			>
+			<sl-button>
 				<sl-icon name="pause" label="Pause" />
 			</sl-button>
 		) as SlButton;
+
+		this.#pause.addEventListener("sl-click", () => this.#togglePause());
 
 		const targetBuffer = (
 			<sl-range
@@ -149,7 +88,7 @@ export class MoqWatchElement extends Element {
 		) as SlRange;
 
 		targetBuffer.addEventListener("sl-change", () => {
-			this.#watch.then((watch) => watch.set_latency(targetBuffer.value));
+			this.#lib.latency = targetBuffer.value;
 		});
 
 		this.#menu = (
@@ -172,14 +111,14 @@ export class MoqWatchElement extends Element {
 		);
 
 		this.#fullscreen = (
-			<sl-button
-				onclick={() => {
-					this.fullscreen = !this.fullscreen;
-				}}
-			>
+			<sl-button onclick={() => {}}>
 				<sl-icon name="fullscreen" label="Fullscreen" />
 			</sl-button>
 		) as SlButton;
+
+		this.#fullscreen.addEventListener("sl-click", () => {
+			this.fullscreen = !this.fullscreen;
+		});
 
 		this.#buffering = (
 			<div
@@ -210,10 +149,16 @@ export class MoqWatchElement extends Element {
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 
-		this.#status = shadow.appendChild(<div id="status" />) as HTMLDivElement;
-		this.#canvas = shadow.appendChild(
-			<canvas width={0} height={0} css={{ maxWidth: "100%", height: "auto" }} />,
-		) as HTMLCanvasElement;
+		this.#status = shadow.appendChild(
+			<div
+				css={{
+					display: "flex",
+					gap: "8px",
+					justifyContent: "center",
+					fontFamily: "var(--sl-font-sans)",
+				}}
+			/>,
+		) as HTMLDivElement;
 
 		shadow.appendChild(
 			<div
@@ -233,9 +178,10 @@ export class MoqWatchElement extends Element {
 			</div>,
 		);
 
+		shadow.appendChild(this.#watch);
+
 		this.#controls = shadow.appendChild(
 			<div
-				id="controls"
 				css={{
 					position: "absolute",
 					bottom: "0",
@@ -245,6 +191,8 @@ export class MoqWatchElement extends Element {
 					alignItems: "center",
 					padding: "8px",
 					gap: "8px",
+					display: "flex",
+					transition: "opacity 0.3s ease, transform 0.3s ease",
 				}}
 			>
 				<div css={{ display: "flex", gap: "8px" }}>{this.#pause}</div>
@@ -255,27 +203,16 @@ export class MoqWatchElement extends Element {
 			</div>,
 		) as HTMLDivElement;
 
-		this.#offscreenCanvas = this.#canvas.transferControlToOffscreen();
-
-		this.#watch = worker.then((api) => api.watch());
-		this.#watch.then((watch) => {
-			watch.set_canvas(Comlink.transfer(this.#offscreenCanvas, [this.#offscreenCanvas]));
-			watch.set_latency(this.latency);
-		});
-
-		this.#runBackendStatus();
+		this.#runStatus();
 		this.#runBuffering();
 	}
 
-	urlChange(value: string) {
-		this.#watch.then((watch) => watch.set_url(value));
-	}
+	#togglePause() {
+		const paused = !this.#lib.paused;
+		this.#lib.paused = paused;
 
-	pausedChange(value: boolean) {
-		this.#watch.then((watch) => watch.set_paused(value));
-
-		const icon = this.#pause.firstChild as SlIcon;
-		if (value) {
+		const icon = this.#paused.firstChild as SlIcon;
+		if (paused) {
 			icon.name = "play";
 			icon.label = "Play";
 		} else {
@@ -284,14 +221,8 @@ export class MoqWatchElement extends Element {
 		}
 	}
 
-	volumeChange(value: number) {
-		if (value < 0 || value > 1) {
-			throw new RangeError("volume must be between 0 and 1");
-		}
-		this.#watch.then((watch) => watch.set_volume(value));
-	}
-
-	async fullscreenChange(value: boolean) {
+	// TODO This is not unused; figure out a different more type-safe API
+	private fullscreenChange(value: boolean) {
 		const icon = this.#fullscreen.firstChild as SlIcon;
 		if (value) {
 			icon.name = "fullscreen-exit";
@@ -306,36 +237,29 @@ export class MoqWatchElement extends Element {
 		}
 	}
 
-	async #runBackendStatus() {
+	async #runStatus() {
 		try {
-			this.#status.replaceChildren(<sl-spinner />, "Loading WASM Worker...");
-			const watch = await this.#watch;
+			this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
-			const status = await Comlink.proxy(watch.status());
-			while (true) {
-				const next = await status.backend_state();
-				if (next === undefined) {
-					return;
-				}
-
-				switch (next) {
-					case Rust.BackendState.Idle:
+			for await (const status of this.#lib.connectionStatus()) {
+				switch (status) {
+					case "connecting":
+						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
+						break;
+					case "connected":
+						this.#status.replaceChildren(<sl-spinner />, "Fetching...");
+						break;
+					case "disconnected":
+						this.#status.replaceChildren("Disconnected");
+						break;
+					case "live":
 						this.#status.replaceChildren();
 						break;
-					case Rust.BackendState.Connecting:
-						this.#status.replaceChildren(<sl-spinner />, "Connecting to Server...");
-						break;
-					case Rust.BackendState.Connected:
-						this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcast...");
-						break;
-					case Rust.BackendState.Live:
-						this.#status.replaceChildren();
-						break;
-					case Rust.BackendState.Offline:
+					case "offline":
 						this.#status.replaceChildren("Offline");
 						break;
 					default: {
-						const _exhaustive: never = next;
+						const _exhaustive: never = status;
 						throw new Error(`Unhandled state: ${_exhaustive}`);
 					}
 				}
@@ -354,32 +278,15 @@ export class MoqWatchElement extends Element {
 
 	async #runBuffering() {
 		try {
-			const watch = await this.#watch;
-			const status = await watch.status();
-
-			for (;;) {
-				const state = await status.render_state();
-				this.#buffering.style.display = state === Rust.RenderState.Buffering ? "flex" : "none";
-				this.#paused.style.display = state === Rust.RenderState.Paused ? "flex" : "none";
+			for await (const state of this.#lib.rendererStatus()) {
+				this.#buffering.style.display = state === "buffering" ? "flex" : "none";
+				this.#paused.style.display = state === "paused" ? "flex" : "none";
 			}
 		} catch (err) {
 			this.#buffering.style.display = "none";
 			this.#paused.style.display = "none";
 		}
 	}
-
-	async latencyChange(value: number) {
-		if (value < 0) {
-			throw new RangeError("latency must be greater than 0");
-		}
-		this.#watch.then((watch) => watch.set_latency(value));
-	}
 }
 
-declare global {
-	interface HTMLElementTagNameMap {
-		"moq-watch": MoqWatchElement;
-	}
-}
-
-export default MoqWatchElement;
+export default WatchElement;

@@ -1,11 +1,11 @@
 use baton::Baton;
-use moq_karp::{moq_transfork::Path, BroadcastProducer, TrackProducer};
+use moq_karp::{BroadcastProducer, TrackProducer};
 use url::Url;
 use wasm_bindgen::JsCast;
 use web_sys::MediaStream;
 
-use super::{PublishState, Video};
-use crate::{Connect, Error, Result};
+use super::{StatusSend, Video};
+use crate::{Connect, ConnectionStatus, Error, Result};
 
 #[derive(Debug, Default, Clone, Baton)]
 pub struct Controls {
@@ -14,18 +14,11 @@ pub struct Controls {
 	pub media: Option<MediaStream>,
 }
 
-#[derive(Debug, Default, Clone, Baton)]
-pub struct Status {
-	pub state: PublishState,
-	pub error: Option<Error>,
-}
-
 pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
 	connect: Option<Connect>,
-	path: Path,
 	broadcast: Option<BroadcastProducer>,
 
 	video: Option<Video>,
@@ -38,7 +31,6 @@ impl Backend {
 			controls,
 			status,
 			connect: None,
-			path: Path::default(),
 			broadcast: None,
 			video: None,
 			video_track: None,
@@ -50,8 +42,6 @@ impl Backend {
 			if let Err(err) = self.run().await {
 				self.status.error.set(Some(err));
 			}
-
-			self.status.state.set(PublishState::Error);
 		});
 	}
 
@@ -66,33 +56,23 @@ impl Backend {
 					self.video = None;
 
 					if let Some(url) = url {
-						// Connect using the base of the URL.
-						let mut addr = url.clone();
-						addr.set_fragment(None);
-						addr.set_query(None);
-						addr.set_path("");
-
-						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
-						self.connect = Some(Connect::new(addr));
-
-						self.status.state.set(PublishState::Connecting);
+						self.connect = Some(Connect::new(url));
+						self.status.connection.set(ConnectionStatus::Connecting);
 					} else {
-						self.path = Path::default();
 						self.connect = None;
-
-						self.status.state.set(PublishState::Idle);
+						self.status.connection.set(ConnectionStatus::Disconnected);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
-					let mut broadcast = moq_karp::BroadcastProducer::new(session?, self.path.clone())?;
+					let path = self.connect.take().unwrap().path;
+
+					let mut broadcast = moq_karp::BroadcastProducer::new(session?, path)?;
 					if let Some(video) = self.video.as_mut() {
 						self.video_track = Some(broadcast.publish_video(video.info().clone())?);
 					}
 
 					self.broadcast = Some(broadcast);
-					self.connect = None;
-
-					self.status.state.set(PublishState::Connected);
+					self.status.connection.set(ConnectionStatus::Connected);
 				},
 				media = self.controls.media.next() => {
 					let media = media.ok_or(Error::Closed)?;
@@ -102,7 +82,6 @@ impl Backend {
 					self.video_track.take();
 
 					if let Some(media) = media {
-						self.status.state.set(PublishState::Live);
 						if let Some(track) = media.get_video_tracks().iter().next() {
 							let track: web_sys::MediaStreamTrack = track.unchecked_into();
 
@@ -116,7 +95,7 @@ impl Backend {
 							self.video = Some(video);
 						}
 					} else {
-						self.status.state.set(PublishState::Connected);
+						self.status.connection.set(ConnectionStatus::Connected);
 					}
 				},
 				Some(frame) = async { Some(self.video.as_mut()?.frame().await) } => {

@@ -1,4 +1,4 @@
-import { MoqWatchElement } from "../";
+import { WatchElement } from "../watch/element";
 
 const observedAttributes = ["src", "paused", "volume"] as const;
 type ObservedAttribute = (typeof observedAttributes)[number];
@@ -6,8 +6,8 @@ type ObservedAttribute = (typeof observedAttributes)[number];
 // Supports a subset of the <video> element API.
 // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
 // Also: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement
-export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
-	#watch: MoqWatchElement;
+export class VideoElement extends HTMLElement implements HTMLVideoElement {
+	#watch: WatchElement;
 
 	// These only matter at init
 	playsInline = true;
@@ -84,14 +84,14 @@ export class MoqVideoElement extends HTMLElement implements HTMLVideoElement {
 	constructor() {
 		super();
 
-		this.#watch = new MoqWatchElement();
+		this.#watch = new WatchElement();
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(this.#watch);
 	}
 
 	connectedCallback() {
-		for (const name of MoqVideoElement.observedAttributes) {
+		for (const name of VideoElement.observedAttributes) {
 			const value = this.getAttribute(name);
 			if (value !== null) {
 				this.attributeChangedCallback(name, null, this.getAttribute(name));
@@ -358,13 +358,13 @@ function emptyTextTracks(): TextTrackList {
 }
 
 // Register the custom element.
-customElements.define("moq-video", MoqVideoElement);
+customElements.define("moq-video", VideoElement);
 
 // Add our type to the typescript global scope.
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-video": MoqVideoElement;
+		"moq-video": VideoElement;
 	}
 }
 
-export default MoqVideoElement;
+export default VideoElement;
