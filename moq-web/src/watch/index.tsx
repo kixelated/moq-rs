@@ -6,7 +6,7 @@ import * as Rust from "@rust";
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
 import type { Bridge } from "./bridge";
 
-import { attribute, MoqElement, element, jsx } from "../element";
+import { attribute, MoqElement, element, jsx } from "../util";
 
 export type RendererStatus = "idle" | "paused" | "buffering" | "live";
 
@@ -85,6 +85,7 @@ export class Watch extends MoqElement {
 	}
 
 	private pausedChange(value: boolean) {
+		console.log("paused:", value);
 		this.#worker.then((worker) => worker.paused(value));
 	}
 

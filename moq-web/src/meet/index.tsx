@@ -1,7 +1,7 @@
 import * as Rust from "@rust";
 
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
-import { MoqElement, attribute, element, jsx } from "../element";
+import { MoqElement, attribute, element, jsx } from "../util";
 import type { Watch } from "../watch";
 
 /// Live is fired once when all broadcasts have been discovered (on startup).

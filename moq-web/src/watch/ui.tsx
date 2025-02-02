@@ -1,4 +1,4 @@
-import { MoqElement, attribute, element, jsx } from "../element";
+import { Context, MoqElement, attribute, element, jsx } from "../util";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
@@ -19,7 +19,9 @@ import Watch from ".";
 
 @element("moq-watch-ui")
 export class WatchUi extends MoqElement {
-	#watch: Watch;
+	#inner?: Watch;
+	#slot: HTMLSlotElement;
+	#context?: Context;
 
 	#controls: HTMLDivElement;
 	#pause: SlButton;
@@ -62,15 +64,13 @@ export class WatchUi extends MoqElement {
 			</style>
 		);
 
-		this.#watch = new Watch();
-
 		this.#pause = (
 			<sl-button>
 				<sl-icon name="pause" label="Pause" />
 			</sl-button>
 		) as SlButton;
 
-		this.#pause.addEventListener("sl-click", () => this.#togglePause());
+		this.#pause.addEventListener("click", () => this.#togglePause());
 
 		const targetBuffer = (
 			<sl-range
@@ -83,7 +83,9 @@ export class WatchUi extends MoqElement {
 		) as SlRange;
 
 		targetBuffer.addEventListener("sl-change", () => {
-			this.#watch.latency = targetBuffer.value;
+			if (this.#inner) {
+				this.#inner.latency = targetBuffer.value;
+			}
 		});
 
 		this.#menu = (
@@ -106,12 +108,12 @@ export class WatchUi extends MoqElement {
 		);
 
 		this.#fullscreen = (
-			<sl-button onclick={() => {}}>
+			<sl-button>
 				<sl-icon name="fullscreen" label="Fullscreen" />
 			</sl-button>
 		) as SlButton;
 
-		this.#fullscreen.addEventListener("sl-click", () => {
+		this.#fullscreen.addEventListener("click", () => {
 			this.fullscreen = !this.fullscreen;
 		});
 
@@ -144,6 +146,9 @@ export class WatchUi extends MoqElement {
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 
+		this.#slot = shadow.appendChild(<slot>No moq-watch element found.</slot>) as HTMLSlotElement;
+		this.#slot.addEventListener("slotchange", () => this.#init());
+
 		this.#status = shadow.appendChild(
 			<div
 				css={{
@@ -173,8 +178,6 @@ export class WatchUi extends MoqElement {
 			</div>,
 		);
 
-		shadow.appendChild(this.#watch);
-
 		this.#controls = shadow.appendChild(
 			<div
 				css={{
@@ -197,14 +200,15 @@ export class WatchUi extends MoqElement {
 				</div>
 			</div>,
 		) as HTMLDivElement;
-
-		this.#runStatus();
-		this.#runBuffering();
 	}
 
 	#togglePause() {
-		const paused = !this.#watch.paused;
-		this.#watch.paused = paused;
+		if (!this.#inner) {
+			return;
+		}
+
+		const paused = !this.#inner.paused;
+		this.#inner.paused = paused;
 
 		const icon = this.#paused.firstChild as SlIcon;
 		if (paused) {
@@ -232,11 +236,28 @@ export class WatchUi extends MoqElement {
 		}
 	}
 
-	async #runStatus() {
+	#init() {
+		for (const element of this.#slot.assignedElements({ flatten: true })) {
+			if (element instanceof Watch) {
+				this.#inner = element;
+				this.#context = new Context();
+				this.#run(this.#inner, this.#context);
+				return;
+			}
+		}
+
+		throw new Error("unable to find <moq-watch> element");
+	}
+
+	async #run(inner: Watch, context: Context) {
+		await Promise.all([this.#runStatus(inner), this.#runBuffering(inner), context.done]);
+	}
+
+	async #runStatus(inner: Watch) {
 		try {
 			this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
-			for await (const status of this.#watch.connectionStatus()) {
+			for await (const status of inner.connectionStatus()) {
 				switch (status) {
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
@@ -271,9 +292,9 @@ export class WatchUi extends MoqElement {
 		}
 	}
 
-	async #runBuffering() {
+	async #runBuffering(inner: Watch) {
 		try {
-			for await (const state of this.#watch.rendererStatus()) {
+			for await (const state of inner.rendererStatus()) {
 				this.#buffering.style.display = state === "buffering" ? "flex" : "none";
 				this.#paused.style.display = state === "paused" ? "flex" : "none";
 			}
