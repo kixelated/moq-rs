@@ -10,12 +10,16 @@ export type MeetAction = "join" | "leave" | "live";
 @element("moq-meet")
 export class Meet extends MoqElement {
 	#rust: Rust.Meet;
+	#broadcasts: Set<Watch> = new Set();
 
 	#container: HTMLDivElement;
-	#broadcasts: Set<Watch> = new Set();
+	#template: HTMLTemplateElement | null = null;
 
 	@attribute
 	accessor url = "";
+
+	@attribute
+	accessor template = "";
 
 	constructor() {
 		super();
@@ -59,6 +63,21 @@ export class Meet extends MoqElement {
 		this.#rust.url = url !== "" ? url : null;
 	}
 
+	templateChange(id: string) {
+		if (id === "") {
+			this.#template = null;
+			return;
+		}
+
+		const template = document.getElementById(id);
+		if (!template) {
+			throw new Error("unable to find template");
+		}
+
+		// TODO apply this retroactively
+		this.#template = template as HTMLTemplateElement;
+	}
+
 	async #run() {
 		for await (const [action, name] of this.members()) {
 			if (action === "join") {
@@ -70,15 +89,22 @@ export class Meet extends MoqElement {
 	}
 
 	#join(name: string) {
-		const watch = (
-			<moq-watch
-				id={`broadcast-${name}`}
-				url={`${this.url}/${name}`}
-				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
-			/>
-		) as Watch;
+		const wrapper = <div id={`broadcast-${name}`} />;
 
-		this.#container.appendChild(watch);
+		// TODO figure this template this out.
+		const template = this.#template ? (
+			this.#template
+		) : (
+			<template>
+				<moq-watch />
+			</template>
+		);
+
+		const node = template.cloneNode(true);
+
+		const watch = (<moq-watch url={`${this.url}/${name}`} />) as Watch;
+
+		this.#container.appendChild(wrapper);
 		this.#broadcasts.add(watch);
 		this.#updateGrid();
 	}

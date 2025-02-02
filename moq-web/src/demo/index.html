@@ -22,21 +22,28 @@
 </head>
 
 <body>
-	<!-- Publish our own broadcast too. -->
+	<!-- Publish our own broadcast. -->
 	<moq-publish-ui>
 		<moq-publish url="http://localhost:4443/demo/me"></moq-publish>
 	</moq-publish-ui>
 
-	<!-- Show all participants under the /demo prefix
+	<!-- Show all participants under the /demo prefix -->
 	<moq-meet-ui>
-		<moq-meet url="http://localhost:4443/demo"></moq-meet>
+		<moq-meet url="http://localhost:4443/demo" template="with-ui"></moq-meet>
 	</moq-meet-ui>
-	-->
 
-	<!-- Or watch a single broadcast -->
+	<!-- Optionally use a template to style each participant. -->
+	<template id="with-ui">
+		<moq-watch-ui border-radius="0.5rem">
+			<moq-watch></moq-watch>
+		</moq-watch-ui>
+	</template>
+
+	<!-- Or watch a single broadcast
 	<moq-watch-ui>
 		<moq-watch url="http://localhost:4443/demo/bbb"></moq-watch>
 	</moq-watch-ui>
+	-->
 
 </body>
 
