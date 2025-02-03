@@ -114,6 +114,8 @@ impl Publisher {
 			}
 		}
 
+		tracing::info!(?prefix, "done");
+
 		Ok(())
 	}
 

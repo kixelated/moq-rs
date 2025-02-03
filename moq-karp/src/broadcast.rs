@@ -14,11 +14,6 @@ pub struct BroadcastProducer {
 	catalog: Lock<CatalogProducer>,
 }
 
-struct CatalogProducer {
-	current: Catalog,
-	track: moq_transfork::TrackProducer,
-}
-
 impl BroadcastProducer {
 	pub fn new(mut session: Session, path: Path) -> Result<Self> {
 		// Generate a "unique" ID for this broadcast session.
@@ -37,13 +32,10 @@ impl BroadcastProducer {
 		}
 		.produce();
 
-		// Publish the catalog, even though it's currently empty.
+		// Publish the catalog track, even if it's empty.
 		session.publish(catalog.1)?;
 
-		let catalog = Lock::new(CatalogProducer {
-			current: Catalog::default(),
-			track: catalog.0,
-		});
+		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
 
 		Ok(Self {
 			session,
@@ -51,6 +43,11 @@ impl BroadcastProducer {
 			id,
 			catalog,
 		})
+	}
+
+	/// Return the latest catalog.
+	pub fn catalog(&self) -> Catalog {
+		self.catalog.lock().current.clone()
 	}
 
 	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
@@ -68,7 +65,7 @@ impl BroadcastProducer {
 
 		let mut catalog = self.catalog.lock();
 		catalog.current.video.push(info.clone());
-		catalog.update()?;
+		catalog.publish()?;
 
 		let producer = TrackProducer::new(producer);
 		let consumer = producer.subscribe();
@@ -80,7 +77,7 @@ impl BroadcastProducer {
 
 			let mut catalog = catalog.lock();
 			catalog.current.video.retain(|v| v.track != info.track);
-			catalog.update().unwrap();
+			catalog.publish().unwrap();
 		});
 
 		Ok(producer)
@@ -101,7 +98,7 @@ impl BroadcastProducer {
 
 		let mut catalog = self.catalog.lock();
 		catalog.current.audio.push(info.clone());
-		catalog.update()?;
+		catalog.publish()?;
 
 		let producer = TrackProducer::new(producer);
 		let consumer = producer.subscribe();
@@ -113,15 +110,32 @@ impl BroadcastProducer {
 
 			let mut catalog = catalog.lock();
 			catalog.current.audio.retain(|v| v.track != info.track);
-			catalog.update().unwrap();
+			catalog.publish().unwrap();
 		});
 
 		Ok(producer)
 	}
 }
 
+struct CatalogProducer {
+	current: Catalog,
+	track: moq_transfork::TrackProducer,
+}
+
 impl CatalogProducer {
-	fn update(&mut self) -> Result<()> {
+	fn new(track: moq_transfork::TrackProducer) -> Result<Self> {
+		let mut this = Self {
+			current: Catalog::default(),
+			track,
+		};
+
+		// Perform the initial publish
+		this.publish()?;
+
+		Ok(this)
+	}
+
+	fn publish(&mut self) -> Result<()> {
 		let frame = self.current.to_string()?;
 
 		let mut group = self.track.append_group();
@@ -147,6 +161,7 @@ pub struct BroadcastConsumer {
 	// True if we should None because the broadcast has ended.
 	ended: bool,
 
+	catalog_latest: Option<Catalog>,
 	catalog_track: Option<moq_transfork::TrackConsumer>,
 	catalog_group: Option<moq_transfork::GroupConsumer>,
 }
@@ -161,13 +176,18 @@ impl BroadcastConsumer {
 			announced,
 			current: None,
 			ended: false,
+			catalog_latest: None,
 			catalog_track: None,
 			catalog_group: None,
 		}
 	}
 
+	pub fn catalog(&self) -> Option<&Catalog> {
+		self.catalog_latest.as_ref()
+	}
+
 	/// Returns the latest catalog, or None if the channel is offline.
-	pub async fn catalog(&mut self) -> Result<Option<Catalog>> {
+	pub async fn next_catalog(&mut self) -> Result<Option<&Catalog>> {
 		loop {
 			if self.ended {
 				// Avoid returning None again.
@@ -196,9 +216,9 @@ impl BroadcastConsumer {
 					self.catalog_group.replace(group?);
 				},
 				Some(frame) = async { self.catalog_group.as_mut()?.read_frame().await.transpose() } => {
-					let catalog = Catalog::from_slice(&frame?)?;
+					self.catalog_latest = Some(Catalog::from_slice(&frame?)?);
 					self.catalog_group.take(); // We don't support deltas yet
-					return Ok(Some(catalog));
+					return Ok(self.catalog_latest.as_ref());
 				},
 				else => return Err(self.session.closed().await.into()),
 			}

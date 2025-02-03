@@ -3,6 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
+export RUST_LOG := "info"
 
 # List all of the available commands.
 default:
@@ -10,11 +11,19 @@ default:
 
 # Run the relay, web server, and publish bbb.
 all:
-	cd moq-web && npm i && npx concurrently --kill-others --names srv,web,bbb --prefix-colors auto "just relay" "just web" "just bbb"
+	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "localhost:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+
+# Run a localhost leaf server, connecting to the relay server
+leaf:
+	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify --dev
+
+# Run a cluster of relay servers
+cluster:
+	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
 # Download and stream the Big Buck Bunny video
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
@@ -46,23 +55,11 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/{{name}}"
-
-# Publish a video using gstreamer to the localhost relay server
-gst name:
-	# Build the gstreamer plugin
-	cargo build -p moq-gst
-	export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
-
-	# Run gstreamer and pipe the output to moq-karp
-	gst-launch-1.0 -v -e multifilesrc location="dev/{{name}}.fmp4" loop=true ! qtdemux name=demux \
-		demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="http://localhost:4443" room="demo" broadcast="{{name}}" \
-		demux.audio_0 ! aacparse ! queue ! mux.
-
+		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
 # Run the web server
 web:
-	cd moq-web && npm i && npm run dev
+	npm i && npm run dev
 
 # Publish the clock broadcast
 clock-pub:
@@ -79,15 +76,27 @@ check:
 	cargo clippy --all -- -D warnings
 	cargo fmt --all -- --check
 	cargo machete
-	cd moq-web && npm i && npm run check
+	npm i && npm run check
 
 # Automatically fix some issues.
 fix:
-	cargo clippy --all --fix --allow-dirty --allow-staged --all-targets --all-features
+	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
-	cd moq-web && npm i && npm run fix
+	npm i && npm run fix
 
-# Build release binaries
-build:
-	cargo build --all --release
-	cd moq-web && npm i && npm run build
+# Build the binaries
+build: pack
+	cargo build
+
+# Build release NPM package
+pack:
+	npm i && npm run build
+
+# Build and link the NPM package
+# TODO support more than just npm
+link: pack
+	npm link
+
+# Delete any ephemeral build files
+clean:
+	rm -r dist

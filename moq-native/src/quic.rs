@@ -140,7 +140,7 @@ impl Server {
 		let session = match alpn.as_bytes() {
 			web_transport::quinn::ALPN => {
 				// Wait for the CONNECT request.
-				let request = web_transport::quinn::accept(conn)
+				let request = web_transport::quinn::Request::accept(conn)
 					.await
 					.context("failed to receive WebTransport request")?;
 
@@ -203,7 +203,6 @@ impl Client {
 			let verifier = tls::FingerprintVerifier::new(config.crypto_provider().clone(), fingerprint);
 			config.dangerous().set_certificate_verifier(Arc::new(verifier));
 
-			//
 			url.set_scheme("https").expect("failed to set scheme");
 		}
 

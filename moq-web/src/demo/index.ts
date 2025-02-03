@@ -1,3 +1,3 @@
-export { MoqMeet } from "../element/meet";
-export { MoqPublish } from "../element/publish";
-export { MoqWatch } from "../element/watch";
+export * as Moq from "..";
+
+import "@shoelace-style/shoelace/dist/themes/dark.css";

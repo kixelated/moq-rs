@@ -5,7 +5,7 @@ authors = []
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.12.2"
+version = "0.13.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -14,7 +14,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transfork = { path = "../moq-transfork", version = "0.9" }
+moq-transfork = { path = "../moq-transfork", version = "0.10" }
 moq-transfork-proto = { path = "../moq-transfork-proto", version = "0.1" }
 moq-async = { path = "../moq-async", version = "0.1" }
 
@@ -32,6 +32,7 @@ thiserror = "2"
 tracing = "0.1"
 lazy_static = "1"
 regex = "1"
+futures = "0.3"
 
 tokio = { version = "1.43", features = ["macros"] }
 
@@ -44,16 +45,7 @@ anyhow = { version = "1", features = ["backtrace"], optional = true }
 
 [dependencies.derive_more]
 version = "1"
-features = [
-	"add",
-	"add_assign",
-	"mul",
-	"mul_assign",
-	"sum",
-	"from",
-	"display",
-	"debug",
-]
+features = ["from", "display", "debug", "into"]
 
 [features]
 cli = ["moq-native", "tokio/full", "clap", "anyhow"]

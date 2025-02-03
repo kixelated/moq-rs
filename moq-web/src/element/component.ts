@@ -37,10 +37,28 @@ export class Element extends HTMLElement {
 			return;
 		}
 
-		const handler = `${name}Change` as const;
+		// Convert the attribute name to camelCase and kebab-case.
+		const camel = name.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+		const kebab = name.replace(/_/g, "-");
+
+		const handler = `${camel}Change` as const;
 
 		// biome-ignore lint/suspicious/noExplicitAny: Accessor must exist
 		const typed = (this as any)[name];
+
+		// Fire custom events indicating the attribute has changed.
+
+		// This first event is generic; { name, value }
+		this.dispatchEvent(new MoqAttrEvent({ name, value: typed }));
+
+		// This second event is specific to the attribute.
+		this.dispatchEvent(
+			new CustomEvent(`moq-attr-${kebab}`, {
+				detail: typed,
+				bubbles: true,
+				composed: true,
+			}),
+		);
 
 		// biome-ignore lint/suspicious/noExplicitAny: Look for optional `xxxChange` method
 		const f = (this as any)[handler];
@@ -124,5 +142,22 @@ function stringToAttribute<T extends AttributeType>(value: string | null, init: 
 			return !init as T;
 		default:
 			throw new Error("Unsupported attribute type");
+	}
+}
+
+interface MoqAttrEventDetail<T extends AttributeType> {
+	name: string;
+	value: T;
+}
+
+class MoqAttrEvent<T extends AttributeType = AttributeType> extends CustomEvent<MoqAttrEventDetail<T>> {
+	constructor(detail: MoqAttrEventDetail<T>) {
+		super("moq-attr", { detail, bubbles: true, composed: true });
+	}
+}
+
+declare global {
+	interface HTMLElementEventMap {
+		"moq-attr": MoqAttrEvent;
 	}
 }

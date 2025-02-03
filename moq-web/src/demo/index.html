@@ -8,22 +8,25 @@
 	<style>
 		body {
 			margin: 0;
-			padding: 0;
+			padding: 8px;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
 		}
 
-		moq-publish,
 		moq-meet {
-			margin: 8px;
+			width: 100%;
+			max-height: 100vh;
 		}
 	</style>
 </head>
 
 <body>
-	<!-- Publish our own broadcast -->
-	<moq-publish url="http://localhost:4443/demo/me" controls></moq-publish>
+	<!-- Publish our own broadcast when the user selects media. -->
+	<moq-publish url="http://localhost:4443/demo/me" status controls></moq-publish>
 
 	<!-- Show all participants under the /demo prefix, including ourselves! -->
-	<moq-meet room="http://localhost:4443/demo" controls></moq-meet>
+	<moq-meet url="http://localhost:4443/demo" status controls></moq-meet>
 </body>
 
 </html>

@@ -19,7 +19,6 @@
 		"baseUrl": ".",
 		"outDir": "dist",
 		"declaration": true,
-		"sourceMap": true,
 
 		// JSX
 		"jsx": "react",
@@ -27,11 +26,11 @@
 		"jsxFragmentFactory": "jsxFragment",
 
 		"paths": {
-			"@dist/*": ["dist/*"]
+			"@rust": ["dist/rust"]
 		}
 	},
 
-	"include": ["src"],
+	"include": ["moq-web/src"],
 	"exclude": ["node_modules"],
 
 	"tsc-alias": {

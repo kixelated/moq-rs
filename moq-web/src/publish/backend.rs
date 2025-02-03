@@ -48,11 +48,10 @@ impl Backend {
 	pub fn start(mut self) {
 		wasm_bindgen_futures::spawn_local(async move {
 			if let Err(err) = self.run().await {
-				tracing::error!(?err, "backend error");
 				self.status.error.set(Some(err));
 			}
 
-			self.status.state.set(PublishState::Closed);
+			self.status.state.set(PublishState::Error);
 		});
 	}
 
@@ -103,6 +102,7 @@ impl Backend {
 					self.video_track.take();
 
 					if let Some(media) = media {
+						self.status.state.set(PublishState::Live);
 						if let Some(track) = media.get_video_tracks().iter().next() {
 							let track: web_sys::MediaStreamTrack = track.unchecked_into();
 
@@ -115,6 +115,8 @@ impl Backend {
 
 							self.video = Some(video);
 						}
+					} else {
+						self.status.state.set(PublishState::Connected);
 					}
 				},
 				Some(frame) = async { Some(self.video.as_mut()?.frame().await) } => {

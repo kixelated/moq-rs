@@ -26,23 +26,24 @@
 			"import": "./dist/element/meet.js"
 		}
 	},
-	"sideEffects": ["./dist/element/*.js", "./dist/rust.*", "./dist/snippets/*"],
+	"sideEffects": ["./dist/rust.*", "./dist/snippets/*", "./dist/element/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
-		"build": "wasm-pack build --out-dir dist . --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
+		"build": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust && rm dist/.gitignore dist/package.json && tsc && tsc-alias",
 		"dev": "webpack serve",
 		"check": "biome check",
 		"fix": "biome check --write"
 	},
 	"dependencies": {
-		"comlink": "^4.4.2"
+		"comlink": "^4.4.2",
+		"@shoelace-style/shoelace": "^2.19.1"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.3",
-		"@shoelace-style/shoelace": "^2.19.1",
 		"@types/dom-mediacapture-transform": "^0.1.10",
 		"@wasm-tool/wasm-pack-plugin": "^1.5.0",
 		"chokidar-cli": "^3.0.0",
+		"concurrently": "^9.1.2",
 		"copy-webpack-plugin": "^12.0.2",
 		"css-loader": "^7.1.2",
 		"html-webpack-plugin": "^5.6.0",
@@ -51,11 +52,9 @@
 		"ts-node": "^10.9.2",
 		"tsc-alias": "^1.8.10",
 		"typescript": "^5.7.3",
-		"unique-names-generator": "^4.7.1",
 		"wasm-pack": "^0.13.1",
 		"webpack": "^5.97.1",
 		"webpack-cli": "^6.0.1",
-		"webpack-dev-server": "^5.2.0",
-		"concurrently": "^9.1.2"
+		"webpack-dev-server": "^5.2.0"
 	}
 }

@@ -2,12 +2,13 @@ use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen::prelude::*;
 
-use super::{Backend, Controls, ControlsSend};
+use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
 use crate::{Error, Result};
 
 #[wasm_bindgen]
 pub struct Room {
 	controls: ControlsSend,
+	status: StatusRecv,
 	announced: AnnouncedConsumer,
 }
 
@@ -19,12 +20,14 @@ impl Room {
 		let consumer = producer.subscribe();
 
 		let controls = Controls::default().baton();
+		let status = Status::default().baton();
 
-		let backend = Backend::new(controls.1, producer);
+		let backend = Backend::new(controls.1, status.0, producer);
 		backend.start();
 
 		Self {
 			controls: controls.0,
+			status: status.1,
 			announced: consumer,
 		}
 	}
@@ -42,6 +45,11 @@ impl Room {
 
 	pub fn announced(&self) -> RoomAnnounced {
 		RoomAnnounced::new(self.announced.clone())
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn error(&self) -> Option<String> {
+		self.status.error.get().as_ref().map(|e| e.to_string())
 	}
 }
 

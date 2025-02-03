@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.9.0...moq-transfork-v0.10.0) - 2025-01-30
+
+### Other
+
+- Misc fixes and changes. ([#317](https://github.com/kixelated/moq-rs/pull/317))
+- Plane UI work ([#316](https://github.com/kixelated/moq-rs/pull/316))
+
 ## [0.9.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.8.3...moq-transfork-v0.9.0) - 2025-01-24
 
 ### Other

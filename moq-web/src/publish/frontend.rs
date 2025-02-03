@@ -8,7 +8,7 @@ use crate::{Error, Result};
 #[wasm_bindgen]
 pub struct Publish {
 	controls: ControlsSend,
-	_status: StatusRecv,
+	status: StatusRecv,
 }
 
 #[wasm_bindgen]
@@ -23,7 +23,7 @@ impl Publish {
 
 		Self {
 			controls: controls.0,
-			_status: status.1,
+			status: status.1,
 		}
 	}
 
@@ -61,6 +61,17 @@ impl Publish {
 	pub fn set_volume(&mut self, volume: f64) {
 		self.controls.volume.set(volume);
 	}
+
+	#[wasm_bindgen(getter)]
+	pub fn error(&self) -> Option<String> {
+		self.status.error.get().as_ref().map(|e| e.to_string())
+	}
+
+	pub fn states(&self) -> PublishStates {
+		PublishStates {
+			state: self.status.state.clone(),
+		}
+	}
 }
 
 impl Default for Publish {
@@ -76,5 +87,19 @@ pub enum PublishState {
 	Idle,
 	Connecting,
 	Connected,
-	Closed,
+	Live,
+	Error,
+}
+
+// Unfortunately, we need this wrapper because `wasm_bindgen` doesn't support generics.
+#[wasm_bindgen]
+pub struct PublishStates {
+	state: baton::Recv<PublishState>,
+}
+
+#[wasm_bindgen]
+impl PublishStates {
+	pub async fn next(&mut self) -> Option<PublishState> {
+		self.state.next().await
+	}
 }

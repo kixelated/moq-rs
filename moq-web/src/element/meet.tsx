@@ -1,6 +1,5 @@
-import { Room, RoomAction, type RoomAnnounced } from "../room";
-
-import type { MoqWatch } from "./watch";
+import * as Rust from "@rust";
+import type { MoqWatchElement } from "..";
 
 import { Element, attribute, element } from "./component";
 import { jsx } from "./jsx";
@@ -10,17 +9,20 @@ import "@shoelace-style/shoelace/dist/components/alert/alert.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet")
-export class MoqMeet extends Element {
-	#room: Room;
+export class MoqMeetElement extends Element {
+	#room: Rust.Room;
 	#container: HTMLDivElement;
-	#broadcasts: Set<MoqWatch> = new Set();
+	#broadcasts: Set<MoqWatchElement> = new Set();
 	#status: HTMLDivElement;
 
 	@attribute
-	accessor room = "";
+	accessor url = "";
 
 	@attribute
 	accessor controls = false;
+
+	@attribute
+	accessor status = false;
 
 	constructor() {
 		super();
@@ -31,17 +33,40 @@ export class MoqMeet extends Element {
 				:host {
 					display: block;
 					position: relative;
-					overflow: hidden;
+
+					max-width: 100%;
+					max-height: 100%;
+				}
+
+				:host([status]) #status {
+					display: flex;
+					gap: 8px;
+					justify-content: center;
+					font-family: var(--sl-font-sans);
+				}
+
+				:host(:not([status])) #status  {
+					display: none;
 				}
 				`}
 			</style>
 		);
 
-		this.#status = (<div />) as HTMLDivElement;
+		this.#status = (<div id="status" />) as HTMLDivElement;
 
-		this.#container = (<div css={{ display: "flex", gap: "8px", alignItems: "center" }} />) as HTMLDivElement;
+		this.#container = (
+			<div
+				css={{
+					display: "grid",
+					gap: "8px",
+					maxWidth: "100%",
+					maxHeight: "100%",
+					placeItems: "center",
+				}}
+			/>
+		) as HTMLDivElement;
 
-		this.#room = new Room();
+		this.#room = new Rust.Room();
 		const announced = this.#room.announced();
 		this.#runAnnounced(announced).finally(() => announced.free());
 
@@ -51,8 +76,8 @@ export class MoqMeet extends Element {
 		shadow.appendChild(this.#container);
 	}
 
-	roomChange(value: string) {
-		this.#room.url = value;
+	urlChange(url: string) {
+		this.#room.url = url;
 	}
 
 	controlsChange(value: boolean) {
@@ -61,8 +86,14 @@ export class MoqMeet extends Element {
 		}
 	}
 
-	async #runAnnounced(announced: RoomAnnounced) {
-		this.#status.replaceChildren(<sl-spinner />);
+	statusChange(value: boolean) {
+		for (const broadcast of this.#broadcasts) {
+			broadcast.status = value;
+		}
+	}
+
+	async #runAnnounced(announced: Rust.RoomAnnounced) {
+		this.#status.replaceChildren(<sl-spinner />, "Fetching Broadcasts...");
 
 		let live = false;
 
@@ -75,7 +106,7 @@ export class MoqMeet extends Element {
 						<sl-icon slot="icon" name="exclamation-octagon" />
 						<strong>Disconnected</strong>
 						<br />
-						TODO get the error message
+						{this.#room.error || "Unknown error"}
 					</sl-alert>,
 				);
 				return;
@@ -84,19 +115,19 @@ export class MoqMeet extends Element {
 			this.#status.replaceChildren();
 
 			switch (announce.action) {
-				case RoomAction.Join:
+				case Rust.RoomAction.Join:
 					this.#join(announce.name);
 					break;
-				case RoomAction.Leave:
+				case Rust.RoomAction.Leave:
 					this.#leave(announce.name);
 					break;
-				case RoomAction.Live:
+				case Rust.RoomAction.Live:
 					live = true;
 					break;
 			}
 
 			if (live && this.#broadcasts.size === 0) {
-				this.#status.replaceChildren(<span css={{ fontFamily: "var(--sl-font-sans)" }}>"🦗 nobody is here 🦗"</span>);
+				this.#status.replaceChildren("🦗 nobody is here 🦗");
 			}
 		}
 	}
@@ -105,20 +136,22 @@ export class MoqMeet extends Element {
 		const watch = (
 			<moq-watch
 				id={`broadcast-${name}`}
-				url={`${this.room}/${name}`}
+				url={`${this.url}/${name}`}
 				controls={this.controls}
+				status={this.status}
 				css={{ borderRadius: "0.5rem", overflow: "hidden" }}
 			/>
-		) as MoqWatch;
+		) as MoqWatchElement;
 
 		this.#container.appendChild(watch);
 		this.#broadcasts.add(watch);
+		this.#updateGrid();
 	}
 
 	#leave(name: string) {
 		const id = `#broadcast-${name}`;
 
-		const watch = this.#container.querySelector(id) as MoqWatch | null;
+		const watch = this.#container.querySelector(id) as MoqWatchElement | null;
 		if (!watch) {
 			console.warn(`Broadcast not found: ${id}`);
 			return;
@@ -126,13 +159,27 @@ export class MoqMeet extends Element {
 
 		watch.remove();
 		this.#broadcasts.delete(watch);
+		this.#updateGrid();
+	}
+
+	#updateGrid() {
+		if (this.#broadcasts.size === 0) {
+			return;
+		}
+
+		// Calculate grid size (square root approximation)
+		const cols = Math.ceil(Math.sqrt(this.#broadcasts.size));
+		const rows = Math.ceil(this.#broadcasts.size / cols);
+
+		this.#container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+		this.#container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 	}
 }
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-meet": MoqMeet;
+		"moq-meet": MoqMeetElement;
 	}
 }
 
-export default MoqMeet;
+export default MoqMeetElement;
