@@ -80,8 +80,8 @@ You can also test the package locally by linking.
 Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
 
 ```sh
-just pack
-npm link
+# Builds and runs `npm link`
+just link
 
 # In your other package
 npm link @kixelated/moq

@@ -71,12 +71,15 @@ clock-sub:
 
 # Run the CI checks
 check:
-	cargo check --all
-	cargo test --all
-	cargo clippy --all -- -D warnings
-	cargo fmt --all -- --check
+	cargo check --all-targets
+	cargo clippy --all-targets -- -D warnings
+	cargo fmt -- --check
 	cargo machete
 	npm i && npm run check
+
+# Run any CI tests
+test:
+	cargo test
 
 # Automatically fix some issues.
 fix:
@@ -84,17 +87,13 @@ fix:
 	cargo fmt --all
 	npm i && npm run fix
 
-# Build the binaries
-build: pack
-	cargo build
-
-# Build release NPM package
-pack:
+# Build the release NPM package
+build:
 	npm i && npm run build
 
 # Build and link the NPM package
-# TODO support more than just npm
-link: pack
+link:
+	npm i && npm run build:dev && npm run build:tsc
 	npm link
 
 # Delete any ephemeral build files
