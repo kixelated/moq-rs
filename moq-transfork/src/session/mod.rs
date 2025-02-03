@@ -53,7 +53,8 @@ impl Session {
 	}
 
 	/// Perform the MoQ handshake as a client.
-	pub async fn connect(mut session: web_transport::Session) -> Result<Self, Error> {
+	pub async fn connect<T: Into<web_transport::Session>>(session: T) -> Result<Self, Error> {
+		let mut session = session.into();
 		let mut stream = Stream::open(&mut session, message::ControlType::Session).await?;
 		Self::connect_setup(&mut stream).await.or_close(&mut stream)?;
 		Ok(Self::new(session, stream))
@@ -74,7 +75,8 @@ impl Session {
 	}
 
 	/// Perform the MoQ handshake as a server
-	pub async fn accept(mut session: web_transport::Session) -> Result<Self, Error> {
+	pub async fn accept<T: Into<web_transport::Session>>(session: T) -> Result<Self, Error> {
+		let mut session = session.into();
 		let mut stream = Stream::accept(&mut session).await?;
 		let kind = stream.reader.decode().await?;
 
