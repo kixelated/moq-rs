@@ -23,10 +23,16 @@ The project is split into a few crates:
 
 # Usage
 ## Requirements
-- [Rust](https://www.rust-lang.org/tools/install)
-- WASM target: `rustup target add wasm32-unknown-unknown`
+- [Rustup](https://www.rust-lang.org/tools/install)
 - [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
 - [Node + NPM](https://nodejs.org/)
+
+## Setup
+Installs any other required tools.
+
+```sh
+just setup
+```
 
 ## Development
 We use `just` to simplify the development process.

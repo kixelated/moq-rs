@@ -23,9 +23,9 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # Install Machete via binstall
+      # Install Shear to find unused dependencies
       - uses: cargo-bins/cargo-binstall@main
-      - run: cargo binstall -y cargo-machete
+      - run: cargo binstall --no-confirm cargo-shear
 
       # Install Node for moq-web
       - uses: actions/setup-node@v4

@@ -9,6 +9,10 @@ export RUST_LOG := "info"
 default:
   just --list
 
+# Install any required dependencies.
+setup:
+	cargo install -y cargo-shear
+
 # Run the relay, web server, and publish bbb.
 all:
 	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
@@ -74,7 +78,7 @@ check:
 	cargo check --all-targets
 	cargo clippy --all-targets -- -D warnings
 	cargo fmt -- --check
-	cargo machete
+	cargo shear # requires: cargo binstall cargo-shear
 	npm i && npm run check
 
 # Run any CI tests
@@ -86,6 +90,7 @@ fix:
 	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
+	cargo shear --fix
 
 # Build the release NPM package
 build:
