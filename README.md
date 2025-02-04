@@ -28,15 +28,15 @@ The project is split into a few crates:
 - [Node + NPM](https://nodejs.org/)
 
 ## Setup
-Installs any other required tools.
+We use `just` to simplify the development process.
+Check out the [Justfile](justfile) or run `just` to see the available commands.
 
+Install any other required tools:
 ```sh
 just setup
 ```
 
 ## Development
-We use `just` to simplify the development process.
-Check out the [Justfile](justfile) or run `just` to see the available commands.
 
 ```sh
 # Run the relay, a demo movie, and web server:
@@ -50,6 +50,11 @@ just web
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
+When you're ready to submit a PR, make sure the tests pass or face the wrath of CI:
+```sh
+just check
+just test
+```
 
 # Components
 ## moq-relay

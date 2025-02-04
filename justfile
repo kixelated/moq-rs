@@ -11,7 +11,21 @@ default:
 
 # Install any required dependencies.
 setup:
-	cargo install -y cargo-shear
+	# Make sure the WASM target is installed.
+	rustup target add wasm32-unknown-unknown
+
+	# Make sure the right components are installed.
+	rustup component add rustfmt clippy
+
+	# Install cargo binstall if needed.
+	if ! command -v cargo-binstall > /dev/null; then \
+		cargo install cargo-binstall; \
+	fi
+
+	# Install cargo shear if needed.
+	if ! command -v cargo-shear > /dev/null; then \
+		cargo binstall --no-confirm cargo-shear; \
+	fi
 
 # Run the relay, web server, and publish bbb.
 all:
