@@ -29,13 +29,12 @@
 	"sideEffects": ["./dist/rust.*", "./dist/snippets/*", "./dist/element/*"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
-		"build": "npm run clean && npm run build:prod && npm run build:tsc",
+		"build": "npm run build:prod && npm run build:tsc",
 		"build:prod": "wasm-pack build --out-dir ../dist moq-web --release --scope kixelated --out-name rust",
 		"build:dev": "wasm-pack build --out-dir ../dist moq-web --dev --scope kixelated --out-name rust",
 		"build:tsc": "tsc && tsc-alias && rm dist/.gitignore dist/package.json",
-		"clean": "rm -r dist",
-		"dev": "npm run clean && webpack serve",
-		"check": "npm run clean && npm run build:dev && tsc --noEmit && biome check",
+		"dev": "webpack serve",
+		"check": "npm run build:dev && tsc --noEmit && biome check",
 		"fix": "biome check --write"
 	},
 	"dependencies": {
