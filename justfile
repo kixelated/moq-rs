@@ -9,6 +9,24 @@ export RUST_LOG := "info"
 default:
   just --list
 
+# Install any required dependencies.
+setup:
+	# Make sure the WASM target is installed.
+	rustup target add wasm32-unknown-unknown
+
+	# Make sure the right components are installed.
+	rustup component add rustfmt clippy
+
+	# Install cargo binstall if needed.
+	if ! command -v cargo-binstall > /dev/null; then \
+		cargo install cargo-binstall; \
+	fi
+
+	# Install cargo shear if needed.
+	if ! command -v cargo-shear > /dev/null; then \
+		cargo binstall --no-confirm cargo-shear; \
+	fi
+
 # Run the relay, web server, and publish bbb.
 all:
 	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
@@ -71,30 +89,30 @@ clock-sub:
 
 # Run the CI checks
 check:
-	cargo check --all
-	cargo test --all
-	cargo clippy --all -- -D warnings
-	cargo fmt --all -- --check
-	cargo machete
+	cargo check --all-targets
+	cargo clippy --all-targets -- -D warnings
+	cargo fmt -- --check
+	cargo shear # requires: cargo binstall cargo-shear
 	npm i && npm run check
+
+# Run any CI tests
+test:
+	cargo test
 
 # Automatically fix some issues.
 fix:
 	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
+	cargo shear --fix
 
-# Build the binaries
-build: pack
-	cargo build
-
-# Build release NPM package
-pack:
+# Build the release NPM package
+build:
 	npm i && npm run build
 
 # Build and link the NPM package
-# TODO support more than just npm
-link: pack
+link:
+	npm i && npm run build:dev && npm run build:tsc
 	npm link
 
 # Delete any ephemeral build files
