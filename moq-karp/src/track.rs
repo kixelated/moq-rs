@@ -119,7 +119,7 @@ impl TrackConsumer {
 					match self.current.as_ref() {
 						Some(current) if group.sequence < current.sequence => {
 							// Ignore old groups
-							tracing::warn!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
+							tracing::debug!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
 						},
 						Some(_) => {
 							// Insert into pending based on the sequence number ascending.
@@ -130,12 +130,12 @@ impl TrackConsumer {
 					};
 				},
 				Some((index, timestamp)) = buffering.next() => {
-					tracing::warn!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
+					tracing::debug!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
 					drop(buffering);
 
 					if index > 0 {
 						self.pending.drain(0..index);
-						tracing::warn!(count = index, "skipping additional groups");
+						tracing::debug!(count = index, "skipping additional groups");
 					}
 
 					self.current = self.pending.pop_front();
