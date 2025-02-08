@@ -60,7 +60,7 @@ export class PublishUi extends MoqElement {
 						</sl-radio-button>
 					</sl-tooltip>
 
-					<sl-tooltip content="Publish nothing and leave the meeting." placement="bottom">
+					<sl-tooltip content="Publish nothing but don't leave the meeting." placement="bottom">
 						<sl-radio-button onclick={() => this.#share("")}>
 							<sl-icon slot="prefix" name="x" label="None" />
 						</sl-radio-button>
@@ -89,8 +89,11 @@ export class PublishUi extends MoqElement {
 				this.#inner = element;
 				this.#context = new Context();
 				this.#run(element, this.#context);
+				return;
 			}
 		}
+
+		throw new Error("Expected <moq-publish> element.");
 	}
 
 	async #run(inner: Publish, context: Context) {
@@ -106,11 +109,15 @@ export class PublishUi extends MoqElement {
 				}
 
 				switch (value) {
+					case "disconnected":
+						if (this.#inner?.device !== "") {
+							this.#status.replaceChildren("Disconnected");
+						} else {
+							this.#status.replaceChildren();
+						}
+						break;
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
-						break;
-					case "disconnected":
-						this.#status.replaceChildren("Disconnected");
 						break;
 					case "connected":
 					case "live": // TODO live icon

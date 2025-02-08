@@ -1,7 +1,6 @@
 import { Meet } from ".";
 
-import { MoqElement, attribute, element } from "../util/component";
-import { jsx } from "../util/jsx";
+import { Context, jsx, MoqElement, attribute, element } from "../util";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";
@@ -9,8 +8,11 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("moq-meet-ui")
 export class MeetUi extends MoqElement {
-	#meet: Meet;
+	#slot: HTMLSlotElement;
 	#status: HTMLDivElement;
+
+	#inner: Meet | null = null;
+	#context?: Context;
 
 	constructor() {
 		super();
@@ -40,22 +42,45 @@ export class MeetUi extends MoqElement {
 			/>
 		) as HTMLDivElement;
 
-		this.#meet = new Meet();
+		this.#slot = (<slot>Unable to find `moq-meet` element.</slot>) as HTMLSlotElement;
+		this.#slot.addEventListener("slotchange", () => this.#init());
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 		shadow.appendChild(this.#status);
-		shadow.appendChild(this.#meet);
-
-		this.#runStatus();
+		shadow.appendChild(this.#slot);
 	}
 
-	async #runStatus() {
+	#init() {
+		for (const element of this.#slot.assignedElements({ flatten: true })) {
+			if (element instanceof Meet) {
+				if (this.#context) {
+					this.#context.cancel("removed from DOM");
+				}
+
+				this.#inner = element;
+				this.#context = new Context();
+				this.#run(element, this.#context);
+				return;
+			}
+		}
+
+		throw new Error("Expected <moq-meet> element.");
+	}
+
+	async #run(element: Meet, context: Context) {
 		this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
 		try {
-			for await (const status of this.#meet.connectionStatus()) {
-				switch (status) {
+			const status = element.connectionStatus();
+
+			for (;;) {
+				const { done, value } = await Promise.race([status.next(), context.done]);
+				if (done) {
+					return;
+				}
+
+				switch (value) {
 					case "connecting":
 						this.#status.replaceChildren(<sl-spinner />, "Connecting...");
 						break;
@@ -72,7 +97,7 @@ export class MeetUi extends MoqElement {
 						this.#status.replaceChildren("🦗 nobody is here 🦗");
 						break;
 					default: {
-						const _exhaustive: never = status;
+						const _exhaustive: never = value;
 						throw new Error(`Unhandled state: ${_exhaustive}`);
 					}
 				}

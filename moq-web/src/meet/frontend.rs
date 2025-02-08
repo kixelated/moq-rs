@@ -84,7 +84,9 @@ impl MeetAnnounced {
 	}
 
 	pub async fn next(&mut self) -> Option<MeetAnnounce> {
-		Some(match self.inner.next().await? {
+		let next = self.inner.next().await?;
+		tracing::info!(?next);
+		Some(match next {
 			Announced::Active(suffix) => MeetAnnounce {
 				action: MeetAction::Join,
 				name: suffix[0].clone(),

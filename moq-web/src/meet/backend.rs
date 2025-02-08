@@ -64,6 +64,7 @@ impl Backend {
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
+					tracing::info!("connected to server");
 					let session = session?;
 					self.producer.reset();
 					let path = self.connect.take().unwrap().path;
@@ -71,6 +72,7 @@ impl Backend {
 					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
+					tracing::info!(?announce, "iannounce");
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
 						Announced::Active(suffix) => self.announced(suffix),

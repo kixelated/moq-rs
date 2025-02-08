@@ -2,7 +2,7 @@ import * as Rust from "@rust";
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
 import { MoqElement, jsx, attribute, element } from "../util";
 
-export type PublishDevice = "camera" | "screen" | "";
+export type PublishDevice = "camera" | "screen" | "none" | "";
 
 @element("moq-publish")
 export class Publish extends MoqElement {
@@ -57,7 +57,7 @@ export class Publish extends MoqElement {
 	}
 
 	urlChange(url: string) {
-		this.#rust.url = url !== "" ? url : null;
+		this.#rust.url = url !== "" && this.device !== "" ? url : null;
 	}
 
 	async deviceChange(value: PublishDevice) {
@@ -68,8 +68,10 @@ export class Publish extends MoqElement {
 			case "screen":
 				await this.shareScreen();
 				break;
-			case "":
+			case "none":
 				this.shareNothing();
+				break;
+			case "":
 				break;
 			default: {
 				const _: never = value;
@@ -77,6 +79,7 @@ export class Publish extends MoqElement {
 			}
 		}
 
+		this.urlChange(this.url); // Update the URL with the new device.
 		this.#updatePreview();
 	}
 
