@@ -43,7 +43,7 @@ impl AnnouncedProducer {
 		self.state.send_if_modified(|state| state.active.remove(path))
 	}
 
-	pub fn is_active(&self, path: &Path) -> bool {
+	pub fn contains(&self, path: &Path) -> bool {
 		self.state.borrow().active.contains(path)
 	}
 
@@ -58,6 +58,10 @@ impl AnnouncedProducer {
 
 	pub fn is_live(&self) -> bool {
 		self.state.borrow().live
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.state.borrow().active.is_empty()
 	}
 
 	/// Subscribe to all announced tracks, including those already active.
@@ -184,15 +188,15 @@ mod test {
 
 		let path = Path::default().push("a").push("b");
 
-		assert!(!producer.is_active(&path));
+		assert!(!producer.contains(&path));
 		assert!(producer.announce(path.clone()));
-		assert!(producer.is_active(&path));
+		assert!(producer.contains(&path));
 
 		let announced = consumer.next().now_or_never().unwrap().unwrap();
 		assert!(matches!(announced, Announced::Active(active) if active == path));
 
 		assert!(producer.unannounce(&path));
-		assert!(!producer.is_active(&path));
+		assert!(!producer.contains(&path));
 
 		let announced = consumer.next().now_or_never().unwrap().unwrap();
 		assert!(matches!(announced, Announced::Ended(active) if active == path));
@@ -211,9 +215,9 @@ mod test {
 
 		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
 		for path in &paths {
-			assert!(!producer.is_active(path));
+			assert!(!producer.contains(path));
 			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(path));
+			assert!(producer.contains(path));
 		}
 
 		// Make sure we get all of the paths only once.
@@ -238,9 +242,9 @@ mod test {
 
 		let mut paths: HashSet<Path> = HashSet::from_iter([path1, path2, path3]);
 		for path in &paths {
-			assert!(!producer.is_active(path));
+			assert!(!producer.contains(path));
 			assert!(producer.announce(path.clone()));
-			assert!(producer.is_active(path));
+			assert!(producer.contains(path));
 		}
 
 		// Subscribe after announcing.
@@ -329,11 +333,11 @@ mod test {
 
 		let path = Path::default().push("a").push("b");
 
-		assert!(!producer.is_active(&path));
+		assert!(!producer.contains(&path));
 		assert!(producer.announce(path.clone()));
-		assert!(producer.is_active(&path));
+		assert!(producer.contains(&path));
 		assert!(producer.unannounce(&path));
-		assert!(!producer.is_active(&path));
+		assert!(!producer.contains(&path));
 
 		// We missed it.
 		assert_eq!(consumer.next().now_or_never(), None);

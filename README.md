@@ -80,23 +80,6 @@ For example:
 <moq-watch url="https://relay.quic.video/demo/bbb"></moq-watch>
 ```
 
-The package is a gross frankenstein of Rust+Typescript.
-To run the demo page:
-
-```sh
-just web
-```
-
-You can also test the package locally by linking.
-Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
-
-```sh
-# Builds and runs `npm link`
-just link
-
-# In your other package
-npm link @kixelated/moq
-```
 
 See the [moq-web README](moq-web/README.md) for more information.
 

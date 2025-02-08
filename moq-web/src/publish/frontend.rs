@@ -2,7 +2,7 @@ use url::Url;
 use wasm_bindgen::prelude::*;
 use web_sys::MediaStream;
 
-use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
+use super::{Backend, Controls, ControlsSend, PublishStatus, Status, StatusRecv};
 use crate::{Error, Result};
 
 #[wasm_bindgen]
@@ -67,39 +67,13 @@ impl Publish {
 		self.status.error.get().as_ref().map(|e| e.to_string())
 	}
 
-	pub fn states(&self) -> PublishStates {
-		PublishStates {
-			state: self.status.state.clone(),
-		}
+	pub fn status(&self) -> PublishStatus {
+		PublishStatus::new(self.status.clone())
 	}
 }
 
 impl Default for Publish {
 	fn default() -> Self {
 		Self::new()
-	}
-}
-
-#[derive(Debug, Default, Copy, Clone)]
-#[wasm_bindgen]
-pub enum PublishState {
-	#[default]
-	Idle,
-	Connecting,
-	Connected,
-	Live,
-	Error,
-}
-
-// Unfortunately, we need this wrapper because `wasm_bindgen` doesn't support generics.
-#[wasm_bindgen]
-pub struct PublishStates {
-	state: baton::Recv<PublishState>,
-}
-
-#[wasm_bindgen]
-impl PublishStates {
-	pub async fn next(&mut self) -> Option<PublishState> {
-		self.state.next().await
 	}
 }

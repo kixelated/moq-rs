@@ -3,17 +3,17 @@ use url::Url;
 use wasm_bindgen::prelude::*;
 
 use super::{Backend, Controls, ControlsSend, Status, StatusRecv};
-use crate::{Error, Result};
+use crate::{Error, MeetStatus, Result};
 
 #[wasm_bindgen]
-pub struct Room {
+pub struct Meet {
 	controls: ControlsSend,
 	status: StatusRecv,
 	announced: AnnouncedConsumer,
 }
 
 #[wasm_bindgen]
-impl Room {
+impl Meet {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Self {
 		let producer = AnnouncedProducer::new();
@@ -43,17 +43,16 @@ impl Room {
 		Ok(())
 	}
 
-	pub fn announced(&self) -> RoomAnnounced {
-		RoomAnnounced::new(self.announced.clone())
+	pub fn announced(&self) -> MeetAnnounced {
+		MeetAnnounced::new(self.announced.clone())
 	}
 
-	#[wasm_bindgen(getter)]
-	pub fn error(&self) -> Option<String> {
-		self.status.error.get().as_ref().map(|e| e.to_string())
+	pub fn status(&self) -> MeetStatus {
+		MeetStatus::new(self.status.clone())
 	}
 }
 
-impl Default for Room {
+impl Default for Meet {
 	fn default() -> Self {
 		Self::new()
 	}
@@ -61,41 +60,43 @@ impl Default for Room {
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
-pub enum RoomAction {
+pub enum MeetAction {
 	Join,
 	Leave,
 	Live,
 }
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct RoomAnnounce {
-	pub action: RoomAction,
+pub struct MeetAnnounce {
+	pub action: MeetAction,
 	pub name: String,
 }
 
 #[wasm_bindgen]
-pub struct RoomAnnounced {
+pub struct MeetAnnounced {
 	inner: AnnouncedConsumer,
 }
 
 #[wasm_bindgen]
-impl RoomAnnounced {
+impl MeetAnnounced {
 	fn new(inner: AnnouncedConsumer) -> Self {
 		Self { inner }
 	}
 
-	pub async fn next(&mut self) -> Option<RoomAnnounce> {
-		Some(match self.inner.next().await? {
-			Announced::Active(suffix) => RoomAnnounce {
-				action: RoomAction::Join,
+	pub async fn next(&mut self) -> Option<MeetAnnounce> {
+		let next = self.inner.next().await?;
+		tracing::info!(?next);
+		Some(match next {
+			Announced::Active(suffix) => MeetAnnounce {
+				action: MeetAction::Join,
 				name: suffix[0].clone(),
 			},
-			Announced::Ended(suffix) => RoomAnnounce {
-				action: RoomAction::Leave,
+			Announced::Ended(suffix) => MeetAnnounce {
+				action: MeetAction::Leave,
 				name: suffix[0].clone(),
 			},
-			Announced::Live => RoomAnnounce {
-				action: RoomAction::Live,
+			Announced::Live => MeetAnnounce {
+				action: MeetAction::Live,
 				name: "".to_string(),
 			},
 		})

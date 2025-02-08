@@ -1,10 +1,11 @@
 mod backend;
 mod frontend;
 mod renderer;
-mod state;
+mod status;
 mod video;
 
 pub use frontend::*;
+pub use status::*;
 
 use backend::*;
 use renderer::*;

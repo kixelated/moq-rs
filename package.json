@@ -5,28 +5,36 @@
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		},
 		"./video": {
-			"types": "./dist/element/video.d.ts",
-			"import": "./dist/element/video.js"
+			"types": "./dist/video/index.d.ts",
+			"import": "./dist/video/index.js"
 		},
 		"./publish": {
-			"types": "./dist/element/publish.d.ts",
-			"import": "./dist/element/publish.js"
+			"types": "./dist/publish/index.d.ts",
+			"import": "./dist/publish/index.js"
+		},
+		"./publish/ui": {
+			"types": "./dist/publish/ui.d.ts",
+			"import": "./dist/publish/ui.js"
 		},
 		"./watch": {
-			"types": "./dist/element/watch.d.ts",
-			"import": "./dist/element/watch.js"
+			"types": "./dist/watch/index.d.ts",
+			"import": "./dist/watch/index.js"
+		},
+		"./watch/ui": {
+			"types": "./dist/watch/ui.d.ts",
+			"import": "./dist/watch/ui.js"
 		},
 		"./meet": {
-			"types": "./dist/element/meet.d.ts",
-			"import": "./dist/element/meet.js"
+			"types": "./dist/meet/index.d.ts",
+			"import": "./dist/meet/index.js"
+		},
+		"./meet/ui": {
+			"types": "./dist/meet/ui.d.ts",
+			"import": "./dist/meet/ui.js"
 		}
 	},
-	"sideEffects": ["./dist/rust.*", "./dist/snippets/*", "./dist/element/*"],
+	"sideEffects": ["./dist/rust.*", "./dist/snippets/*", "./dist/*/element.js", "./dist/*/ui.js"],
 	"files": ["dist", "README.md", "LICENSE*"],
 	"scripts": {
 		"build": "npm run build:prod && npm run build:tsc",
