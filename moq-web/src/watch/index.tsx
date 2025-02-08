@@ -6,7 +6,7 @@ import * as Rust from "@rust";
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
 import type { Bridge } from "./bridge";
 
-import { attribute, MoqElement, element, jsx } from "../util";
+import { MoqElement, attribute, element, jsx } from "../util";
 
 export type RendererStatus = "idle" | "paused" | "buffering" | "live";
 

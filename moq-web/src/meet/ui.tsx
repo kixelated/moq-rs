@@ -1,6 +1,6 @@
 import { Meet } from ".";
 
-import { Context, jsx, MoqElement, attribute, element } from "../util";
+import { Context, MoqElement, attribute, element, jsx } from "../util";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";

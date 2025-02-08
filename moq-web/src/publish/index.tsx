@@ -1,6 +1,6 @@
 import * as Rust from "@rust";
 import { type ConnectionStatus, convertConnectionStatus } from "../connection";
-import { MoqElement, jsx, attribute, element } from "../util";
+import { MoqElement, attribute, element, jsx } from "../util";
 
 export type PublishDevice = "camera" | "screen" | "none" | "";
 
