@@ -105,11 +105,11 @@
         "pre-commit-hooks": "pre-commit-hooks_3"
       },
       "locked": {
-        "lastModified": 1732039290,
-        "narHash": "sha256-LQKY7bShf2H9kJouxa9ZspfdrulnZF9o4kLTqGqCDYM=",
+        "lastModified": 1739289874,
+        "narHash": "sha256-BR+V6TupLqNh5lJJmRZHnCOiM25tN5st2IXPMeiHAxk=",
         "owner": "nix-community",
         "repo": "crate2nix",
-        "rev": "9ff208ce7f5a482272b1bcefbe363c772d7ff914",
+        "rev": "a308f2656639b1ade957daa3bfacf6e61f29d3a6",
         "type": "github"
       },
       "original": {
@@ -716,11 +716,11 @@
     },
     "nixpkgs_8": {
       "locked": {
-        "lastModified": 1733212471,
-        "narHash": "sha256-M1+uCoV5igihRfcUKrr1riygbe73/dzNnzPsmaLCmpo=",
+        "lastModified": 1739214665,
+        "narHash": "sha256-26L8VAu3/1YRxS8MHgBOyOM8xALdo6N0I04PgorE7UM=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "55d15ad12a74eb7d4646254e13638ad0c4128776",
+        "rev": "64e75cd44acf21c7933d61d7721e812eac1b5a0a",
         "type": "github"
       },
       "original": {
