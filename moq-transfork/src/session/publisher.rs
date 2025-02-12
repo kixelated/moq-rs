@@ -3,7 +3,9 @@ use std::collections::{hash_map, HashMap};
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message, model::{GroupConsumer, Track, TrackConsumer}, Announced, AnnouncedConsumer, AnnouncedProducer, Error, GroupOrder, Path, RouterConsumer,
+	message,
+	model::{GroupConsumer, Track, TrackConsumer},
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, GroupOrder, Path, RouterConsumer,
 };
 
 use moq_async::{spawn, FuturesExt, Lock, OrClose};
@@ -311,10 +313,11 @@ impl Publisher {
 	// TODO The behavior when two tracks share the same priority is undefined. Should we round-robin?
 	fn stream_priority(track_priority: i8, group_order: GroupOrder, group_sequence: u64) -> i32 {
 		let sequence = (group_sequence as u32) & 0xFFFFFF;
-		(track_priority as i32) << 24 | match group_order {
-			GroupOrder::Asc => sequence as i32,
-			GroupOrder::Desc => (0xFFFFFF - sequence) as i32,
-		}
+		(track_priority as i32) << 24
+			| match group_order {
+				GroupOrder::Asc => sequence as i32,
+				GroupOrder::Desc => (0xFFFFFF - sequence) as i32,
+			}
 	}
 }
 
@@ -325,23 +328,26 @@ mod test {
 	#[test]
 	fn stream_priority() {
 		let assert = |track_priority, group_order, group_sequence, expected| {
-			assert_eq!(Publisher::stream_priority(track_priority, group_order, group_sequence), expected);
+			assert_eq!(
+				Publisher::stream_priority(track_priority, group_order, group_sequence),
+				expected
+			);
 		};
 
 		const U24: i32 = (1 << 24) - 1;
 
 		// NOTE: The lower the value, the higher the priority.
-		assert(-1, GroupOrder::Asc, 0, -U24-1);
-		assert(-1, GroupOrder::Asc, 50, -U24+49);
+		assert(-1, GroupOrder::Asc, 0, -U24 - 1);
+		assert(-1, GroupOrder::Asc, 50, -U24 + 49);
 		assert(-1, GroupOrder::Desc, 50, -51);
 		assert(-1, GroupOrder::Desc, 0, -1);
 		assert(0, GroupOrder::Asc, 0, 0);
 		assert(0, GroupOrder::Asc, 50, 50);
 		assert(0, GroupOrder::Desc, 50, U24 - 50);
 		assert(0, GroupOrder::Desc, 0, U24);
-		assert(1, GroupOrder::Asc, 0, U24+1);
-		assert(1, GroupOrder::Asc, 50, U24+51);
-		assert(1, GroupOrder::Desc, 50, 2*U24-49);
-		assert(1, GroupOrder::Desc, 0, 2*U24+1);
+		assert(1, GroupOrder::Asc, 0, U24 + 1);
+		assert(1, GroupOrder::Asc, 50, U24 + 51);
+		assert(1, GroupOrder::Desc, 50, 2 * U24 - 49);
+		assert(1, GroupOrder::Desc, 0, 2 * U24 + 1);
 	}
 }
