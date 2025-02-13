@@ -22,7 +22,7 @@ gloo-net = "0.6"
 moq-karp = { version = "0.13", path = "../moq-karp", default-features = false }
 moq-async = { version = "0.1", path = "../moq-async" }
 web-streams = "0.1.1"
-web-codecs = "0.3.4"
+web-codecs = "0.3.5"
 web-time = "1"
 tokio = { version = "1", features = ["sync"] }
 

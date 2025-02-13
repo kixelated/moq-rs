@@ -31,8 +31,6 @@ struct Render {
 }
 
 impl Render {
-	const MAX_LATENCY: Duration = Duration::from_secs(10);
-
 	pub fn new(status: StatusSend) -> Self {
 		Self {
 			status,
@@ -51,7 +49,12 @@ impl Render {
 	}
 
 	fn duration(&self) -> Option<Duration> {
-		Some(self.queue.back()?.timestamp() - self.queue.front()?.timestamp())
+		Some(
+			self.queue
+				.back()?
+				.timestamp()
+				.saturating_sub(self.queue.front()?.timestamp()),
+		)
 	}
 
 	pub fn push(&mut self, frame: VideoFrame) {
@@ -75,8 +78,8 @@ impl Render {
 		if let Some((wall_ref, pts_ref)) = self.latency_ref {
 			let wall_elapsed = now - wall_ref;
 
-			while !self.queue.is_empty() {
-				let pts_elapsed = frame.timestamp() - pts_ref;
+			while let Some(next) = self.queue.front() {
+				let pts_elapsed = next.timestamp().saturating_sub(pts_ref);
 				if wall_elapsed <= pts_elapsed {
 					break;
 				}
@@ -113,15 +116,8 @@ impl Render {
 			return;
 		}
 
-		// If paused, only buffer enough frames to allow instant playback at the current latency.
-		// If not paused, we apply an upperbound that is mostly relevant when the tab is backgrounded.
-		let latency = match self.state {
-			RendererStatus::Paused => self.latency,
-			_ => Self::MAX_LATENCY,
-		};
-
 		// Drop frames if the buffer is too full.
-		while self.duration().unwrap() > latency {
+		while self.duration().unwrap() > self.latency {
 			self.latency_ref = None;
 			self.queue.pop_front();
 		}

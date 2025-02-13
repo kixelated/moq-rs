@@ -80,8 +80,9 @@ impl Video {
 				// A new output frame is available.
 				Some(frame) = self.encoded.frame().transpose() => {
 					let frame = frame?;
+					// TODO combine these types one day?
 					let frame = moq_karp::Frame {
-						timestamp: moq_karp::Timestamp::from_micros(frame.timestamp.as_micros()),
+						timestamp: frame.timestamp,
 						keyframe: frame.keyframe,
 						payload: frame.payload,
 					};

@@ -28,7 +28,7 @@ impl TrackProducer {
 
 	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub fn write(&mut self, frame: Frame) {
-		let timestamp = frame.timestamp.as_micros();
+		let timestamp = frame.timestamp.as_micros() as u64;
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
 		timestamp.encode(&mut header);
 
