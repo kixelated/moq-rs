@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.3...moq-web-v0.4.4) - 2025-02-13
+
+### Other
+
+- Fix up some renderer issues. ([#338](https://github.com/kixelated/moq-rs/pull/338))
+- Separate UI from headless elements. ([#333](https://github.com/kixelated/moq-rs/pull/333))
+- Add a basic meeting grid. ([#329](https://github.com/kixelated/moq-rs/pull/329))
+- *(moq-web)* release v0.4.3 (#326)
+
 ## [0.4.3](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.2...moq-web-v0.4.3) - 2025-01-30
 
 ### Other

@@ -5,14 +5,14 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.6.5"
+version = "0.6.6"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transfork = { path = "../moq-transfork", version = "0.10" }
+moq-transfork = { path = "../moq-transfork", version = "0.11" }
 web-transport = { workspace = true }
 
 rustls = "0.23"
