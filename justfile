@@ -101,6 +101,7 @@ test:
 
 # Automatically fix some issues.
 fix:
+	cargo fix --all --allow-staged --all-targets --all-features
 	cargo clippy --all --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
