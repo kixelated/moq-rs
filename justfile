@@ -114,6 +114,10 @@ upgrade:
 	cargo install cargo-upgrades cargo-edit
 	cargo upgrade
 
+	# Update the NPM dependencies
+	npm update
+	npm outdated
+
 # Build the release NPM package
 build:
 	npm i && npm run build
