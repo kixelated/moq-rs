@@ -1,4 +1,12 @@
-pub struct Publisher {}
+use std::collections::HashMap;
+
+use super::{AnnounceId, Connection, Error, GroupId, SubscribeId, SubscribedId};
+
+#[derive(Default)]
+pub struct Publisher {
+	announce: HashMap<AnnounceId, Announce>,
+	subscribed: HashMap<SubscribedId, Subscribed>,
+}
 
 impl Publisher {
 	pub fn announce(&mut self, path: &str) {}
@@ -32,7 +40,7 @@ impl<'a> Group<'a> {
 	pub fn cancel(mut self, error: Error) {}
 	pub fn done(mut self) {}
 
-	pub fn frame(&mut self, data: Bytes) {}
+	pub fn frame(&mut self, data: &[u8]) {}
 	pub fn frame_create(&mut self, size: usize) -> Frame<'a> {}
 	pub fn frame_current(&mut self) -> Option<Frame<'a>> {}
 }
@@ -47,4 +55,12 @@ impl<'a> Frame<'a> {
 	pub fn done(mut self) {}
 
 	pub fn chunk(&mut self, data: Bytes) {}
+}
+
+#[derive(Default)]
+enum Announce {
+	#[default]
+	Init,
+	Active(message::Announce),
+	Closed(Error),
 }

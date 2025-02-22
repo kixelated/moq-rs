@@ -16,3 +16,7 @@ bytes = "1"
 thiserror = "2"
 tracing = "0.1"
 num_enum = "0.7"
+
+[dependencies.derive_more]
+version = "2"
+features = ["from", "display", "debug", "into"]

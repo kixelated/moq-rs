@@ -61,7 +61,7 @@ impl Encode for Subscribe {
 
 #[derive(Clone, Debug)]
 pub struct SubscribeUpdate {
-	pub priority: u64,
+	pub priority: i8,
 
 	pub group_order: group::GroupOrder,
 	pub group_min: Option<u64>,
@@ -70,7 +70,7 @@ pub struct SubscribeUpdate {
 
 impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let priority = u64::decode(r)?;
+		let priority = i8::decode(r)?;
 		let group_order = group::GroupOrder::decode(r)?;
 		let group_min = match u64::decode(r)? {
 			0 => None,

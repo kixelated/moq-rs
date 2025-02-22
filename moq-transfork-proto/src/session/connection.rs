@@ -1,29 +1,110 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{hash_map, HashMap, VecDeque};
 
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, DecodeError},
-	message::{self, ControlType, DataType},
+	message::{ControlType, DataType},
 };
 
-use super::Error;
+use derive_more::From;
 
+use super::{Error, Publisher, StreamId, Subscriber};
+
+#[derive(Default)]
 pub struct Connection {
-	streams: HashMap<usize, Stream>,
-
-	announce: HashMap<AnnounceId, Announce>,
-	announced: HashMap<AnnouncedId, Announced>,
-	subscribe: HashMap<SubscirbeId, Subscribe>,
-	subscribed: HashMap<SubscribedId, Subscribed>,
+	streams: HashMap<StreamId, Stream>,
+	publisher: Publisher,
+	subscriber: Subscriber,
 }
 
 impl Connection {
-	pub fn recv(&mut self, stream: usize, buf: &[u8]) -> Result<(), Error> {
-		let stream = self.streams.entry(stream).or_insert_with(Stream::control);
-		stream.recv(buf)?;
-		Ok(())
+	/// Receive stream data from the remote.
+	pub fn recv<B: Buf>(&mut self, id: StreamId, buf: &mut B) -> Result<(), Error> {
+		if buf.is_empty() {
+			return Ok(());
+		}
+
+		let stream = match self.streams.entry(id) {
+			hash_map::Entry::Occupied(entry) => entry.into_mut(),
+			hash_map::Entry::Vacant(entry) => {
+				let kind = match id.is_bi() {
+					true => ControlType::decode(buf)?.into(),
+					false => DataType::decode(buf)?.into(),
+				};
+
+				entry.insert(Stream::new(buf))
+			}
+		};
+
+		let buffer = stream.buffer.take().ok_or(Error::Poisoned)?;
+		let chain = buffer.chain(buf);
+
+		let res = match stream.kind {
+			StreamKind::Data(kind) => match kind {
+				DataType::Group => self.subscriber.recv_group(id, buf),
+			},
+			StreamKind::Control(kind) => match kind {
+				ControlType::Announce => self.publisher.recv_announce(id, buf),
+				ControlType::Subscribe => self.publisher.recv_subscribe(id, buf),
+				ControlType::Info => self.publisher.recv_info(id, buf),
+				ControlType::Session => self.recv_session(id, buf),
+				ControlType::Fetch => unimplemented!(),
+			},
+		};
+
+		match res {
+			Error::Coding(DecodeError::Short) => {
+				buffer.extend(buf);
+				stream.buffer = Some(buffer);
+				Ok(())
+			}
+			res => res,
+		}
 	}
+
+	/// Receive a stream close from the remote.
+	pub fn recv_close(&mut self, stream: StreamId, code: Option<u8>) -> Result<(), Error> {
+		todo!()
+	}
+
+	/// Return the next chunk of data to send, if any
+	pub fn send<B: BufMut>(&mut self, buf: &mut B) -> Option<StreamId> {
+		if let Some(stream) = self.publisher.send(buf) {
+			return Some(stream);
+		}
+
+		self.subscriber.send(buf)
+	}
+
+	/// Return the next stream that should be closed, if any.
+	pub fn send_close(&mut self) -> Option<(StreamId, Option<u8>)> {
+		if let Some(stream) = self.publisher.send_close() {
+			return Some(stream);
+		}
+
+		self.subscriber.send_close()
+	}
+
+	/// Return a handle to the publishing half.
+	pub fn publisher(&mut self) -> &mut Publisher {
+		&mut self.publisher
+	}
+
+	/// Return a handle to the subscribing half.
+	pub fn subscriber(&mut self) -> &mut Publisher {
+		&mut self.publisher
+	}
+
+	fn recv_session<B: Buf>(&mut self, id: StreamId, buf: &mut B) -> Result<(), Error> {
+		todo!("perform handshake")
+	}
+}
+
+#[derive(From)]
+enum StreamKind {
+	Control(ControlType),
+	Data(DataType),
 }
 
 struct Stream {
@@ -32,28 +113,12 @@ struct Stream {
 }
 
 impl Stream {
-	pub fn control() -> Self {
+	pub fn new(kind: StreamKind) -> Self {
 		Self {
 			buffer: Some(VecDeque::new()),
-			kind: StreamKind::Control,
+			kind,
 		}
 	}
-
-	pub fn data() -> Self {
-		Self {
-			buffer: Some(VecDeque::new()),
-			kind: StreamKind::Data,
-		}
-	}
-}
-
-enum StreamKind {
-	Control, // Type not yet known
-	Data,    // Type not yet known
-	Group(Group),
-	Session(Session),
-	Announce(Announce),
-	Subscribe(Subscribe),
 }
 
 impl Stream {
@@ -72,76 +137,6 @@ impl Stream {
 				}
 				Err(err) => return Err(err),
 			}
-		}
-	}
-
-	fn recv_once<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
-		match &mut self.kind {
-			StreamKind::Control => {
-				self.kind = match ControlType::decode(buf)? {
-					ControlType::Session => StreamKind::Session(Default::default()),
-					ControlType::Announce => StreamKind::Announce(Default::default()),
-					ControlType::Subscribe => StreamKind::Subscribe(Default::default()),
-					ControlType::Fetch => unimplemented!(),
-					ControlType::Info => unimplemented!(),
-				}
-			}
-			StreamKind::Session(state) => {}
-			StreamKind::Subscribe(state) => {}
-			StreamKind::Announce(state) => {}
-			StreamKind::Data => {
-				self.kind = match DataType::decode(buf)? {
-					DataType::Group => StreamKind::Group(Default::default()),
-				}
-			}
-			StreamKind::Group(state) => {}
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Default)]
-enum Group {
-	#[default]
-	Init,
-	Active(message::Group),
-	Closed(Error),
-}
-
-#[derive(Default)]
-enum Session {
-	#[default]
-	Init,
-	Active,
-	Closed(Error),
-}
-
-#[derive(Default)]
-enum Announce {
-	#[default]
-	Init,
-	Active(message::Announce),
-	Closed(Error),
-}
-
-#[derive(Default)]
-enum Subscribe {
-	#[default]
-	Init,
-	Active(message::Subscribe),
-	Closed(Error),
-}
-
-impl Subscribe {
-	pub fn recv<B: Buf>(&mut self, buf: B) -> Result<(), Error> {
-		match self {
-			Self::Init => {
-				let subscribe = message::Subscribe::decode(buf)?;
-				*self = Self::Active(subscribe);
-			}
-			Self::Active(_) => return Err(Error::Unexpected),
-			Self::Closed(_) => return Err(Error::Closed),
 		}
 	}
 }
