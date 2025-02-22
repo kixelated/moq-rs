@@ -16,7 +16,7 @@ wasm-bindgen-futures = "0.4"
 
 console_error_panic_hook = "0.1"
 tracing = "0.1"
-wasm-tracing = "0.2"
+wasm-tracing = "1.0"
 gloo-net = "0.6"
 
 moq-karp = { version = "0.14", path = "../moq-karp", default-features = false }

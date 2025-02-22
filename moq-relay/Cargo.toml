@@ -23,7 +23,7 @@ url = "2"
 tokio = { version = "1", features = ["full"] }
 
 # Web server
-axum = { version = "0.7", features = ["tokio"] }
+axum = { version = "0.8", features = ["tokio"] }
 hyper-serve = { version = "0.6", features = [
 	"tls-rustls",
 ] } # fork of axum-server

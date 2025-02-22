@@ -43,7 +43,7 @@ clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
 
 [dependencies.derive_more]
-version = "1"
+version = "2"
 features = ["from", "display", "debug"]
 
 [features]

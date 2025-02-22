@@ -18,8 +18,9 @@ pub fn start() {
 	// This is not needed for tracing_wasm to work, but it is a common tool for getting proper error line numbers for panics.
 	console_error_panic_hook::set_once();
 
-	let config = wasm_tracing::WASMLayerConfigBuilder::new()
-		.set_max_level(tracing::Level::INFO)
-		.build();
-	wasm_tracing::set_as_global_default_with_config(config);
+	let config = wasm_tracing::WasmLayerConfig {
+		max_level: tracing::Level::INFO,
+		..Default::default()
+	};
+	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
 }
