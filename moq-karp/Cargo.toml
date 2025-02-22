@@ -18,7 +18,7 @@ moq-transfork = { path = "../moq-transfork", version = "0.11" }
 moq-async = { path = "../moq-async", version = "0.1" }
 
 url = "2"
-bytes = "1.9"
+bytes = "1.10"
 hex = "0.4"
 
 mp4-atom = { version = "0.4", features = ["tokio", "bytes"] }
@@ -43,7 +43,7 @@ clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
 
 [dependencies.derive_more]
-version = "1"
+version = "2"
 features = ["from", "display", "debug"]
 
 [features]

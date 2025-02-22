@@ -11,6 +11,9 @@ default:
 
 # Install any required dependencies.
 setup:
+	# Upgrade Rust
+	rustup update
+
 	# Make sure the WASM target is installed.
 	rustup target add wasm32-unknown-unknown
 
@@ -18,14 +21,10 @@ setup:
 	rustup component add rustfmt clippy
 
 	# Install cargo binstall if needed.
-	if ! command -v cargo-binstall > /dev/null; then \
-		cargo install cargo-binstall; \
-	fi
+	cargo install cargo-binstall
 
 	# Install cargo shear if needed.
-	if ! command -v cargo-shear > /dev/null; then \
-		cargo binstall --no-confirm cargo-shear; \
-	fi
+	cargo binstall --no-confirm cargo-shear
 
 # Run the relay, web server, and publish bbb.
 all:
@@ -33,11 +32,11 @@ all:
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
 
 # Run a localhost leaf server, connecting to the relay server
 leaf:
-	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
 
 # Run a cluster of relay servers
 cluster:
@@ -106,6 +105,14 @@ fix:
 	cargo fmt --all
 	npm i && npm run fix
 	cargo shear --fix
+
+# Upgrade any tooling
+upgrade:
+	rustup upgrade
+
+	# Install cargo-upgrades if needed.
+	cargo install cargo-upgrades cargo-edit
+	cargo upgrade
 
 # Build the release NPM package
 build:

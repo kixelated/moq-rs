@@ -12,6 +12,17 @@ Required arguments:
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
 
+## HTTP
+Primarily for debugging, you can also connect to the relay via HTTP.
+
+-  `GET /fingerprint`: Returns the fingerprint of the TLS certificate.
+-  `GET /announced/*prefix`: Returns all of the announced tracks with the given (optional) prefix.
+-  `GET /fetch/*path`: Returns the latest group of the given track.
+
+The HTTP server listens on the same bind address, but TCP instead of UDP.
+The default is `http://localhost:4443`.
+HTTPS is currently not supported.
+
 ## Clustering
 In order to scale MoQ, you will eventually need to run multiple moq-relay instances potentially in different regions.
 This is called *clustering*, where the goal is that a user connects to the closest relay and they magically form a mesh behind the scenes.
@@ -30,7 +41,7 @@ Cluster arguments:
 -   `--cluster-root <HOST>`: The hostname/ip of the root node. If missing, this node is a root.
 -   `--cluster-node <HOST>`: The hostname/ip of this instance. There needs to be a corresponding valid TLS certificate, potentially self-signed. If missing, published broadcasts will only be available on this specific relay.
 
-## Authentication 
+## Authentication
 There is currently no authentication.
 All broadcasts are public and discoverable.
 

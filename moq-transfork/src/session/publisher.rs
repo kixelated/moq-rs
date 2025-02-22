@@ -313,7 +313,7 @@ impl Publisher {
 	// TODO The behavior when two tracks share the same priority is undefined. Should we round-robin?
 	fn stream_priority(track_priority: i8, group_order: GroupOrder, group_sequence: u64) -> i32 {
 		let sequence = (group_sequence as u32) & 0xFFFFFF;
-		(track_priority as i32) << 24
+		((track_priority as i32) << 24)
 			| match group_order {
 				GroupOrder::Asc => sequence as i32,
 				GroupOrder::Desc => (0xFFFFFF - sequence) as i32,
