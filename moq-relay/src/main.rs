@@ -14,7 +14,7 @@ use moq_native::quic;
 
 #[derive(Parser, Clone)]
 pub struct Config {
-	/// Listen on this address
+	/// Listen on this address, both TCP and UDP.
 	#[arg(long, default_value = "[::]:443")]
 	pub bind: String,
 
@@ -29,10 +29,6 @@ pub struct Config {
 	/// Cluster configuration.
 	#[command(flatten)]
 	pub cluster: ClusterConfig,
-
-	/// Run a web server for debugging purposes.
-	#[arg(long)]
-	pub dev: bool,
 }
 
 #[tokio::main]
@@ -51,22 +47,23 @@ async fn main() -> anyhow::Result<()> {
 		anyhow::bail!("missing TLS certificates");
 	}
 
-	if config.dev {
-		// Create a web server too.
-		// Currently this only contains the certificate fingerprint (for development only).
-		let web = Web::new(WebConfig { bind, tls: tls.clone() });
-
-		tokio::spawn(async move {
-			web.run().await.expect("failed to run web server");
-		});
-	}
-
-	let quic = quic::Endpoint::new(quic::Config { bind, tls })?;
+	let quic = quic::Endpoint::new(quic::Config { bind, tls: tls.clone() })?;
 	let mut server = quic.server.context("missing TLS certificate")?;
 
 	let cluster = Cluster::new(config.cluster.clone(), quic.client);
 	let cloned = cluster.clone();
 	tokio::spawn(async move { cloned.run().await.expect("cluster failed") });
+
+	// Create a web server too.
+	let web = Web::new(WebConfig {
+		bind,
+		tls,
+		cluster: cluster.clone(),
+	});
+
+	tokio::spawn(async move {
+		web.run().await.expect("failed to run web server");
+	});
 
 	tracing::info!(addr = %bind, "listening");
 
