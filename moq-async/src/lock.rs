@@ -18,11 +18,11 @@ impl<T> Lock<T> {
 			inner: std::sync::Arc::new(std::sync::Mutex::new(value)),
 		}
 	}
+}
 
+impl<T> Lock<T> {
 	pub fn lock(&self) -> LockGuard<T> {
-		LockGuard {
-			inner: self.inner.lock().unwrap(),
-		}
+		LockGuard::new(&self.inner)
 	}
 
 	pub fn downgrade(&self) -> LockWeak<T> {
@@ -35,12 +35,6 @@ impl<T> Lock<T> {
 	pub fn new(value: T) -> Self {
 		Self {
 			inner: std::rc::Rc::new(std::cell::RefCell::new(value)),
-		}
-	}
-
-	pub fn lock(&self) -> LockGuard<T> {
-		LockGuard {
-			inner: self.inner.borrow_mut(),
 		}
 	}
 }
@@ -65,6 +59,24 @@ pub struct LockGuard<'a, T> {
 
 	#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
 	inner: std::cell::RefMut<'a, T>,
+}
+
+#[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+impl<'a, T> LockGuard<'a, T> {
+	fn new(inner: &'a std::sync::Arc<std::sync::Mutex<T>>) -> Self {
+		Self {
+			inner: inner.lock().unwrap(),
+		}
+	}
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+impl<'a, T> LockGuard<'a, T> {
+	fn new(inner: &'a std::rc::Rc<std::cell::RefCell<T>>) -> Self {
+		Self {
+			inner: inner.borrow_mut(),
+		}
+	}
 }
 
 impl<T> Deref for LockGuard<'_, T> {
@@ -92,7 +104,7 @@ pub struct LockWeak<T> {
 	inner: std::sync::Weak<std::sync::Mutex<T>>,
 
 	#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
-	inner: std::rc::Rc<std::cell::RefCell<T>>,
+	inner: std::rc::Weak<std::cell::RefCell<T>>,
 }
 
 #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
@@ -102,22 +114,18 @@ impl<T> LockWeak<T> {
 			inner: std::sync::Arc::downgrade(inner),
 		}
 	}
-
-	pub fn upgrade(&self) -> Option<Lock<T>> {
-		Some(Lock {
-			inner: self.inner.upgrade()?,
-		})
-	}
 }
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
 impl<T> LockWeak<T> {
-	fn new(inner: &std::sync::Rc<std::cell::RefCell<T>>) -> Self {
+	fn new(inner: &std::rc::Rc<std::cell::RefCell<T>>) -> Self {
 		Self {
-			inner: std::sync::Rc::downgrade(inner),
+			inner: std::rc::Rc::downgrade(inner),
 		}
 	}
+}
 
+impl<T> LockWeak<T> {
 	pub fn upgrade(&self) -> Option<Lock<T>> {
 		Some(Lock {
 			inner: self.inner.upgrade()?,
