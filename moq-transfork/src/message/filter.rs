@@ -101,7 +101,7 @@ pub struct FilterMatch<'a> {
 
 impl<'a> FilterMatch<'a> {
 	pub fn full(&self) -> &'a str {
-		&self.full
+		self.full
 	}
 
 	pub fn capture(&self) -> &'a str {
@@ -114,7 +114,7 @@ impl<'a> FilterMatch<'a> {
 	}
 }
 
-impl<'a> fmt::Debug for FilterMatch<'a> {
+impl fmt::Debug for FilterMatch<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("FilterMatch")
 			.field("full", &self.full())

@@ -126,7 +126,7 @@ impl ProducerState {
 
 		while let Some((consumer, notify)) = self.consumers.get(i) {
 			if !notify.is_closed() {
-				consumer.lock().remove(&path);
+				consumer.lock().remove(path);
 				notify.try_send(()).ok();
 				i += 1;
 			} else {

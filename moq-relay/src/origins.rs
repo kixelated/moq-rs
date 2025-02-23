@@ -69,7 +69,7 @@ impl Origins {
 
 		if entry.is_empty() {
 			routes.remove(path);
-			self.unique.unannounce(&path);
+			self.unique.unannounce(path);
 		}
 	}
 
