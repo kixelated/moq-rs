@@ -49,14 +49,14 @@ impl Web {
 				}),
 			)
 			.route(
-				"/announced/*prefix",
+				"/announced/{*prefix}",
 				get({
 					let cluster = config.cluster.clone();
 					move |path| serve_announced(path, cluster)
 				}),
 			)
 			.route(
-				"/fetch/*path",
+				"/fetch/{*path}",
 				get({
 					let cluster = config.cluster.clone();
 					move |path| serve_fetch(path, cluster)
