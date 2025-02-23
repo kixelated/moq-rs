@@ -32,10 +32,12 @@
 //! If the publisher disconnects, then the consumer will error.
 //! If the publisher is dropped (clean FIN), then the above methods will return [None].
 //!
+mod connection;
 mod error;
 mod model;
 mod session;
 
+pub use connection::*;
 pub use error::*;
 pub use model::*;
 pub use session::*;

@@ -11,6 +11,12 @@ pub enum Error {
 	#[error("unknown stream")]
 	UnknownStream,
 
+	#[error("duplicate stream")]
+	DuplicateStream,
+
+	#[error("wrong stream type")]
+	WrongStreamType,
+
 	#[error("poisoned")]
 	Poisoned,
 }
