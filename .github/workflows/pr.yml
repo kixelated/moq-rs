@@ -23,8 +23,9 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # Install Machete to find unused dependencies
-      - run: cargo install cargo-machete
+      # Install Shear to find unused dependencies
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall --no-confirm --force cargo-shear
 
       # Install Node for moq-web
       - uses: actions/setup-node@v4
@@ -34,6 +35,3 @@ jobs:
 
       # Make sure u guys don't write bad code
       - run: just check
-
-      # Make sure the project builds
-      - run: just build

@@ -5,23 +5,19 @@ use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Anno
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::{Connect, Error, Result};
+use crate::{Connect, ConnectionStatus, Error, Result};
+
+use super::StatusSend;
 
 #[derive(Debug, Default, Baton)]
 pub struct Controls {
 	pub url: Option<Url>,
 }
 
-#[derive(Debug, Default, Baton)]
-pub struct Status {
-	pub error: Option<Error>,
-}
-
 pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
-	room: Option<String>,
 	connect: Option<Connect>,
 	announced: Option<AnnouncedConsumer>,
 
@@ -36,7 +32,6 @@ impl Backend {
 			status,
 			producer,
 
-			room: None,
 			connect: None,
 			announced: None,
 			unique: HashMap::new(),
@@ -60,35 +55,32 @@ impl Backend {
 					// TODO unannounce existing entries?
 					self.announced = None;
 
-					if let Some(url) = url{
-						// Connect using the base of the URL.
-						let mut addr = url.clone();
-						addr.set_fragment(None);
-						addr.set_query(None);
-						addr.set_path("");
-
-						self.room = Some(url.path().to_string());
-						self.connect = Some(Connect::new(addr));
+					if let Some(url) = url {
+						self.connect = Some(Connect::new(url));
+						self.status.connection.update(ConnectionStatus::Connecting);
 					} else {
-						self.room = None;
 						self.connect = None;
+						self.status.connection.update(ConnectionStatus::Disconnected);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
+					tracing::info!("connected to server");
 					let session = session?;
 					self.producer.reset();
-					let room = self.room.as_ref().unwrap();
-					tracing::info!(?room, "connected to remote");
-					let filter = format!("{}/*/.catalog", room);
+					let path = self.connect.take().unwrap().path;
+
+					// TODO make a helper in karp for this
+					let filter = format!("{}/*/.catalog.json", path);
 					self.announced = Some(session.announced(filter));
-					self.connect = None;
+					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
+					tracing::info!(?announce, "announce");
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
-						Announced::Active(am) => self.announced(am),
-						Announced::Ended(am) => self.unannounced(am),
-						Announced::Live => { self.producer.live(); },
+						Announced::Active(track) => self.announced(track),
+						Announced::Ended(track) => self.unannounced(track),
+						Announced::Live => self.live(),
 					}
 				},
 				else => return Ok(()),
@@ -97,24 +89,24 @@ impl Backend {
 	}
 
 	// Parse the user's name out of the "name/id" pair
-	fn parse_name(am: AnnouncedMatch) -> std::result::Result<String, AnnouncedMatch> {
-		match am.capture().find("/") {
+	fn parse_name(track: AnnouncedMatch) -> std::result::Result<String, AnnouncedMatch> {
+		match track.capture().find("/") {
 			Some(index) => {
 				// Make sure there's only one slash for bonus points
-				if am.capture()[index + 1..].contains("/") {
-					return Err(am);
+				if track.capture()[index + 1..].contains("/") {
+					return Err(track);
 				}
 
-				let mut capture = am.to_capture();
+				let mut capture = track.to_capture();
 				capture.truncate(index);
 				Ok(capture)
 			}
-			None => Err(am),
+			None => Err(track),
 		}
 	}
 
-	fn announced(&mut self, am: AnnouncedMatch) {
-		let name = match Self::parse_name(am) {
+	fn announced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
 			Ok(name) => name,
 			Err(name) => {
 				tracing::warn!(?name, "failed to parse track name");
@@ -132,10 +124,12 @@ impl Backend {
 				self.producer.announce(name);
 			}
 		}
+
+		self.update_status();
 	}
 
-	fn unannounced(&mut self, am: AnnouncedMatch) {
-		let name = match Self::parse_name(am) {
+	fn unannounced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
 			Ok(name) => name,
 			Err(_) => return,
 		};
@@ -148,6 +142,21 @@ impl Backend {
 				entry.remove();
 				self.producer.unannounce(&name);
 			}
+		}
+
+		self.update_status();
+	}
+
+	fn live(&mut self) {
+		self.producer.live();
+		self.update_status();
+	}
+
+	fn update_status(&mut self) {
+		if self.producer.is_empty() {
+			self.status.connection.update(ConnectionStatus::Offline);
+		} else {
+			self.status.connection.update(ConnectionStatus::Live);
 		}
 	}
 }

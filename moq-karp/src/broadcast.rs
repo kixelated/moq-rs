@@ -51,7 +51,7 @@ impl BroadcastProducer {
 	}
 
 	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
-		let path = format!("{}/{}/{}", self.path, self.id, &info.track.name);
+		let path = format!("{}/{}/{}.catalog.json", self.path, self.id, &info.track.name);
 
 		let (producer, consumer) = moq_transfork::Track {
 			path,
@@ -168,7 +168,7 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: String) -> Self {
-		let filter = format!("{}/*/{}", path, ".catalog");
+		let filter = format!("{}/*/{}", path, ".catalog.json");
 		let announced = session.announced(filter);
 
 		Self {

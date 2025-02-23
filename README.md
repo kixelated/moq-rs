@@ -23,14 +23,20 @@ The project is split into a few crates:
 
 # Usage
 ## Requirements
-- [Rust](https://www.rust-lang.org/tools/install)
-- WASM target: `rustup target add wasm32-unknown-unknown`
+- [Rustup](https://www.rust-lang.org/tools/install)
 - [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
 - [Node + NPM](https://nodejs.org/)
 
-## Development
+## Setup
 We use `just` to simplify the development process.
 Check out the [Justfile](justfile) or run `just` to see the available commands.
+
+Install any other required tools:
+```sh
+just setup
+```
+
+## Development
 
 ```sh
 # Run the relay, a demo movie, and web server:
@@ -44,6 +50,11 @@ just web
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
+When you're ready to submit a PR, make sure the tests pass or face the wrath of CI:
+```sh
+just check
+just test
+```
 
 # Components
 ## moq-relay
@@ -69,23 +80,6 @@ For example:
 <moq-watch url="https://relay.quic.video/demo/bbb"></moq-watch>
 ```
 
-The package is a gross frankenstein of Rust+Typescript.
-To run the demo page:
-
-```sh
-just web
-```
-
-You can also test the package locally by linking.
-Replace `npm` with your favorite package manager (ex. pnpm, yarn, bun); it might work.
-
-```sh
-just pack
-npm link
-
-# In your other package
-npm link @kixelated/moq
-```
 
 See the [moq-web README](moq-web/README.md) for more information.
 

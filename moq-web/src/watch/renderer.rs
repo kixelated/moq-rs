@@ -7,29 +7,12 @@ use web_codecs::{Timestamp, VideoFrame};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use web_time::Instant;
 
-use super::{ControlsRecv, StatusSend};
-
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
-#[wasm_bindgen]
-pub enum RenderState {
-	// No video track has been configured.
-	#[default]
-	None,
-
-	// Rendering has been paused.
-	Paused,
-
-	// No frame has been received for >1s
-	Buffering,
-
-	// Rendering is active.
-	Live,
-}
+use super::{ControlsRecv, RendererStatus, StatusSend};
 
 struct Render {
 	status: StatusSend,
 
-	state: RenderState,
+	state: RendererStatus,
 	scheduled: bool,
 	resolution: Dimensions,
 
@@ -48,13 +31,11 @@ struct Render {
 }
 
 impl Render {
-	const MAX_LATENCY: Duration = Duration::from_secs(10);
-
 	pub fn new(status: StatusSend) -> Self {
 		Self {
 			status,
 			scheduled: false,
-			state: RenderState::None,
+			state: RendererStatus::Idle,
 			canvas: None,
 			context: None,
 			resolution: Default::default(),
@@ -68,7 +49,12 @@ impl Render {
 	}
 
 	fn duration(&self) -> Option<Duration> {
-		Some(self.queue.back()?.timestamp() - self.queue.front()?.timestamp())
+		Some(
+			self.queue
+				.back()?
+				.timestamp()
+				.saturating_sub(self.queue.front()?.timestamp()),
+		)
 	}
 
 	pub fn push(&mut self, frame: VideoFrame) {
@@ -81,8 +67,8 @@ impl Render {
 		self.scheduled = false;
 
 		match self.state {
-			RenderState::Paused | RenderState::None => return,
-			RenderState::Live | RenderState::Buffering => (),
+			RendererStatus::Paused | RendererStatus::Idle => return,
+			RendererStatus::Live | RendererStatus::Buffering => (),
 		}
 
 		let now = Instant::now();
@@ -92,8 +78,8 @@ impl Render {
 		if let Some((wall_ref, pts_ref)) = self.latency_ref {
 			let wall_elapsed = now - wall_ref;
 
-			while !self.queue.is_empty() {
-				let pts_elapsed = frame.timestamp() - pts_ref;
+			while let Some(next) = self.queue.front() {
+				let pts_elapsed = next.timestamp().saturating_sub(pts_ref);
 				if wall_elapsed <= pts_elapsed {
 					break;
 				}
@@ -130,15 +116,8 @@ impl Render {
 			return;
 		}
 
-		// If paused, only buffer enough frames to allow instant playback at the current latency.
-		// If not paused, we apply an upperbound that is mostly relevant when the tab is backgrounded.
-		let latency = match self.state {
-			RenderState::Paused => self.latency,
-			_ => Self::MAX_LATENCY,
-		};
-
 		// Drop frames if the buffer is too full.
-		while self.duration().unwrap() > latency {
+		while self.duration().unwrap() > self.latency {
 			self.latency_ref = None;
 			self.queue.pop_front();
 		}
@@ -150,7 +129,7 @@ impl Render {
 		}
 
 		match self.state {
-			RenderState::Live | RenderState::Buffering => (),
+			RendererStatus::Live | RendererStatus::Buffering => (),
 			_ => return,
 		}
 
@@ -195,10 +174,10 @@ impl Render {
 			true => {
 				self.queue.clear();
 				self.latency_ref = None;
-				self.set_state(RenderState::Paused);
+				self.set_state(RendererStatus::Paused);
 			}
 			false => {
-				self.set_state(RenderState::Buffering);
+				self.set_state(RendererStatus::Buffering);
 				self.schedule();
 			}
 		};
@@ -213,10 +192,10 @@ impl Render {
 		}
 
 		if resolution == Default::default() {
-			self.set_state(RenderState::None);
+			self.set_state(RendererStatus::Idle);
 			self.queue.clear();
 		} else {
-			self.set_state(RenderState::Buffering);
+			self.set_state(RendererStatus::Buffering);
 			self.schedule();
 		}
 	}
@@ -224,16 +203,16 @@ impl Render {
 	pub fn set_latency(&mut self, duration: Duration) {
 		self.latency = duration;
 		self.latency_ref = None;
-		self.set_state(RenderState::Buffering);
+		self.set_state(RendererStatus::Buffering);
 	}
 
-	fn set_state(&mut self, state: RenderState) {
+	fn set_state(&mut self, state: RendererStatus) {
 		self.state = state;
 		self.status.render.update(state);
 	}
 
 	fn set_live(&mut self) {
-		self.set_state(RenderState::Live);
+		self.set_state(RendererStatus::Live);
 
 		// Cancel any existing timeout.
 		if let Some(handle) = self.timeout_handle {
@@ -247,8 +226,8 @@ impl Render {
 
 	// Called after 1s of no frames.
 	fn timeout(&mut self) {
-		if self.state == RenderState::Live {
-			self.set_state(RenderState::Buffering);
+		if self.state == RendererStatus::Live {
+			self.set_state(RendererStatus::Buffering);
 		}
 	}
 }

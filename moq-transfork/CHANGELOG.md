@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.10.0...moq-transfork-v0.11.0) - 2025-02-13
+
+### Other
+
+- Fix up some renderer issues. ([#338](https://github.com/kixelated/moq-rs/pull/338))
+- Prioritize send streams. ([#335](https://github.com/kixelated/moq-rs/pull/335))
+- Separate UI from headless elements. ([#333](https://github.com/kixelated/moq-rs/pull/333))
+- Install machete via binstall. ([#332](https://github.com/kixelated/moq-rs/pull/332))
+- Have moq-native return web_transport_quinn. ([#331](https://github.com/kixelated/moq-rs/pull/331))
+
 ## [0.10.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.9.0...moq-transfork-v0.10.0) - 2025-01-30
 
 ### Other

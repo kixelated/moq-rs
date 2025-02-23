@@ -7,28 +7,40 @@ use wasm_bindgen_futures::spawn_local;
 
 use crate::{Error, Result};
 
+type ConnectionPending = watch::Receiver<Option<Result<moq_transfork::Session>>>;
+
 // Can't use LazyLock in WASM because nothing is Sync
 thread_local! {
-	static CACHE: RefCell<HashMap<Url, Connect>> = RefCell::new(HashMap::new());
+	static POOL: RefCell<HashMap<Url, ConnectionPending>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone)]
 pub struct Connect {
-	connected: watch::Receiver<Option<Result<moq_transfork::Session>>>,
+	pending: ConnectionPending,
+	pub path: String,
 }
 
 impl Connect {
-	pub fn new(addr: Url) -> Self {
+	pub fn new(mut addr: Url) -> Self {
+		let path = addr.path().to_string();
+
+		// Connect using the base of the URL.
+		addr.set_fragment(None);
+		addr.set_query(None);
+		addr.set_path("");
+
 		// Use a global cache to share sessions between elements.
-		CACHE.with(|cache| {
+		let pending = POOL.with(|cache| {
 			let mut cache = cache.borrow_mut();
 
-			let entry = cache.entry(addr.clone()).or_insert_with(|| Self::create(addr.clone()));
+			let entry = cache.entry(addr.clone()).or_insert_with(|| Self::create(addr));
 			entry.clone()
-		})
+		});
+
+		Self { path, pending }
 	}
 
-	fn create(addr: Url) -> Self {
+	fn create(addr: Url) -> ConnectionPending {
 		let (tx, rx) = watch::channel(None);
 
 		// Use a background task to make `connect` cancel safe.
@@ -44,7 +56,7 @@ impl Connect {
 					// Remove the session from the cache when it's closed.
 					err = session.closed() => {
 						tracing::warn!(?err, "session closed");
-						CACHE.with(|cache| {
+						POOL.with(|cache| {
 							cache.borrow_mut().remove(&addr);
 						});
 					},
@@ -52,7 +64,7 @@ impl Connect {
 			}
 		});
 
-		Self { connected: rx }
+		rx
 	}
 
 	async fn run(addr: &Url) -> Result<moq_transfork::Session> {
@@ -95,7 +107,7 @@ impl Connect {
 	}
 
 	pub async fn established(&mut self) -> Result<moq_transfork::Session> {
-		self.connected
+		self.pending
 			.wait_for(Option::is_some)
 			.await
 			.expect("background task panicked")

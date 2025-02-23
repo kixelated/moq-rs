@@ -10,6 +10,8 @@ use futures::future::BoxFuture;
 use futures::stream::{FuturesUnordered, StreamExt};
 use futures::FutureExt;
 
+use web_transport::quinn as web_transport_quinn;
+
 #[derive(Parser, Clone)]
 pub struct Args {
 	/// Listen for UDP packets on the given address.
@@ -96,11 +98,11 @@ impl Endpoint {
 
 pub struct Server {
 	quic: quinn::Endpoint,
-	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport::Session>>>,
+	accept: FuturesUnordered<BoxFuture<'static, anyhow::Result<web_transport_quinn::Session>>>,
 }
 
 impl Server {
-	pub async fn accept(&mut self) -> Option<web_transport::Session> {
+	pub async fn accept(&mut self) -> Option<web_transport_quinn::Session> {
 		loop {
 			tokio::select! {
 				res = self.quic.accept() => {
@@ -116,7 +118,7 @@ impl Server {
 		}
 	}
 
-	async fn accept_session(conn: quinn::Incoming) -> anyhow::Result<web_transport::Session> {
+	async fn accept_session(conn: quinn::Incoming) -> anyhow::Result<web_transport_quinn::Session> {
 		let mut conn = conn.accept()?;
 
 		let handshake = conn
@@ -155,7 +157,7 @@ impl Server {
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
-		Ok(session.into())
+		Ok(session)
 	}
 
 	pub fn local_addr(&self) -> anyhow::Result<net::SocketAddr> {
@@ -171,7 +173,7 @@ pub struct Client {
 }
 
 impl Client {
-	pub async fn connect(&self, mut url: Url) -> anyhow::Result<web_transport::Session> {
+	pub async fn connect(&self, mut url: Url) -> anyhow::Result<web_transport_quinn::Session> {
 		let mut config = self.config.clone();
 
 		let host = url.host().context("invalid DNS name")?.to_string();
@@ -231,6 +233,6 @@ impl Client {
 			_ => unreachable!(),
 		};
 
-		Ok(session.into())
+		Ok(session)
 	}
 }

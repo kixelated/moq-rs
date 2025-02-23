@@ -273,6 +273,11 @@ impl AnnouncedProducer {
 		self.state.lock().active.contains(path)
 	}
 
+	/// Check if any tracks are active.
+	pub fn is_empty(&self) -> bool {
+		self.state.lock().active.is_empty()
+	}
+
 	/// Stop announcing a track, returning true if it was active.
 	pub fn unannounce(&mut self, path: &str) -> bool {
 		let mut state = self.state.lock();

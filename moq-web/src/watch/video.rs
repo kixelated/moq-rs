@@ -39,7 +39,7 @@ impl Video {
 
 					let frame = web_codecs::EncodedFrame {
 						payload: frame.payload,
-						timestamp: web_codecs::Timestamp::from_micros(frame.timestamp.as_micros()),
+						timestamp: frame.timestamp,
 						keyframe: frame.keyframe,
 					};
 

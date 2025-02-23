@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.5...moq-native-v0.6.6) - 2025-02-13
+
+### Other
+
+- Have moq-native return web_transport_quinn. ([#331](https://github.com/kixelated/moq-rs/pull/331))
+
 ## [0.6.5](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.4...moq-native-v0.6.5) - 2025-01-30
 
 ### Other
