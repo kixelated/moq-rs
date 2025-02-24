@@ -15,6 +15,7 @@ use axum::{
 use bytes::Bytes;
 use futures::FutureExt;
 use hyper_serve::accept::DefaultAcceptor;
+use moq_transfork::Filter;
 use std::future::Future;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -76,10 +77,17 @@ impl Web {
 }
 
 /// Serve the announced tracks for a given prefix.
-async fn serve_announced(Path(filter): Path<String>, cluster: Cluster) -> impl IntoResponse {
-	let filter = match filter.as_str() {
-		"" => moq_transfork::Filter::Any,
-		_ => moq_transfork::Filter::Prefix(format!("{}/", filter)),
+async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl IntoResponse {
+	// Make anything without a / prefix private.
+	let filter = if path.is_empty() {
+		Filter::Prefix("/".into())
+	} else if let Some((prefix, suffix)) = path.split_once("*") {
+		Filter::Wildcard {
+			prefix: format!("/{}", prefix),
+			suffix: suffix.to_string(),
+		}
+	} else {
+		Filter::Prefix(format!("/{}", path))
 	};
 
 	let mut local = cluster.locals.announced(filter.clone());
