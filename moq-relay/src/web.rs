@@ -76,26 +76,26 @@ impl Web {
 }
 
 /// Serve the announced tracks for a given prefix.
-async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl IntoResponse {
-	let prefix = match prefix.is_empty() {
-		true => moq_transfork::Path::default(),
-		false => prefix.split("/").collect(),
+async fn serve_announced(Path(filter): Path<String>, cluster: Cluster) -> impl IntoResponse {
+	let filter = match filter.as_str() {
+		"" => moq_transfork::Filter::Any,
+		_ => moq_transfork::Filter::Prefix(format!("{}/", filter)),
 	};
 
-	let mut local = cluster.locals.announced_prefix(prefix.clone());
-	let mut remote = cluster.remotes.announced_prefix(prefix);
+	let mut local = cluster.locals.announced(filter.clone());
+	let mut remote = cluster.remotes.announced(filter);
 
 	let mut tracks = Vec::new();
 
 	while let Some(Some(local)) = local.next().now_or_never() {
 		if let moq_transfork::Announced::Active(track) = local {
-			tracks.push(track.join("/"));
+			tracks.push(track.to_full());
 		}
 	}
 
 	while let Some(Some(remote)) = remote.next().now_or_never() {
 		if let moq_transfork::Announced::Active(track) = remote {
-			tracks.push(track.join("/"));
+			tracks.push(track.to_full());
 		}
 	}
 

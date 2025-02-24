@@ -17,12 +17,12 @@ thread_local! {
 #[derive(Clone)]
 pub struct Connect {
 	pending: ConnectionPending,
-	pub path: moq_transfork::Path,
+	pub path: String,
 }
 
 impl Connect {
 	pub fn new(mut addr: Url) -> Self {
-		let path = addr.path_segments().expect("invalid URL type").collect();
+		let path = addr.path().to_string();
 
 		// Connect using the base of the URL.
 		addr.set_fragment(None);

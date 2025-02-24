@@ -1,4 +1,4 @@
-use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer};
+use moq_karp::moq_transfork::{self, Announced, AnnouncedConsumer, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen::prelude::*;
 
@@ -17,7 +17,7 @@ impl Meet {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Self {
 		let producer = AnnouncedProducer::new();
-		let consumer = producer.subscribe();
+		let consumer = producer.subscribe(moq_transfork::Filter::Any);
 
 		let controls = Controls::default().baton();
 		let status = Status::default().baton();
@@ -84,16 +84,14 @@ impl MeetAnnounced {
 	}
 
 	pub async fn next(&mut self) -> Option<MeetAnnounce> {
-		let next = self.inner.next().await?;
-		tracing::info!(?next);
-		Some(match next {
-			Announced::Active(suffix) => MeetAnnounce {
+		Some(match self.inner.next().await? {
+			Announced::Active(track) => MeetAnnounce {
 				action: MeetAction::Join,
-				name: suffix[0].clone(),
+				name: track.to_full(),
 			},
-			Announced::Ended(suffix) => MeetAnnounce {
+			Announced::Ended(track) => MeetAnnounce {
 				action: MeetAction::Leave,
-				name: suffix[0].clone(),
+				name: track.to_full(),
 			},
 			Announced::Live => MeetAnnounce {
 				action: MeetAction::Live,

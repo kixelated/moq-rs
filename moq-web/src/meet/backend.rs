@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use baton::Baton;
-use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Path};
+use moq_karp::moq_transfork::{self, Announced, AnnouncedConsumer, AnnouncedMatch, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
@@ -68,15 +68,21 @@ impl Backend {
 					let session = session?;
 					self.producer.reset();
 					let path = self.connect.take().unwrap().path;
-					self.announced = Some(session.announced(path));
+
+					// TODO make a helper in karp for this
+					let filter = moq_transfork::Filter::Wildcard {
+						prefix: path.clone(),
+						suffix: "/catalog.json".to_string(),
+					};
+
+					self.announced = Some(session.announced(filter));
 					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
-					tracing::info!(?announce, "iannounce");
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
-						Announced::Active(suffix) => self.announced(suffix),
-						Announced::Ended(suffix) => self.unannounced(suffix),
+						Announced::Active(track) => self.announced(track),
+						Announced::Ended(track) => self.unannounced(track),
 						Announced::Live => self.live(),
 					}
 				},
@@ -85,41 +91,59 @@ impl Backend {
 		}
 	}
 
-	fn announced(&mut self, suffix: Path) {
-		// TODO only announce a single level deep
-		if suffix.len() != 2 {
-			return;
-		}
+	// Parse the user's name out of the "name/id" pair
+	fn parse_name(track: AnnouncedMatch) -> std::result::Result<String, AnnouncedMatch> {
+		match track.capture().find("/") {
+			Some(index) => {
+				// Make sure there's only one slash for bonus points
+				if track.capture()[index + 1..].contains("/") {
+					return Err(track);
+				}
 
-		// Annoying that we have to do this.
-		let name = suffix.first().cloned().unwrap();
+				let mut capture = track.to_capture();
+				capture.truncate(index);
+				Ok(capture)
+			}
+			None => Err(track),
+		}
+	}
+
+	fn announced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
+			Ok(name) => name,
+			Err(name) => {
+				tracing::warn!(?name, "failed to parse track name");
+				return;
+			}
+		};
+
+		// Deduplicate based on the name so we don't announce the same person twice.
 		match self.unique.entry(name.clone()) {
 			Entry::Occupied(mut entry) => {
 				*entry.get_mut() += 1;
 			}
 			Entry::Vacant(entry) => {
 				entry.insert(1);
-				self.producer.announce(Path::new().push(name));
+				self.producer.announce(name);
 			}
 		}
 
 		self.update_status();
 	}
 
-	fn unannounced(&mut self, suffix: Path) {
-		// TODO only announce a single level deep
-		if suffix.len() != 2 {
-			return;
-		}
+	fn unannounced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
+			Ok(name) => name,
+			Err(_) => return,
+		};
 
-		// Annoying that we have to do this.
-		let name = suffix.first().unwrap();
+		// Deduplicate based on the name so we don't unannounce the same person twice.
 		if let Entry::Occupied(mut entry) = self.unique.entry(name.clone()) {
 			*entry.get_mut() -= 1;
 
 			if *entry.get() == 0 {
 				entry.remove();
-				self.producer.unannounce(&Path::new().push(name));
+				self.producer.unannounce(&name);
 			}
 		}
 

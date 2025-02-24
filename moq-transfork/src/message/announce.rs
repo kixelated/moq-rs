@@ -1,7 +1,8 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::coding::*;
-use crate::Path;
+
+use super::Filter;
 
 /// Send by the publisher, used to determine the message that follows.
 #[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
@@ -13,22 +14,19 @@ enum AnnounceStatus {
 }
 
 /// Sent by the publisher to announce the availability of a track.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The payload contains the contents of the wildcard.
+#[derive(Clone, Debug)]
 pub enum Announce {
-	Ended { suffix: Path },
-	Active { suffix: Path },
+	Active(String),
+	Ended(String),
 	Live,
 }
 
 impl Decode for Announce {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(match AnnounceStatus::decode(r)? {
-			AnnounceStatus::Ended => Self::Ended {
-				suffix: Path::decode(r)?,
-			},
-			AnnounceStatus::Active => Self::Active {
-				suffix: Path::decode(r)?,
-			},
+			AnnounceStatus::Active => Self::Active(String::decode(r)?),
+			AnnounceStatus::Ended => Self::Ended(String::decode(r)?),
 			AnnounceStatus::Live => Self::Live,
 		})
 	}
@@ -37,13 +35,13 @@ impl Decode for Announce {
 impl Encode for Announce {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		match self {
-			Self::Ended { suffix } => {
-				AnnounceStatus::Ended.encode(w);
-				suffix.encode(w);
-			}
-			Self::Active { suffix } => {
+			Self::Active(capture) => {
 				AnnounceStatus::Active.encode(w);
-				suffix.encode(w);
+				capture.encode(w);
+			}
+			Self::Ended(capture) => {
+				AnnounceStatus::Ended.encode(w);
+				capture.encode(w);
 			}
 			Self::Live => AnnounceStatus::Live.encode(w),
 		}
@@ -53,20 +51,20 @@ impl Encode for Announce {
 /// Sent by the subscriber to request ANNOUNCE messages.
 #[derive(Clone, Debug)]
 pub struct AnnouncePlease {
-	/// The desired track prefix
-	pub prefix: Path,
+	/// A wildcard filter.
+	pub filter: Filter,
 }
 
 impl Decode for AnnouncePlease {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let prefix = Path::decode(r)?;
-		Ok(Self { prefix })
+		let filter = Filter::decode(r)?;
+		Ok(Self { filter })
 	}
 }
 
 impl Encode for AnnouncePlease {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.prefix.encode(w)
+		self.filter.encode(w)
 	}
 }
 

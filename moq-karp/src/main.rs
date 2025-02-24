@@ -2,7 +2,7 @@ use std::net;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use moq_transfork::{Path, Session};
+use moq_transfork::Session;
 use url::Url;
 
 use moq_karp::{cmaf, BroadcastProducer};
@@ -53,14 +53,14 @@ async fn main() -> anyhow::Result<()> {
 	}
 }
 
-async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, Path)> {
+async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, String)> {
 	let tls = config.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
 	tracing::info!(?url, "connecting");
 
 	let url = Url::parse(url).context("invalid URL")?;
-	let path = url.path_segments().context("missing path")?.collect::<Path>();
+	let path = url.path().to_string();
 
 	let session = quic.client.connect(url).await?;
 	let session = Session::connect(session).await?;
