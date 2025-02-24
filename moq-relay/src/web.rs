@@ -77,6 +77,11 @@ impl Web {
 
 /// Serve the announced tracks for a given prefix.
 async fn serve_announced(Path(filter): Path<String>, cluster: Cluster) -> impl IntoResponse {
+	let filter = match filter.as_str() {
+		"" => moq_transfork::Filter::Any,
+		_ => moq_transfork::Filter::Prefix(format!("{}/", filter)),
+	};
+
 	let mut local = cluster.locals.announced(filter.clone());
 	let mut remote = cluster.remotes.announced(filter);
 

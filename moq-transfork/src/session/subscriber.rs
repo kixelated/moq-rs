@@ -34,8 +34,7 @@ impl Subscriber {
 	}
 
 	/// Discover any tracks matching a filter.
-	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
-		let filter = filter.into();
+	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.subscribe(filter.clone());
 

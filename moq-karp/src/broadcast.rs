@@ -168,7 +168,10 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: String) -> Self {
-		let filter = format!("{}/*/catalog.json", path);
+		let filter = moq_transfork::Filter::Wildcard {
+			prefix: path.clone(),
+			suffix: "/catalog.json".to_string(),
+		};
 		let announced = session.announced(filter);
 
 		Self {

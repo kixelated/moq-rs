@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use baton::Baton;
-use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, AnnouncedProducer};
+use moq_karp::moq_transfork::{self, Announced, AnnouncedConsumer, AnnouncedMatch, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
@@ -70,7 +70,10 @@ impl Backend {
 					let path = self.connect.take().unwrap().path;
 
 					// TODO make a helper in karp for this
-					let filter = format!("{}/*/catalog.json", path);
+					let filter = moq_transfork::Filter::Wildcard {
+						prefix: path.clone(),
+						suffix: "/catalog.json".to_string(),
+					};
 
 					self.announced = Some(session.announced(filter));
 					self.status.connection.update(ConnectionStatus::Connected);

@@ -73,7 +73,7 @@ impl Origins {
 		}
 	}
 
-	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
 		self.unique.subscribe(filter)
 	}
 

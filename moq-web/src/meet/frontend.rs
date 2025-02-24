@@ -1,4 +1,4 @@
-use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer};
+use moq_karp::moq_transfork::{self, Announced, AnnouncedConsumer, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen::prelude::*;
 
@@ -17,7 +17,7 @@ impl Meet {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Self {
 		let producer = AnnouncedProducer::new();
-		let consumer = producer.subscribe("*");
+		let consumer = producer.subscribe(moq_transfork::Filter::Any);
 
 		let controls = Controls::default().baton();
 		let status = Status::default().baton();

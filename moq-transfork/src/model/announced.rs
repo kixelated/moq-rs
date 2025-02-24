@@ -291,8 +291,7 @@ impl AnnouncedProducer {
 	}
 
 	/// Subscribe to all announced tracks matching the (wildcard) filter.
-	pub fn subscribe<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
-		let filter = filter.into();
+	pub fn subscribe(&self, filter: Filter) -> AnnouncedConsumer {
 		let mut state = self.state.lock();
 		let consumer = Lock::new(state.consumer(filter));
 		let notify = state.subscribe(consumer.clone());
@@ -452,7 +451,7 @@ mod test {
 	#[test]
 	fn simple() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		assert!(!producer.is_active("a/b"));
 		assert!(producer.announce("a/b"));
@@ -470,7 +469,7 @@ mod test {
 	#[test]
 	fn multi() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -491,7 +490,7 @@ mod test {
 		assert!(producer.announce("a/c"));
 
 		// Subscribe after announcing.
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		assert!(producer.announce("d/e"));
 		assert!(producer.announce("d/d"));
@@ -507,7 +506,7 @@ mod test {
 	#[test]
 	fn prefix() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("a/*");
+		let mut consumer = producer.subscribe(Filter::Prefix("a/".into()));
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -521,7 +520,7 @@ mod test {
 	#[test]
 	fn prefix_unannounce() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("a/*");
+		let mut consumer = producer.subscribe(Filter::Prefix("a/".into()));
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -543,7 +542,7 @@ mod test {
 	#[test]
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		assert!(!producer.is_active("a/b"));
 		assert!(producer.announce("a/b"));
@@ -558,7 +557,7 @@ mod test {
 	#[test]
 	fn dropped() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		producer.announce("a/b");
 		consumer.assert_active("a/b");
@@ -577,7 +576,7 @@ mod test {
 	#[test]
 	fn live() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		producer.announce("a/b");
 		producer.live();
@@ -600,7 +599,7 @@ mod test {
 		tokio::time::pause();
 
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("*");
+		let mut consumer = producer.subscribe(Filter::Any);
 
 		tokio::spawn(async move {
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

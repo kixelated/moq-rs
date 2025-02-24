@@ -89,6 +89,8 @@ impl Cluster {
 			myself.announce(origin);
 		}
 
+		let filter = Filter::Prefix("internal/origins/".into());
+
 		// If we're using a root node, then we have to connect to it.
 		let mut announced = match root.as_ref() {
 			Some(root) if Some(root) != node.as_ref() => {
@@ -103,10 +105,10 @@ impl Cluster {
 					.context("failed to establish root session")?;
 
 				// Announce ourselves as an origin to the root node.
-				root.announce(myself.subscribe("*"));
+				root.announce(myself.subscribe(Filter::Any));
 
 				// Subscribe to available origins.
-				root.announced("internal/origins/*")
+				root.announced(filter)
 			}
 			// Otherwise, we're the root node but we still want to connect to other nodes.
 			_ => {
@@ -116,11 +118,11 @@ impl Cluster {
 				tokio::spawn(async move {
 					// Run this in a background task so we don't block the main loop.
 					// (it will never exit)
-					locals.announce(myself.subscribe("*"), None).await
+					locals.announce(myself.subscribe(Filter::Any), None).await
 				});
 
 				// Subscribe to the available origins.
-				self.locals.announced("internal/origins/*")
+				self.locals.announced(filter)
 			}
 		};
 

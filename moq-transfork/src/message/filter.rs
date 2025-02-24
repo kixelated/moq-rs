@@ -10,19 +10,33 @@ pub enum Filter {
 	// Match an exact string.
 	Exact(String),
 
+	// Match a string prefix.
+	Prefix(String),
+
+	// Match a string suffix.
+	Suffix(String),
+
 	// Match a string with a wildcard in the middle.
-	// The capture must be non-empty.
-	Wildcard(String, String),
+	// The capture may be empty.
+	Wildcard { prefix: String, suffix: String },
 }
 
 impl Filter {
 	pub fn new(pattern: &str) -> Self {
-		if pattern.is_empty() || pattern == "*" {
+		if pattern.is_empty() {
 			return Self::Any;
 		}
 
 		if let Some((prefix, suffix)) = pattern.split_once("*") {
-			return Self::Wildcard(prefix.to_string(), suffix.to_string());
+			return match (prefix.is_empty(), suffix.is_empty()) {
+				(true, true) => Self::Any,
+				(true, false) => Self::Suffix(suffix.to_string()),
+				(false, true) => Self::Prefix(prefix.to_string()),
+				(false, false) => Self::Wildcard {
+					prefix: prefix.to_string(),
+					suffix: suffix.to_string(),
+				},
+			};
 		}
 
 		Self::Exact(pattern.to_string())
@@ -37,15 +51,20 @@ impl Filter {
 				full: input,
 				capture: (0, input.len()),
 			}),
-			Self::Exact(pattern) if input == pattern =>
-				Some(FilterMatch {
-					full: input,
-					capture: (0, 0),
-				})
-			,
-			Self::Wildcard(prefix, suffix)
-			// >= would allow the wildcard to be empty, which is not allowed.
-				if input.len() > prefix.len() + suffix.len()
+			Self::Exact(pattern) if input == pattern => Some(FilterMatch {
+				full: input,
+				capture: (0, 0),
+			}),
+			Self::Prefix(prefix) if input.starts_with(prefix) => Some(FilterMatch {
+				full: input,
+				capture: (prefix.len(), input.len()),
+			}),
+			Self::Suffix(suffix) if input.ends_with(suffix) => Some(FilterMatch {
+				full: input,
+				capture: (0, input.len() - suffix.len()),
+			}),
+			Self::Wildcard { prefix, suffix }
+				if input.len() >= prefix.len() + suffix.len()
 					&& input.starts_with(prefix)
 					&& input.ends_with(suffix) =>
 			{
@@ -63,7 +82,9 @@ impl Filter {
 		match self {
 			Self::Any => capture.to_string(),
 			Self::Exact(pattern) => pattern.to_string(),
-			Self::Wildcard(prefix, suffix) => format!("{}{}{}", prefix, capture, suffix),
+			Self::Prefix(prefix) => format!("{}{}", prefix, capture),
+			Self::Suffix(suffix) => format!("{}{}", capture, suffix),
+			Self::Wildcard { prefix, suffix } => format!("{}{}{}", prefix, capture, suffix),
 		}
 	}
 }
@@ -83,7 +104,17 @@ impl Encode for Filter {
 			Self::Exact(pattern) => {
 				pattern.encode(w);
 			}
-			Self::Wildcard(prefix, suffix) => {
+			Self::Prefix(prefix) => {
+				(prefix.len() + 1).encode(w);
+				w.put(prefix.as_bytes());
+				w.put(&b"*"[..]);
+			}
+			Self::Suffix(suffix) => {
+				(suffix.len() + 1).encode(w);
+				w.put(&b"*"[..]);
+				w.put(suffix.as_bytes());
+			}
+			Self::Wildcard { prefix, suffix } => {
 				(prefix.len() + suffix.len() + 1).encode(w);
 				w.put(prefix.as_bytes());
 				w.put(&b"*"[..]);
@@ -165,7 +196,7 @@ mod test {
 	fn suffix() {
 		let filter = Filter::new("foo/bar/*");
 		filter.assert("foo/bar/baz", Some("baz"));
-		filter.assert("foo/bar/", None);
+		filter.assert("foo/bar/", Some(""));
 		filter.assert("foo/bar/baz/qux", Some("baz/qux"));
 		filter.assert("zoo/bar/baz", None);
 	}

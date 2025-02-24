@@ -180,7 +180,7 @@ impl Session {
 	}
 
 	/// Discover any tracks published by the remote matching a (wildcard) filter.
-	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
+	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
 		self.subscriber.announced(filter)
 	}
 
