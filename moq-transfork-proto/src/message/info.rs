@@ -1,5 +1,4 @@
 use super::GroupOrder;
-use super::Path;
 use crate::coding::*;
 
 #[derive(Clone, Debug)]
@@ -33,7 +32,7 @@ impl Decode for Info {
 
 #[derive(Clone, Debug)]
 pub struct InfoRequest {
-	pub path: Path,
+	pub path: String,
 }
 
 impl Encode for InfoRequest {
@@ -44,7 +43,7 @@ impl Encode for InfoRequest {
 
 impl Decode for InfoRequest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let path = Path::decode(r)?;
+		let path = String::decode(r)?;
 		Ok(Self { path })
 	}
 }

@@ -3,11 +3,10 @@
 //! This module could be used directly but 99% of the time you should use the higher-level [crate::Session] API.
 mod announce;
 mod extensions;
-mod fetch;
+mod filter;
 mod frame;
 mod group;
 mod info;
-mod path;
 mod session;
 mod setup;
 mod stream;
@@ -16,11 +15,10 @@ mod versions;
 
 pub use announce::*;
 pub use extensions::*;
-pub use fetch::*;
+pub use filter::*;
 pub use frame::*;
 pub use group::*;
 pub use info::*;
-pub use path::*;
 pub use session::*;
 pub use setup::*;
 pub use stream::*;

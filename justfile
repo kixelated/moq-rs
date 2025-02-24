@@ -9,17 +9,34 @@ export RUST_LOG := "info"
 default:
   just --list
 
+# Install any required dependencies.
+setup:
+	# Upgrade Rust
+	rustup update
+
+	# Make sure the WASM target is installed.
+	rustup target add wasm32-unknown-unknown
+
+	# Make sure the right components are installed.
+	rustup component add rustfmt clippy
+
+	# Install cargo binstall if needed.
+	cargo install cargo-binstall
+
+	# Install cargo shear if needed.
+	cargo binstall --no-confirm cargo-shear
+
 # Run the relay, web server, and publish bbb.
 all:
 	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
 
 # Run a localhost leaf server, connecting to the relay server
 leaf:
-	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify --dev
+	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
 
 # Run a cluster of relay servers
 cluster:
@@ -71,30 +88,46 @@ clock-sub:
 
 # Run the CI checks
 check:
-	cargo check --all
-	cargo test --all
-	cargo clippy --all -- -D warnings
-	cargo fmt --all -- --check
-	cargo machete
+	cargo check --all-targets
+	cargo check -p moq-web --target wasm32-unknown-unknown
+	cargo clippy --all-targets -- -D warnings
+	cargo clippy -p moq-web --target wasm32-unknown-unknown
+	cargo fmt -- --check
+	cargo shear # requires: cargo binstall cargo-shear
 	npm i && npm run check
+
+# Run any CI tests
+test:
+	cargo test
 
 # Automatically fix some issues.
 fix:
-	cargo clippy --all --fix --allow-staged --all-targets --all-features
+	cargo fix --allow-staged --all-targets --all-features
+	cargo clippy --fix --allow-staged --all-targets --all-features
+	cargo clippy -p moq-web --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
+	cargo shear --fix
 
-# Build the binaries
-build: pack
-	cargo build
+# Upgrade any tooling
+upgrade:
+	rustup upgrade
 
-# Build release NPM package
-pack:
+	# Install cargo-upgrades if needed.
+	cargo install cargo-upgrades cargo-edit
+	cargo upgrade
+
+	# Update the NPM dependencies
+	npm update
+	npm outdated
+
+# Build the release NPM package
+build:
 	npm i && npm run build
 
 # Build and link the NPM package
-# TODO support more than just npm
-link: pack
+link:
+	npm i && npm run build:dev && npm run build:tsc
 	npm link
 
 # Delete any ephemeral build files

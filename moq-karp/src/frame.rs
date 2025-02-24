@@ -4,7 +4,7 @@ use moq_transfork_proto::coding::*;
 
 use derive_more::Debug;
 
-use crate::Timestamp;
+pub type Timestamp = std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct Frame {

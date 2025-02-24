@@ -139,4 +139,10 @@ impl PublisherStatic {
 	}
 }
 
+pub struct SubscriberDedup {}
+
+impl SubscriberDedup {
+	pub fn update(&mut self, subscriber: &mut Subscriber) {}
+}
+
 pub struct Relay {}

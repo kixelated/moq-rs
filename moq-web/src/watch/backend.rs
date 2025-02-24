@@ -1,26 +1,13 @@
-use moq_karp::{moq_transfork::Path, BroadcastConsumer};
-use wasm_bindgen::prelude::wasm_bindgen;
+use moq_karp::BroadcastConsumer;
 use wasm_bindgen_futures::spawn_local;
 
 use super::{ControlsRecv, Renderer, StatusSend, Video};
-use crate::{Connect, Error, Result};
-
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
-#[wasm_bindgen]
-pub enum BackendState {
-	#[default]
-	Idle,
-	Connecting,
-	Connected,
-	Live,
-	Offline,
-}
+use crate::{Connect, ConnectionStatus, Error, Result};
 
 pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
-	path: Path,
 	connect: Option<Connect>,
 	broadcast: Option<BroadcastConsumer>,
 	video: Option<Video>,
@@ -36,9 +23,7 @@ impl Backend {
 			controls,
 			status,
 
-			path: Path::default(),
 			connect: None,
-
 			broadcast: None,
 			video: None,
 		}
@@ -62,44 +47,35 @@ impl Backend {
 					self.video = None;
 
 					if let Some(url) = url {
-						// Connect using the base of the URL.
-						let mut addr = url.clone();
-						addr.set_fragment(None);
-						addr.set_query(None);
-						addr.set_path("");
-
-						self.path = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
-						self.connect = Some(Connect::new(addr));
-
-						self.status.backend.set(BackendState::Connecting);
+						self.connect = Some(Connect::new(url));
+						self.status.connection.update(ConnectionStatus::Connecting);
 					} else {
-						self.path = Path::default();
 						self.connect = None;
-
-						self.status.backend.set(BackendState::Idle);
+						self.status.connection.update(ConnectionStatus::Disconnected);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
-					let broadcast = moq_karp::BroadcastConsumer::new(session?, self.path.clone());
-					self.status.backend.set(BackendState::Connected);
+					let path = self.connect.take().unwrap().path;
+					let broadcast = moq_karp::BroadcastConsumer::new(session?, path);
+					self.status.connection.update(ConnectionStatus::Connected);
 
 					self.broadcast = Some(broadcast);
 					self.connect = None;
 				},
 				Some(catalog) = async { Some(self.broadcast.as_mut()?.next_catalog().await) } => {
 					let catalog = match catalog? {
-						Some(catalog) => catalog.clone(),
+						Some(catalog) => {
+							self.status.connection.update(ConnectionStatus::Live);
+							catalog.clone()
+						},
 						None => {
 							// There's no catalog, so the stream is offline.
 							// Note: We keep trying because the stream might come online later.
-							self.status.backend.set(BackendState::Offline);
+							self.status.connection.update(ConnectionStatus::Offline);
 							self.video = None;
 							continue;
 						},
 					};
-
-					// NOTE: We fire this event every time the catalog changes.
-					self.status.backend.set(BackendState::Live);
 
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {

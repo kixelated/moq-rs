@@ -205,9 +205,9 @@ impl Encode for VarInt {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		match self.encode_size() {
 			1 => w.put_u8(self.0 as u8),
-			2 => w.put_u16(0b01 << 14 | self.0 as u16),
-			4 => w.put_u32(0b10 << 30 | self.0 as u32),
-			8 => w.put_u64(0b11 << 62 | self.0),
+			2 => w.put_u16((0b01 << 14) | self.0 as u16),
+			4 => w.put_u32((0b10 << 30) | self.0 as u32),
+			8 => w.put_u64((0b11 << 62) | self.0),
 			_ => unreachable!(),
 		}
 	}

@@ -42,6 +42,10 @@ impl Writer {
 		self.stream.write(buf).await?; // convert the error type
 		Ok(())
 	}
+
+	pub fn set_priority(&mut self, priority: i32) {
+		self.stream.set_priority(priority);
+	}
 }
 
 impl Close<Error> for Writer {

@@ -1,4 +1,4 @@
-use std::{string::FromUtf8Error, time};
+use std::string::FromUtf8Error;
 use thiserror::Error;
 
 pub trait Decode: Sized {
@@ -80,21 +80,10 @@ impl<T: Decode> Decode for Vec<T> {
 	}
 }
 
-/*
-impl Decode for Option<usize> {
-	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		Ok(match usize::decode(r)? {
-			0 => None,
-			v => Some(v - 1),
-		})
-	}
-}
-	*/
-
-impl Decode for time::Duration {
+impl Decode for std::time::Duration {
 	fn decode<B: bytes::Buf>(buf: &mut B) -> Result<Self, DecodeError> {
 		let ms = u64::decode(buf)?;
-		Ok(time::Duration::from_millis(ms))
+		Ok(std::time::Duration::from_micros(ms))
 	}
 }
 

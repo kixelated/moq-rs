@@ -26,9 +26,8 @@ impl TrackProducer {
 		Self { track, group: None }
 	}
 
-	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub fn write(&mut self, frame: Frame) {
-		let timestamp = frame.timestamp.as_micros();
+		let timestamp = frame.timestamp.as_micros() as u64;
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
 		timestamp.encode(&mut header);
 
@@ -84,7 +83,6 @@ impl TrackConsumer {
 		}
 	}
 
-	#[tracing::instrument("frame", skip_all, fields(track = ?self.track.path.last().unwrap()))]
 	pub async fn read(&mut self) -> Result<Option<Frame>, Error> {
 		loop {
 			let cutoff = self.max_timestamp + self.latency;
@@ -119,7 +117,7 @@ impl TrackConsumer {
 					match self.current.as_ref() {
 						Some(current) if group.sequence < current.sequence => {
 							// Ignore old groups
-							tracing::warn!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
+							tracing::debug!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
 						},
 						Some(_) => {
 							// Insert into pending based on the sequence number ascending.
@@ -130,12 +128,12 @@ impl TrackConsumer {
 					};
 				},
 				Some((index, timestamp)) = buffering.next() => {
-					tracing::warn!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
+					tracing::debug!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
 					drop(buffering);
 
 					if index > 0 {
 						self.pending.drain(0..index);
-						tracing::warn!(count = index, "skipping additional groups");
+						tracing::debug!(count = index, "skipping additional groups");
 					}
 
 					self.current = self.pending.pop_front();

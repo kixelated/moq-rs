@@ -1,27 +1,23 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use baton::Baton;
-use moq_karp::moq_transfork::{Announced, AnnouncedConsumer, AnnouncedProducer, Path};
+use moq_karp::moq_transfork::{self, Announced, AnnouncedConsumer, AnnouncedMatch, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::{Connect, Error, Result};
+use crate::{Connect, ConnectionStatus, Error, Result};
+
+use super::StatusSend;
 
 #[derive(Debug, Default, Baton)]
 pub struct Controls {
 	pub url: Option<Url>,
 }
 
-#[derive(Debug, Default, Baton)]
-pub struct Status {
-	pub error: Option<Error>,
-}
-
 pub struct Backend {
 	controls: ControlsRecv,
 	status: StatusSend,
 
-	room: Path,
 	connect: Option<Connect>,
 	announced: Option<AnnouncedConsumer>,
 
@@ -36,7 +32,6 @@ impl Backend {
 			status,
 			producer,
 
-			room: Path::default(),
 			connect: None,
 			announced: None,
 			unique: HashMap::new(),
@@ -60,33 +55,35 @@ impl Backend {
 					// TODO unannounce existing entries?
 					self.announced = None;
 
-					if let Some(url) = url{
-						// Connect using the base of the URL.
-						let mut addr = url.clone();
-						addr.set_fragment(None);
-						addr.set_query(None);
-						addr.set_path("");
-
-						self.room = url.path_segments().ok_or(Error::InvalidUrl(url.to_string()))?.collect();
-						self.connect = Some(Connect::new(addr));
+					if let Some(url) = url {
+						self.connect = Some(Connect::new(url));
+						self.status.connection.update(ConnectionStatus::Connecting);
 					} else {
-						self.room = Path::default();
 						self.connect = None;
+						self.status.connection.update(ConnectionStatus::Disconnected);
 					}
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
+					tracing::info!("connected to server");
 					let session = session?;
 					self.producer.reset();
-					tracing::info!(?self.room, "connected to remote");
-					self.announced = Some(session.announced(self.room.clone()));
-					self.connect = None;
+					let path = self.connect.take().unwrap().path;
+
+					// TODO make a helper in karp for this
+					let filter = moq_transfork::Filter::Wildcard {
+						prefix: path.clone(),
+						suffix: "/catalog.json".to_string(),
+					};
+
+					self.announced = Some(session.announced(filter));
+					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
-						Announced::Active(suffix) => self.announced(suffix),
-						Announced::Ended(suffix) => self.unannounced(suffix),
-						Announced::Live => { self.producer.live(); },
+						Announced::Active(track) => self.announced(track),
+						Announced::Ended(track) => self.unannounced(track),
+						Announced::Live => self.live(),
 					}
 				},
 				else => return Ok(()),
@@ -94,40 +91,75 @@ impl Backend {
 		}
 	}
 
-	fn announced(&mut self, suffix: Path) {
-		// TODO only announce a single level deep
-		if suffix.len() != 2 {
-			return;
-		}
+	// Parse the user's name out of the "name/id" pair
+	fn parse_name(track: AnnouncedMatch) -> std::result::Result<String, AnnouncedMatch> {
+		match track.capture().find("/") {
+			Some(index) => {
+				// Make sure there's only one slash for bonus points
+				if track.capture()[index + 1..].contains("/") {
+					return Err(track);
+				}
 
-		// Annoying that we have to do this.
-		let name = suffix.first().cloned().unwrap();
+				let mut capture = track.to_capture();
+				capture.truncate(index);
+				Ok(capture)
+			}
+			None => Err(track),
+		}
+	}
+
+	fn announced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
+			Ok(name) => name,
+			Err(name) => {
+				tracing::warn!(?name, "failed to parse track name");
+				return;
+			}
+		};
+
+		// Deduplicate based on the name so we don't announce the same person twice.
 		match self.unique.entry(name.clone()) {
 			Entry::Occupied(mut entry) => {
 				*entry.get_mut() += 1;
 			}
 			Entry::Vacant(entry) => {
 				entry.insert(1);
-				self.producer.announce(Path::new().push(name));
+				self.producer.announce(name);
 			}
 		}
+
+		self.update_status();
 	}
 
-	fn unannounced(&mut self, suffix: Path) {
-		// TODO only announce a single level deep
-		if suffix.len() != 2 {
-			return;
-		}
+	fn unannounced(&mut self, track: AnnouncedMatch) {
+		let name = match Self::parse_name(track) {
+			Ok(name) => name,
+			Err(_) => return,
+		};
 
-		// Annoying that we have to do this.
-		let name = suffix.first().unwrap();
+		// Deduplicate based on the name so we don't unannounce the same person twice.
 		if let Entry::Occupied(mut entry) = self.unique.entry(name.clone()) {
 			*entry.get_mut() -= 1;
 
 			if *entry.get() == 0 {
 				entry.remove();
-				self.producer.unannounce(&Path::new().push(name));
+				self.producer.unannounce(&name);
 			}
+		}
+
+		self.update_status();
+	}
+
+	fn live(&mut self) {
+		self.producer.live();
+		self.update_status();
+	}
+
+	fn update_status(&mut self) {
+		if self.producer.is_empty() {
+			self.status.connection.update(ConnectionStatus::Offline);
+		} else {
+			self.status.connection.update(ConnectionStatus::Live);
 		}
 	}
 }

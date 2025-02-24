@@ -306,7 +306,7 @@ impl Import {
 
 			let tfdt = traf.tfdt.as_ref().ok_or(Error::MissingBox(Tfdt::KIND))?;
 			let mut dts = tfdt.base_media_decode_time;
-			let timescale = trak.mdia.mdhd.timescale;
+			let timescale = trak.mdia.mdhd.timescale as u64;
 
 			let mut offset = tfhd.base_data_offset.unwrap_or_default() as usize;
 
@@ -333,8 +333,8 @@ impl Import {
 					.size
 					.unwrap_or(tfhd.default_sample_size.unwrap_or(default_sample_size)) as usize;
 
-				let pts = dts as i64 + entry.cts.unwrap_or_default() as i64;
-				let timestamp = Timestamp::from_units(pts as u64, timescale as _);
+				let pts = (dts as i64 + entry.cts.unwrap_or_default() as i64) as u64;
+				let timestamp = Timestamp::from_micros(1_000_000 * pts / timescale);
 
 				if offset + size > mdat.len() {
 					return Err(Error::InvalidOffset);
