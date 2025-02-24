@@ -23,7 +23,7 @@ impl BroadcastProducer {
 			.unwrap()
 			.as_millis() as u64;
 
-		let full = format!("{}/{}", path, id);
+		let full = format!("{}/{}/catalog.json", path, id);
 
 		let catalog = moq_transfork::Track {
 			path: full,
@@ -51,7 +51,7 @@ impl BroadcastProducer {
 	}
 
 	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
-		let path = format!("{}/{}/{}.catalog.json", self.path, self.id, &info.track.name);
+		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
 
 		let (producer, consumer) = moq_transfork::Track {
 			path,
@@ -84,7 +84,7 @@ impl BroadcastProducer {
 	}
 
 	pub fn publish_audio(&mut self, info: Audio) -> Result<TrackProducer> {
-		let path = format!("{}/{}/{}", self.path, self.id, &info.track.name);
+		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
 
 		let (producer, consumer) = moq_transfork::Track {
 			path,
@@ -168,7 +168,7 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: String) -> Self {
-		let filter = format!("{}/*/{}", path, ".catalog.json");
+		let filter = format!("{}/*/catalog.json", path);
 		let announced = session.announced(filter);
 
 		Self {
@@ -270,7 +270,8 @@ impl BroadcastConsumer {
 		let id = self.current.as_ref().ok_or(Error::MissingTrack)?;
 
 		let track = moq_transfork::Track {
-			path: format!("{}/{}/{}", self.path, id, &track.name),
+			// TODO use the catalog to find the path
+			path: format!("{}/{}/{}.karp", self.path, id, &track.name),
 			priority: track.priority,
 
 			// TODO add these to the catalog and support higher latencies.

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::Context;
 use clap::Parser;
 use moq_native::quic;
-use moq_transfork::{Announced, AnnouncedProducer, Error, Router, RouterConsumer, RouterProducer};
+use moq_transfork::{Announced, AnnouncedProducer, Error, Filter, Router, RouterConsumer, RouterProducer};
 use tracing::Instrument;
 use url::Url;
 
@@ -191,10 +191,10 @@ impl Cluster {
 
 		// NOTE: We only announce local tracks to remote nodes.
 		// Otherwise there would be conflicts and we wouldn't know which node is the origin.
-		session.announce(self.locals.announced("*"));
+		session.announce(self.locals.announced(Filter::Any));
 
 		// Add any tracks to the list of remotes for routing.
-		let all = session.announced("*");
+		let all = session.announced(Filter::Any);
 		self.remotes.announce(all, Some(session.clone())).await;
 
 		Ok(())

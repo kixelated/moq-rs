@@ -70,12 +70,12 @@ impl Backend {
 					let path = self.connect.take().unwrap().path;
 
 					// TODO make a helper in karp for this
-					let filter = format!("{}/*/.catalog.json", path);
+					let filter = format!("{}/*/catalog.json", path);
+
 					self.announced = Some(session.announced(filter));
 					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
-					tracing::info!(?announce, "announce");
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
 						Announced::Active(track) => self.announced(track),

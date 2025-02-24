@@ -179,7 +179,7 @@ impl Session {
 		self.subscriber.subscribe(track)
 	}
 
-	/// Discover any tracks published by the remote matching a prefix.
+	/// Discover any tracks published by the remote matching a (wildcard) filter.
 	pub fn announced<F: Into<Filter>>(&self, filter: F) -> AnnouncedConsumer {
 		self.subscriber.announced(filter)
 	}

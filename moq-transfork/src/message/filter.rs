@@ -4,20 +4,28 @@ use crate::coding::{Decode, DecodeError, Encode};
 
 #[derive(Debug, Clone)]
 pub enum Filter {
+	// Allow all paths.
+	Any,
+
 	// Match an exact string.
 	Exact(String),
 
 	// Match a string with a wildcard in the middle.
-	// The wildcard must be non-empty.
+	// The capture must be non-empty.
 	Wildcard(String, String),
 }
 
 impl Filter {
 	pub fn new(pattern: &str) -> Self {
-		match pattern.split_once("*") {
-			Some((prefix, suffix)) => Self::Wildcard(prefix.to_string(), suffix.to_string()),
-			None => Self::Exact(pattern.to_string()),
+		if pattern.is_empty() || pattern == "*" {
+			return Self::Any;
 		}
+
+		if let Some((prefix, suffix)) = pattern.split_once("*") {
+			return Self::Wildcard(prefix.to_string(), suffix.to_string());
+		}
+
+		Self::Exact(pattern.to_string())
 	}
 
 	/// Check if the input matches the filter.
@@ -25,6 +33,10 @@ impl Filter {
 	/// Returns a [FilterMatch] that contains both the captured wildcard and the full match.
 	pub fn matches<'a>(&self, input: &'a str) -> Option<FilterMatch<'a>> {
 		match self {
+			Self::Any => Some(FilterMatch {
+				full: input,
+				capture: (0, input.len()),
+			}),
 			Self::Exact(pattern) if input == pattern =>
 				Some(FilterMatch {
 					full: input,
@@ -49,6 +61,7 @@ impl Filter {
 	// Given a capture, reconstructs the full path.
 	pub fn reconstruct(&self, capture: &str) -> String {
 		match self {
+			Self::Any => capture.to_string(),
 			Self::Exact(pattern) => pattern.to_string(),
 			Self::Wildcard(prefix, suffix) => format!("{}{}{}", prefix, capture, suffix),
 		}
@@ -64,6 +77,9 @@ impl<T: AsRef<str>> From<T> for Filter {
 impl Encode for Filter {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		match self {
+			Self::Any => {
+				0u64.encode(w);
+			}
 			Self::Exact(pattern) => {
 				pattern.encode(w);
 			}

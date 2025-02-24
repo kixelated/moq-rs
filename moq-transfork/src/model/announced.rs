@@ -329,7 +329,7 @@ impl AnnouncedProducer {
 		let mut state = self.state.lock();
 
 		while let Some((_, notify)) = state.consumers.last() {
-			if notify.is_closed() {
+			if !notify.is_closed() {
 				return Some(notify.clone());
 			}
 
