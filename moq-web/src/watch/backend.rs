@@ -56,6 +56,8 @@ impl Backend {
 				},
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let path = self.connect.take().unwrap().path;
+
+					tracing::info!(?path, "Connected, loading broadcast");
 					let broadcast = moq_karp::BroadcastConsumer::new(session?, path);
 					self.status.connection.update(ConnectionStatus::Connected);
 
@@ -79,6 +81,8 @@ impl Backend {
 
 					// TODO add an ABR module
 					if let Some(info) = catalog.video.first() {
+						tracing::info!(?info, "Loading video track");
+
 						let mut track = self.broadcast.as_mut().unwrap().track(&info.track)?;
 						track.set_latency(self.controls.latency.get());
 						self.renderer.set_resolution(info.resolution);
@@ -86,6 +90,8 @@ impl Backend {
 						let video = Video::new(track, info.clone())?;
 						self.video = Some(video);
 					} else {
+						tracing::info!("No video track found");
+
 						self.renderer.set_resolution(Default::default());
 						self.video = None;
 					}
