@@ -7,6 +7,7 @@ flake-utils.lib.eachDefaultSystem (system:
       devShells = {
         default = with pkgs; mkShell {
           nativeBuildInputs = [
+            crate2nix
             pkg-config
             libressl
             cargo
@@ -28,6 +29,7 @@ flake-utils.lib.eachDefaultSystem (system:
             with pkgs;
             mkShell {
               nativeBuildInputs = [
+                crate2nix
                 go
                 nodejs_23
                 biome

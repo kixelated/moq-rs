@@ -3,10 +3,7 @@ flake-utils.lib.eachDefaultSystem (system:
   let
     pkgs = nixpkgs.legacyPackages.${system};
     moq-relay-version = (pkgs.lib.importTOML ../../moq-relay/Cargo.toml).package.version;
-    cargoWorkspace = pkgs.callPackage (crate2nix.tools.${system}.generatedCargoNix {
-      name = "moq-rs";
-      src = ../../.;
-    }) {
+    cargoWorkspace = pkgs.callPackage ../../Cargo.nix {
       defaultCrateOverrides = pkgs.defaultCrateOverrides // {
         aws-lc-rs = _: {
           # NOTE: If aws-lc-sys version changes we will need to change these variables
