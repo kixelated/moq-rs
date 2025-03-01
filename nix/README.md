@@ -15,7 +15,7 @@ The moq nix flake also exports a `nixosModule` for the `moq-relay`
 server and a nix overlay with the moq packages. Here is an example
 NixOS configuration that uses this overlay and nixosModule:
 
-```
+```nix
 {
   description = "My configuration";
 
