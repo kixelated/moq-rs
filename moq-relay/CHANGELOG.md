@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.23](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.22...moq-relay-v0.6.23) - 2025-03-01
+
+### Other
+
+- Smarter /announced prefix matching. ([#344](https://github.com/kixelated/moq-rs/pull/344))
+- Use string paths instead of arrays. (#330)
+- Oops fix main. ([#343](https://github.com/kixelated/moq-rs/pull/343))
+- Make a crude HTTP endpoint. ([#339](https://github.com/kixelated/moq-rs/pull/339))
+
 ## [0.6.22](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.21...moq-relay-v0.6.22) - 2025-02-13
 
 ### Other

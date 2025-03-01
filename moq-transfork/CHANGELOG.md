@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.11.0...moq-transfork-v0.12.0) - 2025-03-01
+
+### Other
+
+- Use string paths instead of arrays. (#330)
+- Make a crude HTTP endpoint. ([#339](https://github.com/kixelated/moq-rs/pull/339))
+
 ## [0.11.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.10.0...moq-transfork-v0.11.0) - 2025-02-13
 
 ### Other
