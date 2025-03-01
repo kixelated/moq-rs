@@ -1,13 +1,13 @@
 use derive_more::{From, Into};
 
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
-pub struct AnnounceId(u64);
+pub struct AnnounceId(pub u64);
 
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
-pub struct SubscribeId(u64);
+pub struct SubscribeId(pub u64);
 
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
-pub struct GroupId(u64);
+pub struct GroupId(pub u64);
 
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
 pub struct FrameId(u64);

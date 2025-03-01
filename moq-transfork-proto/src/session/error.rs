@@ -1,3 +1,5 @@
+use derive_more::{From, Into};
+
 use crate::coding;
 
 #[derive(Debug, thiserror::Error)]
@@ -20,3 +22,6 @@ pub enum Error {
 	#[error("poisoned")]
 	Poisoned,
 }
+
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, From, Into, PartialOrd, Ord)]
+pub struct ErrorCode(u32);
