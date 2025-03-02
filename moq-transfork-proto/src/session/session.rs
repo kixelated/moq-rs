@@ -1,23 +1,105 @@
-use std::collections::{hash_map, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
 use bytes::{Buf, BufMut, Bytes};
 
 use crate::{
 	coding::{Decode, DecodeError, Encode},
-	message,
+	message::{self, GroupOrder},
 };
 
 use super::{AnnounceId, Error, ErrorCode, GroupId, Increment, StreamId, SubscribeId};
 
-#[derive(Default)]
-pub struct Session {
+pub struct Connection {
+	session: SessionState,
 	publisher: PublisherState,
 	subscriber: SubscriberState,
 	streams: StreamsState,
 }
 
+#[derive(Clone, Debug)]
+enum SessionState {
+	ClientInit,
+	ServerInit,
+	ClientSent(message::ClientSetup),
+	ServerSend(message::ClientSetup, message::ServerSetup),
+	Connected(message::ClientSetup, message::ServerSetup),
+}
+
+/* 	let client = message::ClientSetup {
+	versions: [message::Version::CURRENT].into(),
+	extensions: Default::default(),
+};
+
+setup.writer.encode(&client).await?;
+let server: message::ServerSetup = setup.reader.decode().await?;
+
+tracing::info!(version = ?server.version, "connected"); */
+
+impl SessionState {
+	fn new(client: bool) -> Self {
+		match client {
+			true => Self::ClientInit,
+			false => Self::ServerInit,
+		}
+	}
+
+	fn encode<B: BufMut>(&mut self, buf: &mut B) {
+		match self {
+			Self::ClientInit => {
+				message::ControlType::Session.encode(buf);
+
+				let client = message::ClientSetup {
+					versions: [message::Version::CURRENT].into(),
+					extensions: Default::default(),
+				};
+				client.encode(buf);
+
+				*self = Self::ClientSent(client);
+			}
+			Self::ServerSend(client, server) => {
+				server.encode(buf);
+				*self = Self::Connected(client.clone(), server.clone());
+			}
+			Self::ServerInit | Self::ClientSent(_) | Self::Connected(_, _) => {}
+		}
+	}
+
+	fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+		match self {
+			Self::ServerInit => {
+				let client = message::ClientSetup::decode(buf)?;
+				if !client.versions.contains(&message::Version::CURRENT) {
+					todo!("version error");
+				}
+
+				let server = message::ServerSetup {
+					version: message::Version::CURRENT,
+					extensions: Default::default(),
+				};
+
+				*self = Self::ServerSend(client, server);
+			}
+			Self::ClientSent(client) => {
+				let server = message::ServerSetup::decode(buf)?;
+				if server.version != message::Version::CURRENT {
+					todo!("version error");
+				}
+
+				*self = Self::Connected(client.clone(), server);
+			}
+			Self::Connected(_, _) => {
+				let _info = message::SessionInfo::decode(buf)?;
+				// TODO use info
+			}
+			Self::ClientInit | Self::ServerSend(_, _) => todo!("unexpected stream error"),
+		}
+
+		Ok(())
+	}
+}
+
 #[derive(Default)]
-pub struct StreamsState {
+struct StreamsState {
 	active: HashMap<StreamId, Stream>,
 
 	create_bi: VecDeque<StreamKind>,
@@ -26,7 +108,38 @@ pub struct StreamsState {
 	encodable: BTreeSet<StreamId>,
 }
 
-impl Session {
+impl Connection {
+	// Create a new client connection.
+	pub fn client() -> Self {
+		let mut this = Self {
+			session: SessionState::new(true),
+			publisher: PublisherState::default(),
+			subscriber: SubscriberState::default(),
+			streams: StreamsState::default(),
+		};
+
+		this.streams.create_bi.push_back(StreamKind::Session);
+
+		this
+	}
+
+	// Create a new server connection.
+	pub fn server() -> Self {
+		Self {
+			session: SessionState::new(false),
+			publisher: PublisherState::default(),
+			subscriber: SubscriberState::default(),
+			streams: StreamsState::default(),
+		}
+	}
+
+	pub fn connected(&mut self) -> Result<bool, Error> {
+		match &mut self.session {
+			SessionState::Connected(_, _) => Ok(true),
+			_ => Ok(false),
+		}
+	}
+
 	pub fn encode<B: BufMut>(&mut self, id: StreamId, buf: &mut B) -> Result<(), Error> {
 		let stream = self.streams.active.get_mut(&id).ok_or(Error::UnknownStream)?;
 
@@ -41,6 +154,7 @@ impl Session {
 
 		let chain = &mut buf.chain_mut(&mut stream.send_buffer);
 		match stream.kind {
+			StreamKind::Session => self.session.encode(chain),
 			StreamKind::PublisherAnnounce(id) => self.publisher.announces.get_mut(&id).unwrap().encode(chain),
 			StreamKind::PublisherSubscribe(id) => self.publisher.subscribes.get_mut(&id).unwrap().encode(chain),
 			StreamKind::PublisherGroup(id) => self.publisher.groups.get_mut(&id).unwrap().encode(chain),
@@ -73,10 +187,15 @@ impl Session {
 		let chain = &mut stream.recv_buffer.chain(&mut buf);
 
 		while chain.has_remaining() {
-			match Self::recv(&mut stream.kind, chain, &mut self.publisher, &mut self.subscriber) {
+			match Self::recv(
+				&mut stream.kind,
+				chain,
+				&mut self.session,
+				&mut self.publisher,
+				&mut self.subscriber,
+			) {
 				Ok(()) => continue,
 				Err(Error::Coding(DecodeError::Short)) => {
-					drop(chain);
 					// We need to keep the buffer for the next call.
 					// Put the remainder of the buffer back.
 					stream.recv_buffer.put(buf);
@@ -102,8 +221,12 @@ impl Session {
 		let id = id.take().unwrap();
 
 		match kind {
-			StreamKind::SubscriberAnnounce(announce) => announce.stream = Some(id),
-			StreamKind::SubscriberSubscribe(subscribe) => subscribe.stream = Some(id),
+			StreamKind::SubscriberAnnounce(announce) => {
+				self.subscriber.announced.get_mut(&announce).unwrap().stream = Some(id)
+			}
+			StreamKind::SubscriberSubscribe(subscribe) => {
+				self.subscriber.subscribe.get_mut(&subscribe).unwrap().stream = Some(id)
+			}
 			_ => unreachable!(),
 		};
 
@@ -139,39 +262,26 @@ impl Session {
 	fn recv<B: Buf>(
 		kind: &mut StreamKind,
 		buf: &mut B,
+		session: &mut SessionState,
 		publisher: &mut PublisherState,
 		subscriber: &mut SubscriberState,
 	) -> Result<(), Error> {
 		match *kind {
 			StreamKind::RecvStream(stream) => {
-				let control = message::ControlType::decode(buf)?;
-				match control {
-					message::ControlType::Session => todo!(),
-					message::ControlType::Announce => {
-						let announce = message::AnnouncePlease::decode(buf)?;
-						let id = publisher.announced_next;
-						publisher.announced_next.increment();
-
-						let announce = PublisherAnnounceState::new(stream, announce);
-						publisher.announces.insert(id, announce);
-						publisher.announced_ready.insert(id);
-
-						*kind = StreamKind::PublisherAnnounce(id);
+				*kind = if stream.is_uni() {
+					match message::DataType::decode(buf)? {
+						message::DataType::Group => Self::recv_group(buf, subscriber)?,
 					}
-					message::ControlType::Subscribe => {
-						let subscribe = message::Subscribe::decode(buf)?;
-						let id = publisher.subscribe_next;
-						publisher.subscribe_next.increment();
-
-						let subscribe = PublisherSubscribeState::new(stream);
-						publisher.subscribes.insert(id, subscribe);
-						publisher.subscribe_ready.insert(id);
-
-						*kind = StreamKind::PublisherSubscribe(id);
+				} else {
+					match message::ControlType::decode(buf)? {
+						message::ControlType::Session => Self::recv_session(buf, session)?,
+						message::ControlType::Announce => Self::recv_announce(buf, publisher, stream)?,
+						message::ControlType::Subscribe => Self::recv_subscribe(buf, publisher, stream)?,
+						message::ControlType::Info => todo!(),
 					}
-					message::ControlType::Info => todo!(),
 				}
 			}
+			StreamKind::Session => session.decode(buf)?,
 			StreamKind::PublisherAnnounce(id) => {
 				publisher.announces.get_mut(&id).unwrap().decode(buf)?;
 				publisher.announced_ready.insert(id);
@@ -180,7 +290,7 @@ impl Session {
 				publisher.subscribes.get_mut(&id).unwrap().decode(buf)?;
 				publisher.subscribe_ready.insert(id);
 			}
-			StreamKind::PublisherGroup(id) => unreachable!("write only"),
+			StreamKind::PublisherGroup(_) => unreachable!("write only"),
 			StreamKind::SubscriberAnnounce(id) => {
 				subscriber.announced.get_mut(&id).unwrap().decode(buf)?;
 				subscriber.announced_ready.insert(id);
@@ -196,6 +306,54 @@ impl Session {
 		}
 
 		Ok(())
+	}
+
+	fn recv_session<B: Buf>(buf: &mut B, session: &mut SessionState) -> Result<StreamKind, Error> {
+		session.decode(buf)?;
+		Ok(StreamKind::Session)
+	}
+
+	fn recv_group<B: Buf>(buf: &mut B, subscriber: &mut SubscriberState) -> Result<StreamKind, Error> {
+		let group = message::Group::decode(buf)?;
+		let id = (group.subscribe.into(), group.sequence.into());
+
+		let group = SubscriberGroupState::default();
+		subscriber.groups.insert(id, group);
+		subscriber.groups_ready.insert(id);
+
+		Ok(StreamKind::SubscriberGroup(id))
+	}
+
+	fn recv_announce<B: Buf>(
+		buf: &mut B,
+		publisher: &mut PublisherState,
+		stream: StreamId,
+	) -> Result<StreamKind, Error> {
+		let announce = message::AnnouncePlease::decode(buf)?;
+		let id = publisher.announced_next;
+		publisher.announced_next.increment();
+
+		let announce = PublisherAnnounceState::new(stream, announce);
+		publisher.announces.insert(id, announce);
+		publisher.announced_ready.insert(id);
+
+		Ok(StreamKind::PublisherAnnounce(id))
+	}
+
+	fn recv_subscribe<B: Buf>(
+		buf: &mut B,
+		publisher: &mut PublisherState,
+		stream: StreamId,
+	) -> Result<StreamKind, Error> {
+		let subscribe = message::Subscribe::decode(buf)?;
+		let id = publisher.subscribe_next;
+		publisher.subscribe_next.increment();
+
+		let subscribe = PublisherSubscribeState::new(stream, subscribe.into());
+		publisher.subscribes.insert(id, subscribe);
+		publisher.subscribe_ready.insert(id);
+
+		Ok(StreamKind::PublisherSubscribe(id))
 	}
 }
 
@@ -217,6 +375,8 @@ impl Stream {
 
 #[derive(Clone)]
 enum StreamKind {
+	Session,
+
 	RecvStream(StreamId),
 
 	PublisherAnnounce(AnnounceId),
@@ -231,7 +391,6 @@ enum StreamKind {
 #[derive(Default)]
 struct SubscriberState {
 	announced: HashMap<AnnounceId, SubscriberAnnounceState>,
-	announced_create: VecDeque<message::AnnouncePlease>,
 	announced_next: AnnounceId,
 	announced_ready: BTreeSet<AnnounceId>,
 
@@ -240,10 +399,11 @@ struct SubscriberState {
 	subscribe_ready: BTreeSet<SubscribeId>,
 
 	groups: HashMap<(SubscribeId, GroupId), SubscriberGroupState>,
+	groups_ready: BTreeSet<(SubscribeId, GroupId)>,
 }
 
 pub struct Subscriber<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> Subscriber<'a> {
@@ -257,7 +417,7 @@ impl<'a> Subscriber<'a> {
 }
 
 pub struct SubscriberAnnounced<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> SubscriberAnnounced<'a> {
@@ -286,14 +446,50 @@ impl<'a> SubscriberAnnounced<'a> {
 	}
 }
 
+// message::Subscribe but without the ID.
+pub struct SubscribeRequest {
+	pub path: String,
+	pub priority: i8,
+	pub group_order: GroupOrder,
+	pub group_min: Option<GroupId>,
+	pub group_max: Option<GroupId>,
+}
+
+impl SubscribeRequest {
+	fn into_message(self, id: u64) -> message::Subscribe {
+		message::Subscribe {
+			id,
+			path: self.path,
+			priority: self.priority,
+			group_order: self.group_order,
+			group_min: self.group_min.map(Into::into),
+			group_max: self.group_max.map(Into::into),
+		}
+	}
+}
+
+impl From<message::Subscribe> for SubscribeRequest {
+	fn from(msg: message::Subscribe) -> Self {
+		Self {
+			path: msg.path,
+			priority: msg.priority,
+			group_order: msg.group_order,
+			group_min: msg.group_min.map(Into::into),
+			group_max: msg.group_max.map(Into::into),
+		}
+	}
+}
+
 pub struct SubscriberSubscribe<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> SubscriberSubscribe<'a> {
-	pub fn start(&mut self, request: message::Subscribe) -> SubscribeId {
+	pub fn start(&mut self, request: SubscribeRequest) -> SubscribeId {
 		let id = self.session.subscriber.subscribe_next;
-		let subscribe = SubscriberSubscribeState::new(request);
+
+		let msg = request.into_message(id.0);
+		let subscribe = SubscriberSubscribeState::new(msg);
 
 		self.session.subscriber.subscribe_next.increment();
 		self.session.subscriber.subscribe.insert(id, subscribe);
@@ -312,7 +508,7 @@ impl<'a> SubscriberSubscribe<'a> {
 	}
 
 	/// Update the subscription with a new priority/ordering.
-	fn update(&mut self, id: SubscribeId, update: message::SubscribeUpdate) {
+	pub fn update(&mut self, id: SubscribeId, update: message::SubscribeUpdate) {
 		let sub = self.session.subscriber.subscribe.get_mut(&id).unwrap();
 		sub.update = Some(update);
 
@@ -482,7 +678,7 @@ pub struct PublisherState {
 }
 
 pub struct Publisher<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> Publisher<'a> {
@@ -500,7 +696,7 @@ impl<'a> Publisher<'a> {
 }
 
 pub struct PublisherAnnounce<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> PublisherAnnounce<'a> {
@@ -521,7 +717,7 @@ impl<'a> PublisherAnnounce<'a> {
 }
 
 pub struct PublisherSubscribe<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl<'a> PublisherSubscribe<'a> {
@@ -529,15 +725,8 @@ impl<'a> PublisherSubscribe<'a> {
 		self.session.publisher.subscribe_ready.pop_first()
 	}
 
-	pub fn requested(&mut self, id: SubscribeId) -> &message::Subscribe {
-		self.session
-			.publisher
-			.subscribes
-			.get(&id)
-			.unwrap()
-			.request
-			.as_ref()
-			.unwrap()
+	pub fn requested(&mut self, id: SubscribeId) -> &SubscribeRequest {
+		&self.session.publisher.subscribes.get(&id).unwrap().request
 	}
 
 	pub fn respond(&mut self, id: SubscribeId, info: message::Info) {
@@ -552,7 +741,7 @@ impl<'a> PublisherSubscribe<'a> {
 }
 
 pub struct PublisherGroups<'a> {
-	session: &'a mut Session,
+	session: &'a mut Connection,
 }
 
 impl PublisherGroups<'_> {
@@ -644,20 +833,20 @@ struct PublisherSubscribeState {
 	dropped: VecDeque<(GroupId, ErrorCode)>,
 
 	// Inbound
-	request: Option<message::Subscribe>,
+	request: SubscribeRequest,
 	update: Option<message::SubscribeUpdate>,
 
 	stream: StreamId,
 }
 
 impl PublisherSubscribeState {
-	pub fn new(stream: StreamId) -> Self {
+	pub fn new(stream: StreamId, request: SubscribeRequest) -> Self {
 		Self {
 			info: None,
 			info_sent: false,
 			dropped: VecDeque::new(),
 			stream,
-			request: None,
+			request,
 			update: None,
 		}
 	}
@@ -676,11 +865,11 @@ impl PublisherSubscribeState {
 			let mut msg = message::GroupDrop {
 				sequence: id.0,
 				count: 0,
-				code,
+				code: code.into(),
 			};
 
-			while let Some((id, code)) = self.dropped.front() {
-				if msg.sequence + msg.count + 1 == id.0 && msg.code == *code {
+			while let Some((id, code)) = self.dropped.front().cloned() {
+				if msg.sequence + msg.count + 1 == id.0 && msg.code == code.into() {
 					msg.count += 1;
 					self.dropped.pop_front();
 				} else {
@@ -693,11 +882,6 @@ impl PublisherSubscribeState {
 	}
 
 	fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
-		if self.request.is_none() {
-			self.request = Some(message::Subscribe::decode(buf)?);
-			return Ok(());
-		}
-
 		let update = message::SubscribeUpdate::decode(buf)?;
 		self.update = Some(update);
 
