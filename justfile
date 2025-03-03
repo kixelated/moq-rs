@@ -48,6 +48,9 @@ bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
 
+# Download and stream AV1 content:
+av1: (download "av1" "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4") (pub "av1")
+
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name url:
 	if [ ! -f dev/{{name}}.mp4 ]; then \

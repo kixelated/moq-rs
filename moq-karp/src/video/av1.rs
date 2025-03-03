@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
+// https://aomediacodec.github.io/av1-isobmff/#codecsparam
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AV1 {
 	pub profile: u8,
@@ -9,7 +10,9 @@ pub struct AV1 {
 	pub tier: char,
 	pub bitdepth: u8,
 	pub mono_chrome: bool,
-	pub chroma_subsampling: u8, // TODO this might need to be a string or enum?
+	pub chroma_subsampling_x: bool,
+	pub chroma_subsampling_y: bool,
+	pub chroma_sample_position: u8,
 	pub color_primaries: u8,
 	pub transfer_characteristics: u8,
 	pub matrix_coefficients: u8,
@@ -44,9 +47,11 @@ impl std::fmt::Display for AV1 {
 
 		write!(
 			f,
-			".{:01}.{:03}.{:02}.{:02}.{:02}.{:01}",
+			".{:01}.{}{}{}.{:02}.{:02}.{:02}.{:01}",
 			self.mono_chrome as u8,
-			self.chroma_subsampling,
+			self.chroma_subsampling_x as u8,
+			self.chroma_subsampling_y as u8,
+			self.chroma_sample_position as u8,
 			self.color_primaries,
 			self.transfer_characteristics,
 			self.matrix_coefficients,
@@ -63,7 +68,7 @@ lazy_static::lazy_static! {
 		\.(?<bitdepth>\d{2})
 		(?<extra>
 			\.(?<mono>\d)
-			\.(?<chroma>\d{3})
+			\.(?<chroma_subsampling_x>[01])(?<chroma_subsampling_y>[01])(?<chroma_sample_position>[0-3])
 			\.(?<color>\d{2})
 			\.(?<transfer>\d{2})
 			\.(?<matrix>\d{2})
@@ -92,7 +97,9 @@ impl std::str::FromStr for AV1 {
 		}
 
 		av1.mono_chrome = &captures["mono"] == "1";
-		av1.chroma_subsampling = u8::from_str(&captures["chroma"])?;
+		av1.chroma_subsampling_x = &captures["chroma_subsampling_x"] == "1";
+		av1.chroma_subsampling_y = &captures["chroma_subsampling_y"] == "1";
+		av1.chroma_sample_position = u8::from_str(&captures["chroma_sample_position"])?;
 		av1.color_primaries = u8::from_str(&captures["color"])?;
 		av1.transfer_characteristics = u8::from_str(&captures["transfer"])?;
 		av1.matrix_coefficients = u8::from_str(&captures["matrix"])?;
@@ -111,7 +118,9 @@ impl Default for AV1 {
 			tier: 'M',
 			bitdepth: 8,
 			mono_chrome: false,
-			chroma_subsampling: 110,
+			chroma_subsampling_x: true,
+			chroma_subsampling_y: true,
+			chroma_sample_position: 0,
 			color_primaries: 1,
 			transfer_characteristics: 1,
 			matrix_coefficients: 1,
@@ -135,7 +144,9 @@ mod test {
 			tier: 'M',
 			bitdepth: 10,
 			mono_chrome: false,
-			chroma_subsampling: 112,
+			chroma_subsampling_x: true,
+			chroma_subsampling_y: true,
+			chroma_sample_position: 2,
 			color_primaries: 9,
 			transfer_characteristics: 16,
 			matrix_coefficients: 9,
