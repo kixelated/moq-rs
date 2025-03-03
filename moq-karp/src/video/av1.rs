@@ -51,7 +51,7 @@ impl std::fmt::Display for AV1 {
 			self.mono_chrome as u8,
 			self.chroma_subsampling_x as u8,
 			self.chroma_subsampling_y as u8,
-			self.chroma_sample_position as u8,
+			{ self.chroma_sample_position },
 			self.color_primaries,
 			self.transfer_characteristics,
 			self.matrix_coefficients,
