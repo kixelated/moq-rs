@@ -11,12 +11,18 @@ edition = "2021"
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
+[features]
+quinn = ["dep:quinn-proto"]
+default = ["quinn"]
+
 [dependencies]
 bytes = "1"
 thiserror = "2"
 tracing = "0.1"
 num_enum = "0.7"
 enum_dispatch = "0.3"
+
+quinn-proto = { optional = true, version = "0.11" }
 
 [dependencies.derive_more]
 version = "2"

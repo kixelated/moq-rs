@@ -1,5 +1,7 @@
 use derive_more::{From, Into};
 
+use super::StreamDirection;
+
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
 pub struct AnnounceId(pub u64);
 
@@ -9,11 +11,8 @@ pub struct SubscribeId(pub u64);
 #[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
 pub struct GroupId(pub u64);
 
-#[derive(From, Into, Debug, Default, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
-pub struct FrameId(u64);
-
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, From, Into, PartialOrd, Ord)]
-pub struct StreamId(u64);
+pub struct StreamId(pub u64);
 
 impl StreamId {
 	pub fn is_bi(&self) -> bool {
@@ -22,6 +21,14 @@ impl StreamId {
 
 	pub fn is_uni(&self) -> bool {
 		!self.is_bi()
+	}
+
+	pub fn direction(&self) -> StreamDirection {
+		if self.is_bi() {
+			StreamDirection::Bi
+		} else {
+			StreamDirection::Uni
+		}
 	}
 }
 
@@ -42,12 +49,6 @@ impl Increment for SubscribeId {
 }
 
 impl Increment for GroupId {
-	fn increment(&mut self) {
-		self.0 += 1;
-	}
-}
-
-impl Increment for FrameId {
 	fn increment(&mut self) {
 		self.0 += 1;
 	}
