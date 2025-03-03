@@ -4,7 +4,9 @@ use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Error, Result};
-use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, VP9};
+use crate::{
+	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9,
+};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -127,27 +129,29 @@ impl Import {
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
-			let _hvcc = &hev1.hvcc;
+			let hvcc = &hev1.hvcc;
 
-			/*
-			catalog::Video {
-				track: moq_transfork::Track::build(name).priority(2).into(),
-				width: hev1.width,
-				height: hev1.height,
-				codec: catalog::H265 {
-					profile: hvcc.general_profile_idc,
-					level: hvcc.general_level_idc,
-					constraints: hvcc.general_constraint_indicator_flag,
+			let mut description = BytesMut::new();
+			hvcc.encode_body(&mut description)?;
+
+			Video {
+				track: Track { name, priority: 2 },
+				codec: H265 {
+					profile_space: hvcc.general_profile_space,
+					profile_idc: hvcc.general_profile_idc,
+					profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+					tier_flag: hvcc.general_tier_flag,
+					level_idc: hvcc.general_level_idc,
+					constraint_flags: hvcc.general_constraint_indicator_flags,
+				}
+				.into(),
+				description: Some(description.freeze()),
+				resolution: Dimensions {
+					width: hev1.visual.width as _,
+					height: hev1.visual.height as _,
 				},
-				container: catalog::Container::Fmp4,
-				layers: vec![],
-				bit_rate: None,
+				bitrate: None,
 			}
-			*/
-
-			// Just waiting for a release:
-			// https://github.com/alfg/mp4-rust/commit/35560e94f5e871a2b2d88bfe964013b39af131e8
-			return Err(Error::UnsupportedCodec("HEVC"));
 		} else if let Some(vp09) = &stsd.vp09 {
 			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 			let vpcc = &vp09.vpcc;

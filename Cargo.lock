@@ -285,6 +285,9 @@ name = "bytes"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cc"
@@ -1410,12 +1413,11 @@ dependencies = [
 [[package]]
 name = "mp4-atom"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31d29e19c23556c0ba393643d90cb2273a4776fcccbe733dff70e41e0fcd71f8"
 dependencies = [
  "bytes",
  "num",
  "paste",
+ "serde",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
