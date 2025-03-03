@@ -4,7 +4,7 @@ use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Error, Result};
-use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9};
+use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -114,8 +114,8 @@ impl Import {
 			Video {
 				track: Track { name, priority: 2 },
 				resolution: Dimensions {
-					width: avc1.width as _,
-					height: avc1.height as _,
+					width: avc1.visual.width as _,
+					height: avc1.visual.height as _,
 				},
 				codec: H264 {
 					profile: avcc.avc_profile_indication,
@@ -167,13 +167,42 @@ impl Import {
 				.into(),
 				description: Default::default(),
 				resolution: Dimensions {
-					width: vp09.width as _,
-					height: vp09.height as _,
+					width: vp09.visual.width as _,
+					height: vp09.visual.height as _,
+				},
+				bitrate: None,
+			}
+		} else if let Some(av01) = &stsd.av01 {
+			let av1c = &av01.av1c;
+
+			Video {
+				track: Track { name, priority: 2 },
+				codec: AV1 {
+					profile: av1c.seq_profile,
+					level: av1c.seq_level_idx_0,
+					tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
+					bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
+						(true, true) => 12,
+						(true, false) => 10,
+						(false, true) => 10,
+						(false, false) => 8,
+					},
+					mono_chrome: av1c.monochrome,
+					chroma_subsampling_x: av1c.chroma_subsampling_x,
+					chroma_subsampling_y: av1c.chroma_subsampling_y,
+					chroma_sample_position: av1c.chroma_sample_position,
+					// TODO HDR stuff?
+					..Default::default()
+				}
+				.into(),
+				description: Default::default(),
+				resolution: Dimensions {
+					width: av01.visual.width as _,
+					height: av01.visual.height as _,
 				},
 				bitrate: None,
 			}
 		} else {
-			// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
 			return Err(Error::UnsupportedCodec("unknown"));
 		};
 

@@ -36,3 +36,4 @@ jobs:
 
       # Make sure u guys don't write bad code
       - run: just check
+      - run: just test
