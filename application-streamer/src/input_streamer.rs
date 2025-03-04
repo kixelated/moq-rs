@@ -1,43 +1,48 @@
+use tokio::io::{AsyncRead};
 use std::net;
+use std::str::FromStr;
 use anyhow::Context;
 use moq_transfork::Session;
 use url::Url;
 use moq_karp::{cmaf, BroadcastProducer};
 use moq_native::quic;
 
-pub struct MoqStarter {
+pub struct MoQInputStreamer<T: AsyncRead + Unpin> {
     log: moq_native::log::Args,
     tls: moq_native::tls::Args,
     bind: net::SocketAddr,
+    port: u16,
+    input: T,
 }
 
-impl MoqStarter {
-    pub fn new(bind: net::SocketAddr) -> Self {
+impl<T: AsyncRead + Unpin> MoQInputStreamer<T> {
+    pub fn new(port: u16, input: T) -> Self {
         Self {
             log: moq_native::log::Args::default(),
             tls: moq_native::tls::Args::default(),
-            bind,
+            bind: net::SocketAddr::from_str("[::]:0").unwrap(),
+            port,
+            input,
         }
     }
 
-    pub async fn start(&self) {
+    pub async fn start(&mut self) {
         self.log.init();
-        self.publish("http://localhost:8080/demo/bbb".to_string()).await.unwrap();
+        self.publish(format!("http://localhost:{}/", self.port)).await.unwrap();
     }
 
     #[tracing::instrument(skip_all, fields(?url))]
-    async fn publish(&self, url: String) -> anyhow::Result<()> {
+    async fn publish(&mut self, url: String) -> anyhow::Result<()> {
         let (session, path) = self.connect(&url).await?;
         let broadcast = BroadcastProducer::new(session.clone(), path)?;
-        let mut input = tokio::io::stdin();
 
         let mut import = cmaf::Import::new(broadcast);
-        import.init_from(&mut input).await.context("failed to initialize")?;
+        import.init_from(&mut self.input).await.context("failed to initialize")?;
 
         tracing::info!("publishing");
 
         tokio::select! {
-            res = import.read_from(&mut input) => Ok(res?),
+            res = import.read_from(&mut self.input) => Ok(res?),
             res = session.closed() => Err(res.into()),
         }
     }
