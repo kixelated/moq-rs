@@ -75,7 +75,7 @@ impl FromStr for H265 {
 			b'A'..=b'Z' => 1 + profile.as_bytes()[0] - b'A',
 			_ => 0,
 		};
-		let profile_idc = u8::from_str_radix(if profile_space > 0 { &profile[1..] } else { profile }, 10)?;
+		let profile_idc = (if profile_space > 0 { &profile[1..] } else { profile }).parse::<u8>()?;
 
 		let compatibility = parts.next().ok_or(Error::InvalidCodec)?;
 		let profile_compatibility_flags = u32::from_str_radix(compatibility, 16)?.to_le_bytes();
@@ -88,7 +88,7 @@ impl FromStr for H265 {
 			_ => return Err(Error::InvalidCodec),
 		};
 
-		let level_idc = u8::from_str_radix(&level[1..], 10)?;
+		let level_idc = level[1..].parse::<u8>()?;
 
 		let mut constraint_flags = [0u8; 6];
 

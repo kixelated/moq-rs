@@ -1412,7 +1412,9 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.5.0"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d699e7cc6727d9b7c1153a3e22a38a35da259a10d5cb88ba99bfc3c88feca5f6"
 dependencies = [
  "bytes",
  "num",
