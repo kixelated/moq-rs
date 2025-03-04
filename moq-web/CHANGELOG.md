@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.5...moq-web-v0.4.6) - 2025-03-04
+
+### Other
+
+- updated the following local packages: moq-karp
+
 ## [0.4.5](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.4...moq-web-v0.4.5) - 2025-03-01
 
 ### Other

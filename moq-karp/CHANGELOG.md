@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.14.1...moq-karp-v0.15.0) - 2025-03-04
+
+### Other
+
+- Add HEVC support ([#350](https://github.com/kixelated/moq-rs/pull/350))
+- Initial av01 support. ([#348](https://github.com/kixelated/moq-rs/pull/348))
+
 ## [0.14.1](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.14.0...moq-karp-v0.14.1) - 2025-03-01
 
 ### Other
