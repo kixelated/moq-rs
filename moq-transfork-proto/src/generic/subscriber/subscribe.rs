@@ -4,10 +4,7 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{
-		Error, GroupId, Increment, StreamId, StreamsState, SubscribeId,
-		SubscribeRequest,
-	},
+	generic::{Error, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest},
 	message::{self},
 };
 
@@ -81,8 +78,6 @@ pub(super) struct SubscriberSubscribeState {
 	// inbound
 	info: Option<message::Info>,
 	drops: VecDeque<message::GroupDrop>,
-
-	groups_ready: VecDeque<GroupId>,
 }
 
 impl SubscriberSubscribeState {
@@ -94,7 +89,6 @@ impl SubscriberSubscribeState {
 
 			info: None,
 			drops: VecDeque::new(),
-			groups_ready: VecDeque::new(),
 		}
 	}
 

@@ -4,14 +4,11 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use derive_more::From;
 
 use crate::{
-	coding::{Decode, DecodeError, Encode},
+	coding::{Decode, DecodeError},
 	message::{self},
 };
 
-use super::{
-	Error, PublisherState, PublisherStream, SessionState,
-	StreamId, SubscriberState, SubscriberStream,
-};
+use super::{Error, PublisherState, PublisherStream, SessionState, StreamId, SubscriberState, SubscriberStream};
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
 pub enum StreamDirection {
@@ -64,15 +61,15 @@ impl StreamsState {
 		None
 	}
 
-	pub fn get(&self, id: StreamId) -> Option<&Stream> {
+	fn get(&self, id: StreamId) -> Option<&Stream> {
 		self.active.get(&id)
 	}
 
-	pub fn get_mut(&mut self, id: StreamId) -> Option<&mut Stream> {
+	fn get_mut(&mut self, id: StreamId) -> Option<&mut Stream> {
 		self.active.get_mut(&id)
 	}
 
-	pub fn get_or_create(&mut self, id: StreamId) -> &mut Stream {
+	fn get_or_create(&mut self, id: StreamId) -> &mut Stream {
 		self.active
 			.entry(id)
 			.or_insert_with(|| Stream::new(StreamKind::Unknown(id)))
@@ -132,13 +129,7 @@ impl Streams<'_> {
 		let chain = &mut stream.recv_buffer.chain(&mut buf);
 
 		while chain.has_remaining() {
-			match Self::recv(
-				&mut stream.kind,
-				chain,
-				self.session,
-				self.publisher,
-				self.subscriber,
-			) {
+			match Self::recv(&mut stream.kind, chain, self.session, self.publisher, self.subscriber) {
 				Ok(()) => continue,
 				Err(Error::Coding(DecodeError::Short)) => {
 					// We need to keep the buffer for the next call.

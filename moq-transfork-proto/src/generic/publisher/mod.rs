@@ -7,15 +7,9 @@ use derive_more::From;
 pub use group::*;
 pub use subscribe::*;
 
-
 use bytes::{Buf, BufMut};
 
-use crate::coding::{Decode, Encode};
-
-use super::{
-	AnnounceId, Error, GroupId, StreamId, StreamsState,
-	SubscribeId,
-};
+use super::{AnnounceId, Error, GroupId, StreamId, StreamsState, SubscribeId};
 
 #[derive(Debug, Clone, Copy, From)]
 pub enum PublisherEvent {
@@ -31,7 +25,7 @@ pub enum PublisherEvent {
 }
 
 #[derive(Debug, Clone, Copy, From)]
-pub(super) enum PublisherStream {
+pub enum PublisherStream {
 	Announce(AnnounceId),
 	Subscribe(SubscribeId),
 	Group((SubscribeId, GroupId)),

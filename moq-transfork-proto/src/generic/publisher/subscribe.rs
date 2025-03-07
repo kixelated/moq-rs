@@ -4,13 +4,9 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{
-		Error, ErrorCode, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest,
-	},
+	generic::{Error, ErrorCode, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest},
 	message::{self},
 };
-
-use super::PublisherGroupState;
 
 #[derive(Default)]
 pub(super) struct PublisherSubscribesState {
@@ -73,7 +69,6 @@ struct PublisherSubscribeState {
 	info: Option<message::Info>,
 	info_sent: bool,
 	dropped: VecDeque<(GroupId, ErrorCode)>,
-	groups: HashMap<GroupId, PublisherGroupState>,
 
 	// Inbound
 	request: SubscribeRequest,
@@ -88,7 +83,6 @@ impl PublisherSubscribeState {
 			info: None,
 			info_sent: false,
 			dropped: VecDeque::new(),
-			groups: HashMap::new(),
 			stream,
 			request,
 			update: None,
@@ -130,10 +124,6 @@ impl PublisherSubscribeState {
 		self.update = Some(update);
 
 		Ok(())
-	}
-
-	pub fn dropped(&mut self, group: GroupId, error: ErrorCode) {
-		self.dropped.push_back((group, error));
 	}
 }
 

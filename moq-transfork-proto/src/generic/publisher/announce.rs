@@ -4,11 +4,8 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{
-		AnnounceId, Error, Increment, StreamId,
-		StreamsState,
-	},
-	message::{self},
+	generic::{AnnounceId, Error, Increment, StreamId, StreamsState},
+	message,
 };
 
 #[derive(Default)]
@@ -51,15 +48,15 @@ pub struct PublisherAnnounces<'a> {
 impl PublisherAnnounces<'_> {
 	pub fn accept(&mut self) -> Option<PublisherAnnounce> {
 		let id = self.state.ready.pop_first()?;
+		self.get(id)
+	}
+
+	pub fn get(&mut self, id: AnnounceId) -> Option<PublisherAnnounce> {
 		Some(PublisherAnnounce {
 			id,
 			state: self.state.lookup.get_mut(&id).unwrap(),
 			streams: self.streams,
 		})
-	}
-
-	pub fn get(&mut self, id: AnnounceId) -> Option<&mut PublisherAnnounceState> {
-		self.state.lookup.get_mut(&id)
 	}
 }
 

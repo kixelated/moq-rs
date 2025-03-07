@@ -6,16 +6,13 @@ pub use announce::*;
 pub use group::*;
 pub use subscribe::*;
 
-
 use bytes::{Buf, BufMut};
 use derive_more::From;
-
-use crate::coding::{Decode, Encode};
 
 use super::{AnnounceId, Error, GroupId, StreamId, StreamsState, SubscribeId};
 
 #[derive(Debug, Clone, Copy, From)]
-pub(super) enum SubscriberStream {
+pub enum SubscriberStream {
 	Announce(AnnounceId),
 	Subscribe(SubscribeId),
 	Group((SubscribeId, GroupId)),

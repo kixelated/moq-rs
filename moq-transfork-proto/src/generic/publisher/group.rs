@@ -4,10 +4,7 @@ use bytes::{Buf, BufMut, Bytes};
 
 use crate::{
 	coding::Encode,
-	generic::{
-		Error, ErrorCode, GroupId, StreamId,
-		StreamsState, SubscribeId,
-	},
+	generic::{Error, ErrorCode, GroupId, StreamId, StreamsState, SubscribeId},
 	message::{self},
 };
 
@@ -47,8 +44,15 @@ impl PublisherGroups<'_> {
 		})
 	}
 
-	pub fn get(&mut self, subscribe: SubscribeId, group: GroupId) -> Option<&mut PublisherGroupState> {
-		self.state.lookup.get_mut(&(subscribe, group))
+	pub fn get(&mut self, subscribe: SubscribeId, group: GroupId) -> Option<PublisherGroup> {
+		let id = (subscribe, group);
+		let state = self.state.lookup.get_mut(&id)?;
+
+		Some(PublisherGroup {
+			id,
+			state,
+			streams: self.streams,
+		})
 	}
 }
 
