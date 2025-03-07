@@ -1,14 +1,12 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
 
-use bytes::{Buf, BufMut, Bytes};
-use derive_more::From;
+use bytes::{Buf, BufMut};
 
 use crate::{
-	coding::{Decode, DecodeError, Encode},
-	message::{self, GroupOrder},
+	coding::{Decode, Encode},
+	message::{self},
 };
 
-use super::{AnnounceId, Error, ErrorCode, GroupId, Increment, StreamDirection, StreamId, SubscribeId};
+use super::{Error, StreamId};
 
 #[derive(Debug)]
 pub enum SessionEvent {
@@ -87,4 +85,12 @@ impl SessionState {
 
 		Ok(())
 	}
+}
+
+pub struct Session<'a> {
+	pub(super) state: &'a mut SessionState,
+}
+
+impl Session<'_> {
+	// TODO
 }
