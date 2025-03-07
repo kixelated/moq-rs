@@ -6,6 +6,8 @@ mod frame;
 mod group;
 mod track;
 mod video;
+mod server;
+mod fingerprint;
 
 pub use audio::*;
 pub use broadcast::*;
@@ -15,6 +17,8 @@ pub use frame::*;
 pub use group::*;
 pub use track::*;
 pub use video::*;
+pub use server::*;
+pub use fingerprint::*;
 
 pub mod cmaf;
 

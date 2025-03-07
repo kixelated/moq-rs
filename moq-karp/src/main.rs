@@ -1,11 +1,10 @@
 use std::net;
-
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use moq_transfork::Session;
 use url::Url;
 
-use moq_karp::{cmaf, BroadcastProducer};
+use moq_karp::{cmaf, BroadcastProducer, BroadcastServer};
 use moq_native::quic;
 
 #[derive(Parser, Clone)]
@@ -21,6 +20,10 @@ struct Config {
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
+
+	/// If we're a server or client. If true, we're a server. If false, we're a client to a relay-server.
+	#[arg(long)]
+	pub server: bool,
 
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
@@ -53,37 +56,43 @@ async fn main() -> anyhow::Result<()> {
 	}
 }
 
-async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, String)> {
+async fn connect(config: &Config, url: &str) -> anyhow::Result<Session> {
 	let tls = config.tls.load()?;
 	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
 
 	tracing::info!(?url, "connecting");
 
 	let url = Url::parse(url).context("invalid URL")?;
-	let path = url.path().to_string();
 
 	let session = quic.client.connect(url).await?;
 	let session = Session::connect(session).await?;
 
-	Ok((session, path))
+	Ok(session)
 }
 
 #[tracing::instrument(skip_all, fields(?url))]
 async fn publish(config: Config, url: String) -> anyhow::Result<()> {
-	let (session, path) = connect(&config, &url).await?;
-	let broadcast = BroadcastProducer::new(session.clone(), path)?;
-	let mut input = tokio::io::stdin();
+	match config.server {
+		true => BroadcastServer::new(config.bind, config.tls).run(url).await,
+		false => {
+			let session = connect(&config, &url).await?;
+			let url = Url::parse(&url).context("invalid URL")?;
+			let path = url.path().to_string();
 
-	let mut import = cmaf::Import::new(broadcast);
-	import.init_from(&mut input).await.context("failed to initialize")?;
+			let broadcast = BroadcastProducer::new(session, path)?;
+			let mut input = tokio::io::stdin();
 
-	tracing::info!("publishing");
+			let mut import = cmaf::Import::new(broadcast);
+			import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
 
-	tokio::select! {
-		res = import.read_from(&mut input) => Ok(res?),
-		res = session.closed() => Err(res.into()),
+			tracing::info!("publishing");
+
+			Ok(())
+		}
 	}
 }
+
+
 
 /*
 #[tracing::instrument("subscribe", skip_all, err, fields(?broadcast))]

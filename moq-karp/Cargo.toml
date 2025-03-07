@@ -37,6 +37,14 @@ tokio = { version = "1.43", features = ["macros"] }
 
 web-time = "1"
 
+# Web server
+axum = { version = "0.8", features = ["tokio"] }
+hyper-serve = { version = "0.6", features = [
+    "tls-rustls",
+] } # fork of axum-server
+tower-http = { version = "0.6", features = ["cors"] }
+http-body = "1"
+
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.6", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }

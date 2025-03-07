@@ -68,7 +68,11 @@ impl Backend {
 
 					let mut broadcast = moq_karp::BroadcastProducer::new(session?, path)?;
 					if let Some(video) = self.video.as_mut() {
-						self.video_track = Some(broadcast.publish_video(video.info().clone())?);
+						// there will always be 1 track, so we only need to store the last track returned
+						let tracks = broadcast.publish_video(video.info().clone())?;
+						for track in tracks {
+							self.video_track = Some(track);
+						}
 					}
 
 					self.broadcast = Some(broadcast);
@@ -89,7 +93,11 @@ impl Backend {
 							let video = Video::new(track).await?;
 
 							if let Some(broadcast) = self.broadcast.as_mut() {
-								self.video_track = Some(broadcast.publish_video(video.info().clone())?);
+								// there will always be 1 track, so we only need to store the last track returned
+								let tracks = broadcast.publish_video(video.info().clone())?;
+								for track in tracks {
+									self.video_track = Some(track);
+								}
 							}
 
 							self.video = Some(video);

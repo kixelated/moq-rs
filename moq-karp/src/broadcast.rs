@@ -5,13 +5,23 @@ use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 
 use derive_more::Debug;
 
+#[derive(Clone)]
+pub struct BroadcastListener {
+	pub session: Session,
+	pub catalog: Lock<CatalogProducer>,
+}
+impl BroadcastListener {
+	pub fn equals(&self, other: &BroadcastListener) -> bool {
+		self.session == other.session
+	}
+}
+
 #[derive(Debug, Clone)]
 #[debug("{:?}", path)]
 pub struct BroadcastProducer {
-	pub session: Session,
+	listeners: Vec<BroadcastListener>,
 	pub path: String,
 	id: u64,
-	catalog: Lock<CatalogProducer>,
 }
 
 impl BroadcastProducer {
@@ -38,32 +48,70 @@ impl BroadcastProducer {
 		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
 
 		Ok(Self {
-			session,
+			listeners: vec![BroadcastListener { session, catalog }],
 			path,
 			id,
-			catalog,
 		})
 	}
 
-	/// Return the latest catalog.
-	pub fn catalog(&self) -> Catalog {
-		self.catalog.lock().current.clone()
+	/// Add a session to the broadcast.
+	pub fn add_session(&mut self, mut session: Session) -> anyhow::Result<BroadcastListener> {
+		let full = format!("{}/{}/catalog.json", self.path, self.id);
+
+		let catalog = moq_transfork::Track {
+			path: full,
+			priority: -1,
+			order: moq_transfork::GroupOrder::Desc,
+		}.produce();
+
+		// Publish the catalog track, even if it's empty.
+		session.publish(catalog.1)?;
+
+		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
+
+		let listener = BroadcastListener { session, catalog };
+		self.listeners.push(listener.clone());
+
+		Ok(listener)
 	}
 
-	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
+	// /// Return the latest catalog.
+	// pub fn catalog(&self) -> Catalog {
+	// 	self.catalog.lock().current.clone()
+	// }
+	// not used?
+
+	pub fn publish_video(&mut self, info: Video) -> Result<Vec<TrackProducer>> {
+		let mut producers: Vec<TrackProducer> = vec![];
+
+		for listener in &self.listeners {
+			let producer = self.publish_video_to(info.clone(), &listener);
+			producers.push(producer?);
+		}
+
+		Ok(producers)
+	}
+
+	pub fn publish_video_to(&mut self, info: Video, listener: &BroadcastListener) -> Result<TrackProducer> {
 		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
+		let priority = info.track.priority.clone();
 
 		let (producer, consumer) = moq_transfork::Track {
-			path,
-			priority: info.track.priority,
+			path: path.clone(),
+			priority,
 			// TODO add these to the catalog and support higher latencies.
 			order: moq_transfork::GroupOrder::Desc,
+		}.produce();
+
+		for listener_entry in &mut self.listeners {
+			if listener_entry.equals(listener) {
+				tracing::info!("Found listener!");
+				listener_entry.session.publish(consumer)?;
+				break;
+			}
 		}
-		.produce();
 
-		self.session.publish(consumer)?;
-
-		let mut catalog = self.catalog.lock();
+		let mut catalog = listener.catalog.lock();
 		catalog.current.video.push(info.clone());
 		catalog.publish()?;
 
@@ -71,32 +119,51 @@ impl BroadcastProducer {
 		let consumer = producer.subscribe();
 
 		// Start a task that will remove the catalog on drop.
-		let catalog = self.catalog.clone();
+		let catalog = listener.catalog.clone();
+		let track_info = info.track.clone();
 		spawn(async move {
 			consumer.closed().await.ok();
 
 			let mut catalog = catalog.lock();
-			catalog.current.video.retain(|v| v.track != info.track);
+			catalog.current.video.retain(|v| v.track != track_info);
 			catalog.publish().unwrap();
 		});
 
 		Ok(producer)
 	}
 
-	pub fn publish_audio(&mut self, info: Audio) -> Result<TrackProducer> {
+	pub fn publish_audio(&mut self, info: Audio) -> Result<Vec<TrackProducer>> {
+		let mut producers: Vec<TrackProducer> = vec![];
+
+		for listener in &self.listeners {
+			let producer = self.publish_audio_to(info.clone(), &listener);
+			producers.push(producer?);
+		}
+
+		Ok(producers)
+	}
+
+	pub fn publish_audio_to(&mut self, info: Audio, listener: &BroadcastListener) -> Result<TrackProducer> {
 		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
+		let priority = info.track.priority.clone();
 
 		let (producer, consumer) = moq_transfork::Track {
-			path,
-			priority: info.track.priority,
+			path: path.clone(),
+			priority,
 			// TODO add these to the catalog and support higher latencies.
 			order: moq_transfork::GroupOrder::Desc,
 		}
-		.produce();
+			.produce();
 
-		self.session.publish(consumer)?;
+		for listener_entry in &mut self.listeners {
+			if listener_entry.equals(listener) {
+				tracing::info!("Found listener!");
+				listener_entry.session.publish(consumer)?;
+				break;
+			}
+		}
 
-		let mut catalog = self.catalog.lock();
+		let mut catalog = listener.catalog.lock();
 		catalog.current.audio.push(info.clone());
 		catalog.publish()?;
 
@@ -104,12 +171,13 @@ impl BroadcastProducer {
 		let consumer = producer.subscribe();
 
 		// Start a task that will remove the catalog on drop.
-		let catalog = self.catalog.clone();
+		let catalog = listener.catalog.clone();
+		let track_info = info.track.clone();
 		spawn(async move {
 			consumer.closed().await.ok();
 
 			let mut catalog = catalog.lock();
-			catalog.current.audio.retain(|v| v.track != info.track);
+			catalog.current.audio.retain(|v| v.track != track_info);
 			catalog.publish().unwrap();
 		});
 

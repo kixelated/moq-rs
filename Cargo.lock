@@ -1305,11 +1305,14 @@ name = "moq-karp"
 version = "0.14.1"
 dependencies = [
  "anyhow",
+ "axum",
  "bytes",
  "clap",
  "derive_more 2.0.1",
  "futures",
  "hex",
+ "http-body",
+ "hyper-serve",
  "lazy_static",
  "moq-async",
  "moq-native",
@@ -1321,6 +1324,7 @@ dependencies = [
  "serde_with",
  "thiserror 2.0.11",
  "tokio",
+ "tower-http",
  "tracing",
  "url",
  "web-time",

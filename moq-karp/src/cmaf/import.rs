@@ -2,11 +2,9 @@ use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
-
+use moq_transfork::Session;
 use super::{Error, Result};
-use crate::{
-	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9,
-};
+use crate::{Audio, BroadcastListener, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -17,7 +15,7 @@ pub struct Import {
 	broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
-	tracks: HashMap<u32, TrackProducer>,
+	tracks: HashMap<u32, Vec<TrackProducer>>,
 
 	// The timestamp of the last keyframe for each track
 	last_keyframe: HashMap<u32, Timestamp>,
@@ -41,6 +39,10 @@ impl Import {
 			moof: None,
 			moof_size: 0,
 		}
+	}
+
+	pub fn broadcast(&mut self) -> &mut BroadcastProducer {
+		&mut self.broadcast
 	}
 
 	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
@@ -82,7 +84,7 @@ impl Import {
 			let track_id = trak.tkhd.track_id;
 			let handler = &trak.mdia.hdlr.handler;
 
-			let track = match handler.as_ref() {
+			let tracks = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
 					self.broadcast.publish_video(track)?
@@ -95,12 +97,54 @@ impl Import {
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, track);
+			self.tracks.insert(track_id, tracks);
 		}
 
 		self.moov = Some(moov);
 
 		Ok(())
+	}
+
+	pub fn add_listener(&mut self, session: Session) -> Result<()> {
+		let listener = self.broadcast.add_session(session).unwrap();
+		self.reinit_session(&listener)
+	}
+
+	fn reinit_session(&mut self, listener: &BroadcastListener) -> Result<()> {
+		match &self.moov {
+			None => { panic!("Trying to reinitialize for specific session, but never been initialized in the first place.") }
+			Some(ref moov) => {
+				// Produce the catalog
+				for trak in &moov.trak {
+					let track_id = trak.tkhd.track_id;
+					let handler = &trak.mdia.hdlr.handler;
+
+					let track = match handler.as_ref() {
+						b"vide" => {
+							let track = Self::init_video(trak)?;
+							self.broadcast.publish_video_to(track, listener)?
+						}
+						b"soun" => {
+							let track = Self::init_audio(trak)?;
+							self.broadcast.publish_audio_to(track, listener)?
+						}
+						b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
+						_ => return Err(Error::UnsupportedTrack("unknown")),
+					};
+
+					match self.tracks.get_mut(&track_id) {
+						Some(track_list) => {
+							track_list.push(track);
+						}
+						None => {
+							self.tracks.insert(track_id, vec![track]);
+						}
+					}
+				}
+
+				Ok(())
+			}
+		}
 	}
 
 	fn init_video(trak: &Trak) -> Result<Video> {
@@ -316,7 +360,7 @@ impl Import {
 		// Loop over all of the traf boxes in the moof.
 		for traf in &moof.traf {
 			let track_id = traf.tfhd.track_id;
-			let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
+			let tracks = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
 
 			// Find the track information in the moov
 			let trak = moov
@@ -407,7 +451,9 @@ impl Import {
 					keyframe,
 					payload,
 				};
-				track.write(frame);
+				for track in tracks.iter_mut() {
+					track.write(frame.clone());
+				}
 
 				dts += duration as u64;
 				offset += size;
