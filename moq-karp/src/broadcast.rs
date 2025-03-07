@@ -84,7 +84,7 @@ impl BroadcastProducer {
 	pub fn publish_video(&mut self, info: Video) -> Result<Vec<TrackProducer>> {
 		let mut producers: Vec<TrackProducer> = vec![];
 
-		for listener in &self.listeners {
+		for listener in self.listeners.clone() {
 			let producer = self.publish_video_to(info.clone(), &listener);
 			producers.push(producer?);
 		}
@@ -105,7 +105,6 @@ impl BroadcastProducer {
 
 		for listener_entry in &mut self.listeners {
 			if listener_entry.equals(listener) {
-				tracing::info!("Found listener!");
 				listener_entry.session.publish(consumer)?;
 				break;
 			}
@@ -135,7 +134,7 @@ impl BroadcastProducer {
 	pub fn publish_audio(&mut self, info: Audio) -> Result<Vec<TrackProducer>> {
 		let mut producers: Vec<TrackProducer> = vec![];
 
-		for listener in &self.listeners {
+		for listener in self.listeners.clone() {
 			let producer = self.publish_audio_to(info.clone(), &listener);
 			producers.push(producer?);
 		}
@@ -157,7 +156,6 @@ impl BroadcastProducer {
 
 		for listener_entry in &mut self.listeners {
 			if listener_entry.equals(listener) {
-				tracing::info!("Found listener!");
 				listener_entry.session.publish(consumer)?;
 				break;
 			}
