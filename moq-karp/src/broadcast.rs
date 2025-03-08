@@ -16,7 +16,7 @@ impl BroadcastListener {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[debug("{:?}", path)]
 pub struct BroadcastProducer {
 	listeners: Vec<BroadcastListener>,
