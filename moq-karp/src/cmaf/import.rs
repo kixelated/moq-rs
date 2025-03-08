@@ -15,7 +15,7 @@ pub struct Import {
 	broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
-	tracks: HashMap<u32, Vec<TrackProducer>>,
+	tracks: HashMap<u32, TrackProducer>,
 
 	// The timestamp of the last keyframe for each track
 	last_keyframe: HashMap<u32, Timestamp>,
@@ -84,20 +84,20 @@ impl Import {
 			let track_id = trak.tkhd.track_id;
 			let handler = &trak.mdia.hdlr.handler;
 
-			let tracks = match handler.as_ref() {
+			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.publish_video(track)?
+					self.broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.publish_audio(track)?
+					self.broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, tracks);
+			self.tracks.insert(track_id, track.expect("Error while publishing track"));
 		}
 
 		self.moov = Some(moov);
@@ -119,26 +119,41 @@ impl Import {
 					let track_id = trak.tkhd.track_id;
 					let handler = &trak.mdia.hdlr.handler;
 
-					let track = match handler.as_ref() {
+					let new_track: Option<TrackProducer> = match handler.as_ref() {
 						b"vide" => {
 							let track = Self::init_video(trak)?;
-							self.broadcast.publish_video_to(track, listener)?
+							match self.tracks.get(&track_id) {
+								None => {
+									Some(self.broadcast.publish_video(track).expect("Error while publishing video"))
+								}
+								Some(ref producer) => {
+									self.broadcast.republish_video_to(track, listener, producer)
+										.expect("Error while republishing video");
+
+									None
+								}
+							}
 						}
 						b"soun" => {
 							let track = Self::init_audio(trak)?;
-							self.broadcast.publish_audio_to(track, listener)?
+							match self.tracks.get(&track_id) {
+								None => {
+									Some(self.broadcast.publish_audio(track).expect("Error while publishing audio"))
+								}
+								Some(ref producer) => {
+									self.broadcast.republish_audio_to(track, listener, producer)
+										.expect("Error while republishing audio");
+
+									None
+								}
+							}
 						}
 						b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 						_ => return Err(Error::UnsupportedTrack("unknown")),
 					};
 
-					match self.tracks.get_mut(&track_id) {
-						Some(track_list) => {
-							track_list.push(track);
-						}
-						None => {
-							self.tracks.insert(track_id, vec![track]);
-						}
+					if let Some(track) = new_track {
+						self.tracks.insert(track_id, track);
 					}
 				}
 
@@ -360,7 +375,7 @@ impl Import {
 		// Loop over all of the traf boxes in the moof.
 		for traf in &moof.traf {
 			let track_id = traf.tfhd.track_id;
-			let tracks = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
+			let track = self.tracks.get_mut(&track_id).ok_or(Error::UnknownTrack)?;
 
 			// Find the track information in the moov
 			let trak = moov
@@ -451,9 +466,7 @@ impl Import {
 					keyframe,
 					payload,
 				};
-				for track in tracks.iter_mut() {
-					track.write(frame.clone());
-				}
+				track.write(frame);
 
 				dts += duration as u64;
 				offset += size;
