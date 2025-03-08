@@ -25,7 +25,7 @@ pub enum PublisherEvent {
 }
 
 #[derive(Debug, Clone, Copy, From)]
-pub enum PublisherStream {
+pub(crate) enum PublisherStream {
 	Announce(AnnounceId),
 	Subscribe(SubscribeId),
 	Group((SubscribeId, GroupId)),
@@ -65,11 +65,8 @@ impl PublisherState {
 		Ok(PublisherStream::Subscribe(id))
 	}
 
-	pub fn open(&mut self, stream: StreamId, kind: PublisherStream) {
-		match kind {
-			PublisherStream::Group(id) => self.groups.open(id, stream),
-			_ => unreachable!("subscriber opens"),
-		}
+	pub fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
+		self.groups.open(stream).map(Into::into)
 	}
 }
 

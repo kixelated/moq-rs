@@ -12,7 +12,7 @@ use derive_more::From;
 use super::{AnnounceId, Error, GroupId, StreamId, StreamsState, SubscribeId};
 
 #[derive(Debug, Clone, Copy, From)]
-pub enum SubscriberStream {
+pub(crate) enum SubscriberStream {
 	Announce(AnnounceId),
 	Subscribe(SubscribeId),
 	Group((SubscribeId, GroupId)),
@@ -60,12 +60,8 @@ impl SubscriberState {
 		}
 	}
 
-	pub fn open(&mut self, stream: StreamId, kind: SubscriberStream) {
-		match kind {
-			SubscriberStream::Announce(id) => self.announces.open(id, stream),
-			SubscriberStream::Subscribe(id) => self.subscribes.open(id, stream),
-			SubscriberStream::Group(_) => unreachable!("publisher opens"),
-		}
+	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
+		self.announces.open(stream).or_else(|| self.subscribes.open(stream))
 	}
 
 	pub fn accept_group<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<SubscriberStream, Error> {

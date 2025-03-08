@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{hash_map, BTreeSet, HashMap};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use derive_more::From;
@@ -20,63 +20,61 @@ pub enum StreamDirection {
 pub enum StreamEvent {
 	// A new stream is requested.
 	//
-	// Use `kind.direction()` to determine the direction of the stream.
-	// Call `open(id, kind)` when one is available.
-	Open(StreamKind),
+	// Call `open(id)` when one is available.
+	Open(StreamDirection),
 
 	// The specified stream is now readable.
 	// Call `streams().decode(id)` to read the data.
-	Readable(StreamId),
+	Decodable(StreamId),
 
 	// The specified stream is now writable.
 	// Call `streams().encode(id)` to write the data.
-	Writable(StreamId),
+	Encodable(StreamId),
 }
 
-#[derive(Default)]
 pub(super) struct StreamsState {
-	active: HashMap<StreamId, Stream>,
-
-	// A list of streams that we want created.
-	create: VecDeque<StreamKind>,
-
+	active: HashMap<StreamId, StreamState>,
 	encodable: BTreeSet<StreamId>,
 	decodable: BTreeSet<StreamId>,
+
+	// A cached stream that has already been opened.
+	cached: HashMap<StreamDirection, StreamId>,
+
+	// A new stream is requested.
+	requested: BTreeSet<StreamDirection>,
 }
 
 impl StreamsState {
 	pub fn poll(&mut self) -> Option<StreamEvent> {
 		if let Some(id) = self.encodable.pop_first() {
-			return Some(StreamEvent::Writable(id));
+			return Some(StreamEvent::Encodable(id));
 		}
 
 		if let Some(id) = self.decodable.pop_first() {
-			return Some(StreamEvent::Readable(id));
+			return Some(StreamEvent::Decodable(id));
 		}
 
-		if let Some(kind) = self.create.pop_front() {
-			return Some(StreamEvent::Open(kind));
+		if let Some(direction) = self.requested.pop_first() {
+			return Some(StreamEvent::Open(direction));
 		}
 
 		None
 	}
 
-	fn get(&self, id: StreamId) -> Option<&Stream> {
-		self.active.get(&id)
-	}
+	pub fn open(&mut self, kind: StreamKind) -> Option<StreamId> {
+		let direction = kind.direction();
 
-	fn get_mut(&mut self, id: StreamId) -> Option<&mut Stream> {
-		self.active.get_mut(&id)
-	}
+		// Always request a new stream for the direction.
+		self.requested.insert(direction);
 
-	fn get_or_create(&mut self, id: StreamId) -> &mut Stream {
-		self.active
-			.entry(id)
-			.or_insert_with(|| Stream::new(StreamKind::Unknown(id)))
-	}
-
-	pub fn create(&mut self, kind: StreamKind) {
-		self.create.push_back(kind);
+		// It's a bit weird, but we cache 1 stream per direction.
+		// This will avoid some back-and-forth since we can return the cached stream immediately.
+		if let Some(id) = self.cached.remove(&direction) {
+			self.active.insert(id, StreamState::new(kind));
+			Some(id)
+		} else {
+			None
+		}
 	}
 
 	pub fn encodable(&mut self, id: StreamId) {
@@ -88,6 +86,22 @@ impl StreamsState {
 	}
 }
 
+impl Default for StreamsState {
+	fn default() -> Self {
+		let mut requested: BTreeSet<StreamDirection> = BTreeSet::new();
+		requested.insert(StreamDirection::Bi);
+		requested.insert(StreamDirection::Uni);
+
+		Self {
+			active: HashMap::new(),
+			encodable: BTreeSet::new(),
+			decodable: BTreeSet::new(),
+			cached: HashMap::new(),
+			requested,
+		}
+	}
+}
+
 pub struct Streams<'a> {
 	pub(super) state: &'a mut StreamsState,
 	pub(super) session: &'a mut SessionState,
@@ -96,112 +110,79 @@ pub struct Streams<'a> {
 }
 
 impl Streams<'_> {
-	pub fn encode<B: BufMut>(&mut self, id: StreamId, buf: &mut B) {
-		let stream = self.state.get_mut(id).unwrap();
-
-		// Use any data already in the buffer.
-		if !stream.send_buffer.is_empty() {
-			buf.put(&mut stream.send_buffer);
-			return;
-		}
-
-		let mut overflow = BytesMut::new();
-		let chain = &mut buf.chain_mut(&mut overflow);
-
-		match stream.kind {
-			StreamKind::Session => self.session.encode(chain),
-			StreamKind::Publisher(kind) => self.publisher.encode(kind, chain),
-			StreamKind::Subscriber(kind) => self.subscriber.encode(kind, chain),
-			StreamKind::Unknown(_) => unreachable!("unknown type"),
+	/// Returns Some if the stream can be used immediately, otherwise None.
+	pub fn open(&mut self, direction: StreamDirection, id: StreamId) -> Option<Stream> {
+		let entry = match self.state.active.entry(id) {
+			hash_map::Entry::Occupied(_) => panic!("duplicate stream: {:?}", id),
+			hash_map::Entry::Vacant(entry) => entry,
 		};
 
-		stream.send_buffer = overflow.freeze();
-	}
-
-	pub fn decode(&mut self, id: StreamId, mut buf: &[u8]) -> Result<(), Error> {
-		if !buf.has_remaining() {
-			return Ok(());
-		}
-
-		let stream = self.state.get_or_create(id);
-
-		// Chain the Buf, so we'll decode the old data first then the new data.
-		let chain = &mut stream.recv_buffer.chain(&mut buf);
-
-		while chain.has_remaining() {
-			match Self::recv(&mut stream.kind, chain, self.session, self.publisher, self.subscriber) {
-				Ok(()) => continue,
-				Err(Error::Coding(DecodeError::Short)) => {
-					// We need to keep the buffer for the next call.
-					// Put the remainder of the buffer back.
-					stream.recv_buffer.put(buf);
-					return Ok(());
-				}
-				Err(err) => return Err(err),
-			}
-		}
-
-		Ok(())
-	}
-
-	pub fn open(&mut self, id: StreamId, kind: StreamKind) {
-		match kind {
-			StreamKind::Subscriber(kind) => self.subscriber.open(id, kind),
-			StreamKind::Publisher(kind) => self.publisher.open(id, kind),
-			StreamKind::Session => self.session.open(id),
-			_ => unreachable!(),
-		};
-
-		self.state.encodable(id);
-	}
-
-	// Partially decode a stream, with the remainder (on error) being put back into the buffer.
-	// This doesn't take self because StreamsState is partially borrowed.
-	fn recv<B: Buf>(
-		kind: &mut StreamKind,
-		buf: &mut B,
-		session: &mut SessionState,
-		publisher: &mut PublisherState,
-		subscriber: &mut SubscriberState,
-	) -> Result<(), Error> {
-		match *kind {
-			StreamKind::Unknown(stream) => {
-				*kind = if stream.is_uni() {
-					match message::DataType::decode(buf)? {
-						message::DataType::Group => StreamKind::Subscriber(subscriber.accept_group(stream, buf)?),
-					}
+		let kind = match direction {
+			StreamDirection::Uni => self.publisher.open(id).map(Into::into),
+			StreamDirection::Bi => {
+				if self.session.open(id) {
+					Some(StreamKind::Session)
 				} else {
-					match message::ControlType::decode(buf)? {
-						message::ControlType::Session => {
-							session.accept(stream, buf)?;
-							StreamKind::Session
-						}
-						message::ControlType::Announce => {
-							StreamKind::Publisher(publisher.accept_announce(stream, buf)?)
-						}
-						message::ControlType::Subscribe => {
-							StreamKind::Publisher(publisher.accept_subscribe(stream, buf)?)
-						}
-						message::ControlType::Info => todo!(),
-					}
+					self.subscriber.open(id).map(Into::into)
 				}
 			}
-			StreamKind::Session => session.decode(buf)?,
-			StreamKind::Publisher(kind) => publisher.decode(kind, buf)?,
-			StreamKind::Subscriber(kind) => subscriber.decode(kind, buf)?,
-		}
+		};
 
-		Ok(())
+		if let Some(kind) = kind {
+			let state = entry.insert(StreamState::new(kind));
+
+			Some(Stream {
+				id,
+				state,
+				session: self.session,
+				publisher: self.publisher,
+				subscriber: self.subscriber,
+			})
+		} else {
+			// Save the stream for later.
+			match self.state.cached.entry(direction) {
+				hash_map::Entry::Occupied(_) => panic!("too many streams opened: {:?}", direction),
+				hash_map::Entry::Vacant(entry) => entry.insert(id),
+			};
+
+			None
+		}
+	}
+
+	pub fn get(&mut self, id: StreamId) -> Option<Stream> {
+		Some(Stream {
+			id,
+			state: self.state.active.get_mut(&id)?,
+			session: self.session,
+			publisher: self.publisher,
+			subscriber: self.subscriber,
+		})
+	}
+
+	/// Accept a newly created stream.
+	pub fn accept(&mut self, dir: StreamDirection, id: StreamId) -> Stream {
+		let state = match self.state.active.entry(id) {
+			hash_map::Entry::Occupied(_) => panic!("duplicate stream: {:?}", id),
+			hash_map::Entry::Vacant(entry) => entry.insert(StreamState::new(StreamKind::Unknown(dir, id))),
+		};
+
+		Stream {
+			id,
+			state,
+			session: self.session,
+			publisher: self.publisher,
+			subscriber: self.subscriber,
+		}
 	}
 }
 
-struct Stream {
-	pub kind: StreamKind,
-	pub send_buffer: Bytes,
-	pub recv_buffer: Vec<u8>,
+struct StreamState {
+	kind: StreamKind,
+	send_buffer: Bytes,
+	recv_buffer: Vec<u8>,
 }
 
-impl Stream {
+impl StreamState {
 	pub fn new(kind: StreamKind) -> Self {
 		Self {
 			kind,
@@ -211,10 +192,100 @@ impl Stream {
 	}
 }
 
+pub struct Stream<'a> {
+	id: StreamId,
+
+	state: &'a mut StreamState,
+	session: &'a mut SessionState,
+	publisher: &'a mut PublisherState,
+	subscriber: &'a mut SubscriberState,
+}
+
+impl<'a> Stream<'a> {
+	pub fn id(&self) -> StreamId {
+		self.id
+	}
+
+	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
+		// Use any data already in the buffer.
+		if !self.state.send_buffer.is_empty() {
+			buf.put(&mut self.state.send_buffer);
+			return;
+		}
+
+		let mut overflow = BytesMut::new();
+		let chain = &mut buf.chain_mut(&mut overflow);
+
+		match self.state.kind {
+			StreamKind::Session => self.session.encode(chain),
+			StreamKind::Publisher(kind) => self.publisher.encode(kind, chain),
+			StreamKind::Subscriber(kind) => self.subscriber.encode(kind, chain),
+			StreamKind::Unknown(..) => unreachable!("unknown type"),
+		};
+
+		self.state.send_buffer = overflow.freeze();
+	}
+
+	pub fn decode(&mut self, mut buf: &[u8]) -> Result<(), Error> {
+		if !buf.has_remaining() {
+			return Ok(());
+		}
+
+		// Chain the Buf, so we'll decode the old data first then the new data.
+		let mut buffer = std::mem::take(&mut self.state.recv_buffer);
+		let chain = &mut buffer.chain(&mut buf);
+
+		while chain.has_remaining() {
+			match self.recv(chain) {
+				Ok(()) => continue,
+				Err(Error::Coding(DecodeError::Short)) => {
+					// We need to keep the buffer for the next call.
+					// Put the remainder of the buffer back.
+					buffer.put(buf);
+					break;
+				}
+				Err(err) => return Err(err),
+			}
+		}
+
+		self.state.recv_buffer = buffer;
+
+		Ok(())
+	}
+
+	// Partially decode a stream, with the remainder (on error) being put back into the buffer.
+	fn recv<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+		match self.state.kind {
+			StreamKind::Unknown(dir, stream) => {
+				self.state.kind = match dir {
+					StreamDirection::Uni => match message::DataType::decode(buf)? {
+						message::DataType::Group => StreamKind::Subscriber(self.subscriber.accept_group(stream, buf)?),
+					},
+					StreamDirection::Bi => match message::ControlType::decode(buf)? {
+						message::ControlType::Session => StreamKind::Session,
+						message::ControlType::Announce => {
+							StreamKind::Publisher(self.publisher.accept_announce(stream, buf)?)
+						}
+						message::ControlType::Subscribe => {
+							StreamKind::Publisher(self.publisher.accept_subscribe(stream, buf)?)
+						}
+						message::ControlType::Info => todo!(),
+					},
+				};
+			}
+			StreamKind::Session => self.session.decode(buf)?,
+			StreamKind::Publisher(kind) => self.publisher.decode(kind, buf)?,
+			StreamKind::Subscriber(kind) => self.subscriber.decode(kind, buf)?,
+		}
+
+		Ok(())
+	}
+}
+
 #[derive(Clone, Debug, From)]
-pub enum StreamKind {
+pub(crate) enum StreamKind {
 	Session,
-	Unknown(StreamId),
+	Unknown(StreamDirection, StreamId),
 	Publisher(PublisherStream),
 	Subscriber(SubscriberStream),
 }
@@ -225,7 +296,7 @@ impl StreamKind {
 			Self::Subscriber(SubscriberStream::Group(_)) | Self::Publisher(PublisherStream::Group(_)) => {
 				StreamDirection::Uni
 			}
-			Self::Unknown(id) => id.direction(),
+			Self::Unknown(dir, _) => *dir,
 			_ => StreamDirection::Bi,
 		}
 	}

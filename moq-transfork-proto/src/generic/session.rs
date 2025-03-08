@@ -1,4 +1,3 @@
-
 use bytes::{Buf, BufMut};
 
 use crate::{
@@ -54,9 +53,13 @@ impl SessionState {
 		}
 	}
 
-	pub fn open(&mut self, stream: StreamId) {
-		assert!(self.stream.is_none());
-		self.stream = Some(stream);
+	pub fn open(&mut self, stream: StreamId) -> bool {
+		if self.stream.is_none() {
+			self.stream = Some(stream);
+			true
+		} else {
+			false
+		}
 	}
 
 	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {

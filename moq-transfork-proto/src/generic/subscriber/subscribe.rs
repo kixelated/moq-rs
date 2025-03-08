@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{Error, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest},
+	generic::{Error, Increment, StreamDirection, StreamId, StreamsState, SubscribeId, SubscribeRequest},
 	message::{self},
 };
 
@@ -15,6 +15,9 @@ pub(super) struct SubscriberSubscribesState {
 	lookup: HashMap<SubscribeId, SubscriberSubscribeState>,
 	ready: BTreeSet<SubscribeId>,
 	next: SubscribeId,
+
+	// The subscribes that are waiting for a stream to be opened.
+	blocked: BTreeSet<SubscribeId>, // TODO sort by priority
 }
 
 impl SubscriberSubscribesState {
@@ -26,8 +29,13 @@ impl SubscriberSubscribesState {
 		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
 
-	pub fn open(&mut self, id: SubscribeId, stream: StreamId) {
-		self.lookup.get_mut(&id).unwrap().open(stream);
+	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
+		if let Some(id) = self.blocked.pop_first() {
+			self.lookup.get_mut(&id).unwrap().open(stream);
+			Some(SubscriberStream::Subscribe(id))
+		} else {
+			None
+		}
 	}
 }
 
@@ -41,11 +49,16 @@ impl SubscriberSubscribes<'_> {
 		let id = self.state.next;
 		self.state.next.increment();
 
-		let subscribe = SubscriberSubscribeState::new(request.into_message(id.0));
+		let stream = self.streams.open(SubscriberStream::Subscribe(id).into());
+		if stream.is_none() {
+			self.state.blocked.insert(id);
+		}
+
+		let msg = request.into_message(id.0);
+		let subscribe = SubscriberSubscribeState::new(msg, stream);
+
 		let state = self.state.lookup.entry(id).or_insert(subscribe);
 		self.state.ready.insert(id);
-
-		self.streams.create(SubscriberStream::Subscribe(id).into());
 
 		SubscriberSubscribe {
 			id,
@@ -81,9 +94,9 @@ pub(super) struct SubscriberSubscribeState {
 }
 
 impl SubscriberSubscribeState {
-	pub fn new(request: message::Subscribe) -> Self {
+	pub fn new(request: message::Subscribe, stream: Option<StreamId>) -> Self {
 		Self {
-			stream: None,
+			stream,
 			request: Some(request),
 			update: None,
 

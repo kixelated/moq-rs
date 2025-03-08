@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{AnnounceId, Error, Increment, StreamId, StreamsState},
+	generic::{AnnounceId, Error, Increment, StreamDirection, StreamId, StreamsState},
 	message::{self},
 };
 
@@ -14,6 +14,10 @@ use super::SubscriberStream;
 pub(super) struct SubscriberAnnouncesState {
 	lookup: HashMap<AnnounceId, SubscriberAnnounceState>,
 	ready: BTreeSet<AnnounceId>,
+
+	// The announces that are waiting for a stream to be opened.
+	blocked: BTreeSet<AnnounceId>,
+
 	next: AnnounceId,
 }
 
@@ -26,8 +30,13 @@ impl SubscriberAnnouncesState {
 		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
 
-	pub fn open(&mut self, id: AnnounceId, stream: StreamId) {
-		self.lookup.get_mut(&id).unwrap().open(stream);
+	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
+		if let Some(id) = self.blocked.pop_first() {
+			self.lookup.get_mut(&id).unwrap().open(stream);
+			Some(SubscriberStream::Announce(id))
+		} else {
+			None
+		}
 	}
 }
 
@@ -41,11 +50,14 @@ impl SubscriberAnnounces<'_> {
 		let id = self.state.next;
 		self.state.next.increment();
 
-		let announce = SubscriberAnnounceState::new(request);
+		let stream = self.streams.open(SubscriberStream::Announce(id).into());
+		if stream.is_none() {
+			self.state.blocked.insert(id);
+		}
+
+		let announce = SubscriberAnnounceState::new(request, stream);
 		let state = self.state.lookup.entry(id).or_insert(announce);
 		self.state.ready.insert(id);
-
-		self.streams.create(SubscriberStream::Announce(id).into());
 
 		SubscriberAnnounce {
 			id,
@@ -70,11 +82,11 @@ struct SubscriberAnnounceState {
 }
 
 impl SubscriberAnnounceState {
-	pub fn new(request: message::AnnouncePlease) -> Self {
+	pub fn new(request: message::AnnouncePlease, stream: Option<StreamId>) -> Self {
 		Self {
 			request: Some(request),
 			events: VecDeque::new(),
-			stream: None,
+			stream,
 		}
 	}
 

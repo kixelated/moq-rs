@@ -12,5 +12,5 @@ pub mod coding;
 pub mod generic;
 pub mod message;
 
-//#[cfg(feature = "quinn")]
-//pub mod quinn;
+#[cfg(feature = "quinn")]
+pub mod quinn;

@@ -14,6 +14,7 @@ pub struct GroupId(pub u64);
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, From, Into, PartialOrd, Ord)]
 pub struct StreamId(pub u64);
 
+/*
 impl StreamId {
 	pub fn is_bi(&self) -> bool {
 		self.0 & 0b10 == 0
@@ -31,6 +32,7 @@ impl StreamId {
 		}
 	}
 }
+*/
 
 pub(super) trait Increment {
 	fn increment(&mut self);

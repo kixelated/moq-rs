@@ -1,11 +1,8 @@
-
 use derive_more::From;
 
-
 use super::{
-	Publisher, PublisherEvent, PublisherState, Session, SessionEvent,
-	SessionState, StreamEvent, StreamKind, Streams, StreamsState, Subscriber, SubscriberEvent,
-	SubscriberState,
+	Publisher, PublisherEvent, PublisherState, Session, SessionEvent, SessionState, StreamDirection, StreamEvent,
+	Streams, StreamsState, Subscriber, SubscriberEvent, SubscriberState,
 };
 
 #[derive(Debug, From)]
@@ -26,16 +23,12 @@ pub struct Connection {
 impl Connection {
 	// Create a new client connection.
 	pub fn client() -> Self {
-		let mut this = Self {
+		Self {
 			session: SessionState::new(true),
 			publisher: PublisherState::default(),
 			subscriber: SubscriberState::default(),
 			streams: StreamsState::default(),
-		};
-
-		this.streams.create(StreamKind::Session);
-
-		this
+		}
 	}
 
 	// Create a new server connection.
