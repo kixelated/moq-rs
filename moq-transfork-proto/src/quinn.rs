@@ -21,62 +21,65 @@ pub enum Error {
 
 pub struct Connection {
 	generic: generic::Connection,
-	quinn: quinn_proto::Connection,
 
 	buffer: BytesMut,
 	buffered: HashMap<quinn_proto::StreamId, Bytes>,
 }
 
 impl Connection {
-	pub fn new(generic: generic::Connection, quinn: quinn_proto::Connection) -> Self {
-		let mut this = Self {
-			generic,
-			quinn,
+	pub fn client() -> Self {
+		Self {
+			generic: generic::Connection::client(),
 			buffer: BytesMut::new(),
 			buffered: HashMap::new(),
-		};
-
-		this.open(quinn_proto::Dir::Bi);
-		this.open(quinn_proto::Dir::Uni);
-
-		this
+		}
 	}
 
-	pub fn poll(&mut self) -> Result<(), Error> {
-		while let Some(event) = self.generic.poll() {
+	pub fn server() -> Self {
+		Self {
+			generic: generic::Connection::server(),
+			buffer: BytesMut::new(),
+			buffered: HashMap::new(),
+		}
+	}
+
+	pub fn poll(&mut self, quinn: &mut quinn_proto::Connection) -> Result<(), Error> {
+		while let Some(event) = quinn.poll() {
 			match event {
-				//generic::StreamEvent::Open(kind) => self.quinn.streams().open(kind.into(), kind),
-				generic::ConnectionEvent::Stream(event) => match event {
-					generic::StreamEvent::Open(dir) => self.open(dir.into()),
-					generic::StreamEvent::Encodable(id) => self.encode(id.into())?,
-					generic::StreamEvent::Decodable(id) => self.decode(id.into())?,
-				},
-				_ => unreachable!(),
+				quinn_proto::Event::Stream(event) => self.poll_stream(quinn, event)?,
+				quinn_proto::Event::Connected => {
+					// Create the initial bidirectional and unidirectional streams.
+					self.open(quinn, quinn_proto::Dir::Bi);
+					self.open(quinn, quinn_proto::Dir::Uni);
+				}
+				_ => todo!(),
 			}
 		}
 
-		while let Some(event) = self.quinn.poll() {
+		while let Some(event) = self.generic.poll() {
 			match event {
-				quinn_proto::Event::Stream(event) => self.poll_stream(event)?,
-				quinn_proto::Event::Connected => {
-					// Create the initial bidirectional and unidirectional streams.
-					self.open(quinn_proto::Dir::Bi);
-					self.open(quinn_proto::Dir::Uni);
-				}
-				_ => todo!(),
+				generic::ConnectionEvent::Stream(event) => match event {
+					generic::StreamEvent::Open(dir) => self.open(quinn, dir.into()),
+					generic::StreamEvent::Encodable(id) => self.encode(quinn, id.into())?,
+					generic::StreamEvent::Decodable(id) => self.decode(quinn, id.into())?,
+				},
 			}
 		}
 
 		Ok(())
 	}
 
-	fn poll_stream(&mut self, event: quinn_proto::StreamEvent) -> Result<(), Error> {
+	fn poll_stream(
+		&mut self,
+		quinn: &mut quinn_proto::Connection,
+		event: quinn_proto::StreamEvent,
+	) -> Result<(), Error> {
 		match event {
-			quinn_proto::StreamEvent::Available { dir } => self.open(dir),
-			quinn_proto::StreamEvent::Opened { dir } => self.accept(dir),
+			quinn_proto::StreamEvent::Available { dir } => self.open(quinn, dir),
+			quinn_proto::StreamEvent::Opened { dir } => self.accept(quinn, dir),
 			quinn_proto::StreamEvent::Readable { id } => {}
 			quinn_proto::StreamEvent::Writable { id } => {
-				let mut quinn = self.quinn.send_stream(id);
+				let mut quinn = quinn.send_stream(id);
 
 				if let hash_map::Entry::Occupied(mut entry) = self.buffered.entry(id) {
 					let written = quinn.write_chunks(&mut [entry.get().clone()])?;
@@ -90,7 +93,7 @@ impl Connection {
 					};
 				}
 
-				self.encode(id)?;
+				self.encode(quinn, id)?;
 			}
 			quinn_proto::StreamEvent::Finished { id } => {
 				todo!()
@@ -103,14 +106,14 @@ impl Connection {
 		Ok(())
 	}
 
-	fn accept(&mut self, dir: quinn_proto::Dir) {
-		while let Some(id) = self.quinn.streams().accept(dir) {
+	fn accept(&mut self, quinn: &mut quinn_proto::Connection, dir: quinn_proto::Dir) {
+		while let Some(id) = quinn.streams().accept(dir) {
 			self.generic.streams().accept(dir.into(), id.into());
 		}
 	}
 
-	fn open(&mut self, dir: quinn_proto::Dir) {
-		while let Some(id) = self.quinn.streams().open(dir) {
+	fn open(&mut self, quinn: &mut quinn_proto::Connection, dir: quinn_proto::Dir) {
+		while let Some(id) = quinn.streams().open(dir) {
 			let mut streams = self.generic.streams();
 
 			let mut stream = match streams.open(dir.into(), id.into()) {
@@ -122,8 +125,8 @@ impl Connection {
 		}
 	}
 
-	fn decode(&mut self, id: quinn_proto::StreamId) -> Result<(), Error> {
-		let mut stream = self.quinn.recv_stream(id);
+	fn decode(&mut self, quinn: &mut quinn_proto::Connection, id: quinn_proto::StreamId) -> Result<(), Error> {
+		let mut stream = quinn.recv_stream(id);
 		let mut chunks = stream.read(true)?;
 
 		while let Some(chunk) = chunks.next(usize::MAX)? {
@@ -135,7 +138,7 @@ impl Connection {
 		Ok(())
 	}
 
-	fn encode(&mut self, id: quinn_proto::StreamId) -> Result<(), Error> {
+	fn encode(&mut self, quinn: &mut quinn_proto::SendStream, id: quinn_proto::StreamId) -> Result<(), Error> {
 		let mut streams = self.generic.streams();
 		let mut stream = streams.get(id.into()).unwrap();
 
@@ -144,7 +147,6 @@ impl Connection {
 
 		let mut buffer = buffer.freeze();
 
-		let mut quinn = self.quinn.send_stream(id);
 		let written = quinn.write_chunks(&mut [buffer.clone()])?;
 		match written.chunks {
 			0 => {
