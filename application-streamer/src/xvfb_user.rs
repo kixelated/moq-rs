@@ -12,14 +12,20 @@ impl XvfbUser {
         Self { xvfb_display: xvfb.display(), start_cmd: start_cmd.to_string(), child: None }
     }
 
-    pub async fn start(&mut self) {
+    pub fn start(&mut self) {
         set_display_var(self.xvfb_display);
 
-        self.child = Some(tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&self.start_cmd)
-            .spawn()
-            .expect("failed to start xvfb user"));
+        let start_cmd = self.start_cmd.clone();
+
+        tokio::spawn(async move {
+            tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(start_cmd)
+                .spawn()
+                .expect("failed to start xvfb user");
+        });
+
+        // tracing::info!("Xvfb user started on display :{} with command:{}", self.xvfb_display, self.start_cmd);
     }
 
     pub async fn stop(&mut self) {

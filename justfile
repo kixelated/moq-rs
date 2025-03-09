@@ -28,6 +28,12 @@ setup:
 	# Install cargo shear if needed.
 	cargo binstall --no-confirm cargo-shear
 
+	# Install cross for cross-compiling.
+	cargo install cross
+
+application-streamer:
+    cross run --bin application-streamer -- --force-non-host --target x86_64-unknown-linux-gnu
+
 # Run the relay, web server, and publish bbb.
 all:
 	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
@@ -49,6 +55,12 @@ bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/
 
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
+
+# Download and stream AV1 content:
+av1: (download "av1" "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4") (pub "av1")
+
+# Download and stream HEVC content:
+hevc: (download "hevc" "https://test-videos.co.uk/vids/jellyfish/mp4/h265/1080/Jellyfish_1080_10s_30MB.mp4") (pub "hevc")
 
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name url:

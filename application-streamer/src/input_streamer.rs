@@ -28,7 +28,7 @@ impl<T: AsyncRead + Unpin> MoQInputStreamer<T> {
 
     pub async fn start(&mut self) {
         self.log.init();
-        self.publish(format!("http://localhost:{}/", self.port)).await.unwrap();
+        self.publish(format!("http://host.docker.internal:{}/", self.port)).await.unwrap();
     }
 
     #[tracing::instrument(skip_all, fields(?url))]

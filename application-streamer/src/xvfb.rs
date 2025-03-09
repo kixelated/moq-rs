@@ -26,21 +26,22 @@ impl Xvfb {
         self.display
     }
 
-    pub async fn start(&mut self) {
-        self.xvfb_process = Some(tokio::process::Command::new("Xvfb")
-            .arg(format!(":{}", self.display))
-            .arg("-screen")
-            .arg("0")
-            .arg(format!("{}x{}x{}", self.resolution.width, self.resolution.height, self.color_depth))
-            .spawn()
-            .expect("failed to start Xvfb"));
+    pub fn start(&mut self) {
+        let display = self.display.clone();
+        let resolution = self.resolution.clone();
+        let color_depth = self.color_depth.clone();
 
-        match self.xvfb_process {
-            Some(ref mut process) => {
-                process.wait().await.expect("Xvfb process encountered an error while starting");
-            }
-            _ => {}
-        }
+        tokio::spawn(async move {
+            tokio::process::Command::new("Xvfb")
+                .arg(format!(":{}", display))
+                .arg("-screen")
+                .arg("0")
+                .arg(format!("{}x{}x{}", resolution.width, resolution.height, color_depth))
+                .spawn()
+                .expect("failed to start Xvfb");
+        });
+
+        // tracing::info!("Xvfb started on display :{}", self.display);
     }
 
     pub async fn stop(&mut self) {

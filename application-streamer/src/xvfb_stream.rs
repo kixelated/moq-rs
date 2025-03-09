@@ -27,7 +27,7 @@ impl FFmpegXvfbStream {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub fn start(&mut self) {
         self.ffmpeg.stdout(std::process::Stdio::piped());
         let mut child = self.ffmpeg.spawn().expect("failed to start ffmpeg");
         self.stdout = Some(child.stdout.take().expect("child did not have a handle to stdout"));
@@ -35,6 +35,8 @@ impl FFmpegXvfbStream {
         tokio::spawn(async move {
             child.wait().await.expect("ffmpeg process encountered an error");
         });
+
+        // tracing::info!("FFmpeg started");
     }
 
     pub fn stop(&mut self) {
