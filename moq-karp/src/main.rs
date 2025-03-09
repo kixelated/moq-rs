@@ -79,11 +79,13 @@ async fn publish(config: Config, url: String) -> anyhow::Result<()> {
 			let url = Url::parse(&url).context("invalid URL")?;
 			let path = url.path().to_string();
 
-			let broadcast = BroadcastProducer::new(session, path)?;
+			let broadcast = BroadcastProducer::new(path)?;
 			let mut input = tokio::io::stdin();
 
 			let mut import = cmaf::Import::new(broadcast);
 			import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
+
+			import.add_session(session)?;
 
 			tracing::info!("publishing");
 

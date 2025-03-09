@@ -4,6 +4,7 @@ use moq_async::{spawn, Lock};
 use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 
 use derive_more::Debug;
+use moq_transfork::message::Info;
 
 #[derive(Clone)]
 pub struct BroadcastListener {
@@ -17,17 +18,88 @@ impl BroadcastListener {
 }
 
 #[derive(Debug, Clone)]
+struct Context {
+	pub video_consumer: Option<moq_transfork::TrackConsumer>,
+	pub video: Option<Video>,
+	pub audio_consumer: Option<moq_transfork::TrackConsumer>,
+	pub audio: Option<Audio>,
+}
+impl Context {
+	pub fn default() -> Self {
+		Self {
+			video_consumer: None,
+			video: None,
+			audio_consumer: None,
+			audio: None,
+		}
+	}
+
+	fn publish_video_to(&self, listener: &mut BroadcastListener, producer: &TrackProducer) -> anyhow::Result<()> {
+		if let Some(consumer) = self.video_consumer.clone() {
+			listener.session.publish(consumer)?;
+		}
+
+		if let Some(info) = self.video.clone() {
+			let mut catalog = listener.catalog.lock();
+			catalog.current.video.push(info.clone());
+			catalog.publish()?;
+
+			let consumer = producer.subscribe();
+
+			// Start a task that will remove the catalog on drop.
+			let catalog = listener.catalog.clone();
+			let track_info = info.track;
+			spawn(async move {
+				consumer.closed().await.ok();
+
+				let mut catalog = catalog.lock();
+				catalog.current.video.retain(|v| v.track != track_info);
+				catalog.publish().unwrap();
+			});
+		}
+
+		Ok(())
+	}
+
+	pub fn publish_audio_to(&self, listener: &mut BroadcastListener, producer: &TrackProducer) -> anyhow::Result<()> {
+		if let Some(consumer) = self.audio_consumer.clone() {
+			listener.session.publish(consumer)?;
+		}
+
+		if let Some(info) = self.audio.clone() {
+			let mut catalog = listener.catalog.lock();
+			catalog.current.audio.push(info.clone());
+			catalog.publish()?;
+
+			let consumer = producer.subscribe();
+
+			// Start a task that will remove the catalog on drop.
+			let catalog = listener.catalog.clone();
+			let track_info = info.track;
+			spawn(async move {
+				consumer.closed().await.ok();
+
+				let mut catalog = catalog.lock();
+				catalog.current.audio.retain(|v| v.track != track_info);
+				catalog.publish().unwrap();
+			});
+		}
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Clone)]
 #[debug("{:?}", path)]
 pub struct BroadcastProducer {
 	listeners: Vec<BroadcastListener>,
 	pub path: String,
 	id: u64,
-	curr_video_consumer: Option<moq_transfork::TrackConsumer>,
-	curr_audio_consumer: Option<moq_transfork::TrackConsumer>,
+	context: Context,
 }
 
 impl BroadcastProducer {
-	pub fn new(mut session: Session, path: String) -> Result<Self> {
+	pub fn new(path: String) -> Result<Self> {
 		// Generate a "unique" ID for this broadcast session.
 		// If we crash, then the viewers will automatically reconnect to the new ID.
 		let id = web_time::SystemTime::now()
@@ -35,31 +107,16 @@ impl BroadcastProducer {
 			.unwrap()
 			.as_millis() as u64;
 
-		let full = format!("{}/{}/catalog.json", path, id);
-
-		let catalog = moq_transfork::Track {
-			path: full,
-			priority: -1,
-			order: moq_transfork::GroupOrder::Desc,
-		}
-		.produce();
-
-		// Publish the catalog track, even if it's empty.
-		session.publish(catalog.1)?;
-
-		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
-
 		Ok(Self {
-			listeners: vec![BroadcastListener { session, catalog }],
+			listeners: vec![],
 			path,
 			id,
-			curr_video_consumer: None,
-			curr_audio_consumer: None,
+			context: Context::default(),
 		})
 	}
 
 	/// Add a session to the broadcast.
-	pub fn add_session(&mut self, mut session: Session) -> anyhow::Result<BroadcastListener> {
+	pub fn add_session(&mut self, mut session: Session, curr_video_producer: Option<&TrackProducer>, curr_audio_producer: Option<&TrackProducer>) -> anyhow::Result<()> {
 		let full = format!("{}/{}/catalog.json", self.path, self.id);
 
 		let catalog = moq_transfork::Track {
@@ -73,10 +130,18 @@ impl BroadcastProducer {
 
 		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
 
-		let listener = BroadcastListener { session, catalog };
-		self.listeners.push(listener.clone());
+		let mut listener = BroadcastListener { session, catalog };
 
-		Ok(listener)
+		if let Some(producer) = curr_video_producer {
+			self.context.publish_video_to(&mut listener, producer)?
+		}
+		if let Some(producer) = curr_audio_producer {
+			self.context.publish_audio_to(&mut listener, producer)?
+		}
+
+		self.listeners.push(listener);
+
+		Ok(())
 	}
 
 	pub fn publish_video(&mut self, info: Video) -> anyhow::Result<TrackProducer> {
@@ -88,43 +153,15 @@ impl BroadcastProducer {
 			order: moq_transfork::GroupOrder::Desc,
 		}.produce();
 
-		self.curr_video_consumer = Some(consumer);
+		self.context.video = Some(info);
+		self.context.video_consumer = Some(consumer);
 		let producer = TrackProducer::new(producer);
 
-		for listener in self.listeners.clone() {
-			self.republish_video_to(info.clone(), &listener, &producer)?;
-		}
-
-		Ok(producer)
-	}
-
-	pub fn republish_video_to(&mut self, info: Video, listener: &BroadcastListener, producer: &TrackProducer) -> anyhow::Result<()> {
-		for listener_entry in &mut self.listeners {
-			if listener_entry.equals(listener) {
-				listener_entry.session.publish(self.curr_video_consumer.clone()
-					.expect("Haven't published a video yet, can't republish"))?;
-				break;
-			}
-		}
-
-		let mut catalog = listener.catalog.lock();
-		catalog.current.video.push(info.clone());
-		catalog.publish()?;
-
-		let consumer = producer.subscribe();
-
-		// Start a task that will remove the catalog on drop.
-		let catalog = listener.catalog.clone();
-		let track_info = info.track.clone();
-		spawn(async move {
-			consumer.closed().await.ok();
-
-			let mut catalog = catalog.lock();
-			catalog.current.video.retain(|v| v.track != track_info);
-			catalog.publish().unwrap();
+		self.listeners.iter_mut().for_each(|listener| {
+			self.context.publish_video_to(listener, &producer).unwrap();
 		});
 
-		Ok(())
+		Ok(producer)
 	}
 
 	pub fn publish_audio(&mut self, info: Audio) -> anyhow::Result<TrackProducer> {
@@ -136,43 +173,15 @@ impl BroadcastProducer {
 			order: moq_transfork::GroupOrder::Desc,
 		}.produce();
 
-		self.curr_video_consumer = Some(consumer);
+		self.context.audio = Some(info);
+		self.context.audio_consumer = Some(consumer);
 		let producer = TrackProducer::new(producer);
 
-		for listener in self.listeners.clone() {
-			self.republish_audio_to(info.clone(), &listener, &producer)?;
-		}
-
-		Ok(producer)
-	}
-
-	pub fn republish_audio_to(&mut self, info: Audio, listener: &BroadcastListener, producer: &TrackProducer) -> anyhow::Result<()> {
-		for listener_entry in &mut self.listeners {
-			if listener_entry.equals(listener) {
-				listener_entry.session.publish(self.curr_video_consumer.clone()
-					.expect("Haven't published a video yet, can't republish"))?;
-				break;
-			}
-		}
-
-		let mut catalog = listener.catalog.lock();
-		catalog.current.audio.push(info.clone());
-		catalog.publish()?;
-
-		let consumer = producer.subscribe();
-
-		// Start a task that will remove the catalog on drop.
-		let catalog = listener.catalog.clone();
-		let track_info = info.track.clone();
-		spawn(async move {
-			consumer.closed().await.ok();
-
-			let mut catalog = catalog.lock();
-			catalog.current.audio.retain(|v| v.track != track_info);
-			catalog.publish().unwrap();
+		self.listeners.iter_mut().for_each(|listener| {
+			self.context.publish_audio_to(listener, &producer).unwrap();
 		});
 
-		Ok(())
+		Ok(producer)
 	}
 }
 

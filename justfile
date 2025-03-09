@@ -2,6 +2,8 @@
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
+set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]
+
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "info"
 
@@ -78,7 +80,7 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
+		- | cargo run --bin moq-karp -- --server --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify publish "http://localhost:4443/demo/{{name}}"
 
 # Run the web server
 web:

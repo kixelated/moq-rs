@@ -41,10 +41,6 @@ impl Import {
 		}
 	}
 
-	pub fn broadcast(&mut self) -> &mut BroadcastProducer {
-		&mut self.broadcast
-	}
-
 	pub fn parse(&mut self, data: &[u8]) -> Result<()> {
 		if !self.buffer.is_empty() {
 			let mut buffer = std::mem::replace(&mut self.buffer, BytesMut::new());
@@ -78,6 +74,32 @@ impl Import {
 		Ok(data.as_ref().len() - remain.len())
 	}
 
+	pub fn add_session(&mut self, session: Session) -> anyhow::Result<()> {
+		let mut video_producer = None;
+		let mut audio_producer = None;
+
+		if let Some(moov) = &self.moov {
+			for trak in &moov.trak {
+				let track_id = trak.tkhd.track_id;
+				let handler = &trak.mdia.hdlr.handler;
+
+				match handler.as_ref() {
+					b"vide" => {
+						video_producer = Some(self.tracks.get(&track_id).unwrap())
+					}
+					b"soun" => {
+						audio_producer = Some(self.tracks.get(&track_id).unwrap())
+					}
+					_ => { }
+				};
+			}
+		}
+
+		self.broadcast.add_session(session, video_producer, audio_producer)?;
+
+		Ok(())
+	}
+
 	fn init(&mut self, moov: Moov) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
@@ -103,63 +125,6 @@ impl Import {
 		self.moov = Some(moov);
 
 		Ok(())
-	}
-
-	pub fn add_listener(&mut self, session: Session) -> Result<()> {
-		let listener = self.broadcast.add_session(session).unwrap();
-		self.reinit_session(&listener)
-	}
-
-	fn reinit_session(&mut self, listener: &BroadcastListener) -> Result<()> {
-		match &self.moov {
-			None => { panic!("Trying to reinitialize for specific session, but never been initialized in the first place.") }
-			Some(ref moov) => {
-				// Produce the catalog
-				for trak in &moov.trak {
-					let track_id = trak.tkhd.track_id;
-					let handler = &trak.mdia.hdlr.handler;
-
-					let new_track: Option<TrackProducer> = match handler.as_ref() {
-						b"vide" => {
-							let track = Self::init_video(trak)?;
-							match self.tracks.get(&track_id) {
-								None => {
-									Some(self.broadcast.publish_video(track).expect("Error while publishing video"))
-								}
-								Some(ref producer) => {
-									self.broadcast.republish_video_to(track, listener, producer)
-										.expect("Error while republishing video");
-
-									None
-								}
-							}
-						}
-						b"soun" => {
-							let track = Self::init_audio(trak)?;
-							match self.tracks.get(&track_id) {
-								None => {
-									Some(self.broadcast.publish_audio(track).expect("Error while publishing audio"))
-								}
-								Some(ref producer) => {
-									self.broadcast.republish_audio_to(track, listener, producer)
-										.expect("Error while republishing audio");
-
-									None
-								}
-							}
-						}
-						b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
-						_ => return Err(Error::UnsupportedTrack("unknown")),
-					};
-
-					if let Some(track) = new_track {
-						self.tracks.insert(track_id, track);
-					}
-				}
-
-				Ok(())
-			}
-		}
 	}
 
 	fn init_video(trak: &Trak) -> Result<Video> {

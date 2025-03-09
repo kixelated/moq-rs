@@ -39,10 +39,21 @@ impl BroadcastServer {
             web.run().await.expect("failed to run web server");
         });
 
-        self.accept(bind, server, url).await
+        // Create the broadcast
+        let url = Url::parse(&url).context("invalid URL")?;
+        let path = url.path().to_string();
+
+        let broadcast = BroadcastProducer::new(path)?;
+        let mut input = tokio::io::stdin();
+
+        let mut import = cmaf::Import::new(broadcast);
+        import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
+        self.import = Some(import);
+
+        self.accept(bind, server).await
     }
 
-    async fn accept(&mut self, bind: SocketAddr, mut server: Server, url: String) -> anyhow::Result<()> {
+    async fn accept(&mut self, bind: SocketAddr, mut server: Server) -> anyhow::Result<()> {
         tracing::info!(addr = %bind, "listening");
 
         let mut conn_id = 0;
@@ -54,28 +65,11 @@ impl BroadcastServer {
 
             conn_id += 1;
 
-            tracing::info!(id = conn_id, "accepted");
+            tracing::info!(id = conn_id.clone(), "accepted");
 
-            match &mut self.import {
-                // If it's the first connection, set up the broadcast
-                None => {
-                    let url = Url::parse(&url).context("invalid URL")?;
-                    let path = url.path().to_string();
-
-                    let broadcast = BroadcastProducer::new(transfork_session, path)?;
-                    let mut input = tokio::io::stdin();
-
-                    let mut import = cmaf::Import::new(broadcast);
-                    import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
-                    self.import = Some(import);
-
-                    tracing::info!("publishing");
-                }
-                // Otherwise, add the session to the existing broadcast
-                Some(import) => {
-                    tracing::info!("adding session to existing broadcast");
-                    import.add_listener(transfork_session)?;
-                }
+            if let Some(import) = &mut self.import {
+                import.add_session(transfork_session)?;
+                tracing::info!("added session {} to broadcast", conn_id);
             }
         }
 

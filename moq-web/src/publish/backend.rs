@@ -66,7 +66,8 @@ impl Backend {
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let path = self.connect.take().unwrap().path;
 
-					let mut broadcast = moq_karp::BroadcastProducer::new(session?, path)?;
+					let mut broadcast = moq_karp::BroadcastProducer::new(path)?;
+					broadcast.add_session(session?, None, None)?;
 					if let Some(video) = self.video.as_mut() {
 						let track = broadcast.publish_video(video.info().clone())?;
 						self.video_track = Some(track);
