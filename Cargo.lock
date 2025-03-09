@@ -1412,11 +1412,12 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.6.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d699e7cc6727d9b7c1153a3e22a38a35da259a10d5cb88ba99bfc3c88feca5f6"
+checksum = "111717e48a33dd17b2016eb6e26eba648b68adf031f4a2740bae0f2e2dba1463"
 dependencies = [
  "bytes",
+ "derive_more 2.0.1",
  "num",
  "paste",
  "serde",
