@@ -21,7 +21,7 @@ url = "2"
 bytes = "1.10"
 hex = "0.4"
 
-mp4-atom = { version = "0.4", features = ["tokio", "bytes"] }
+mp4-atom = { version = "0.6", features = ["tokio", "bytes", "serde"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -36,6 +36,14 @@ futures = "0.3"
 tokio = { version = "1.43", features = ["macros"] }
 
 web-time = "1"
+
+# Web server
+axum = { version = "0.8", features = ["tokio"] }
+hyper-serve = { version = "0.6", features = [
+    "tls-rustls",
+] } # fork of axum-server
+tower-http = { version = "0.6", features = ["cors"] }
+http-body = "1"
 
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.6", optional = true }

@@ -299,6 +299,9 @@ name = "bytes"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cc"
@@ -1300,11 +1303,14 @@ name = "moq-karp"
 version = "0.14.1"
 dependencies = [
  "anyhow",
+ "axum",
  "bytes",
  "clap",
  "derive_more 2.0.1",
  "futures",
  "hex",
+ "http-body",
+ "hyper-serve",
  "lazy_static",
  "moq-async",
  "moq-native",
@@ -1316,6 +1322,7 @@ dependencies = [
  "serde_with",
  "thiserror 2.0.11",
  "tokio",
+ "tower-http",
  "tracing",
  "url",
  "web-time",
@@ -1407,13 +1414,14 @@ dependencies = [
 
 [[package]]
 name = "mp4-atom"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e6ca41187fd83535ec10045e7bd4e6ee508b5eb0488c3bce66bca9182d26a96"
+checksum = "d699e7cc6727d9b7c1153a3e22a38a35da259a10d5cb88ba99bfc3c88feca5f6"
 dependencies = [
  "bytes",
  "num",
  "paste",
+ "serde",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

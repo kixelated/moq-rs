@@ -1,12 +1,7 @@
 use std::net;
-
-use anyhow::Context;
 use clap::{Parser, Subcommand};
-use moq_transfork::Session;
-use url::Url;
 
-use moq_karp::{cmaf, BroadcastProducer};
-use moq_native::quic;
+use moq_karp::{BroadcastServer, BroadcastClient};
 
 #[derive(Parser, Clone)]
 struct Config {
@@ -21,6 +16,10 @@ struct Config {
 	/// The TLS configuration.
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
+
+	/// If we're a server or client. If true, we're a server. If false, we're a client to a relay-server.
+	#[arg(long)]
+	pub server: bool,
 
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
@@ -53,37 +52,15 @@ async fn main() -> anyhow::Result<()> {
 	}
 }
 
-async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, String)> {
-	let tls = config.tls.load()?;
-	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
-
-	tracing::info!(?url, "connecting");
-
-	let url = Url::parse(url).context("invalid URL")?;
-	let path = url.path().to_string();
-
-	let session = quic.client.connect(url).await?;
-	let session = Session::connect(session).await?;
-
-	Ok((session, path))
-}
-
 #[tracing::instrument(skip_all, fields(?url))]
 async fn publish(config: Config, url: String) -> anyhow::Result<()> {
-	let (session, path) = connect(&config, &url).await?;
-	let broadcast = BroadcastProducer::new(session.clone(), path)?;
-	let mut input = tokio::io::stdin();
-
-	let mut import = cmaf::Import::new(broadcast);
-	import.init_from(&mut input).await.context("failed to initialize")?;
-
-	tracing::info!("publishing");
-
-	tokio::select! {
-		res = import.read_from(&mut input) => Ok(res?),
-		res = session.closed() => Err(res.into()),
+	match config.server {
+		true => BroadcastServer::new(config.bind, config.tls, url, tokio::io::stdin()).run().await,
+		false => BroadcastClient::new(config.bind, config.tls, url, tokio::io::stdin()).run().await,
 	}
 }
+
+
 
 /*
 #[tracing::instrument("subscribe", skip_all, err, fields(?broadcast))]

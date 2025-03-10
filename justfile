@@ -2,6 +2,7 @@
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
+# This may help if you are having trouble running just on windows
 set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]
 
 export RUST_BACKTRACE := "1"
@@ -50,8 +51,11 @@ leaf:
 cluster:
 	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
-# Download and stream the Big Buck Bunny video
+# Download and stream the Big Buck Bunny video to the localhost relay server
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
+
+# Download and stream the Big Buck Bunny video to localhost directly
+bbb-server: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-server "bbb")
 
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
@@ -87,6 +91,19 @@ pub name:
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
+
+# Publish a video using ffmpeg directly from moq-karp to the localhost
+pub-server name:
+	# Pre-build the binary so we don't queue media while compiling.
+	cargo build --bin moq-karp
+
+	# Run ffmpeg and pipe the output to moq-karp
+	ffmpeg -hide_banner -v quiet \
+		-stream_loop -1 -re \
+		-i "dev/{{name}}.fmp4" \
+		-c copy \
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		- | cargo run --bin moq-karp -- --server --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify publish "http://localhost:4443/demo/{{name}}"
 
 # Run the web server
 web:

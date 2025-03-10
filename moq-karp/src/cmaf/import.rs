@@ -2,9 +2,8 @@ use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
-
 use super::{Error, Result};
-use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9};
+use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -12,7 +11,7 @@ pub struct Import {
 	buffer: BytesMut,
 
 	// The broadcast being produced
-	broadcast: BroadcastProducer,
+	pub broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, TrackProducer>,
@@ -83,17 +82,17 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.publish_video(track)?
+					self.broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.publish_audio(track)?
+					self.broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, track);
+			self.tracks.insert(track_id, track.expect("Error while publishing track"));
 		}
 
 		self.moov = Some(moov);
@@ -114,8 +113,8 @@ impl Import {
 			Video {
 				track: Track { name, priority: 2 },
 				resolution: Dimensions {
-					width: avc1.width as _,
-					height: avc1.height as _,
+					width: avc1.visual.width as _,
+					height: avc1.visual.height as _,
 				},
 				codec: H264 {
 					profile: avcc.avc_profile_indication,
@@ -127,27 +126,29 @@ impl Import {
 				bitrate: None,
 			}
 		} else if let Some(hev1) = &stsd.hev1 {
-			let _hvcc = &hev1.hvcc;
+			let hvcc = &hev1.hvcc;
 
-			/*
-			catalog::Video {
-				track: moq_transfork::Track::build(name).priority(2).into(),
-				width: hev1.width,
-				height: hev1.height,
-				codec: catalog::H265 {
-					profile: hvcc.general_profile_idc,
-					level: hvcc.general_level_idc,
-					constraints: hvcc.general_constraint_indicator_flag,
+			let mut description = BytesMut::new();
+			hvcc.encode_body(&mut description)?;
+
+			Video {
+				track: Track { name, priority: 2 },
+				codec: H265 {
+					profile_space: hvcc.general_profile_space,
+					profile_idc: hvcc.general_profile_idc,
+					profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+					tier_flag: hvcc.general_tier_flag,
+					level_idc: hvcc.general_level_idc,
+					constraint_flags: hvcc.general_constraint_indicator_flags,
+				}
+				.into(),
+				description: Some(description.freeze()),
+				resolution: Dimensions {
+					width: hev1.visual.width as _,
+					height: hev1.visual.height as _,
 				},
-				container: catalog::Container::Fmp4,
-				layers: vec![],
-				bit_rate: None,
+				bitrate: None,
 			}
-			*/
-
-			// Just waiting for a release:
-			// https://github.com/alfg/mp4-rust/commit/35560e94f5e871a2b2d88bfe964013b39af131e8
-			return Err(Error::UnsupportedCodec("HEVC"));
 		} else if let Some(vp09) = &stsd.vp09 {
 			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 			let vpcc = &vp09.vpcc;
@@ -167,13 +168,42 @@ impl Import {
 				.into(),
 				description: Default::default(),
 				resolution: Dimensions {
-					width: vp09.width as _,
-					height: vp09.height as _,
+					width: vp09.visual.width as _,
+					height: vp09.visual.height as _,
+				},
+				bitrate: None,
+			}
+		} else if let Some(av01) = &stsd.av01 {
+			let av1c = &av01.av1c;
+
+			Video {
+				track: Track { name, priority: 2 },
+				codec: AV1 {
+					profile: av1c.seq_profile,
+					level: av1c.seq_level_idx_0,
+					tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
+					bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
+						(true, true) => 12,
+						(true, false) => 10,
+						(false, true) => 10,
+						(false, false) => 8,
+					},
+					mono_chrome: av1c.monochrome,
+					chroma_subsampling_x: av1c.chroma_subsampling_x,
+					chroma_subsampling_y: av1c.chroma_subsampling_y,
+					chroma_sample_position: av1c.chroma_sample_position,
+					// TODO HDR stuff?
+					..Default::default()
+				}
+				.into(),
+				description: Default::default(),
+				resolution: Dimensions {
+					width: av01.visual.width as _,
+					height: av01.visual.height as _,
 				},
 				bitrate: None,
 			}
 		} else {
-			// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
 			return Err(Error::UnsupportedCodec("unknown"));
 		};
 
@@ -219,6 +249,22 @@ impl Import {
 		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
 		let moov = Moov::read_from(input).await?;
 		self.init(moov)
+	}
+
+	// Read the media from a stream once, processing moof and mdat atoms.
+	pub async fn read_from_once<T: AsyncReadExt + Unpin>(&mut self, input: &mut T, buffer: &mut BytesMut) -> Result<bool> {
+		if input.read_buf(buffer).await? > 0 {
+			let n = self.parse_inner(&buffer)?;
+			let _ = buffer.split_to(n);
+
+			return Ok(true);
+		}
+
+		if !buffer.is_empty() {
+			return Err(Error::TrailingData);
+		}
+
+		Ok(false)
 	}
 
 	// Read the media from a stream, processing moof and mdat atoms.
