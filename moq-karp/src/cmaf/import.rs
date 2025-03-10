@@ -2,7 +2,6 @@ use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
-use moq_transfork::Session;
 use super::{Error, Result};
 use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
 
@@ -12,7 +11,7 @@ pub struct Import {
 	buffer: BytesMut,
 
 	// The broadcast being produced
-	broadcast: BroadcastProducer,
+	pub broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, TrackProducer>,
@@ -72,32 +71,6 @@ impl Import {
 
 		// Return the number of bytes consumed
 		Ok(data.as_ref().len() - remain.len())
-	}
-
-	pub fn add_session(&mut self, session: Session) -> anyhow::Result<()> {
-		let mut video_producer = None;
-		let mut audio_producer = None;
-
-		if let Some(moov) = &self.moov {
-			for trak in &moov.trak {
-				let track_id = trak.tkhd.track_id;
-				let handler = &trak.mdia.hdlr.handler;
-
-				match handler.as_ref() {
-					b"vide" => {
-						video_producer = Some(self.tracks.get(&track_id).unwrap())
-					}
-					b"soun" => {
-						audio_producer = Some(self.tracks.get(&track_id).unwrap())
-					}
-					_ => { }
-				};
-			}
-		}
-
-		self.broadcast.add_session(session, video_producer, audio_producer)?;
-
-		Ok(())
 	}
 
 	fn init(&mut self, moov: Moov) -> Result<()> {

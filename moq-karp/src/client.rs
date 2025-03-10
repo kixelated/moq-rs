@@ -28,7 +28,7 @@ impl <T: AsyncRead + Unpin> BroadcastClient<T> {
         let mut import = Import::new(broadcast);
         import.init_from(&mut self.input).await.context("failed to initialize cmaf from input")?;
 
-        import.add_session(session.clone())?;
+        import.broadcast.add_session(session.clone())?;
 
         tracing::info!("publishing");
 

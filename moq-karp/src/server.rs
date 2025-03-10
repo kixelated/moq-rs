@@ -84,7 +84,7 @@ impl<T: AsyncRead + Unpin> BroadcastServer<T> {
                 conn_id += 1;
 
                 let mut import = import.lock();
-                import.add_session(transfork_session).expect("failed to add session");
+                import.broadcast.add_session(transfork_session).expect("failed to add session");
 
                 tracing::info!(id = conn_id.clone(), "accepted");
             }

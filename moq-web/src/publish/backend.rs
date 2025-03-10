@@ -67,7 +67,7 @@ impl Backend {
 					let path = self.connect.take().unwrap().path;
 
 					let mut broadcast = moq_karp::BroadcastProducer::new(path)?;
-					broadcast.add_session(session?, None, None)?;
+					broadcast.add_session(session?)?;
 					if let Some(video) = self.video.as_mut() {
 						let track = broadcast.publish_video(video.info().clone())?;
 						self.video_track = Some(track);
