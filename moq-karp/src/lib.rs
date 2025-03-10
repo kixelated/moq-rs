@@ -8,6 +8,7 @@ mod track;
 mod video;
 mod server;
 mod fingerprint;
+mod client;
 
 pub use audio::*;
 pub use broadcast::*;
@@ -19,6 +20,7 @@ pub use track::*;
 pub use video::*;
 pub use server::*;
 pub use fingerprint::*;
+pub use client::*;
 
 pub mod cmaf;
 

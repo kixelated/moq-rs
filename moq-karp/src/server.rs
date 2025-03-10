@@ -9,18 +9,22 @@ use moq_transfork::{web_transport};
 use crate::{BroadcastProducer};
 use crate::cmaf::Import;
 use crate::fingerprint::FingerprintServer;
+use tokio::io::AsyncRead;
 
-pub struct BroadcastServer {
+
+pub struct BroadcastServer<T: AsyncRead + Unpin> {
     bind: SocketAddr,
     tls: moq_native::tls::Args,
+    url: String,
+    input: T,
 }
 
-impl BroadcastServer {
-    pub fn new(bind: SocketAddr, tls: moq_native::tls::Args) -> Self {
-        Self { bind, tls }
+impl<T: AsyncRead + Unpin> BroadcastServer<T> {
+    pub fn new(bind: SocketAddr, tls: moq_native::tls::Args, url: String, input: T) -> Self {
+        Self { bind, tls, url, input }
     }
 
-    pub async fn run(&mut self, url: String) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         self.bind = tokio::net::lookup_host(self.bind)
             .await
             .context("invalid bind address")?
@@ -42,25 +46,25 @@ impl BroadcastServer {
         });
 
         // Create the broadcast
-        let url = Url::parse(&url).context("invalid URL")?;
+        let url = Url::parse(&self.url).context("invalid URL")?;
         let path = url.path().to_string();
 
         let broadcast = BroadcastProducer::new(path)?;
-        let mut input = tokio::io::stdin();
 
         let mut import = Import::new(broadcast);
-        import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
+        import.init_from(&mut self.input).await.context("failed to initialize cmaf from input")?;
 
         let lock = Lock::new(import);
         let import = lock.clone();
 
         self.accept(server, lock.clone())?;
 
+        // TODO: figure out a way to not lock import while reading or accepting, as it will block the other operation.
         let mut buffer = BytesMut::new();
         let mut reading = true;
         while reading {
             let mut import = import.lock();
-            reading = import.read_from_once(&mut input, &mut buffer).await?;
+            reading = import.read_from_once(&mut self.input, &mut buffer).await?;
         }
 
         Ok(())

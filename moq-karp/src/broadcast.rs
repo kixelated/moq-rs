@@ -6,14 +6,9 @@ use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 use derive_more::Debug;
 
 #[derive(Clone)]
-pub struct BroadcastListener {
+struct BroadcastListener {
 	pub session: Session,
 	pub catalog: Lock<CatalogProducer>,
-}
-impl BroadcastListener {
-	pub fn equals(&self, other: &BroadcastListener) -> bool {
-		self.session == other.session
-	}
 }
 
 #[derive(Debug, Clone)]
