@@ -29,6 +29,12 @@ setup:
 	# Install cargo shear if needed.
 	cargo binstall --no-confirm cargo-shear
 
+	# Install cross for cross-compiling.
+	cargo install cross
+
+application-streamer:
+    cross run --bin application-streamer -- --force-non-host --target x86_64-unknown-linux-gnu
+
 # Run the relay, web server, and publish bbb.
 all:
 	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
