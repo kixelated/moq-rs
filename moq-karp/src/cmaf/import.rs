@@ -4,7 +4,7 @@ use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use moq_transfork::Session;
 use super::{Error, Result};
-use crate::{Audio, BroadcastListener, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
+use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -276,6 +276,22 @@ impl Import {
 		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
 		let moov = Moov::read_from(input).await?;
 		self.init(moov)
+	}
+
+	// Read the media from a stream once, processing moof and mdat atoms.
+	pub async fn read_from_once<T: AsyncReadExt + Unpin>(&mut self, input: &mut T, buffer: &mut BytesMut) -> Result<bool> {
+		if input.read_buf(buffer).await? > 0 {
+			let n = self.parse_inner(&buffer)?;
+			let _ = buffer.split_to(n);
+
+			return Ok(true);
+		}
+
+		if !buffer.is_empty() {
+			return Err(Error::TrailingData);
+		}
+
+		Ok(false)
 	}
 
 	// Read the media from a stream, processing moof and mdat atoms.

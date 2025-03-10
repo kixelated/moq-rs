@@ -85,11 +85,14 @@ async fn publish(config: Config, url: String) -> anyhow::Result<()> {
 			let mut import = cmaf::Import::new(broadcast);
 			import.init_from(&mut input).await.context("failed to initialize cmaf from input")?;
 
-			import.add_session(session)?;
+			import.add_session(session.clone())?;
 
 			tracing::info!("publishing");
 
-			Ok(())
+			tokio::select! {
+				res = import.read_from(&mut input) => Ok(res?),
+				res = session.closed() => Err(res.into()),
+			}
 		}
 	}
 }
