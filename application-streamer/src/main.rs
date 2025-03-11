@@ -1,15 +1,4 @@
-use moq_karp::BroadcastServer;
-use crate::xvfb_stream::FFmpegXvfbStream;
-use crate::input_streamer::MoQInputStreamer;
-use crate::video_file_stream::FFmpegVideoFileStream;
-use crate::xvfb::Xvfb;
-use crate::xvfb_user::XvfbUser;
-
-mod input_streamer;
-mod xvfb_stream;
-mod xvfb;
-mod xvfb_user;
-mod video_file_stream;
+use application_streamer::{stream, MoQInputStreamer};
 
 const RESOLUTION: moq_karp::Dimensions = moq_karp::Dimensions { width: 1920, height: 1080 };
 const PORT: u16 = 4443;
@@ -20,14 +9,14 @@ const TEST_VIDEO_FILE_LOCATION: &str = "C:/Users/liamf/Documents/Bach3/Bachelorp
 /// Stream video file with moq-karp
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let mut video_stream = FFmpegVideoFileStream::new(TEST_VIDEO_FILE_LOCATION);
+	let mut video_stream = stream::video_file::new(TEST_VIDEO_FILE_LOCATION);
 
 	video_stream.start().await;
 
 	let mut input_streamer = MoQInputStreamer::new(PORT);
 	input_streamer.stream(video_stream.stdout()).await?; // blocking method
 
-	video_stream.stop();
+	video_stream.stop().await;
 
 	Ok(())
 }
@@ -46,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
 // 	let mut input_streamer = MoQInputStreamer::new(PORT, display_stream.stdout());
 // 	input_streamer.stream(display_stream.stdout()).await?; // blocking method
 //
-// 	display_stream.stop();
+// 	display_stream.stop().await;
 // 	application.stop().await;
 // 	xvfb.stop().await;
 //
