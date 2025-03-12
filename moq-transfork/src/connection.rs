@@ -1,40 +1,145 @@
+use crate::{AnnouncedConsumer, Error, Filter, RouterConsumer, Track, TrackConsumer};
+use moq_transfork_proto::message;
+
+use moq_async::{spawn, Close, OrClose};
+
+/// A MoqTransfork session, used to publish and/or subscribe to broadcasts.
+///
+/// A publisher will [Self::publish] tracks, or alternatively [Self::announce] and [Self::route] arbitrary paths.
+/// A subscriber will [Self::subscribe] to tracks, or alternatively use [Self::announced] to discover arbitrary paths.
 #[derive(Clone)]
 pub struct Connection {
-	web_transport: web_transport::Session,
-	proto: watch::Sender<moq_transfork_proto::Connection>,
+	webtransport: web_transport::Connection,
+	publisher: Publisher,
+	subscriber: Subscriber,
 }
 
 impl Connection {
-	pub fn accept(web_transport: web_transport::Session) -> Self {
-		Self::new(web_transport)
-	}
+	fn new(mut session: web_transport::Connection, stream: Stream) -> Self {
+		let publisher = Publisher::new(session.clone());
+		let subscriber = Subscriber::new(session.clone());
 
-	pub fn connect(web_transport: web_transport::Session) -> Self {
-		Self::new(web_transport)
-	}
+		let this = Self {
+			webtransport: session.clone(),
+			publisher: publisher.clone(),
+			subscriber: subscriber.clone(),
+		};
 
-	fn new(web_transport: web_transport::Session) -> Self {
-		let proto = moq_transfork_proto::Connection::new();
+		spawn(async move {
+			let res = tokio::select! {
+				res = Self::run_session(stream) => res,
+				res = Self::run_bi(session.clone(), publisher) => res,
+				res = Self::run_uni(session.clone(), subscriber) => res,
+			};
 
-		let this = Self { web_transport, proto };
-		tokio::spawn(this.clone().run);
+			if let Err(err) = res {
+				tracing::warn!(?err, "terminated");
+				session.close(1, &err.to_string());
+			}
+		});
 
 		this
 	}
 
-	async fn run(mut self) {
-		let reader = self.proto.subscribe();
-		let mut streams = HashMap::new();
+	/// Perform the MoQ handshake as a client.
+	pub async fn connect<T: Into<web_transport::Connection>>(session: T) -> Result<Self, Error> {
+		let mut session = session.into();
+		let mut stream = Stream::open(&mut session, message::ControlType::Connection).await?;
+		Self::connect_setup(&mut stream).await.or_close(&mut stream)?;
+		Ok(Self::new(session, stream))
+	}
 
-		let buf = Vec::new();
+	async fn connect_setup(setup: &mut Stream) -> Result<(), Error> {
+		let client = message::ClientSetup {
+			versions: [message::Version::CURRENT].into(),
+			extensions: Default::default(),
+		};
 
+		setup.writer.encode(&client).await?;
+		let server: message::ServerSetup = setup.reader.decode().await?;
+
+		tracing::info!(version = ?server.version, "connected");
+
+		Ok(())
+	}
+
+	/// Perform the MoQ handshake as a server
+	pub async fn accept<T: Into<web_transport::Connection>>(session: T) -> Result<Self, Error> {
+		let mut session = session.into();
+		let mut stream = Stream::accept(&mut session).await?;
+		let kind = stream.reader.decode().await?;
+
+		if kind != message::ControlType::Connection {
+			return Err(Error::UnexpectedStream(kind));
+		}
+
+		Self::accept_setup(&mut stream).await.or_close(&mut stream)?;
+		Ok(Self::new(session, stream))
+	}
+
+	async fn accept_setup(control: &mut Stream) -> Result<(), Error> {
+		let client: message::ClientSetup = control.reader.decode().await?;
+
+		if !client.versions.contains(&message::Version::CURRENT) {
+			return Err(Error::Version(client.versions, [message::Version::CURRENT].into()));
+		}
+
+		let server = message::ServerSetup {
+			version: message::Version::CURRENT,
+			extensions: Default::default(),
+		};
+
+		control.writer.encode(&server).await?;
+
+		tracing::info!(version = ?server.version, "connected");
+
+		Ok(())
+	}
+
+	async fn run_session(mut stream: Stream) -> Result<(), Error> {
+		while let Some(_info) = stream.reader.decode_maybe::<message::Info>().await? {}
+		Err(Error::Cancel)
+	}
+
+	async fn run_uni(mut session: web_transport::Connection, subscriber: Subscriber) -> Result<(), Error> {
 		loop {
-			let borrow = reader.borrow_and_update();
-			while let Some(stream) = borrow.encode(&mut buf) {
-				self.streams.entry(stream)
-			}
+			let mut stream = Reader::accept(&mut session).await?;
+			let subscriber = subscriber.clone();
 
-			reader.changed().await;
+			spawn(async move {
+				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
+			});
+		}
+	}
+
+	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
+		let kind = stream.decode().await?;
+		match kind {
+			message::DataType::Group => Ok(subscriber.recv_group(stream).await?),
+		}
+	}
+
+	async fn run_bi(mut session: web_transport::Connection, publisher: Publisher) -> Result<(), Error> {
+		loop {
+			let mut stream = Stream::accept(&mut session).await?;
+			let publisher = publisher.clone();
+
+			spawn(async move {
+				Self::run_control(&mut stream, publisher)
+					.await
+					.or_close(&mut stream)
+					.ok();
+			});
+		}
+	}
+
+	async fn run_control(stream: &mut Stream, mut publisher: Publisher) -> Result<(), Error> {
+		let kind = stream.reader.decode().await?;
+		match kind {
+			message::ControlType::Connection => Err(Error::UnexpectedStream(kind)),
+			message::ControlType::Announce => publisher.recv_announce(stream).await,
+			message::ControlType::Subscribe => publisher.recv_subscribe(stream).await,
+			message::ControlType::Info => publisher.recv_info(stream).await,
 		}
 	}
 
@@ -43,11 +148,46 @@ impl Connection {
 		self.publisher.publish(track)
 	}
 
-	/// Discover any tracks published by the remote matching a prefix.
-	pub fn announced(&self, prefix: message::Path) -> AnnouncedConsumer {}
+	/// Optionally announce the provided tracks.
+	///
+	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::route].
+	/// [AnnouncedConsumer] will automatically unannounce if the [crate::AnnouncedProducer] is dropped.
+	pub fn announce(&mut self, announced: AnnouncedConsumer) {
+		self.publisher.announce(announced);
+	}
+
+	/// Optionally route unknown paths.
+	///
+	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::announce].
+	pub fn route(&mut self, router: RouterConsumer) {
+		self.publisher.route(router);
+	}
 
 	/// Subscribe to a track and start receiving data over the network.
 	pub fn subscribe(&self, track: Track) -> TrackConsumer {
 		self.subscriber.subscribe(track)
 	}
+
+	/// Discover any tracks published by the remote matching a (wildcard) filter.
+	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
+		self.subscriber.announced(filter)
+	}
+
+	/// Close the underlying WebTransport session.
+	pub fn close(mut self, err: Error) {
+		self.webtransport.close(1, &err.to_string());
+	}
+
+	/// Block until the WebTransport session is closed.
+	pub async fn closed(&self) -> Error {
+		self.webtransport.closed().await.into()
+	}
 }
+
+impl PartialEq for Connection {
+	fn eq(&self, other: &Self) -> bool {
+		self.webtransport == other.webtransport
+	}
+}
+
+impl Eq for Connection {}
