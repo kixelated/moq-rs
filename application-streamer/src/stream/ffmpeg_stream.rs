@@ -20,7 +20,7 @@ impl FFmpegStream {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub fn start(&mut self) {
         self.ffmpeg.stdout(std::process::Stdio::piped());
         self.child = Some(self.ffmpeg.spawn().expect("failed to start ffmpeg"));
     }

@@ -7,9 +7,9 @@ RUN apt-get install -y xvfb
 RUN apt-get install -y ffmpeg
 RUN apt-get install -y kate
 RUN apt-get install -y xdotool
-RUN apt-get install -y alsa
-RUN apt-get install -y dbus-x11
-RUN apt-get install -y pulseaudio
+#RUN apt-get install -y alsa
+#RUN apt-get install -y dbus-x11
+#RUN apt-get install -y pulseaudio
 
 ## Install google chrome
 #RUN apt-get install -y curl

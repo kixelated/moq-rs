@@ -23,12 +23,12 @@ impl <T: AsyncRead + Unpin> BroadcastClient<T> {
         let url = Url::parse(&self.url).context("invalid URL")?;
         let path = url.path().to_string();
 
-        let broadcast = BroadcastProducer::new(path)?;
+        let mut broadcast = BroadcastProducer::new(path)?;
 
-        let mut import = Import::new(broadcast);
-        import.init_from(&mut self.input).await.context("failed to initialize cmaf from input")?;
+        let mut import = Import::new();
+        import.init_from(&mut self.input, &mut broadcast).await.context("failed to initialize cmaf from input")?;
 
-        import.broadcast.add_session(session.clone())?;
+        broadcast.add_session(session.clone())?;
 
         tracing::info!("publishing");
 

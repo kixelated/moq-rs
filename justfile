@@ -100,10 +100,11 @@ pub-server name:
 	# Run ffmpeg and pipe the output to moq-karp
 	ffmpeg -hide_banner -v quiet \
 		-stream_loop -1 -re \
-		-i "dev/{{name}}.fmp4" \
+		-i "dev/{{name}}.mp4" \
 		-c copy \
-		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- --server --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify publish "http://localhost:4443/demo/{{name}}"
+		-f mp4 \
+		-movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		- | cargo run --bin moq-karp -- --server --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify publish "http://localhost:4443/"
 
 # Run the web server
 web:
