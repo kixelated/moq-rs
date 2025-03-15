@@ -10,9 +10,6 @@ pub struct Import {
 	// Any partial data in the input buffer
 	buffer: BytesMut,
 
-	// The broadcast being produced
-	pub broadcast: BroadcastProducer,
-
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, TrackProducer>,
 
@@ -28,10 +25,9 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new(broadcast: BroadcastProducer) -> Self {
+	pub fn new() -> Self {
 		Self {
 			buffer: BytesMut::new(),
-			broadcast,
 			tracks: HashMap::default(),
 			last_keyframe: HashMap::default(),
 			moov: None,
@@ -62,7 +58,7 @@ impl Import {
 
 			match mp4_atom::Any::decode_maybe(&mut peek)? {
 				Some(atom) => {
-					self.process(atom, remain.len() - peek.len())?;
+					self.process(atom, remain.len() - peek.len(), None)?;
 					remain = peek;
 				}
 				None => break,
@@ -73,7 +69,7 @@ impl Import {
 		Ok(data.as_ref().len() - remain.len())
 	}
 
-	fn init(&mut self, moov: Moov) -> Result<()> {
+	fn init(&mut self, moov: Moov, broadcast: &mut BroadcastProducer) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
 			let track_id = trak.tkhd.track_id;
@@ -82,11 +78,11 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.publish_video(track)
+					broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.publish_audio(track)
+					broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
@@ -121,7 +117,7 @@ impl Import {
 					constraints: avcc.profile_compatibility,
 					level: avcc.avc_level_indication,
 				}
-				.into(),
+					.into(),
 				description: Some(description.freeze()),
 				bitrate: None,
 			}
@@ -141,7 +137,7 @@ impl Import {
 					level_idc: hvcc.general_level_idc,
 					constraint_flags: hvcc.general_constraint_indicator_flags,
 				}
-				.into(),
+					.into(),
 				description: Some(description.freeze()),
 				resolution: Dimensions {
 					width: hev1.visual.width as _,
@@ -165,7 +161,7 @@ impl Import {
 					matrix_coefficients: vpcc.matrix_coefficients,
 					full_range: vpcc.video_full_range_flag,
 				}
-				.into(),
+					.into(),
 				description: Default::default(),
 				resolution: Dimensions {
 					width: vp09.visual.width as _,
@@ -195,7 +191,7 @@ impl Import {
 					// TODO HDR stuff?
 					..Default::default()
 				}
-				.into(),
+					.into(),
 				description: Default::default(),
 				resolution: Dimensions {
 					width: av01.visual.width as _,
@@ -232,7 +228,7 @@ impl Import {
 				codec: AAC {
 					profile: desc.dec_specific.profile,
 				}
-				.into(),
+					.into(),
 				sample_rate: mp4a.samplerate.integer() as _,
 				channel_count: mp4a.channelcount as _,
 				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
@@ -245,10 +241,11 @@ impl Import {
 	}
 
 	// Read the media from a stream until processing the moov atom.
-	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
-		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
+	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T, broadcast: &mut BroadcastProducer) -> Result<()> {
+		// TODO: Do we need to read this?
+		let _ftyp = match mp4_atom::Ftyp::read_from(input).await { _ => {} };
 		let moov = Moov::read_from(input).await?;
-		self.init(moov)
+		self.init(moov, broadcast)
 	}
 
 	// Read the media from a stream once, processing moof and mdat atoms.
@@ -283,14 +280,14 @@ impl Import {
 		Ok(())
 	}
 
-	fn process(&mut self, atom: mp4_atom::Any, size: usize) -> Result<()> {
+	fn process(&mut self, atom: mp4_atom::Any, size: usize, broadcast: Option<&mut BroadcastProducer>) -> Result<()> {
 		match atom {
 			Any::Ftyp(_) | Any::Styp(_) => {
 				// Skip
 			}
 			Any::Moov(moov) => {
 				// Create the broadcast.
-				self.init(moov)?;
+				self.init(moov, broadcast.expect("No broadcast given, while expected"))?;
 			}
 			Any::Moof(moof) => {
 				if self.moof.is_some() {

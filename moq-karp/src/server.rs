@@ -2,7 +2,6 @@ use std::net::SocketAddr;
 use anyhow::Context;
 use bytes::BytesMut;
 use url::Url;
-use moq_async::Lock;
 use moq_native::quic;
 use moq_native::quic::Server;
 use moq_transfork::{web_transport};
@@ -49,28 +48,23 @@ impl<T: AsyncRead + Unpin> BroadcastServer<T> {
         let url = Url::parse(&self.url).context("invalid URL")?;
         let path = url.path().to_string();
 
-        let broadcast = BroadcastProducer::new(path)?;
+        let mut broadcast = BroadcastProducer::new(path)?;
 
-        let mut import = Import::new(broadcast);
-        import.init_from(&mut self.input).await.context("failed to initialize cmaf from input")?;
+        let mut import = Import::new();
+        import.init_from(&mut self.input, &mut broadcast).await.context("failed to initialize cmaf from input")?;
 
-        let lock = Lock::new(import);
-        let import = lock.clone();
+        self.accept(server, broadcast)?;
 
-        self.accept(server, lock.clone())?;
-
-        // TODO: figure out a way to not lock import while reading or accepting, as it will block the other operation.
         let mut buffer = BytesMut::new();
         let mut reading = true;
         while reading {
-            let mut import = import.lock();
             reading = import.read_from_once(&mut self.input, &mut buffer).await?;
         }
 
         Ok(())
     }
 
-    fn accept(&mut self, mut server: Server, import: Lock<Import>) -> anyhow::Result<()> {
+    fn accept(&mut self, mut server: Server, mut broadcast: BroadcastProducer) -> anyhow::Result<()> {
         tracing::info!(addr = %self.bind, "listening");
 
         let mut conn_id = 0;
@@ -82,9 +76,7 @@ impl<T: AsyncRead + Unpin> BroadcastServer<T> {
                 let transfork_session = moq_transfork::Session::accept(session).await.expect("failed to accept session");
 
                 conn_id += 1;
-
-                let mut import = import.lock();
-                import.broadcast.add_session(transfork_session).expect("failed to add session");
+                broadcast.add_session(transfork_session).expect("failed to add session");
 
                 tracing::info!(id = conn_id.clone(), "accepted");
             }
