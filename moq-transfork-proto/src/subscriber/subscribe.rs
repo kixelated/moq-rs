@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{Error, Increment, StreamDirection, StreamId, StreamsState, SubscribeId, SubscribeRequest},
 	message::{self},
+	Error, Increment, StreamDirection, StreamId, StreamsState, SubscribeId, SubscribeRequest,
 };
 
 use super::SubscriberStream;

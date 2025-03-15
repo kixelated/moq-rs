@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-pub use crate::message::{Filter, FilterMatch};
+pub use moq_transfork_proto::message::{Filter, FilterMatch};
 
 /// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]

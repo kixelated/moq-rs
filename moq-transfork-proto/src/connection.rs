@@ -5,14 +5,6 @@ use super::{
 	Streams, StreamsState, Subscriber, SubscriberEvent, SubscriberState,
 };
 
-#[derive(Debug, From)]
-pub enum ConnectionEvent {
-	Session(SessionEvent),
-	Stream(StreamEvent),
-	Publisher(PublisherEvent),
-	Subscriber(SubscriberEvent),
-}
-
 pub struct Connection {
 	session: SessionState,
 	publisher: PublisherState,
@@ -68,9 +60,5 @@ impl Connection {
 			state: &mut self.subscriber,
 			streams: &mut self.streams,
 		}
-	}
-
-	pub fn poll(&mut self) -> Option<ConnectionEvent> {
-		todo!()
 	}
 }

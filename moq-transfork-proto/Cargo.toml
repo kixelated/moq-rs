@@ -12,8 +12,8 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [features]
-quinn = ["dep:quinn-proto"]
-default = ["quinn"]
+quinn = ["dep:quinn-proto"] # TODO remove
+default = []
 
 [dependencies]
 bytes = "1"

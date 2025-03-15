@@ -9,8 +9,25 @@
 //! It's currently super simple but will be expanded as Tokio becomes more of a hindrence.
 //!
 pub mod coding;
-pub mod generic;
 pub mod message;
+
+mod connection;
+mod error;
+mod id;
+mod publisher;
+mod session;
+mod streams;
+mod subscriber;
+mod types;
+
+pub use connection::*;
+pub use error::*;
+pub use id::*;
+pub use publisher::*;
+pub use session::*;
+pub use streams::*;
+pub use subscriber::*;
+pub use types::*;
 
 #[cfg(feature = "quinn")]
 pub mod quinn;

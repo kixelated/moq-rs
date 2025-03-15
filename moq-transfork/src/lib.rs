@@ -32,15 +32,21 @@
 //! If the publisher disconnects, then the consumer will error.
 //! If the publisher is dropped (clean FIN), then the above methods will return [None].
 //!
-mod connection;
+mod announced;
 mod connection;
 mod error;
-mod model;
+mod frame;
+mod group;
+mod router;
+mod track;
 
-pub use connection::*;
+pub use announced::*;
 pub use connection::*;
 pub use error::*;
-pub use model::*;
+pub use frame::*;
+pub use group::*;
+pub use router::*;
+pub use track::*;
 
 /// The ALPN used when connecting via QUIC directly.
 pub const ALPN: &[u8] = b"moqf-02";

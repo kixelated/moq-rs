@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	generic::{Error, ErrorCode, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest},
 	message::{self},
+	Error, ErrorCode, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest,
 };
 
 #[derive(Default)]
