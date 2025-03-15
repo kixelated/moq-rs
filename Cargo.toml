@@ -2,11 +2,11 @@
 members = [
 	"moq-transfork",
 	"moq-relay",
+	"moq-clock",
 	"moq-native",
 	"moq-karp",
 	"moq-web",
 	"moq-async",
-	"application-streamer",
 ]
 resolver = "2"
 
