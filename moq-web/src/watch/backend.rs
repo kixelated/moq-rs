@@ -32,6 +32,7 @@ impl Backend {
 	pub fn start(mut self) {
 		spawn_local(async move {
 			if let Err(err) = self.run().await {
+				tracing::error!(?err, "backend error");
 				self.status.error.set(Some(err));
 			}
 		});
