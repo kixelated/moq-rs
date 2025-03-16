@@ -1,4 +1,7 @@
-use std::collections::{hash_map, BTreeSet, HashMap};
+use std::{
+	collections::{hash_map, BTreeSet, HashMap},
+	fmt,
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use derive_more::From;
@@ -23,66 +26,30 @@ pub enum StreamEvent {
 	// Call `open(id)` when one is available.
 	Open(StreamDirection),
 
-	// The specified stream is now readable.
-	// Call `streams().decode(id)` to read the data.
-	Decodable(StreamId),
-
 	// The specified stream is now writable.
-	// Call `streams().encode(id)` to write the data.
-	Encodable(StreamId),
+	// Call `get(id).encode()` to write the data.
+	Encode(StreamId),
 }
 
 pub(super) struct StreamsState {
 	active: HashMap<StreamId, StreamState>,
 	encodable: BTreeSet<StreamId>,
-	decodable: BTreeSet<StreamId>,
-
-	// A cached stream that has already been opened.
-	cached: HashMap<StreamDirection, StreamId>,
 
 	// A new stream is requested.
 	requested: BTreeSet<StreamDirection>,
 }
 
 impl StreamsState {
-	pub fn poll(&mut self) -> Option<StreamEvent> {
-		if let Some(id) = self.encodable.pop_first() {
-			return Some(StreamEvent::Encodable(id));
-		}
-
-		if let Some(id) = self.decodable.pop_first() {
-			return Some(StreamEvent::Decodable(id));
-		}
-
-		if let Some(direction) = self.requested.pop_first() {
-			return Some(StreamEvent::Open(direction));
-		}
-
-		None
-	}
-
-	pub fn open(&mut self, kind: StreamKind) -> Option<StreamId> {
+	// Request that a stream is opened.
+	pub fn open(&mut self, kind: StreamKind) {
 		let direction = kind.direction();
 
-		// Always request a new stream for the direction.
+		// Request a new stream for the direction.
 		self.requested.insert(direction);
-
-		// It's a bit weird, but we cache 1 stream per direction.
-		// This will avoid some back-and-forth since we can return the cached stream immediately.
-		if let Some(id) = self.cached.remove(&direction) {
-			self.active.insert(id, StreamState::new(kind));
-			Some(id)
-		} else {
-			None
-		}
 	}
 
 	pub fn encodable(&mut self, id: StreamId) {
 		self.encodable.insert(id);
-	}
-
-	pub fn decodable(&mut self, id: StreamId) {
-		self.decodable.insert(id);
 	}
 }
 
@@ -95,8 +62,6 @@ impl Default for StreamsState {
 		Self {
 			active: HashMap::new(),
 			encodable: BTreeSet::new(),
-			decodable: BTreeSet::new(),
-			cached: HashMap::new(),
 			requested,
 		}
 	}
@@ -110,8 +75,23 @@ pub struct Streams<'a> {
 }
 
 impl Streams<'_> {
+	pub fn poll(&mut self) -> Option<StreamEvent> {
+		if let Some(id) = self.state.encodable.pop_first() {
+			return Some(StreamEvent::Encode(id));
+		}
+
+		if let Some(direction) = self.state.requested.pop_first() {
+			return Some(StreamEvent::Open(direction));
+		}
+
+		None
+	}
+
 	/// Returns Some if the stream can be used immediately, otherwise None.
-	pub fn open(&mut self, direction: StreamDirection, id: StreamId) -> Option<Stream> {
+	///
+	/// The returned stream is always encodable and there will be no StreamEvent::Encodable.
+	/// Duh otherwise why open it?
+	pub fn open(&mut self, direction: StreamDirection, id: StreamId) -> Stream {
 		let entry = match self.state.active.entry(id) {
 			hash_map::Entry::Occupied(_) => panic!("duplicate stream: {:?}", id),
 			hash_map::Entry::Vacant(entry) => entry,
@@ -128,24 +108,15 @@ impl Streams<'_> {
 			}
 		};
 
-		if let Some(kind) = kind {
-			let state = entry.insert(StreamState::new(kind));
+		let kind = kind.expect("open called when not needed");
+		let state = entry.insert(StreamState::new(kind));
 
-			Some(Stream {
-				id,
-				state,
-				session: self.session,
-				publisher: self.publisher,
-				subscriber: self.subscriber,
-			})
-		} else {
-			// Save the stream for later.
-			match self.state.cached.entry(direction) {
-				hash_map::Entry::Occupied(_) => panic!("too many streams opened: {:?}", direction),
-				hash_map::Entry::Vacant(entry) => entry.insert(id),
-			};
-
-			None
+		Stream {
+			id,
+			state,
+			session: self.session,
+			publisher: self.publisher,
+			subscriber: self.subscriber,
 		}
 	}
 
@@ -279,6 +250,12 @@ impl<'a> Stream<'a> {
 		}
 
 		Ok(())
+	}
+}
+
+impl<'a> fmt::Debug for Stream<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.id)
 	}
 }
 

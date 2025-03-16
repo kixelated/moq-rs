@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut};
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	Error, Increment, StreamDirection, StreamId, StreamsState, SubscribeId, SubscribeRequest,
+	Error, StreamId, StreamsState, SubscribeId, SubscribeRequest,
 };
 
 use super::SubscriberStream;
@@ -17,7 +17,7 @@ pub(super) struct SubscriberSubscribesState {
 	next: SubscribeId,
 
 	// The subscribes that are waiting for a stream to be opened.
-	blocked: BTreeSet<SubscribeId>, // TODO sort by priority
+	open: BTreeSet<SubscribeId>, // TODO sort by priority
 }
 
 impl SubscriberSubscribesState {
@@ -30,7 +30,7 @@ impl SubscriberSubscribesState {
 	}
 
 	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
-		if let Some(id) = self.blocked.pop_first() {
+		if let Some(id) = self.open.pop_first() {
 			self.lookup.get_mut(&id).unwrap().open(stream);
 			Some(SubscriberStream::Subscribe(id))
 		} else {
@@ -49,13 +49,11 @@ impl SubscriberSubscribes<'_> {
 		let id = self.state.next;
 		self.state.next.increment();
 
-		let stream = self.streams.open(SubscriberStream::Subscribe(id).into());
-		if stream.is_none() {
-			self.state.blocked.insert(id);
-		}
+		self.streams.open(SubscriberStream::Subscribe(id).into());
+		self.state.open.insert(id);
 
 		let msg = request.into_message(id.0);
-		let subscribe = SubscriberSubscribeState::new(msg, stream);
+		let subscribe = SubscriberSubscribeState::new(msg);
 
 		let state = self.state.lookup.entry(id).or_insert(subscribe);
 		self.state.ready.insert(id);
@@ -94,9 +92,9 @@ pub(super) struct SubscriberSubscribeState {
 }
 
 impl SubscriberSubscribeState {
-	pub fn new(request: message::Subscribe, stream: Option<StreamId>) -> Self {
+	pub fn new(request: message::Subscribe) -> Self {
 		Self {
-			stream,
+			stream: None,
 			request: Some(request),
 			update: None,
 

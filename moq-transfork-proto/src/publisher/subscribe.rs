@@ -1,11 +1,14 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::{
+	collections::{BTreeSet, HashMap, VecDeque},
+	fmt,
+};
 
 use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	Error, ErrorCode, GroupId, Increment, StreamId, StreamsState, SubscribeId, SubscribeRequest,
+	Error, ErrorCode, GroupId, StreamId, StreamsState, SubscribeId, SubscribeRequest,
 };
 
 #[derive(Default)]
@@ -138,15 +141,21 @@ impl PublisherSubscribe<'_> {
 		self.id
 	}
 
-	pub fn requested(&mut self) -> &SubscribeRequest {
+	pub fn info(&mut self) -> &SubscribeRequest {
 		&self.state.request
 	}
 
-	pub fn info(&mut self, info: message::Info) {
+	pub fn start(&mut self, info: message::Info) {
 		assert!(self.state.info.is_none());
 		assert!(!self.state.info_sent);
 
 		self.state.info = Some(info);
 		self.streams.encodable(self.state.stream);
+	}
+}
+
+impl<'a> fmt::Debug for PublisherSubscribe<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.id)
 	}
 }

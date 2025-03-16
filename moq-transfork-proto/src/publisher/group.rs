@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut, Bytes};
 use crate::{
 	coding::Encode,
 	message::{self},
-	Error, ErrorCode, GroupId, StreamDirection, StreamId, StreamsState, SubscribeId,
+	Error, ErrorCode, GroupId, StreamId, StreamsState, SubscribeId,
 };
 
 use super::PublisherStream;
@@ -15,7 +15,7 @@ pub(super) struct PublisherGroupsState {
 	lookup: HashMap<(SubscribeId, GroupId), PublisherGroupState>,
 
 	// The groups that are waiting for a stream to be opened.
-	blocked: BTreeSet<(SubscribeId, GroupId)>, // TODO sort by priority
+	open: BTreeSet<(SubscribeId, GroupId)>, // TODO sort by priority
 }
 
 impl PublisherGroupsState {
@@ -24,7 +24,7 @@ impl PublisherGroupsState {
 	}
 
 	pub fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
-		if let Some(id) = self.blocked.pop_first() {
+		if let Some(id) = self.open.pop_first() {
 			self.lookup.get_mut(&id).unwrap().open(stream);
 			Some(id.into())
 		} else {
@@ -42,12 +42,10 @@ impl PublisherGroups<'_> {
 	pub fn create(&mut self, subscribe: SubscribeId, group: GroupId) -> Result<PublisherGroup, Error> {
 		let id = (subscribe, group);
 
-		let stream = self.streams.open(PublisherStream::Group(id).into());
-		if stream.is_none() {
-			self.state.blocked.insert(id);
-		}
+		self.streams.open(PublisherStream::Group(id).into());
+		self.state.open.insert(id);
 
-		let state = PublisherGroupState::new(stream);
+		let state = PublisherGroupState::default();
 		let state = self.state.lookup.entry(id).or_insert(state);
 
 		Ok(PublisherGroup {
@@ -81,16 +79,6 @@ pub(super) struct PublisherGroupState {
 }
 
 impl PublisherGroupState {
-	pub fn new(stream: Option<StreamId>) -> Self {
-		Self {
-			stream,
-			frames: VecDeque::new(),
-			chunks: VecDeque::new(),
-			write_remain: 0,
-			read_remain: 0,
-		}
-	}
-
 	pub fn open(&mut self, stream: StreamId) {
 		assert!(self.stream.is_none());
 		self.stream = Some(stream);

@@ -1,10 +1,13 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::{
+	collections::{BTreeSet, HashMap, VecDeque},
+	fmt,
+};
 
 use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	message, AnnounceId, Error, Increment, StreamId, StreamsState,
+	message, AnnounceId, Error, StreamId, StreamsState,
 };
 
 #[derive(Default)]
@@ -101,7 +104,7 @@ impl PublisherAnnounce<'_> {
 		self.id
 	}
 
-	pub fn request(&mut self) -> &message::AnnouncePlease {
+	pub fn info(&mut self) -> &message::AnnouncePlease {
 		&self.state.request
 	}
 
@@ -124,5 +127,11 @@ impl PublisherAnnounce<'_> {
 		assert!(!self.state.live);
 		self.state.live = true;
 		self.reply(message::Announce::Live);
+	}
+}
+
+impl<'a> fmt::Debug for PublisherAnnounce<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.id)
 	}
 }

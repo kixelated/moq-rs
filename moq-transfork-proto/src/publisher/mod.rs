@@ -2,6 +2,8 @@ mod announce;
 mod group;
 mod subscribe;
 
+use std::collections::BTreeSet;
+
 pub use announce::*;
 use derive_more::From;
 pub use group::*;
@@ -11,16 +13,12 @@ use bytes::{Buf, BufMut};
 
 use super::{AnnounceId, Error, GroupId, StreamId, StreamsState, SubscribeId};
 
-#[derive(Debug, Clone, Copy, From)]
+#[derive(Debug, From)]
 pub enum PublisherEvent {
 	/// An announcement is requested.
-	///
-	/// Call `announce(id)` with the announcement ID and reply with available tracks.
 	Announce(AnnounceId),
 
 	/// A subscription is requested.
-	///
-	/// Call `subscribe(id)` with the subscription ID and reply to the request.
 	Subscribe(SubscribeId),
 }
 
@@ -34,7 +32,11 @@ pub(crate) enum PublisherStream {
 #[derive(Default)]
 pub(super) struct PublisherState {
 	announces: PublisherAnnouncesState,
+	announces_ready: BTreeSet<AnnounceId>,
+
 	subscribes: PublisherSubscribesState,
+	subscribes_ready: BTreeSet<SubscribeId>,
+
 	groups: PublisherGroupsState,
 }
 
@@ -57,11 +59,13 @@ impl PublisherState {
 
 	pub fn accept_announce<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
 		let id = self.announces.accept(stream, buf)?;
+		self.announces_ready.insert(id);
 		Ok(PublisherStream::Announce(id))
 	}
 
 	pub fn accept_subscribe<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
 		let id = self.subscribes.accept(stream, buf)?;
+		self.subscribes_ready.insert(id);
 		Ok(PublisherStream::Subscribe(id))
 	}
 
@@ -76,6 +80,16 @@ pub struct Publisher<'a> {
 }
 
 impl Publisher<'_> {
+	pub fn poll(&mut self) -> Option<PublisherEvent> {
+		if let Some(id) = self.state.announces_ready.pop_first() {
+			Some(PublisherEvent::Announce(id))
+		} else if let Some(id) = self.state.subscribes_ready.pop_first() {
+			Some(PublisherEvent::Subscribe(id))
+		} else {
+			None
+		}
+	}
+
 	pub fn announces(&mut self) -> PublisherAnnounces {
 		PublisherAnnounces {
 			state: &mut self.state.announces,

@@ -1,14 +1,10 @@
 use crate::message;
 
-use super::GroupId;
-
 // message::Subscribe but without the ID.
 pub struct SubscribeRequest {
 	pub path: String,
 	pub priority: i8,
-	pub group_order: message::GroupOrder,
-	pub group_min: Option<GroupId>,
-	pub group_max: Option<GroupId>,
+	pub order: message::GroupOrder,
 }
 
 impl SubscribeRequest {
@@ -17,9 +13,7 @@ impl SubscribeRequest {
 			id,
 			path: self.path,
 			priority: self.priority,
-			group_order: self.group_order,
-			group_min: self.group_min.map(Into::into),
-			group_max: self.group_max.map(Into::into),
+			order: self.order,
 		}
 	}
 }
@@ -29,9 +23,7 @@ impl From<message::Subscribe> for SubscribeRequest {
 		Self {
 			path: msg.path,
 			priority: msg.priority,
-			group_order: msg.group_order,
-			group_min: msg.group_min.map(Into::into),
-			group_max: msg.group_max.map(Into::into),
+			order: msg.order,
 		}
 	}
 }

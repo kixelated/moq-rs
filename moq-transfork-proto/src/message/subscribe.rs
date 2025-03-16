@@ -1,6 +1,6 @@
 use crate::{
 	coding::{Decode, DecodeError, Encode},
-	message::group,
+	message::GroupOrder,
 };
 
 /// Sent by the subscriber to request all future objects for the given track.
@@ -11,10 +11,7 @@ pub struct Subscribe {
 	pub id: u64,
 	pub path: String,
 	pub priority: i8,
-
-	pub group_order: group::GroupOrder,
-	pub group_min: Option<u64>,
-	pub group_max: Option<u64>,
+	pub order: GroupOrder,
 }
 
 impl Decode for Subscribe {
@@ -23,24 +20,13 @@ impl Decode for Subscribe {
 		let path = String::decode(r)?;
 		let priority = i8::decode(r)?;
 
-		let group_order = group::GroupOrder::decode(r)?;
-		let group_min = match u64::decode(r)? {
-			0 => None,
-			n => Some(n - 1),
-		};
-		let group_max = match u64::decode(r)? {
-			0 => None,
-			n => Some(n - 1),
-		};
+		let order = GroupOrder::decode(r)?;
 
 		Ok(Self {
 			id,
 			path,
 			priority,
-
-			group_order,
-			group_min,
-			group_max,
+			order,
 		})
 	}
 }
@@ -50,49 +36,28 @@ impl Encode for Subscribe {
 		self.id.encode(w);
 		self.path.encode(w);
 		self.priority.encode(w);
-
-		self.group_order.encode(w);
-		self.group_min.map(|v| v + 1).unwrap_or(0).encode(w);
-		self.group_max.map(|v| v + 1).unwrap_or(0).encode(w);
+		self.order.encode(w);
 	}
 }
 
 #[derive(Clone, Debug)]
 pub struct SubscribeUpdate {
 	pub priority: i8,
-
-	pub group_order: group::GroupOrder,
-	pub group_min: Option<u64>,
-	pub group_max: Option<u64>,
+	pub order: GroupOrder,
 }
 
 impl Decode for SubscribeUpdate {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let priority = i8::decode(r)?;
-		let group_order = group::GroupOrder::decode(r)?;
-		let group_min = match u64::decode(r)? {
-			0 => None,
-			n => Some(n - 1),
-		};
-		let group_max = match u64::decode(r)? {
-			0 => None,
-			n => Some(n - 1),
-		};
+		let order = GroupOrder::decode(r)?;
 
-		Ok(Self {
-			priority,
-			group_order,
-			group_min,
-			group_max,
-		})
+		Ok(Self { priority, order })
 	}
 }
 
 impl Encode for SubscribeUpdate {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		self.priority.encode(w);
-		self.group_order.encode(w);
-		self.group_min.map(|v| v + 1).unwrap_or(0).encode(w);
-		self.group_max.map(|v| v + 1).unwrap_or(0).encode(w);
+		self.order.encode(w);
 	}
 }

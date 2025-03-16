@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut};
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	AnnounceId, Error, Increment, StreamDirection, StreamId, StreamsState,
+	AnnounceId, Error, StreamId, StreamsState,
 };
 
 use super::SubscriberStream;
@@ -16,7 +16,7 @@ pub(super) struct SubscriberAnnouncesState {
 	ready: BTreeSet<AnnounceId>,
 
 	// The announces that are waiting for a stream to be opened.
-	blocked: BTreeSet<AnnounceId>,
+	open: BTreeSet<AnnounceId>,
 
 	next: AnnounceId,
 }
@@ -31,7 +31,7 @@ impl SubscriberAnnouncesState {
 	}
 
 	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
-		if let Some(id) = self.blocked.pop_first() {
+		if let Some(id) = self.open.pop_first() {
 			self.lookup.get_mut(&id).unwrap().open(stream);
 			Some(SubscriberStream::Announce(id))
 		} else {
@@ -50,12 +50,10 @@ impl SubscriberAnnounces<'_> {
 		let id = self.state.next;
 		self.state.next.increment();
 
-		let stream = self.streams.open(SubscriberStream::Announce(id).into());
-		if stream.is_none() {
-			self.state.blocked.insert(id);
-		}
+		self.streams.open(SubscriberStream::Announce(id).into());
+		self.state.open.insert(id);
 
-		let announce = SubscriberAnnounceState::new(request, stream);
+		let announce = SubscriberAnnounceState::new(request);
 		let state = self.state.lookup.entry(id).or_insert(announce);
 		self.state.ready.insert(id);
 
@@ -82,11 +80,11 @@ struct SubscriberAnnounceState {
 }
 
 impl SubscriberAnnounceState {
-	pub fn new(request: message::AnnouncePlease, stream: Option<StreamId>) -> Self {
+	pub fn new(request: message::AnnouncePlease) -> Self {
 		Self {
 			request: Some(request),
 			events: VecDeque::new(),
-			stream,
+			stream: None,
 		}
 	}
 

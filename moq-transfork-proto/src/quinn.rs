@@ -61,7 +61,6 @@ impl Connection {
 				generic::ConnectionEvent::Stream(event) => match event {
 					generic::StreamEvent::Open(dir) => self.open(quinn, dir.into()),
 					generic::StreamEvent::Encodable(id) => self.encode(quinn, id.into())?,
-					generic::StreamEvent::Decodable(id) => self.decode(quinn, id.into())?,
 				},
 			}
 		}
