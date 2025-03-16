@@ -126,6 +126,8 @@ impl FromStr for H265 {
 
 #[cfg(test)]
 mod tests {
+	use crate::VideoCodec;
+
 	use super::*;
 
 	#[test]
@@ -139,9 +141,10 @@ mod tests {
 			tier_flag: false,
 			level_idc: 93,
 			constraint_flags: [0xB0, 0, 0, 0, 0, 0],
-		};
+		}
+		.into();
 
-		let output = H265::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();

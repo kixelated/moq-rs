@@ -133,6 +133,8 @@ impl Default for AV1 {
 mod test {
 	use std::str::FromStr;
 
+	use crate::VideoCodec;
+
 	use super::*;
 
 	#[test]
@@ -151,9 +153,10 @@ mod test {
 			transfer_characteristics: 16,
 			matrix_coefficients: 9,
 			full_range: false,
-		};
+		}
+		.into();
 
-		let output = AV1::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();
@@ -169,9 +172,10 @@ mod test {
 			tier: 'M',
 			bitdepth: 8,
 			..Default::default()
-		};
+		}
+		.into();
 
-		let output = AV1::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();
