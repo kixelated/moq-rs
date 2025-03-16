@@ -30,18 +30,18 @@ pub(crate) enum PublisherStream {
 }
 
 #[derive(Default)]
-pub(super) struct PublisherState {
-	announces: PublisherAnnouncesState,
+pub(super) struct Publisher {
+	announces: PublisherAnnounces,
 	announces_ready: BTreeSet<AnnounceId>,
 
-	subscribes: PublisherSubscribesState,
+	subscribes: PublisherSubscribes,
 	subscribes_ready: BTreeSet<SubscribeId>,
 
-	groups: PublisherGroupsState,
+	groups: PublisherGroups,
 }
 
-impl PublisherState {
-	pub fn encode<B: BufMut>(&mut self, kind: PublisherStream, buf: &mut B) {
+impl Publisher {
+	pub(crate) fn encode<B: BufMut>(&mut self, kind: PublisherStream, buf: &mut B) {
 		match kind {
 			PublisherStream::Announce(id) => self.announces.encode(id, buf),
 			PublisherStream::Subscribe(id) => self.subscribes.encode(id, buf),
@@ -49,7 +49,7 @@ impl PublisherState {
 		}
 	}
 
-	pub fn decode<B: Buf>(&mut self, kind: PublisherStream, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, kind: PublisherStream, buf: &mut B) -> Result<(), Error> {
 		match kind {
 			PublisherStream::Announce(id) => self.announces.decode(id, buf),
 			PublisherStream::Subscribe(id) => self.subscribes.decode(id, buf),
@@ -57,33 +57,26 @@ impl PublisherState {
 		}
 	}
 
-	pub fn accept_announce<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
+	pub(crate) fn accept_announce<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
 		let id = self.announces.accept(stream, buf)?;
 		self.announces_ready.insert(id);
 		Ok(PublisherStream::Announce(id))
 	}
 
-	pub fn accept_subscribe<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
+	pub(crate) fn accept_subscribe<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<PublisherStream, Error> {
 		let id = self.subscribes.accept(stream, buf)?;
 		self.subscribes_ready.insert(id);
 		Ok(PublisherStream::Subscribe(id))
 	}
 
-	pub fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
+	pub(crate) fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
 		self.groups.open(stream).map(Into::into)
 	}
-}
 
-pub struct Publisher<'a> {
-	pub(super) state: &'a mut PublisherState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl Publisher<'_> {
 	pub fn poll(&mut self) -> Option<PublisherEvent> {
-		if let Some(id) = self.state.announces_ready.pop_first() {
+		if let Some(id) = self.announces_ready.pop_first() {
 			Some(PublisherEvent::Announce(id))
-		} else if let Some(id) = self.state.subscribes_ready.pop_first() {
+		} else if let Some(id) = self.subscribes_ready.pop_first() {
 			Some(PublisherEvent::Subscribe(id))
 		} else {
 			None
@@ -91,16 +84,10 @@ impl Publisher<'_> {
 	}
 
 	pub fn announces(&mut self) -> PublisherAnnounces {
-		PublisherAnnounces {
-			state: &mut self.state.announces,
-			streams: self.streams,
-		}
+		&mut self.announces
 	}
 
 	pub fn subscribes(&mut self) -> PublisherSubscribes {
-		PublisherSubscribes {
-			state: &mut self.state.subscribes,
-			streams: self.streams,
-		}
+		&mut self.subscribes
 	}
 }

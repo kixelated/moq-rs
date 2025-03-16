@@ -5,25 +5,25 @@ use bytes::{Buf, BufMut};
 use crate::{
 	coding::Decode,
 	message::{self},
-	Error, GroupId, StreamId, StreamsState, SubscribeId,
+	Error, GroupId, StreamId, SubscribeId,
 };
 
 #[derive(Default)]
-pub(super) struct SubscriberGroupsState {
-	lookup: HashMap<(SubscribeId, GroupId), SubscriberGroupState>,
+pub struct SubscriberGroups {
+	lookup: HashMap<(SubscribeId, GroupId), SubscriberGroup>,
 	ready: BTreeSet<(SubscribeId, GroupId)>,
 }
 
-impl SubscriberGroupsState {
-	pub fn decode<B: Buf>(&mut self, id: (SubscribeId, GroupId), buf: &mut B) -> Result<(), Error> {
+impl SubscriberGroups {
+	pub(crate) fn decode<B: Buf>(&mut self, id: (SubscribeId, GroupId), buf: &mut B) -> Result<(), Error> {
 		self.lookup.get_mut(&id).unwrap().decode(buf)
 	}
 
-	pub fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<(SubscribeId, GroupId), Error> {
+	pub(crate) fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<(SubscribeId, GroupId), Error> {
 		let msg = message::Group::decode(buf)?;
 		let id = (msg.subscribe.into(), msg.sequence.into());
 
-		let state = SubscriberGroupState::new(stream);
+		let state = SubscriberGroup::new(stream);
 		self.lookup.insert(id, state);
 		self.ready.insert(id);
 
@@ -31,14 +31,7 @@ impl SubscriberGroupsState {
 	}
 }
 
-pub struct SubscriberGroups<'a> {
-	pub(super) state: &'a mut SubscriberGroupsState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl SubscriberGroups<'_> {}
-
-pub(super) struct SubscriberGroupState {
+pub struct SubscriberGroup {
 	stream: StreamId,
 
 	frames: VecDeque<usize>,
@@ -48,8 +41,8 @@ pub(super) struct SubscriberGroupState {
 	read_remain: usize,
 }
 
-impl SubscriberGroupState {
-	pub fn new(stream: StreamId) -> Self {
+impl SubscriberGroup {
+	pub(crate) fn new(stream: StreamId) -> Self {
 		Self {
 			stream,
 			frames: VecDeque::new(),
@@ -60,7 +53,7 @@ impl SubscriberGroupState {
 	}
 
 	/// Decode the next frame from the stream.
-	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		if self.write_remain == 0 {
 			let frame = message::Frame::decode(buf)?;
 			self.write_remain = frame.size;
@@ -78,7 +71,7 @@ impl SubscriberGroupState {
 	}
 
 	/// Read the next chunk of the frame if available, returning the remaining size until the next frame.
-	pub fn read<B: BufMut>(&mut self, buf: &mut B) -> Option<usize> {
+	pub(crate) fn read<B: BufMut>(&mut self, buf: &mut B) -> Option<usize> {
 		if self.read_remain == 0 {
 			match self.frames.pop_front() {
 				Some(size) => self.read_remain = size,

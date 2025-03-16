@@ -7,71 +7,62 @@ use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
-	message, AnnounceId, Error, StreamId, StreamsState,
+	message, AnnounceId, Error, StreamId,
 };
 
 #[derive(Default)]
-pub(super) struct PublisherAnnouncesState {
-	lookup: HashMap<AnnounceId, PublisherAnnounceState>,
+pub struct PublisherAnnounces {
+	lookup: HashMap<AnnounceId, PublisherAnnounce>,
 	ready: BTreeSet<AnnounceId>,
 	next: AnnounceId,
 }
 
-impl PublisherAnnouncesState {
-	pub fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<AnnounceId, Error> {
+impl PublisherAnnounces {
+	pub(crate) fn create<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<AnnounceId, Error> {
 		let announce = message::AnnouncePlease::decode(buf)?;
 		let id = self.next;
 		self.next.increment();
 
-		let announce = PublisherAnnounceState::new(stream, announce);
+		let announce = PublisherAnnounce::new(id, stream, announce);
 		self.lookup.insert(id, announce);
 		self.ready.insert(id);
 
 		Ok(id)
 	}
 
-	pub fn decode<B: Buf>(&mut self, id: AnnounceId, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, id: AnnounceId, buf: &mut B) -> Result<(), Error> {
 		self.lookup.get_mut(&id).unwrap().decode(buf)?;
 		self.ready.insert(id);
 
 		Ok(())
 	}
 
-	pub fn encode<B: BufMut>(&mut self, id: AnnounceId, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, id: AnnounceId, buf: &mut B) {
 		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
-}
 
-pub struct PublisherAnnounces<'a> {
-	pub(super) state: &'a mut PublisherAnnouncesState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl PublisherAnnounces<'_> {
-	pub fn accept(&mut self) -> Option<PublisherAnnounce> {
-		let id = self.state.ready.pop_first()?;
+	pub fn accept(&mut self) -> Option<&mut PublisherAnnounce> {
+		let id = self.ready.pop_first()?;
 		self.get(id)
 	}
 
-	pub fn get(&mut self, id: AnnounceId) -> Option<PublisherAnnounce> {
-		Some(PublisherAnnounce {
-			id,
-			state: self.state.lookup.get_mut(&id).unwrap(),
-			streams: self.streams,
-		})
+	pub fn get(&mut self, id: AnnounceId) -> Option<&mut PublisherAnnounce> {
+		self.lookup.get_mut(&id)
 	}
 }
 
-pub(super) struct PublisherAnnounceState {
+pub struct PublisherAnnounce {
+	id: AnnounceId,
 	stream: StreamId,
 	request: message::AnnouncePlease,
 	events: VecDeque<message::Announce>,
 	live: bool,
 }
 
-impl PublisherAnnounceState {
-	pub fn new(stream: StreamId, request: message::AnnouncePlease) -> Self {
+impl PublisherAnnounce {
+	pub(crate) fn new(id: AnnounceId, stream: StreamId, request: message::AnnouncePlease) -> Self {
 		Self {
+			id,
 			stream,
 			request,
 			events: VecDeque::new(),
@@ -79,38 +70,30 @@ impl PublisherAnnounceState {
 		}
 	}
 
-	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		let msg = message::Announce::decode(buf)?;
 		self.events.push_back(msg);
 
 		Ok(())
 	}
 
-	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		while let Some(event) = self.events.pop_front() {
 			event.encode(buf);
 		}
 	}
-}
 
-pub struct PublisherAnnounce<'a> {
-	pub(super) id: AnnounceId,
-	pub(super) state: &'a mut PublisherAnnounceState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl PublisherAnnounce<'_> {
 	pub fn id(&self) -> AnnounceId {
 		self.id
 	}
 
 	pub fn info(&mut self) -> &message::AnnouncePlease {
-		&self.state.request
+		&self.request
 	}
 
 	fn reply(&mut self, msg: message::Announce) {
-		self.state.events.push_back(msg);
-		self.streams.encodable(self.state.stream);
+		self.events.push_back(msg);
+		self.streams.encodable(self.stream);
 	}
 
 	pub fn active(&mut self, path: &str) {
@@ -124,14 +107,8 @@ impl PublisherAnnounce<'_> {
 	}
 
 	pub fn live(&mut self) {
-		assert!(!self.state.live);
-		self.state.live = true;
+		assert!(!self.live);
+		self.live = true;
 		self.reply(message::Announce::Live);
-	}
-}
-
-impl<'a> fmt::Debug for PublisherAnnounce<'a> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{:?}", self.id)
 	}
 }

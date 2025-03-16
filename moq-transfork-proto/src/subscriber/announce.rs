@@ -1,91 +1,48 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	AnnounceId, Error, StreamId, StreamsState,
+	Error, StreamId,
 };
 
-use super::SubscriberStream;
+pub enum SubscriberAnnounceEvent {}
 
 #[derive(Default)]
-pub(super) struct SubscriberAnnouncesState {
-	lookup: HashMap<AnnounceId, SubscriberAnnounceState>,
-	ready: BTreeSet<AnnounceId>,
-
-	// The announces that are waiting for a stream to be opened.
-	open: BTreeSet<AnnounceId>,
-
-	next: AnnounceId,
+pub struct SubscriberAnnounces {
+	lookup: HashMap<StreamId, SubscriberAnnounce>,
 }
 
-impl SubscriberAnnouncesState {
-	pub fn decode<B: Buf>(&mut self, id: AnnounceId, buf: &mut B) -> Result<(), Error> {
-		self.lookup.get_mut(&id).unwrap().decode(buf)
+impl SubscriberAnnounces {
+	pub fn create(&mut self, stream: StreamId, request: message::AnnouncePlease) -> &mut SubscriberAnnounce {
+		let announce = SubscriberAnnounce::new(stream, request);
+		self.lookup.entry(stream).or_insert(announce)
 	}
 
-	pub fn encode<B: BufMut>(&mut self, id: AnnounceId, buf: &mut B) {
-		self.lookup.get_mut(&id).unwrap().encode(buf);
-	}
-
-	pub fn open(&mut self, stream: StreamId) -> Option<SubscriberStream> {
-		if let Some(id) = self.open.pop_first() {
-			self.lookup.get_mut(&id).unwrap().open(stream);
-			Some(SubscriberStream::Announce(id))
-		} else {
-			None
-		}
+	pub fn get(&mut self, stream: StreamId) -> Option<&mut SubscriberAnnounce> {
+		self.lookup.get_mut(&stream)
 	}
 }
 
-pub struct SubscriberAnnounces<'a> {
-	pub(super) state: &'a mut SubscriberAnnouncesState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl SubscriberAnnounces<'_> {
-	pub fn create(&mut self, request: message::AnnouncePlease) -> SubscriberAnnounce {
-		let id = self.state.next;
-		self.state.next.increment();
-
-		self.streams.open(SubscriberStream::Announce(id).into());
-		self.state.open.insert(id);
-
-		let announce = SubscriberAnnounceState::new(request);
-		let state = self.state.lookup.entry(id).or_insert(announce);
-		self.state.ready.insert(id);
-
-		SubscriberAnnounce {
-			id,
-			state,
-			streams: self.streams,
-		}
-	}
-
-	pub fn get(&mut self, id: AnnounceId) -> Option<SubscriberAnnounce> {
-		Some(SubscriberAnnounce {
-			id,
-			state: self.state.lookup.get_mut(&id)?,
-			streams: self.streams,
-		})
-	}
-}
-
-struct SubscriberAnnounceState {
+struct SubscriberAnnounce {
 	request: Option<message::AnnouncePlease>,
 	events: VecDeque<message::Announce>,
-	stream: Option<StreamId>,
+	stream: StreamId,
 }
 
-impl SubscriberAnnounceState {
-	pub fn new(request: message::AnnouncePlease) -> Self {
+impl SubscriberAnnounce {
+	fn new(stream: StreamId, request: message::AnnouncePlease) -> Self {
 		Self {
 			request: Some(request),
 			events: VecDeque::new(),
-			stream: None,
+			stream,
 		}
+	}
+
+	pub fn stream(&self) -> StreamId {
+		self.stream
 	}
 
 	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
@@ -102,25 +59,8 @@ impl SubscriberAnnounceState {
 		Ok(())
 	}
 
-	pub fn open(&mut self, stream: StreamId) {
-		assert!(self.stream.is_none());
-		self.stream = Some(stream);
-	}
-}
-
-pub struct SubscriberAnnounce<'a> {
-	id: AnnounceId,
-	state: &'a mut SubscriberAnnounceState,
-	streams: &'a mut StreamsState,
-}
-
-impl SubscriberAnnounce<'_> {
-	pub fn id(&self) -> AnnounceId {
-		self.id
-	}
-
 	/// Returns the next announcement with pending data.
 	pub fn poll(&mut self) -> Option<message::Announce> {
-		self.state.events.pop_front()
+		self.events.pop_front()
 	}
 }

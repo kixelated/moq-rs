@@ -11,19 +11,19 @@ use crate::{
 use super::PublisherStream;
 
 #[derive(Default)]
-pub(super) struct PublisherGroupsState {
-	lookup: HashMap<(SubscribeId, GroupId), PublisherGroupState>,
+pub struct PublisherGroups {
+	lookup: HashMap<(SubscribeId, GroupId), PublisherGroup>,
 
 	// The groups that are waiting for a stream to be opened.
 	open: BTreeSet<(SubscribeId, GroupId)>, // TODO sort by priority
 }
 
-impl PublisherGroupsState {
-	pub fn encode<B: BufMut>(&mut self, id: (SubscribeId, GroupId), buf: &mut B) {
+impl PublisherGroups {
+	pub(crate) fn encode<B: BufMut>(&mut self, id: (SubscribeId, GroupId), buf: &mut B) {
 		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
 
-	pub fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
+	pub(crate) fn open(&mut self, stream: StreamId) -> Option<PublisherStream> {
 		if let Some(id) = self.open.pop_first() {
 			self.lookup.get_mut(&id).unwrap().open(stream);
 			Some(id.into())
@@ -31,44 +31,29 @@ impl PublisherGroupsState {
 			None
 		}
 	}
-}
 
-pub struct PublisherGroups<'a> {
-	pub(super) state: &'a mut PublisherGroupsState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl PublisherGroups<'_> {
-	pub fn create(&mut self, subscribe: SubscribeId, group: GroupId) -> Result<PublisherGroup, Error> {
+	pub fn create(&mut self, subscribe: SubscribeId, group: GroupId) -> Result<&mut PublisherGroup, Error> {
 		let id = (subscribe, group);
 
 		self.streams.open(PublisherStream::Group(id).into());
-		self.state.open.insert(id);
+		self.open.insert(id);
 
-		let state = PublisherGroupState::default();
-		let state = self.state.lookup.entry(id).or_insert(state);
+		let state = PublisherGroup::default();
+		let state = self.lookup.entry(id).or_insert(state);
 
-		Ok(PublisherGroup {
-			id,
-			state,
-			streams: self.streams,
-		})
+		Ok(state)
 	}
 
-	pub fn get(&mut self, subscribe: SubscribeId, group: GroupId) -> Option<PublisherGroup> {
+	pub fn get(&mut self, subscribe: SubscribeId, group: GroupId) -> Option<&mut PublisherGroup> {
 		let id = (subscribe, group);
-		let state = self.state.lookup.get_mut(&id)?;
-
-		Some(PublisherGroup {
-			id,
-			state,
-			streams: self.streams,
-		})
+		self.lookup.get_mut(&id)
 	}
 }
 
 #[derive(Default)]
-pub(super) struct PublisherGroupState {
+pub(super) struct PublisherGroup {
+	id: (SubscribeId, GroupId),
+
 	stream: Option<StreamId>,
 
 	frames: VecDeque<usize>,
@@ -78,19 +63,19 @@ pub(super) struct PublisherGroupState {
 	read_remain: usize,
 }
 
-impl PublisherGroupState {
-	pub fn open(&mut self, stream: StreamId) {
+impl PublisherGroup {
+	pub(crate) fn open(&mut self, stream: StreamId) {
 		assert!(self.stream.is_none());
 		self.stream = Some(stream);
 	}
 
-	pub fn frame(&mut self, size: usize) {
+	pub(crate) fn frame(&mut self, size: usize) {
 		assert_eq!(self.write_remain, 0);
 		self.write_remain = size;
 		self.frames.push_back(size);
 	}
 
-	pub fn write<B: Buf>(&mut self, buf: &mut B) {
+	pub(crate) fn write<B: Buf>(&mut self, buf: &mut B) {
 		assert!(self.write_remain > buf.remaining());
 
 		// TODO enforce a maximum buffer size
@@ -99,7 +84,7 @@ impl PublisherGroupState {
 		self.chunks.push_back(chunk);
 	}
 
-	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if self.read_remain == 0 {
 			let size = match self.frames.pop_front() {
 				Some(size) => size,
@@ -122,32 +107,19 @@ impl PublisherGroupState {
 			}
 		}
 	}
-}
 
-pub struct PublisherGroup<'a> {
-	id: (SubscribeId, GroupId),
-	state: &'a mut PublisherGroupState,
-	streams: &'a mut StreamsState,
-	// subscribe: &'a mut PublisherSubscribeState,
-}
-
-impl PublisherGroup<'_> {
-	pub fn subscribe(&self) -> SubscribeId {
-		self.id.0
-	}
-
-	pub fn sequence(&self) -> GroupId {
-		self.id.1
+	pub fn id(&self) -> (SubscribeId, GroupId) {
+		self.id
 	}
 
 	/// Write an entire frame to the stream.
 	pub fn write_full<B: Buf>(&mut self, data: &mut B) {
 		// NOTE: This does not make a copy if data is already a Bytes.
 		let mut data = data.copy_to_bytes(data.remaining());
-		self.state.frame(data.len());
-		self.state.write(&mut data);
+		self.frame(data.len());
+		self.write(&mut data);
 
-		if let Some(stream) = self.state.stream {
+		if let Some(stream) = self.stream {
 			self.streams.encodable(stream);
 		}
 	}
@@ -156,16 +128,16 @@ impl PublisherGroup<'_> {
 	///
 	/// WARN: This will panic if the previous frame was not fully written.
 	pub fn write_size(&mut self, size: usize) {
-		self.state.frame(size);
+		self.frame(size);
 	}
 
 	/// Write a chunk of the frame, which MUST be preceded by a call to [Self::write_size].
 	///
 	/// WARN: This will panic if you write more than promised via [Self::write_size].
 	pub fn write_chunk<B: Buf>(&mut self, chunk: &mut B) {
-		self.state.write(chunk);
+		self.write(chunk);
 
-		if let Some(stream) = self.state.stream {
+		if let Some(stream) = self.stream {
 			self.streams.encodable(stream);
 		}
 	}
@@ -176,7 +148,7 @@ impl PublisherGroup<'_> {
 			// self.subscribe.dropped(self.id, error);
 		}
 
-		if let Some(stream) = self.state.stream {
+		if let Some(stream) = self.stream {
 			self.streams.encodable(stream);
 		}
 

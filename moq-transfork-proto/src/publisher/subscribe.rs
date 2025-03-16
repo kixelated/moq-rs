@@ -1,73 +1,57 @@
-use std::{
-	collections::{BTreeSet, HashMap, VecDeque},
-	fmt,
-};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
 use bytes::{Buf, BufMut};
 
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	Error, ErrorCode, GroupId, StreamId, StreamsState, SubscribeId, SubscribeRequest,
+	Error, ErrorCode, GroupId, StreamId, SubscribeId, SubscribeRequest,
 };
 
 #[derive(Default)]
-pub(super) struct PublisherSubscribesState {
-	lookup: HashMap<SubscribeId, PublisherSubscribeState>,
+pub struct PublisherSubscribes {
+	lookup: HashMap<SubscribeId, PublisherSubscribe>,
 	ready: BTreeSet<SubscribeId>,
 	next: SubscribeId,
 }
 
-impl PublisherSubscribesState {
-	pub fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<SubscribeId, Error> {
+impl PublisherSubscribes {
+	pub(crate) fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<SubscribeId, Error> {
 		let subscribe = message::Subscribe::decode(buf)?;
 		let id = self.next;
 		self.next.increment();
 
-		let subscribe = PublisherSubscribeState::new(stream, subscribe.into());
+		let subscribe = PublisherSubscribe::new(id, stream, subscribe.into());
 		self.lookup.insert(id, subscribe);
 		self.ready.insert(id);
 
 		Ok(id)
 	}
 
-	pub fn decode<B: Buf>(&mut self, id: SubscribeId, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, id: SubscribeId, buf: &mut B) -> Result<(), Error> {
 		self.lookup.get_mut(&id).unwrap().decode(buf)?;
 		self.ready.insert(id);
 
 		Ok(())
 	}
 
-	pub fn encode<B: BufMut>(&mut self, id: SubscribeId, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, id: SubscribeId, buf: &mut B) {
 		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
-}
 
-pub struct PublisherSubscribes<'a> {
-	pub(super) state: &'a mut PublisherSubscribesState,
-	pub(super) streams: &'a mut StreamsState,
-}
-
-impl PublisherSubscribes<'_> {
-	pub fn accept(&mut self) -> Option<PublisherSubscribe> {
-		let id = self.state.ready.pop_first()?;
-		Some(PublisherSubscribe {
-			id,
-			state: self.state.lookup.get_mut(&id).unwrap(),
-			streams: self.streams,
-		})
+	pub fn accept(&mut self) -> Option<&mut PublisherSubscribe> {
+		let id = self.ready.pop_first()?;
+		self.lookup.get_mut(&id)
 	}
 
-	pub fn get(&mut self, id: SubscribeId) -> Option<PublisherSubscribe> {
-		Some(PublisherSubscribe {
-			id,
-			state: self.state.lookup.get_mut(&id).unwrap(),
-			streams: self.streams,
-		})
+	pub fn get(&mut self, id: SubscribeId) -> Option<&mut PublisherSubscribe> {
+		self.lookup.get_mut(&id)
 	}
 }
 
-struct PublisherSubscribeState {
+struct PublisherSubscribe {
+	id: SubscribeId,
+
 	// Outbound
 	info: Option<message::Info>,
 	info_sent: bool,
@@ -80,9 +64,10 @@ struct PublisherSubscribeState {
 	stream: StreamId,
 }
 
-impl PublisherSubscribeState {
-	pub fn new(stream: StreamId, request: SubscribeRequest) -> Self {
+impl PublisherSubscribe {
+	pub(crate) fn new(id: SubscribeId, stream: StreamId, request: SubscribeRequest) -> Self {
 		Self {
+			id,
 			info: None,
 			info_sent: false,
 			dropped: VecDeque::new(),
@@ -92,7 +77,7 @@ impl PublisherSubscribeState {
 		}
 	}
 
-	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if let Some(info) = self.info.take() {
 			info.encode(buf);
 		}
@@ -122,40 +107,26 @@ impl PublisherSubscribeState {
 		}
 	}
 
-	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		let update = message::SubscribeUpdate::decode(buf)?;
 		self.update = Some(update);
 
 		Ok(())
 	}
-}
 
-pub struct PublisherSubscribe<'a> {
-	id: SubscribeId,
-	state: &'a mut PublisherSubscribeState,
-	streams: &'a mut StreamsState,
-}
-
-impl PublisherSubscribe<'_> {
 	pub fn id(&self) -> SubscribeId {
 		self.id
 	}
 
 	pub fn info(&mut self) -> &SubscribeRequest {
-		&self.state.request
+		&self.request
 	}
 
 	pub fn start(&mut self, info: message::Info) {
-		assert!(self.state.info.is_none());
-		assert!(!self.state.info_sent);
+		assert!(self.info.is_none());
+		assert!(!self.info_sent);
 
-		self.state.info = Some(info);
-		self.streams.encodable(self.state.stream);
-	}
-}
-
-impl<'a> fmt::Debug for PublisherSubscribe<'a> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{:?}", self.id)
+		self.info = Some(info);
+		self.streams.encodable(self.stream);
 	}
 }

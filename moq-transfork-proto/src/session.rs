@@ -13,15 +13,15 @@ pub enum SessionEvent {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SessionState {
+pub struct Session {
 	is_client: bool,
 	client: Option<message::ClientSetup>,
 	server: Option<message::ServerSetup>,
 	stream: Option<StreamId>,
 }
 
-impl SessionState {
-	pub fn new(is_client: bool) -> Self {
+impl Session {
+	pub(crate) fn new(is_client: bool) -> Self {
 		Self {
 			is_client,
 			client: None,
@@ -30,7 +30,7 @@ impl SessionState {
 		}
 	}
 
-	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if self.is_client && self.client.is_none() {
 			message::ControlType::Session.encode(buf);
 
@@ -53,7 +53,7 @@ impl SessionState {
 		}
 	}
 
-	pub fn open(&mut self, stream: StreamId) -> bool {
+	pub(crate) fn open(&mut self, stream: StreamId) -> bool {
 		if self.stream.is_none() {
 			self.stream = Some(stream);
 			true
@@ -62,7 +62,7 @@ impl SessionState {
 		}
 	}
 
-	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		if !self.is_client && self.client.is_none() {
 			let client = message::ClientSetup::decode(buf)?;
 			if !client.versions.contains(&message::Version::CURRENT) {
@@ -82,18 +82,10 @@ impl SessionState {
 		Ok(())
 	}
 
-	pub fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<(), Error> {
+	pub(crate) fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<(), Error> {
 		self.decode(buf)?;
 		self.stream = Some(stream);
 
 		Ok(())
 	}
-}
-
-pub struct Session<'a> {
-	pub(super) state: &'a mut SessionState,
-}
-
-impl Session<'_> {
-	// TODO
 }
