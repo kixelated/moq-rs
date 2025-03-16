@@ -6,6 +6,10 @@ use crate::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct H265 {
+	// If true (hev1), then the SPS/PPS/etc are in the same NAL unit as the IDR.
+	// If false (hvc1), then the SPS/PPS/etc are in the description.
+	pub in_band: bool,
+
 	// If 0, then no character. Otherwise, A for 1, B for 2, C for 3, etc.
 	pub profile_space: u8,
 	pub profile_idc: u8,
@@ -44,7 +48,11 @@ impl fmt::Display for H265 {
 
 		write!(
 			f,
-			"hev1.{}{}.{}.{}{}.{}",
+			"{}.{}{}.{}.{}{}.{}",
+			match self.in_band {
+				true => "hev1",
+				false => "hvc1",
+			},
 			match self.profile_space {
 				0 => "".to_string(),
 				n => (b'A'.saturating_add(n).saturating_sub(1) as char).to_string(),
@@ -66,9 +74,12 @@ impl FromStr for H265 {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut parts = s.split('.');
-		if parts.next() != Some("hev1") {
-			return Err(Error::InvalidCodec);
-		}
+
+		let in_band = match parts.next() {
+			Some("hev1") => true,
+			Some("hvc1") => false,
+			_ => return Err(Error::InvalidCodec),
+		};
 
 		let profile = parts.next().ok_or(Error::InvalidCodec)?;
 		let profile_space = match profile.as_bytes().first().ok_or(Error::InvalidCodec)? {
@@ -102,6 +113,7 @@ impl FromStr for H265 {
 		}
 
 		Ok(Self {
+			in_band,
 			profile_space,
 			profile_idc,
 			profile_compatibility_flags,
@@ -120,6 +132,7 @@ mod tests {
 	fn test_h265() {
 		let encoded = "hev1.1.6.L93.B0";
 		let decoded = H265 {
+			in_band: true,
 			profile_space: 0,
 			profile_idc: 1,
 			profile_compatibility_flags: [0x6, 0, 0, 0],
@@ -139,6 +152,7 @@ mod tests {
 	fn test_h265_long() {
 		let encoded = "hev1.A4.41.H120.B0.23";
 		let decoded = H265 {
+			in_band: true,
 			profile_space: 1,
 			profile_idc: 4,
 			profile_compatibility_flags: [0x41, 0, 0, 0],
@@ -151,6 +165,16 @@ mod tests {
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();
+		assert_eq!(output, encoded);
+	}
+
+	#[test]
+	fn test_h265_out_of_band() {
+		let encoded = "hvc1.A1.60.H93.B0";
+		let output = H265::from_str(encoded).unwrap();
+		assert!(!output.in_band);
+
+		let output = output.to_string();
 		assert_eq!(output, encoded);
 	}
 }
