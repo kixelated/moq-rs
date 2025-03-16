@@ -100,6 +100,8 @@ impl Default for VP9 {
 mod test {
 	use std::str::FromStr;
 
+	use crate::VideoCodec;
+
 	use super::*;
 
 	#[test]
@@ -114,9 +116,10 @@ mod test {
 			transfer_characteristics: 16,
 			matrix_coefficients: 9,
 			full_range: true,
-		};
+		}
+		.into();
 
-		let output = VP9::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();
@@ -131,9 +134,10 @@ mod test {
 			level: 41,
 			bit_depth: 8,
 			..Default::default()
-		};
+		}
+		.into();
 
-		let output = VP9::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();

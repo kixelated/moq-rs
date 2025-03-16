@@ -44,6 +44,8 @@ impl FromStr for H264 {
 mod tests {
 	use std::str::FromStr;
 
+	use crate::VideoCodec;
+
 	use super::*;
 
 	#[test]
@@ -53,9 +55,10 @@ mod tests {
 			profile: 0x42,
 			constraints: 0xc0,
 			level: 0x1e,
-		};
+		}
+		.into();
 
-		let output = H264::from_str(encoded).expect("failed to parse");
+		let output = VideoCodec::from_str(encoded).expect("failed to parse");
 		assert_eq!(output, decoded);
 
 		let output = decoded.to_string();
