@@ -4,7 +4,6 @@ use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 use crate::track::TrackConsumer;
 use derive_more::Debug;
 
-#[derive(Clone)]
 struct BroadcastProducerState {
 	catalog: CatalogProducer,
 	tracks: Vec<moq_transfork::TrackProducer>,
@@ -70,7 +69,7 @@ impl BroadcastProducer {
 
 		// If the session closes, remove it from the list of subscribers
 		let state = self.state.clone();
-		tokio::spawn(async move {
+		moq_async::spawn(async move {
 			session.closed().await;
 			state.lock().subscribers.retain(|s| s != &session);
 		});
