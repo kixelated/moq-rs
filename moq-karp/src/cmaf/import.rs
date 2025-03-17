@@ -138,8 +138,8 @@ impl Import {
 					bitrate: None,
 				}
 			}
-			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, &hev1.hvcc, &hev1.visual)?,
-			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, &hvc1.hvcc, &hvc1.visual)?,
+			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
+			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
 			mp4_atom::Codec::Vp08(vp08) => Video {
 				track,
 				codec: VideoCodec::VP8,
@@ -214,13 +214,14 @@ impl Import {
 	}
 
 	// There's two almost identical hvcc atoms in the wild.
-	fn init_h265(track: Track, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
+	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
 		let mut description = BytesMut::new();
 		hvcc.encode_body(&mut description)?;
 
 		Ok(Video {
 			track,
 			codec: H265 {
+				in_band,
 				profile_space: hvcc.general_profile_space,
 				profile_idc: hvcc.general_profile_idc,
 				profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
