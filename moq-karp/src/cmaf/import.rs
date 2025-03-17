@@ -13,6 +13,9 @@ pub struct Import {
 	// Any partial data in the input buffer
 	buffer: BytesMut,
 
+	// The broadcast being produced
+	broadcast: BroadcastProducer,
+
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, TrackProducer>,
 
@@ -28,9 +31,10 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new() -> Self {
+	pub fn new(broadcast: BroadcastProducer) -> Self {
 		Self {
 			buffer: BytesMut::new(),
+			broadcast,
 			tracks: HashMap::default(),
 			last_keyframe: HashMap::default(),
 			moov: None,
@@ -61,7 +65,7 @@ impl Import {
 
 			match mp4_atom::Any::decode_maybe(&mut peek)? {
 				Some(atom) => {
-					self.process(atom, remain.len() - peek.len(), None)?;
+					self.process(atom, remain.len() - peek.len())?;
 					remain = peek;
 				}
 				None => break,
@@ -72,7 +76,7 @@ impl Import {
 		Ok(data.as_ref().len() - remain.len())
 	}
 
-	fn init(&mut self, moov: Moov, broadcast: &mut BroadcastProducer) -> Result<()> {
+	fn init(&mut self, moov: Moov) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
 			let track_id = trak.tkhd.track_id;
@@ -81,11 +85,11 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					broadcast.publish_video(track)
+					self.broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					broadcast.publish_audio(track)
+					self.broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
@@ -279,27 +283,10 @@ impl Import {
 	}
 
 	// Read the media from a stream until processing the moov atom.
-	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T, broadcast: &mut BroadcastProducer) -> Result<()> {
-		// TODO: Do we need to read this?
-		let _ftyp = match mp4_atom::Ftyp::read_from(input).await { _ => {} };
+	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
+		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
 		let moov = Moov::read_from(input).await?;
-		self.init(moov, broadcast)
-	}
-
-	// Read the media from a stream once, processing moof and mdat atoms.
-	pub async fn read_from_once<T: AsyncReadExt + Unpin>(&mut self, input: &mut T, buffer: &mut BytesMut) -> Result<bool> {
-		if input.read_buf(buffer).await? > 0 {
-			let n = self.parse_inner(&buffer)?;
-			let _ = buffer.split_to(n);
-
-			return Ok(true);
-		}
-
-		if !buffer.is_empty() {
-			return Err(Error::TrailingData);
-		}
-
-		Ok(false)
+		self.init(moov)
 	}
 
 	// Read the media from a stream, processing moof and mdat atoms.
@@ -318,14 +305,14 @@ impl Import {
 		Ok(())
 	}
 
-	fn process(&mut self, atom: mp4_atom::Any, size: usize, broadcast: Option<&mut BroadcastProducer>) -> Result<()> {
+	fn process(&mut self, atom: mp4_atom::Any, size: usize) -> Result<()> {
 		match atom {
 			Any::Ftyp(_) | Any::Styp(_) => {
 				// Skip
 			}
 			Any::Moov(moov) => {
 				// Create the broadcast.
-				self.init(moov, broadcast.expect("No broadcast given, while expected"))?;
+				self.init(moov)?;
 			}
 			Any::Moof(moof) => {
 				if self.moof.is_some() {

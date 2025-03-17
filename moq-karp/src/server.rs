@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 use anyhow::Context;
-use bytes::BytesMut;
 use url::Url;
 use moq_native::quic;
 use moq_native::quic::Server;
@@ -48,18 +47,13 @@ impl<T: AsyncRead + Unpin> BroadcastServer<T> {
         let url = Url::parse(&self.url).context("invalid URL")?;
         let path = url.path().to_string();
 
-        let mut broadcast = BroadcastProducer::new(path)?;
+        let broadcast = BroadcastProducer::new(path)?;
 
-        let mut import = Import::new();
-        import.init_from(&mut self.input, &mut broadcast).await.context("failed to initialize cmaf from input")?;
+        let mut import = Import::new(broadcast.clone());
+        import.init_from(&mut self.input).await.context("failed to initialize cmaf from input")?;
 
         self.accept(server, broadcast)?;
-
-        let mut buffer = BytesMut::new();
-        let mut reading = true;
-        while reading {
-            reading = import.read_from_once(&mut self.input, &mut buffer).await?;
-        }
+        import.read_from(&mut self.input).await?; // Blocking method
 
         Ok(())
     }
