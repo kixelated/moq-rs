@@ -16,7 +16,7 @@ pub struct PublisherSubscribes {
 }
 
 impl PublisherSubscribes {
-	pub(crate) fn accept<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<SubscribeId, Error> {
+	pub(crate) fn create<B: Buf>(&mut self, stream: StreamId, buf: &mut B) -> Result<SubscribeId, Error> {
 		let subscribe = message::Subscribe::decode(buf)?;
 		let id = self.next;
 		self.next.increment();
@@ -26,17 +26,6 @@ impl PublisherSubscribes {
 		self.ready.insert(id);
 
 		Ok(id)
-	}
-
-	pub(crate) fn decode<B: Buf>(&mut self, id: SubscribeId, buf: &mut B) -> Result<(), Error> {
-		self.lookup.get_mut(&id).unwrap().decode(buf)?;
-		self.ready.insert(id);
-
-		Ok(())
-	}
-
-	pub(crate) fn encode<B: BufMut>(&mut self, id: SubscribeId, buf: &mut B) {
-		self.lookup.get_mut(&id).unwrap().encode(buf);
 	}
 
 	pub fn accept(&mut self) -> Option<&mut PublisherSubscribe> {
@@ -51,33 +40,32 @@ impl PublisherSubscribes {
 
 struct PublisherSubscribe {
 	id: SubscribeId,
+	stream: StreamId,
 
 	// Outbound
-	info: Option<message::Info>,
+	info: Option<message::SubscribeInfo>,
 	info_sent: bool,
 	dropped: VecDeque<(GroupId, ErrorCode)>,
 
 	// Inbound
 	request: SubscribeRequest,
 	update: Option<message::SubscribeUpdate>,
-
-	stream: StreamId,
 }
 
 impl PublisherSubscribe {
-	pub(crate) fn new(id: SubscribeId, stream: StreamId, request: SubscribeRequest) -> Self {
+	fn new(id: SubscribeId, stream: StreamId, request: SubscribeRequest) -> Self {
 		Self {
 			id,
+			stream,
 			info: None,
 			info_sent: false,
 			dropped: VecDeque::new(),
-			stream,
 			request,
 			update: None,
 		}
 	}
 
-	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if let Some(info) = self.info.take() {
 			info.encode(buf);
 		}
@@ -107,26 +95,25 @@ impl PublisherSubscribe {
 		}
 	}
 
-	pub(crate) fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
+	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		let update = message::SubscribeUpdate::decode(buf)?;
 		self.update = Some(update);
 
 		Ok(())
 	}
 
-	pub fn id(&self) -> SubscribeId {
-		self.id
+	pub fn stream(&self) -> StreamId {
+		self.stream
 	}
 
-	pub fn info(&mut self) -> &SubscribeRequest {
+	pub fn requested(&mut self) -> &SubscribeRequest {
 		&self.request
 	}
 
-	pub fn start(&mut self, info: message::Info) {
+	pub fn reply(&mut self, info: message::SubscribeInfo) {
 		assert!(self.info.is_none());
 		assert!(!self.info_sent);
 
 		self.info = Some(info);
-		self.streams.encodable(self.stream);
 	}
 }

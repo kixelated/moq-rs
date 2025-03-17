@@ -61,3 +61,32 @@ impl Encode for SubscribeUpdate {
 		self.order.encode(w);
 	}
 }
+
+#[derive(Clone, Debug)]
+pub struct SubscribeInfo {
+	pub priority: i8,
+	pub order: GroupOrder,
+	pub latest: u64,
+}
+
+impl Encode for SubscribeInfo {
+	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
+		self.priority.encode(w);
+		self.order.encode(w);
+		self.latest.encode(w);
+	}
+}
+
+impl Decode for SubscribeInfo {
+	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
+		let priority = i8::decode(r)?;
+		let order = GroupOrder::decode(r)?;
+		let latest = u64::decode(r)?;
+
+		Ok(Self {
+			priority,
+			order,
+			latest,
+		})
+	}
+}

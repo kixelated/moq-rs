@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use bytes::{Buf, BufMut};
 
@@ -10,70 +10,44 @@ use crate::{
 
 #[derive(Default)]
 pub struct SubscriberSubscribes {
-	lookup: HashMap<SubscribeId, SubscriberSubscribe>,
-	ready: BTreeSet<SubscribeId>,
+	lookup: HashMap<StreamId, SubscriberSubscribe>,
 	next: SubscribeId,
-
-	// The subscribes that are waiting for a stream to be opened.
-	blocked: BTreeSet<SubscribeId>, // TODO sort by priority
 }
 
 impl SubscriberSubscribes {
-	pub(crate) fn decode<B: Buf>(&mut self, id: SubscribeId, buf: &mut B) -> Result<(), Error> {
-		self.lookup.get_mut(&id).unwrap().decode(buf)
-	}
-
-	pub(crate) fn encode<B: BufMut>(&mut self, id: SubscribeId, buf: &mut B) {
-		self.lookup.get_mut(&id).unwrap().encode(buf);
-	}
-
-	pub fn open(&mut self, stream: StreamId) -> &mut SubscriberSubscribe {
-		let id = self.blocked.pop_first().expect("no blocked subscriptions");
-		let entry = self.lookup.get_mut(&id).unwrap();
-		entry.open(stream);
-		entry
-	}
-
-	pub fn create(&mut self, request: SubscribeRequest) -> &mut SubscriberSubscribe {
+	pub fn create(&mut self, stream: StreamId, request: SubscribeRequest) -> &mut SubscriberSubscribe {
 		let id = self.next;
 		self.next.increment();
 
-		self.blocked.insert(id);
-
 		let msg = request.into_message(id.0);
-		let subscribe = SubscriberSubscribe::new(id, msg);
+		let subscribe = SubscriberSubscribe::new(id, stream, msg);
 
-		self.lookup.entry(id).or_insert(subscribe)
+		self.lookup.entry(stream).or_insert(subscribe)
 	}
 
-	pub fn get(&mut self, id: SubscribeId) -> Option<&mut SubscriberSubscribe> {
-		self.lookup.get_mut(&id)
-	}
-	/// Returns the next subscription with pending data.
-	pub fn ready(&mut self) -> Option<&mut SubscriberSubscribe> {
-		let id = self.ready.pop_first()?;
-		self.get(id)
+	pub fn get(&mut self, stream: StreamId) -> Option<&mut SubscriberSubscribe> {
+		self.lookup.get_mut(&stream)
 	}
 }
 
 pub struct SubscriberSubscribe {
 	id: SubscribeId,
-	stream: Option<StreamId>,
+	stream: StreamId,
 
 	// outbound
 	request: Option<message::Subscribe>,
 	update: Option<message::SubscribeUpdate>,
 
 	// inbound
-	info: Option<message::Info>,
+	info: Option<message::SubscribeInfo>,
 	drops: VecDeque<message::GroupDrop>,
 }
 
 impl SubscriberSubscribe {
-	pub(crate) fn new(id: SubscribeId, request: message::Subscribe) -> Self {
+	pub(crate) fn new(id: SubscribeId, stream: StreamId, request: message::Subscribe) -> Self {
 		Self {
 			id,
-			stream: None,
+			stream,
 
 			request: Some(request),
 			update: None,
@@ -83,7 +57,7 @@ impl SubscriberSubscribe {
 		}
 	}
 
-	pub(crate) fn encode<B: BufMut>(&mut self, buf: &mut B) {
+	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if let Some(request) = self.request.take() {
 			request.encode(buf);
 		}
@@ -93,10 +67,10 @@ impl SubscriberSubscribe {
 		}
 	}
 
-	/// Decode the next frame from the stream.
+	/// Try to decode the next message from the stream.
 	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		if self.info.is_none() {
-			self.info = Some(message::Info::decode(buf)?);
+			self.info = Some(message::SubscribeInfo::decode(buf)?);
 			return Ok(());
 		}
 
@@ -106,23 +80,19 @@ impl SubscriberSubscribe {
 		Ok(())
 	}
 
-	fn open(&mut self, stream: StreamId) {
-		assert!(self.stream.is_none());
-		self.stream = Some(stream);
-	}
-
-	pub fn id(&self) -> SubscribeId {
-		self.id
+	pub fn stream(&self) -> StreamId {
+		self.stream
 	}
 
 	/// Update the subscription with a new priority/ordering.
+	///
+	/// Must call `encode()` after updating.
 	pub fn update(&mut self, update: message::SubscribeUpdate) {
 		self.update = Some(update);
-		todo!("mark as encodable");
 	}
 
 	/// Return information about the track if received.
-	pub fn info(&mut self) -> Option<&message::Info> {
+	pub fn info(&mut self) -> Option<&message::SubscribeInfo> {
 		self.info.as_ref()
 	}
 

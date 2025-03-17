@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{StreamId, StreamKind};
 
-use super::{Publisher, Session, Streams, Subscriber};
+use super::{Publisher, Session, Subscriber};
 
 pub struct Connection {
 	session: Session,

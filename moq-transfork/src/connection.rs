@@ -99,7 +99,7 @@ impl Backend {
 			while let Some(event) = streams.poll() {
 				match event {
 					moq_transfork_proto::StreamEvent::Open(dir) => match dir {
-						moq_transfork_proto::StreamDirection::Uni => {
+						moq_transfork_proto::StreamKind::Uni => {
 							let mut send_stream = self.web.open_uni().await?;
 							stream_id.increment();
 
@@ -110,7 +110,7 @@ impl Backend {
 
 							send_streams.insert(stream_id, send_stream);
 						}
-						moq_transfork_proto::StreamDirection::Bi => {
+						moq_transfork_proto::StreamKind::Bi => {
 							let (mut send_stream, recv_stream) = self.web.open_bi().await?;
 							stream_id.increment();
 

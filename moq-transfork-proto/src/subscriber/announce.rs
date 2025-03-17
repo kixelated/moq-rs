@@ -5,7 +5,7 @@ use bytes::{Buf, BufMut};
 use crate::{
 	coding::{Decode, Encode},
 	message::{self},
-	Error, StreamId,
+	Error, Stream, StreamId,
 };
 
 pub enum SubscriberAnnounceEvent {}
@@ -16,9 +16,10 @@ pub struct SubscriberAnnounces {
 }
 
 impl SubscriberAnnounces {
-	pub fn create(&mut self, stream: StreamId, request: message::AnnouncePlease) -> &mut SubscriberAnnounce {
+	pub fn create(&mut self, stream: Stream, request: message::AnnouncePlease) -> &mut SubscriberAnnounce {
+		let id = stream.id();
 		let announce = SubscriberAnnounce::new(stream, request);
-		self.lookup.entry(stream).or_insert(announce)
+		self.lookup.entry(id).or_insert(announce)
 	}
 
 	pub fn get(&mut self, stream: StreamId) -> Option<&mut SubscriberAnnounce> {
@@ -26,41 +27,27 @@ impl SubscriberAnnounces {
 	}
 }
 
-struct SubscriberAnnounce {
+pub struct SubscriberAnnounce {
 	request: Option<message::AnnouncePlease>,
-	events: VecDeque<message::Announce>,
-	stream: StreamId,
+	stream: Stream,
 }
 
 impl SubscriberAnnounce {
-	fn new(stream: StreamId, request: message::AnnouncePlease) -> Self {
+	fn new(stream: Stream, request: message::AnnouncePlease) -> Self {
 		Self {
 			request: Some(request),
-			events: VecDeque::new(),
 			stream,
 		}
 	}
 
-	pub fn stream(&self) -> StreamId {
-		self.stream
-	}
-
 	pub fn encode<B: BufMut>(&mut self, buf: &mut B) {
 		if let Some(request) = self.request.take() {
-			request.encode(buf);
+			self.stream.encode(buf, request);
 		}
 	}
 
 	/// Decode the next frame from the stream.
-	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
-		let dropped = message::Announce::decode(buf)?;
-		self.events.push_back(dropped);
-
-		Ok(())
-	}
-
-	/// Returns the next announcement with pending data.
-	pub fn poll(&mut self) -> Option<message::Announce> {
-		self.events.pop_front()
+	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<Option<message::Announce>, Error> {
+		self.stream.try_decode(buf)
 	}
 }
