@@ -12,6 +12,7 @@ impl FFmpegStream {
         let mut ffmpeg = tokio::process::Command::new(FFMPEG_LAUNCH_CMD);
         for arg in args {
             ffmpeg.arg(arg);
+            println!("{}", arg);
         }
 
         Self {

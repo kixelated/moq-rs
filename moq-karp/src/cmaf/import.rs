@@ -1,6 +1,7 @@
 use bytes::{Bytes, BytesMut};
-use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
+use mp4_atom::{Any, AsyncReadFrom, Atom, Av01, Avc1, Codec, DecodeMaybe, Esds, Hev1, Mdat, Moof, Moov, Mp4a, Tfdt, Trak, Trun, Vp09};
 use std::{collections::HashMap, time::Duration};
+use std::mem::discriminant;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use super::{Error, Result};
 use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
@@ -100,150 +101,162 @@ impl Import {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = if let Some(avc1) = &stsd.avc1 {
-			let avcc = &avc1.avcc;
+		for codec in stsd.codecs.clone() {
+			let track = if discriminant(&codec) == discriminant(&Codec::Avc1(Default::default())) {
+				let avc1: Avc1 = codec.into();
+				let avcc = &avc1.avcc;
 
-			let mut description = BytesMut::new();
-			avcc.encode_body(&mut description)?;
+				let mut description = BytesMut::new();
+				avcc.encode_body(&mut description)?;
 
-			Video {
-				track: Track { name, priority: 2 },
-				resolution: Dimensions {
-					width: avc1.visual.width as _,
-					height: avc1.visual.height as _,
-				},
-				codec: H264 {
-					profile: avcc.avc_profile_indication,
-					constraints: avcc.profile_compatibility,
-					level: avcc.avc_level_indication,
-				}
-				.into(),
-				description: Some(description.freeze()),
-				bitrate: None,
-			}
-		} else if let Some(hev1) = &stsd.hev1 {
-			let hvcc = &hev1.hvcc;
-
-			let mut description = BytesMut::new();
-			hvcc.encode_body(&mut description)?;
-
-			Video {
-				track: Track { name, priority: 2 },
-				codec: H265 {
-					profile_space: hvcc.general_profile_space,
-					profile_idc: hvcc.general_profile_idc,
-					profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
-					tier_flag: hvcc.general_tier_flag,
-					level_idc: hvcc.general_level_idc,
-					constraint_flags: hvcc.general_constraint_indicator_flags,
-				}
-				.into(),
-				description: Some(description.freeze()),
-				resolution: Dimensions {
-					width: hev1.visual.width as _,
-					height: hev1.visual.height as _,
-				},
-				bitrate: None,
-			}
-		} else if let Some(vp09) = &stsd.vp09 {
-			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
-			let vpcc = &vp09.vpcc;
-
-			Video {
-				track: Track { name, priority: 2 },
-				codec: VP9 {
-					profile: vpcc.profile,
-					level: vpcc.level,
-					bit_depth: vpcc.bit_depth,
-					chroma_subsampling: vpcc.chroma_subsampling,
-					color_primaries: vpcc.color_primaries,
-					transfer_characteristics: vpcc.transfer_characteristics,
-					matrix_coefficients: vpcc.matrix_coefficients,
-					full_range: vpcc.video_full_range_flag,
-				}
-				.into(),
-				description: Default::default(),
-				resolution: Dimensions {
-					width: vp09.visual.width as _,
-					height: vp09.visual.height as _,
-				},
-				bitrate: None,
-			}
-		} else if let Some(av01) = &stsd.av01 {
-			let av1c = &av01.av1c;
-
-			Video {
-				track: Track { name, priority: 2 },
-				codec: AV1 {
-					profile: av1c.seq_profile,
-					level: av1c.seq_level_idx_0,
-					tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
-					bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
-						(true, true) => 12,
-						(true, false) => 10,
-						(false, true) => 10,
-						(false, false) => 8,
+				Video {
+					track: Track { name: name.clone(), priority: 2 },
+					resolution: Dimensions {
+						width: avc1.visual.width as _,
+						height: avc1.visual.height as _,
 					},
-					mono_chrome: av1c.monochrome,
-					chroma_subsampling_x: av1c.chroma_subsampling_x,
-					chroma_subsampling_y: av1c.chroma_subsampling_y,
-					chroma_sample_position: av1c.chroma_sample_position,
-					// TODO HDR stuff?
-					..Default::default()
+					codec: H264 {
+						profile: avcc.avc_profile_indication,
+						constraints: avcc.profile_compatibility,
+						level: avcc.avc_level_indication,
+					}
+						.into(),
+					description: Some(description.freeze()),
+					bitrate: None,
 				}
-				.into(),
-				description: Default::default(),
-				resolution: Dimensions {
-					width: av01.visual.width as _,
-					height: av01.visual.height as _,
-				},
-				bitrate: None,
-			}
-		} else {
-			return Err(Error::UnsupportedCodec("unknown"));
-		};
+			} else if discriminant(&codec) == discriminant(&Codec::Hev1(Default::default())) {
+				let hev1: Hev1 = codec.into();
+				let hvcc = &hev1.hvcc;
 
-		Ok(track)
+				let mut description = BytesMut::new();
+				hvcc.encode_body(&mut description)?;
+
+				Video {
+					track: Track { name: name.clone(), priority: 2 },
+					codec: H265 {
+						profile_space: hvcc.general_profile_space,
+						profile_idc: hvcc.general_profile_idc,
+						profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+						tier_flag: hvcc.general_tier_flag,
+						level_idc: hvcc.general_level_idc,
+						constraint_flags: hvcc.general_constraint_indicator_flags,
+					}
+						.into(),
+					description: Some(description.freeze()),
+					resolution: Dimensions {
+						width: hev1.visual.width as _,
+						height: hev1.visual.height as _,
+					},
+					bitrate: None,
+				}
+			} else if discriminant(&codec) == discriminant(&Codec::Vp09(Default::default())) {
+				let vp09: Vp09 = codec.into();
+				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
+				let vpcc = &vp09.vpcc;
+
+				Video {
+					track: Track { name: name.clone(), priority: 2 },
+					codec: VP9 {
+						profile: vpcc.profile,
+						level: vpcc.level,
+						bit_depth: vpcc.bit_depth,
+						chroma_subsampling: vpcc.chroma_subsampling,
+						color_primaries: vpcc.color_primaries,
+						transfer_characteristics: vpcc.transfer_characteristics,
+						matrix_coefficients: vpcc.matrix_coefficients,
+						full_range: vpcc.video_full_range_flag,
+					}
+						.into(),
+					description: Default::default(),
+					resolution: Dimensions {
+						width: vp09.visual.width as _,
+						height: vp09.visual.height as _,
+					},
+					bitrate: None,
+				}
+			} else if discriminant(&codec) == discriminant(&Codec::Av01(Default::default())) {
+				let av01: Av01 = codec.into();
+				let av1c = &av01.av1c;
+
+				Video {
+					track: Track { name: name.clone(), priority: 2 },
+					codec: AV1 {
+						profile: av1c.seq_profile,
+						level: av1c.seq_level_idx_0,
+						tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
+						bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
+							(true, true) => 12,
+							(true, false) => 10,
+							(false, true) => 10,
+							(false, false) => 8,
+						},
+						mono_chrome: av1c.monochrome,
+						chroma_subsampling_x: av1c.chroma_subsampling_x,
+						chroma_subsampling_y: av1c.chroma_subsampling_y,
+						chroma_sample_position: av1c.chroma_sample_position,
+						// TODO HDR stuff?
+						..Default::default()
+					}
+						.into(),
+					description: Default::default(),
+					resolution: Dimensions {
+						width: av01.visual.width as _,
+						height: av01.visual.height as _,
+					},
+					bitrate: None,
+				}
+			} else {
+				return Err(Error::UnsupportedCodec("unknown"));
+			};
+
+			return Ok(track);
+		}
+
+		Err(Error::UnsupportedCodec("No codec found"))
 	}
 
 	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = if let Some(mp4a) = &stsd.mp4a {
-			let desc = &mp4a
-				.esds
-				.as_ref()
-				.ok_or(Error::MissingBox(Esds::KIND))?
-				.es_desc
-				.dec_config;
+		for codec in stsd.codecs.clone() {
+			let track = if discriminant(&codec) == discriminant(&Codec::Mp4a(Default::default())) {
+				let mp4a: Mp4a = codec.into();
+				let desc = &mp4a
+					.esds
+					.as_ref()
+					.ok_or(Error::MissingBox(Esds::KIND))?
+					.es_desc
+					.dec_config;
 
-			// TODO Also support mp4a.67
-			if desc.object_type_indication != 0x40 {
-				return Err(Error::UnsupportedCodec("MPEG2"));
-			}
-
-			Audio {
-				track: Track { name, priority: 1 },
-				codec: AAC {
-					profile: desc.dec_specific.profile,
+				// TODO Also support mp4a.67
+				if desc.object_type_indication != 0x40 {
+					return Err(Error::UnsupportedCodec("MPEG2"));
 				}
-				.into(),
-				sample_rate: mp4a.samplerate.integer() as _,
-				channel_count: mp4a.channelcount as _,
-				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
-			}
-		} else {
-			return Err(Error::UnsupportedCodec("unknown"));
-		};
 
-		Ok(track)
+				Audio {
+					track: Track { name: name.clone(), priority: 1 },
+					codec: AAC {
+						profile: desc.dec_specific.profile,
+					}
+						.into(),
+					sample_rate: mp4a.samplerate.integer() as _,
+					channel_count: mp4a.channelcount as _,
+					bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
+				}
+			} else {
+				return Err(Error::UnsupportedCodec("unknown"));
+			};
+
+			return Ok(track);
+		}
+
+		Err(Error::UnsupportedCodec("No codec found"))
 	}
 
 	// Read the media from a stream until processing the moov atom.
 	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T, broadcast: &mut BroadcastProducer) -> Result<()> {
-		// TODO: Do we need to read this?
-		let _ftyp = match mp4_atom::Ftyp::read_from(input).await { _ => {} };
+		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
 		let moov = Moov::read_from(input).await?;
 		self.init(moov, broadcast)
 	}

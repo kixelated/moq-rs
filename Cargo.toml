@@ -7,6 +7,7 @@ members = [
 	"moq-web",
 	"moq-async",
 	"application-streamer",
+	"mp4-atom",
 ]
 resolver = "2"
 
