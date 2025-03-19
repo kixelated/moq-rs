@@ -3,26 +3,27 @@ use moq_karp::cmaf::Import;
 use moq_karp::moq_transfork::Session;
 use moq_karp::BroadcastProducer;
 use moq_native::quic;
-use std::net::SocketAddr;
 use tokio::io::AsyncRead;
 use url::Url;
 
+use super::Config;
+
 pub struct BroadcastClient<T: AsyncRead + Unpin> {
-	bind: SocketAddr,
-	tls: moq_native::tls::Args,
+	config: Config,
 	url: String,
 	input: T,
 }
 
 impl<T: AsyncRead + Unpin> BroadcastClient<T> {
-	pub fn new(bind: SocketAddr, tls: moq_native::tls::Args, url: String, input: T) -> Self {
-		Self { bind, tls, url, input }
+	pub fn new(config: Config, url: String, input: T) -> Self {
+		Self { config, url, input }
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		let session = self.connect().await?;
 		let url = Url::parse(&self.url).context("invalid URL")?;
 		let path = url.path().to_string();
+
+		let session = self.connect(url).await?;
 
 		let mut broadcast = BroadcastProducer::new(path)?;
 
@@ -42,13 +43,14 @@ impl<T: AsyncRead + Unpin> BroadcastClient<T> {
 		}
 	}
 
-	async fn connect(&self) -> anyhow::Result<Session> {
-		let tls = self.tls.load()?;
-		let quic = quic::Endpoint::new(quic::Config { bind: self.bind, tls })?;
+	async fn connect(&self, url: Url) -> anyhow::Result<Session> {
+		let tls = self.config.tls.load()?;
+		let quic = quic::Endpoint::new(quic::Config {
+			bind: self.config.bind,
+			tls,
+		})?;
 
-		tracing::info!(?self.url, "connecting");
-
-		let url = Url::parse(&self.url).context("invalid URL")?;
+		tracing::info!(?url, "connecting");
 
 		let session = quic.client.connect(url).await?;
 		let session = Session::connect(session).await?;

@@ -46,7 +46,7 @@ cluster:
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
 
 # Download and stream the Big Buck Bunny video to localhost directly
-bbb-server: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-server "bbb")
+bbb-serve: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-serve "bbb")
 
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
@@ -84,7 +84,7 @@ pub name:
 		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
 # Publish a video using ffmpeg directly from moq-karp to the localhost
-pub-server name:
+pub-serve name:
 	# Pre-build the binary so we don't queue media while compiling.
 	cargo build --bin moq-karp
 
@@ -94,7 +94,7 @@ pub-server name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- --server --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify publish "http://localhost:4443/demo/{{name}}"
+		- | cargo run --bin moq-karp -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
 
 # Run the web server
 web:

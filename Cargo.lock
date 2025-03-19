@@ -1304,17 +1304,12 @@ dependencies = [
 name = "moq-karp"
 version = "0.15.0"
 dependencies = [
- "anyhow",
- "axum",
  "bytes",
- "clap",
  "derive_more 2.0.1",
  "futures",
  "hex",
- "hyper-serve",
  "lazy_static",
  "moq-async",
- "moq-native",
  "moq-transfork",
  "mp4-atom",
  "regex",
@@ -1323,10 +1318,24 @@ dependencies = [
  "serde_with",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
+name = "moq-karp-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "hyper-serve",
+ "moq-karp",
+ "moq-native",
+ "tokio",
  "tower-http",
  "tracing",
  "url",
- "web-time",
 ]
 
 [[package]]

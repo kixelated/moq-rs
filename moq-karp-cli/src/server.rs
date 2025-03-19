@@ -1,56 +1,51 @@
-use super::FingerprintServer;
+use super::{Config, FingerprintServer};
 
 use anyhow::Context;
 use moq_karp::cmaf::Import;
+use moq_karp::moq_transfork;
 use moq_karp::BroadcastProducer;
 use moq_native::quic;
 use moq_native::quic::Server;
 use moq_transfork::web_transport;
-use std::net::SocketAddr;
 use tokio::io::AsyncRead;
-use url::Url;
 
 pub struct BroadcastServer<T: AsyncRead + Unpin> {
-	bind: SocketAddr,
-	tls: moq_native::tls::Args,
-	url: String,
+	config: Config,
+	path: String,
 	input: T,
 }
 
 impl<T: AsyncRead + Unpin> BroadcastServer<T> {
-	pub fn new(bind: SocketAddr, tls: moq_native::tls::Args, url: String, input: T) -> Self {
-		Self { bind, tls, url, input }
+	pub fn new(config: Config, path: String, input: T) -> Self {
+		Self { config, path, input }
 	}
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
-		self.bind = tokio::net::lookup_host(self.bind)
+		self.config.bind = tokio::net::lookup_host(self.config.bind)
 			.await
 			.context("invalid bind address")?
 			.next()
 			.context("invalid bind address")?;
 
-		let tls = self.tls.load()?;
+		let tls = self.config.tls.load()?;
 		if tls.server.is_none() {
 			anyhow::bail!("missing TLS certificates");
 		}
 
 		let quic = quic::Endpoint::new(quic::Config {
-			bind: self.bind,
+			bind: self.config.bind,
 			tls: tls.clone(),
 		})?;
 		let server = quic.server.context("missing TLS certificate")?;
 
 		// Create a web server to serve the fingerprint.
-		let web = FingerprintServer::new(self.bind, tls);
+		let web = FingerprintServer::new(self.config.bind, tls);
 		tokio::spawn(async move {
 			web.run().await.expect("failed to run web server");
 		});
 
 		// Create the broadcast
-		let url = Url::parse(&self.url).context("invalid URL")?;
-		let path = url.path().to_string();
-
-		let broadcast = BroadcastProducer::new(path)?;
+		let broadcast = BroadcastProducer::new(self.path.clone())?;
 
 		let mut import = Import::new(broadcast.clone());
 		import
@@ -65,7 +60,7 @@ impl<T: AsyncRead + Unpin> BroadcastServer<T> {
 	}
 
 	fn accept(&mut self, mut server: Server, mut broadcast: BroadcastProducer) -> anyhow::Result<()> {
-		tracing::info!(addr = %self.bind, "listening");
+		tracing::info!(addr = %self.config.bind, "listening");
 
 		let mut conn_id = 0;
 
