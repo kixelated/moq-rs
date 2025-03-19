@@ -1311,7 +1311,6 @@ dependencies = [
  "derive_more 2.0.1",
  "futures",
  "hex",
- "http-body",
  "hyper-serve",
  "lazy_static",
  "moq-async",

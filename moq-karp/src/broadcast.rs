@@ -118,7 +118,7 @@ impl BroadcastProducer {
 
 		// Let all the listeners know about the new video track
 		state.subscribers.iter_mut().for_each(|session| {
-			session.publish((&producer).subscribe()).unwrap();
+			session.publish(producer.subscribe()).unwrap();
 		});
 
 		// Update the state
