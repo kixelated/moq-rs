@@ -52,7 +52,7 @@ impl BroadcastProducer {
 
 	/// Add a session to the broadcast.
 	/// If the session closes, it will be removed from the broadcast automatically.
-	pub fn add_session(&mut self, mut session: Session) -> anyhow::Result<()> {
+	pub fn add_session(&mut self, mut session: Session) -> Result<()> {
 		let mut state = self.state.lock();
 
 		// Publish the catalog
@@ -84,7 +84,7 @@ impl BroadcastProducer {
 	}
 
 	/// Publish a video track to all listeners & future listeners.
-	pub fn publish_video(&mut self, info: Video) -> anyhow::Result<TrackProducer> {
+	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
 		let mut state = self.state.lock();
 
 		let producer = self.publish(info.track.clone(), &mut state)?;
@@ -95,7 +95,7 @@ impl BroadcastProducer {
 	}
 
 	/// Publish an audio track to all listeners & future listeners.
-	pub fn publish_audio(&mut self, info: Audio) -> anyhow::Result<TrackProducer> {
+	pub fn publish_audio(&mut self, info: Audio) -> Result<TrackProducer> {
 		let mut state = self.state.lock();
 
 		let producer = self.publish(info.track.clone(), &mut state)?;
@@ -105,7 +105,7 @@ impl BroadcastProducer {
 		Ok(producer)
 	}
 
-	fn publish(&self, track: Track, state: &mut BroadcastProducerState) -> anyhow::Result<TrackProducer> {
+	fn publish(&self, track: Track, state: &mut BroadcastProducerState) -> Result<TrackProducer> {
 
 		// Create the TrackProducer
 		let path = format!("{}/{}/{}.karp", self.path, self.id, &track.name);

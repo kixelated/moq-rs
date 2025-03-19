@@ -6,8 +6,11 @@ mod frame;
 mod group;
 mod track;
 mod video;
+#[cfg(feature="webserver")]
 mod server;
+#[cfg(feature="webserver")]
 mod fingerprint;
+#[cfg(feature="webserver")]
 mod client;
 
 pub use audio::*;
@@ -18,8 +21,11 @@ pub use frame::*;
 pub use group::*;
 pub use track::*;
 pub use video::*;
+#[cfg(feature="webserver")]
 pub use server::*;
+#[cfg(feature="webserver")]
 pub use fingerprint::*;
+#[cfg(feature="webserver")]
 pub use client::*;
 
 pub mod cmaf;
