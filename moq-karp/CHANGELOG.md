@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.15.0...moq-karp-v0.16.0) - 2025-03-19
+
+### Other
+
+- Added the ability to host a broadcast without a relay ([#355](https://github.com/kixelated/moq-rs/pull/355))
+- Fix codec string parsing when using hev1. ([#356](https://github.com/kixelated/moq-rs/pull/356))
+
 ## [0.15.0](https://github.com/kixelated/moq-rs/compare/moq-karp-v0.14.1...moq-karp-v0.15.0) - 2025-03-09
 
 ### Other
