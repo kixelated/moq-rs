@@ -37,21 +37,28 @@ tokio = { version = "1.43", features = ["macros"] }
 
 web-time = "1"
 
-# Web server
-axum = { version = "0.8", features = ["tokio"], optional = true }
-hyper-serve = { version = "0.6", features = ["tls-rustls"], optional = true }
-tower-http = { version = "0.6", features = ["cors"], optional = true }
-
 # CLI only dependencies
 moq-native = { path = "../moq-native", version = "0.6", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 anyhow = { version = "1", features = ["backtrace"], optional = true }
+
+# Web server
+axum = { version = "0.8", features = ["tokio"], optional = true }
+hyper-serve = { version = "0.6", features = ["tls-rustls"], optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dependencies.derive_more]
 version = "2"
 features = ["from", "display", "debug"]
 
 [features]
-cli = ["moq-native", "tokio/full", "clap", "anyhow"]
-webserver = ["axum", "hyper-serve", "tower-http"]
-default = ["cli", "webserver"]
+cli = ["tokio/full", "clap", "anyhow", "axum", "hyper-serve", "tower-http"]
+
+[lib]
+name = "moq_karp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "moq_karp"
+path = "src/cli/main.rs"
+required-features = ["cli"]

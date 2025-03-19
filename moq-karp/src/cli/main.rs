@@ -1,7 +1,13 @@
+mod client;
+mod fingerprint;
+mod server;
+
+use client::*;
+use fingerprint::*;
+use server::*;
+
 use clap::{Parser, Subcommand};
 use std::net;
-
-use moq_karp::{BroadcastClient, BroadcastServer};
 
 #[derive(Parser, Clone)]
 struct Config {
