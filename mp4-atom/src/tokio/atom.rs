@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::{Atom, Buf, DecodeAtom, Encode, Error, FourCC, Header, Result};
+use crate::{Atom, Buf, DecodeAtom, Encode, Error, Header, Result};
 
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 

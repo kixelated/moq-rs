@@ -1,6 +1,7 @@
 #!/usr/bin/env just --justfile
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
+set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]
 
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "info"
