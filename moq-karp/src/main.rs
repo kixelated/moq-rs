@@ -1,7 +1,7 @@
-use std::net;
 use clap::{Parser, Subcommand};
+use std::net;
 
-use moq_karp::{BroadcastServer, BroadcastClient};
+use moq_karp::{BroadcastClient, BroadcastServer};
 
 #[derive(Parser, Clone)]
 struct Config {
@@ -55,12 +55,18 @@ async fn main() -> anyhow::Result<()> {
 #[tracing::instrument(skip_all, fields(?url))]
 async fn publish(config: Config, url: String) -> anyhow::Result<()> {
 	match config.server {
-		true => BroadcastServer::new(config.bind, config.tls, url, tokio::io::stdin()).run().await,
-		false => BroadcastClient::new(config.bind, config.tls, url, tokio::io::stdin()).run().await,
+		true => {
+			BroadcastServer::new(config.bind, config.tls, url, tokio::io::stdin())
+				.run()
+				.await
+		}
+		false => {
+			BroadcastClient::new(config.bind, config.tls, url, tokio::io::stdin())
+				.run()
+				.await
+		}
 	}
 }
-
-
 
 /*
 #[tracing::instrument("subscribe", skip_all, err, fields(?broadcast))]

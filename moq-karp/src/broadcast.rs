@@ -1,8 +1,8 @@
-use crate::{Audio, Catalog, Error, Result, Track, TrackProducer, Video};
-use moq_async::{Lock};
-use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 use crate::track::TrackConsumer;
+use crate::{Audio, Catalog, Error, Result, Track, TrackProducer, Video};
 use derive_more::Debug;
+use moq_async::Lock;
+use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 
 struct BroadcastProducerState {
 	catalog: CatalogProducer,
@@ -33,7 +33,8 @@ impl BroadcastProducer {
 			path: full,
 			priority: -1,
 			order: moq_transfork::GroupOrder::Desc,
-		}.produce();
+		}
+		.produce();
 		let catalog = CatalogProducer::new(catalog)?;
 
 		// Create the BroadcastProducerState
@@ -43,11 +44,7 @@ impl BroadcastProducer {
 			subscribers: vec![],
 		});
 
-		Ok(Self {
-			path,
-			id,
-			state,
-		})
+		Ok(Self { path, id, state })
 	}
 
 	/// Add a session to the broadcast.
@@ -106,7 +103,6 @@ impl BroadcastProducer {
 	}
 
 	fn publish(&self, track: Track, state: &mut BroadcastProducerState) -> Result<TrackProducer> {
-
 		// Create the TrackProducer
 		let path = format!("{}/{}/{}.karp", self.path, self.id, &track.name);
 		let (producer, _) = moq_transfork::Track {
@@ -114,7 +110,8 @@ impl BroadcastProducer {
 			priority: track.priority,
 			// TODO add these to the catalog and support higher latencies.
 			order: moq_transfork::GroupOrder::Desc,
-		}.produce();
+		}
+		.produce();
 
 		// Let all the listeners know about the new video track
 		state.subscribers.iter_mut().for_each(|session| {

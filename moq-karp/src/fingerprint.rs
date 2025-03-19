@@ -1,10 +1,6 @@
-use std::net;
-use axum::{
-	http::{Method},
-	routing::get,
-	Router,
-};
+use axum::{http::Method, routing::get, Router};
 use hyper_serve::accept::DefaultAcceptor;
+use std::net;
 use tower_http::cors::{Any, CorsLayer};
 
 // Run a HTTP server using Axum

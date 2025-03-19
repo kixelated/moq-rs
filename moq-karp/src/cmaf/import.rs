@@ -1,12 +1,12 @@
-use bytes::{Bytes, BytesMut};
-use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
-use std::{collections::HashMap, time::Duration};
-use tokio::io::{AsyncRead, AsyncReadExt};
 use super::{Error, Result};
 use crate::{
 	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC, AV1, H264,
 	H265, VP9,
 };
+use bytes::{Bytes, BytesMut};
+use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
+use std::{collections::HashMap, time::Duration};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -95,7 +95,8 @@ impl Import {
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, track.expect("Error while publishing track"));
+			self.tracks
+				.insert(track_id, track.expect("Error while publishing track"));
 		}
 
 		self.moov = Some(moov);
