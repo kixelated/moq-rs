@@ -66,9 +66,11 @@ impl Backend {
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let path = self.connect.take().unwrap().path;
 
-					let mut broadcast = moq_karp::BroadcastProducer::new(session?, path)?;
+					let mut broadcast = moq_karp::BroadcastProducer::new(path)?;
+					broadcast.add_session(session?).expect("failed to add session to broadcast");
 					if let Some(video) = self.video.as_mut() {
-						self.video_track = Some(broadcast.publish_video(video.info().clone())?);
+						let track = broadcast.publish_video(video.info().clone()).expect("failed to publish video");
+						self.video_track = Some(track);
 					}
 
 					self.broadcast = Some(broadcast);
@@ -89,7 +91,8 @@ impl Backend {
 							let video = Video::new(track).await?;
 
 							if let Some(broadcast) = self.broadcast.as_mut() {
-								self.video_track = Some(broadcast.publish_video(video.info().clone())?);
+								let track = broadcast.publish_video(video.info().clone()).expect("failed to publish video");
+								self.video_track = Some(track);
 							}
 
 							self.video = Some(video);

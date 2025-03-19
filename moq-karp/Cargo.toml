@@ -1,7 +1,7 @@
 [package]
 name = "moq-karp"
 description = "Media over QUIC"
-authors = []
+authors = ["Luke Curley <kixelated@gmail.com>"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
@@ -17,7 +17,6 @@ categories = ["multimedia", "network-programming", "web-programming"]
 moq-transfork = { path = "../moq-transfork", version = "0.12" }
 moq-async = { path = "../moq-async", version = "0.1" }
 
-url = "2"
 bytes = "1.10"
 hex = "0.4"
 
@@ -37,15 +36,6 @@ tokio = { version = "1.43", features = ["macros"] }
 
 web-time = "1"
 
-# CLI only dependencies
-moq-native = { path = "../moq-native", version = "0.6", optional = true }
-clap = { version = "4", features = ["derive"], optional = true }
-anyhow = { version = "1", features = ["backtrace"], optional = true }
-
 [dependencies.derive_more]
 version = "2"
 features = ["from", "display", "debug"]
-
-[features]
-cli = ["moq-native", "tokio/full", "clap", "anyhow"]
-default = ["cli"]

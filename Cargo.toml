@@ -5,6 +5,7 @@ members = [
 	"moq-clock",
 	"moq-native",
 	"moq-karp",
+	"moq-karp-cli",
 	"moq-web",
 	"moq-async",
 ]
