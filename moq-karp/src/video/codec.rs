@@ -26,7 +26,7 @@ impl FromStr for VideoCodec {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if s.starts_with("avc1.") {
 			return H264::from_str(s).map(Into::into);
-		} else if s.starts_with("hvc1.") {
+		} else if s.starts_with("hvc1.") || s.starts_with("hev1.") {
 			return H265::from_str(s).map(Into::into);
 		} else if s == "vp8" {
 			return Ok(Self::VP8);
@@ -37,5 +37,20 @@ impl FromStr for VideoCodec {
 		}
 
 		Ok(Self::Unknown(s.to_string()))
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_vp8() {
+		let encoded = "vp8";
+		let decoded = VideoCodec::from_str(encoded).expect("failed to parse");
+		assert_eq!(decoded, VideoCodec::VP8);
+
+		let output = decoded.to_string();
+		assert_eq!(output, encoded);
 	}
 }

@@ -1,15 +1,20 @@
-use bytes::{Bytes, BytesMut};
-use mp4_atom::{Any, AsyncReadFrom, Atom, Av01, Avc1, Codec, DecodeMaybe, Esds, Hev1, Mdat, Moof, Moov, Mp4a, Tfdt, Trak, Trun, Vp09};
-use std::{collections::HashMap, time::Duration};
-use std::mem::discriminant;
-use tokio::io::{AsyncRead, AsyncReadExt};
 use super::{Error, Result};
-use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, AV1, H264, H265, VP9};
+use crate::{
+	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC, AV1, H264,
+	H265, VP9,
+};
+use bytes::{Bytes, BytesMut};
+use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
+use std::{collections::HashMap, time::Duration};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
 	// Any partial data in the input buffer
 	buffer: BytesMut,
+
+	// The broadcast being produced
+	broadcast: BroadcastProducer,
 
 	// A lookup to tracks in the broadcast
 	tracks: HashMap<u32, TrackProducer>,
@@ -26,9 +31,10 @@ pub struct Import {
 }
 
 impl Import {
-	pub fn new() -> Self {
+	pub fn new(broadcast: BroadcastProducer) -> Self {
 		Self {
 			buffer: BytesMut::new(),
+			broadcast,
 			tracks: HashMap::default(),
 			last_keyframe: HashMap::default(),
 			moov: None,
@@ -59,7 +65,7 @@ impl Import {
 
 			match mp4_atom::Any::decode_maybe(&mut peek)? {
 				Some(atom) => {
-					self.process(atom, remain.len() - peek.len(), None)?;
+					self.process(atom, remain.len() - peek.len())?;
 					remain = peek;
 				}
 				None => break,
@@ -70,7 +76,7 @@ impl Import {
 		Ok(data.as_ref().len() - remain.len())
 	}
 
-	fn init(&mut self, moov: Moov, broadcast: &mut BroadcastProducer) -> Result<()> {
+	fn init(&mut self, moov: Moov) -> Result<()> {
 		// Produce the catalog
 		for trak in &moov.trak {
 			let track_id = trak.tkhd.track_id;
@@ -79,17 +85,18 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					broadcast.publish_video(track)
+					self.broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					broadcast.publish_audio(track)
+					self.broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, track.expect("Error while publishing track"));
+			self.tracks
+				.insert(track_id, track.expect("Error while publishing track"));
 		}
 
 		self.moov = Some(moov);
@@ -101,16 +108,23 @@ impl Import {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		for codec in stsd.codecs.clone() {
-			let track = if discriminant(&codec) == discriminant(&Codec::Avc1(Default::default())) {
-				let avc1: Avc1 = codec.into();
+		let track = Track { name, priority: 2 };
+
+		let codec = match stsd.codecs.len() {
+			0 => return Err(Error::MissingCodec),
+			1 => &stsd.codecs[0],
+			_ => return Err(Error::MultipleCodecs),
+		};
+
+		let track = match codec {
+			mp4_atom::Codec::Avc1(avc1) => {
 				let avcc = &avc1.avcc;
 
 				let mut description = BytesMut::new();
 				avcc.encode_body(&mut description)?;
 
 				Video {
-					track: Track { name: name.clone(), priority: 2 },
+					track,
 					resolution: Dimensions {
 						width: avc1.visual.width as _,
 						height: avc1.visual.height as _,
@@ -120,42 +134,29 @@ impl Import {
 						constraints: avcc.profile_compatibility,
 						level: avcc.avc_level_indication,
 					}
-						.into(),
+					.into(),
 					description: Some(description.freeze()),
 					bitrate: None,
 				}
-			} else if discriminant(&codec) == discriminant(&Codec::Hev1(Default::default())) {
-				let hev1: Hev1 = codec.into();
-				let hvcc = &hev1.hvcc;
-
-				let mut description = BytesMut::new();
-				hvcc.encode_body(&mut description)?;
-
-				Video {
-					track: Track { name: name.clone(), priority: 2 },
-					codec: H265 {
-						profile_space: hvcc.general_profile_space,
-						profile_idc: hvcc.general_profile_idc,
-						profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
-						tier_flag: hvcc.general_tier_flag,
-						level_idc: hvcc.general_level_idc,
-						constraint_flags: hvcc.general_constraint_indicator_flags,
-					}
-						.into(),
-					description: Some(description.freeze()),
-					resolution: Dimensions {
-						width: hev1.visual.width as _,
-						height: hev1.visual.height as _,
-					},
-					bitrate: None,
-				}
-			} else if discriminant(&codec) == discriminant(&Codec::Vp09(Default::default())) {
-				let vp09: Vp09 = codec.into();
+			}
+			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
+			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
+			mp4_atom::Codec::Vp08(vp08) => Video {
+				track,
+				codec: VideoCodec::VP8,
+				description: Default::default(),
+				resolution: Dimensions {
+					width: vp08.visual.width as _,
+					height: vp08.visual.height as _,
+				},
+				bitrate: None,
+			},
+			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 
 				Video {
-					track: Track { name: name.clone(), priority: 2 },
+					track,
 					codec: VP9 {
 						profile: vpcc.profile,
 						level: vpcc.level,
@@ -166,7 +167,7 @@ impl Import {
 						matrix_coefficients: vpcc.matrix_coefficients,
 						full_range: vpcc.video_full_range_flag,
 					}
-						.into(),
+					.into(),
 					description: Default::default(),
 					resolution: Dimensions {
 						width: vp09.visual.width as _,
@@ -174,12 +175,12 @@ impl Import {
 					},
 					bitrate: None,
 				}
-			} else if discriminant(&codec) == discriminant(&Codec::Av01(Default::default())) {
-				let av01: Av01 = codec.into();
+			}
+			mp4_atom::Codec::Av01(av01) => {
 				let av1c = &av01.av1c;
 
 				Video {
-					track: Track { name: name.clone(), priority: 2 },
+					track,
 					codec: AV1 {
 						profile: av1c.seq_profile,
 						level: av1c.seq_level_idx_0,
@@ -197,7 +198,7 @@ impl Import {
 						// TODO HDR stuff?
 						..Default::default()
 					}
-						.into(),
+					.into(),
 					description: Default::default(),
 					resolution: Dimensions {
 						width: av01.visual.width as _,
@@ -205,23 +206,54 @@ impl Import {
 					},
 					bitrate: None,
 				}
-			} else {
-				return Err(Error::UnsupportedCodec("unknown"));
-			};
+			}
+			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
+			_ => return Err(Error::UnsupportedCodec("unknown".to_string())),
+		};
 
-			return Ok(track);
-		}
+		Ok(track)
+	}
 
-		Err(Error::UnsupportedCodec("No codec found"))
+	// There's two almost identical hvcc atoms in the wild.
+	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
+		let mut description = BytesMut::new();
+		hvcc.encode_body(&mut description)?;
+
+		Ok(Video {
+			track,
+			codec: H265 {
+				in_band,
+				profile_space: hvcc.general_profile_space,
+				profile_idc: hvcc.general_profile_idc,
+				profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+				tier_flag: hvcc.general_tier_flag,
+				level_idc: hvcc.general_level_idc,
+				constraint_flags: hvcc.general_constraint_indicator_flags,
+			}
+			.into(),
+			description: Some(description.freeze()),
+			resolution: Dimensions {
+				width: visual.width as _,
+				height: visual.height as _,
+			},
+			bitrate: None,
+		})
 	}
 
 	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		for codec in stsd.codecs.clone() {
-			let track = if discriminant(&codec) == discriminant(&Codec::Mp4a(Default::default())) {
-				let mp4a: Mp4a = codec.into();
+		let track = Track { name, priority: 1 };
+
+		let codec = match stsd.codecs.len() {
+			0 => return Err(Error::MissingCodec),
+			1 => &stsd.codecs[0],
+			_ => return Err(Error::MultipleCodecs),
+		};
+
+		let track = match codec {
+			mp4_atom::Codec::Mp4a(mp4a) => {
 				let desc = &mp4a
 					.esds
 					.as_ref()
@@ -231,50 +263,32 @@ impl Import {
 
 				// TODO Also support mp4a.67
 				if desc.object_type_indication != 0x40 {
-					return Err(Error::UnsupportedCodec("MPEG2"));
+					return Err(Error::UnsupportedCodec("MPEG2".to_string()));
 				}
 
 				Audio {
-					track: Track { name: name.clone(), priority: 1 },
+					track,
 					codec: AAC {
 						profile: desc.dec_specific.profile,
 					}
-						.into(),
+					.into(),
 					sample_rate: mp4a.samplerate.integer() as _,
 					channel_count: mp4a.channelcount as _,
 					bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
 				}
-			} else {
-				return Err(Error::UnsupportedCodec("unknown"));
-			};
+			}
+			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
+			_ => return Err(Error::UnsupportedCodec("unknown".to_string())),
+		};
 
-			return Ok(track);
-		}
-
-		Err(Error::UnsupportedCodec("No codec found"))
+		Ok(track)
 	}
 
 	// Read the media from a stream until processing the moov atom.
-	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T, broadcast: &mut BroadcastProducer) -> Result<()> {
+	pub async fn init_from<T: AsyncRead + Unpin>(&mut self, input: &mut T) -> Result<()> {
 		let _ftyp = mp4_atom::Ftyp::read_from(input).await?;
 		let moov = Moov::read_from(input).await?;
-		self.init(moov, broadcast)
-	}
-
-	// Read the media from a stream once, processing moof and mdat atoms.
-	pub async fn read_from_once<T: AsyncReadExt + Unpin>(&mut self, input: &mut T, buffer: &mut BytesMut) -> Result<bool> {
-		if input.read_buf(buffer).await? > 0 {
-			let n = self.parse_inner(&buffer)?;
-			let _ = buffer.split_to(n);
-
-			return Ok(true);
-		}
-
-		if !buffer.is_empty() {
-			return Err(Error::TrailingData);
-		}
-
-		Ok(false)
+		self.init(moov)
 	}
 
 	// Read the media from a stream, processing moof and mdat atoms.
@@ -293,14 +307,14 @@ impl Import {
 		Ok(())
 	}
 
-	fn process(&mut self, atom: mp4_atom::Any, size: usize, broadcast: Option<&mut BroadcastProducer>) -> Result<()> {
+	fn process(&mut self, atom: mp4_atom::Any, size: usize) -> Result<()> {
 		match atom {
 			Any::Ftyp(_) | Any::Styp(_) => {
 				// Skip
 			}
 			Any::Moov(moov) => {
 				// Create the broadcast.
-				self.init(moov, broadcast.expect("No broadcast given, while expected"))?;
+				self.init(moov)?;
 			}
 			Any::Moof(moof) => {
 				if self.moof.is_some() {

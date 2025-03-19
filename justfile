@@ -2,9 +2,6 @@
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
-# This may help if you are having trouble running just on windows
-set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]
-
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "info"
 
@@ -28,12 +25,6 @@ setup:
 
 	# Install cargo shear if needed.
 	cargo binstall --no-confirm cargo-shear
-
-	# Install cross for cross-compiling.
-	cargo install cross
-
-application-streamer:
-    cross run --bin application-streamer -- --force-non-host --target x86_64-unknown-linux-gnu
 
 # Run the relay, web server, and publish bbb.
 all:

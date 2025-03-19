@@ -28,7 +28,13 @@ pub enum Error {
 	UnexpectedBox(mp4_atom::FourCC),
 
 	#[error("unsupported codec: {0}")]
-	UnsupportedCodec(&'static str),
+	UnsupportedCodec(String),
+
+	#[error("missing codec")]
+	MissingCodec,
+
+	#[error("multiple codecs")]
+	MultipleCodecs,
 
 	#[error("invalid size")]
 	InvalidSize,

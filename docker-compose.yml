@@ -1,0 +1,57 @@
+x-moq: &x-moq
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+services:
+  relay1:
+    <<: *x-moq
+    build:
+      target: moq-relay
+    # This relay is the root, used to discover/announce origins.
+    command: --tls-self-sign localhost,relay1,127.0.0.1 --cluster-node relay1 --cluster-root relay1
+    ports:
+      - "4443:443"
+      - "4443:443/udp"
+
+  relay2:
+    <<: *x-moq
+    build:
+      target: moq-relay
+    # This relay is a follower, connecting to relay1 to discover/announce origins.
+    command: --tls-self-sign localhost,relay2,127.0.0.1 --cluster-node relay2 --cluster-root relay1
+    depends_on:
+      - relay1
+    ports:
+      - "4444:443"
+      - "4444:443/udp"
+
+  bbb:
+    <<: *x-moq
+    build:
+      target: moq-karp
+    entrypoint: moq-bbb
+    command: --tls-disable-verify publish "https://relay1/demo/bbb"
+    depends_on:
+      - relay1
+
+# Disabled until I can care enough to make it work. Use ./dev/web instead.
+#  web:
+#    <<: *x-moq
+#    build:
+#      target: moq-web
+#    command: --cert-file /etc/tls/cert --key-file /etc/tls/key
+#    depends_on:
+#      - relay1
+#    ports:
+#      - "8080:8080"
+
+# Disabled until it's shown on the UI.
+#  clock:
+#    <<: *x-moq
+#    build:
+#      dockerfile: Dockerfile
+#    # Using relay2 just to test clustering.
+#    command: --tls-disable-verify --publish https://relay2
+#    depends_on:
+#      - relay2
