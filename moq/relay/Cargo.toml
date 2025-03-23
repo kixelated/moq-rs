@@ -1,0 +1,42 @@
+[package]
+name = "moq-relay"
+description = "Media over QUIC"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq-rs"
+license = "MIT OR Apache-2.0"
+
+version = "0.6.24"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+[dependencies]
+moq-lite = { workspace = true }
+moq-native = { workspace = true }
+web-transport = { workspace = true }
+
+# QUIC
+url = "2"
+
+# Async stuff
+tokio = { workspace = true, features = ["full"] }
+
+# Web server
+axum = { version = "0.8", features = ["tokio"] }
+hyper-serve = { version = "0.6", features = [
+	"tls-rustls",
+] } # fork of axum-server
+tower-http = { version = "0.6", features = ["cors"] }
+http-body = "1"
+
+# Error handling
+anyhow = { version = "1", features = ["backtrace"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+tracing = "0.1"
+bytes = "1"
+thiserror = "2"
+futures = "0.3"

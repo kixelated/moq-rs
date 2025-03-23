@@ -1,0 +1,37 @@
+[package]
+name = "moq-native"
+description = "Media over QUIC - Helper library for native applications"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq-rs"
+license = "MIT OR Apache-2.0"
+
+version = "0.6.8"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+[dependencies]
+moq-lite = { workspace = true }
+web-transport = { workspace = true }
+
+rustls = "0.23"
+rustls-pemfile = "2"
+rustls-native-certs = "0.8"
+quinn = "0.11"
+ring = "0.17"
+webpki = "0.22"
+rcgen = "0.13"
+time = "0.3"
+reqwest = { version = "0.12", default-features = false }
+
+hex = "0.4"
+url = "2"
+
+tokio = { workspace = true, features = ["full"] }
+futures = "0.3"
+
+anyhow = { version = "1", features = ["backtrace"] }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

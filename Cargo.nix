@@ -4503,7 +4503,7 @@ rec {
         version = "0.11.0";
         edition = "2021";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./moq-transfork; };
-        libName = "moq_transfork";
+        libName = "moq_lite";
         authors = [
           "Luke Curley"
         ];

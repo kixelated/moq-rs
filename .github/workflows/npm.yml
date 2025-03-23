@@ -3,7 +3,7 @@ name: NPM
 on:
   push:
     tags:
-      - 'moq-web-v*'
+      - 'moq-wasm-v*'
 
 jobs:
   release:
@@ -19,7 +19,7 @@ jobs:
 
       - name: Update NPM version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/moq-web-v}
+          VERSION=${GITHUB_REF#refs/tags/moq-wasm-v}
           jq ".version=\"$VERSION\"" package.json > temp.json && mv temp.json package.json
 
       - name: Authenticate with npm

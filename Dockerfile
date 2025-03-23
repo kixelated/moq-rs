@@ -47,13 +47,6 @@ COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
 COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
 ENTRYPOINT ["moq-karp"]
 
-## moq-web
-FROM caddy:alpine AS moq-web
-EXPOSE 443
-COPY --from=build-wasm /build/dist /srv
-
-ENTRYPOINT ["caddy", "file-server", "--root", "/srv", "--listen", ":443"]
-
 ## moq-relay
 FROM debian:bookworm-slim AS moq-relay
 COPY --from=build /usr/local/cargo/bin/moq-relay /usr/local/bin

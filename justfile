@@ -111,9 +111,9 @@ clock-sub:
 # Run the CI checks
 check:
 	cargo check --all-targets --all-features
-	cargo check -p moq-web --target wasm32-unknown-unknown
+	cargo check -p moq-wasm --target wasm32-unknown-unknown
 	cargo clippy --all-targets --all-features -- -D warnings
-	cargo clippy -p moq-web --target wasm32-unknown-unknown
+	cargo clippy -p moq-wasm --target wasm32-unknown-unknown
 	cargo fmt -- --check
 	cargo shear # requires: cargo binstall cargo-shear
 	npm i && npm run check
@@ -126,7 +126,7 @@ test:
 fix:
 	cargo fix --allow-staged --all-targets --all-features
 	cargo clippy --fix --allow-staged --all-targets --all-features
-	cargo clippy -p moq-web --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
+	cargo clippy -p moq-wasm --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 	npm i && npm run fix
 	cargo shear --fix

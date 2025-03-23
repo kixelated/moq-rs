@@ -28,7 +28,7 @@ jobs:
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall --no-confirm --force cargo-shear
 
-      # Install Node for moq-web
+      # Install Node for moq-wasm
       - uses: actions/setup-node@v4
 
       # Required for unstable WebCodecs and WebTransport

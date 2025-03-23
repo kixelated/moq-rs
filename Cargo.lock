@@ -769,6 +769,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "hang"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "derive_more 2.0.1",
+ "futures",
+ "hex",
+ "lazy_static",
+ "moq-lite",
+ "mp4-atom",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "web-async",
+ "web-time",
+]
+
+[[package]]
+name = "hang-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "hang",
+ "hyper-serve",
+ "moq-native",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1277,65 +1315,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-async"
-version = "0.1.3"
-dependencies = [
- "futures",
- "tokio",
- "tracing",
- "wasm-bindgen-futures",
-]
-
-[[package]]
 name = "moq-clock"
 version = "0.5.26"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "moq-lite",
  "moq-native",
- "moq-transfork",
  "tokio",
  "tracing",
  "url",
 ]
 
 [[package]]
-name = "moq-karp"
-version = "0.15.0"
+name = "moq-lite"
+version = "0.1.0"
 dependencies = [
  "bytes",
- "derive_more 2.0.1",
  "futures",
- "hex",
- "lazy_static",
- "moq-async",
- "moq-transfork",
- "mp4-atom",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
+ "num_enum",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
- "web-time",
-]
-
-[[package]]
-name = "moq-karp-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "hyper-serve",
- "moq-karp",
- "moq-native",
- "tokio",
- "tower-http",
- "tracing",
- "url",
+ "web-async",
+ "web-transport",
 ]
 
 [[package]]
@@ -1346,7 +1350,7 @@ dependencies = [
  "clap",
  "futures",
  "hex",
- "moq-transfork",
+ "moq-lite",
  "quinn",
  "rcgen",
  "reqwest",
@@ -1374,8 +1378,8 @@ dependencies = [
  "futures",
  "http-body",
  "hyper-serve",
+ "moq-lite",
  "moq-native",
- "moq-transfork",
  "thiserror 2.0.12",
  "tokio",
  "tower-http",
@@ -1385,30 +1389,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-transfork"
-version = "0.12.0"
-dependencies = [
- "bytes",
- "futures",
- "moq-async",
- "num_enum",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "web-transport",
-]
-
-[[package]]
-name = "moq-web"
-version = "0.4.6"
+name = "moq-wasm"
+version = "0.1.0"
 dependencies = [
  "baton",
  "console_error_panic_hook",
  "gloo-net",
+ "hang",
  "hex",
  "js-sys",
- "moq-async",
- "moq-karp",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -1416,6 +1405,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-tracing",
+ "web-async",
  "web-codecs",
  "web-streams",
  "web-sys",
@@ -2761,6 +2751,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "web-async"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79a5427363c7415f6fb0334d99028746fa340bbe0ee802ce210f1fc80ac0f74a"
+dependencies = [
+ "tokio",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

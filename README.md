@@ -13,7 +13,7 @@ If you're curious about the protocol, check out the current [specification](http
 The project is split into a few crates:
 
 -   [moq-relay](moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
-- [moq-web](moq-web): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
+- [moq-wasm](moq-wasm): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
 -   [moq-transfork](moq-transfork): The underlying network protocol. It can be used by live applications that need real-time and scale, even if they're not media.
 - [moq-karp](moq-karp): The underlying media protocol powered by moq-transfork. It includes a CLI for importing/exporting to other formats, for example integrating with ffmpeg.
 -   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
@@ -65,9 +65,9 @@ It's designed to be run in a datacenter, relaying media across multiple hops to 
 This listens for WebTransport connections on `UDP https://localhost:4443` by default.
 You need a client to connect to that address, to both publish and consume media.
 
-## moq-web
+## moq-wasm
 
-[moq-web](moq-web) is a web client that can consume media (and soon publish).
+[moq-wasm](moq-wasm) is a web client that can consume media (and soon publish).
 It's available [on NPM](https://www.npmjs.com/package/@kixelated/moq) as both a JS library and web component.
 
 For example:
@@ -81,7 +81,7 @@ For example:
 ```
 
 
-See the [moq-web README](moq-web/README.md) for more information.
+See the [moq-wasm README](moq-wasm/README.md) for more information.
 
 ## moq-karp
 

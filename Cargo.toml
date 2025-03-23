@@ -1,13 +1,12 @@
 [workspace]
 members = [
-	"moq-transfork",
-	"moq-relay",
-	"moq-clock",
-	"moq-native",
-	"moq-karp",
-	"moq-karp-cli",
-	"moq-web",
-	"moq-async",
+	"moq/lite",
+	"moq/clock",
+	"moq/relay",
+	"moq/native",
+	"hang/lib",
+	"hang/cli",
+	"hang/wasm",
 ]
 resolver = "2"
 
@@ -16,6 +15,12 @@ resolver = "2"
 #web-transport = { path = "../web-transport-rs/web-transport" }
 web-transport = "0.8"
 
-[profile.release.package.moq-web]
+moq-lite = { path = "moq/lite" }
+moq-native = { path = "moq/native" }
+hang = { path = "hang/lib" }
+
+tokio = "1.43"
+
+[profile.release.package.moq-wasm]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
