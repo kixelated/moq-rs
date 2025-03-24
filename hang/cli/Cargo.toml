@@ -10,23 +10,19 @@ edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hang = { workspace = true }
-moq-native = { workspace = true }
-
-clap = { version = "4", features = ["derive"] }
 anyhow = { version = "1", features = ["backtrace"] }
-
 axum = { version = "0.8", features = ["tokio"] }
+clap = { version = "4", features = ["derive"] }
+hang = { workspace = true }
 hyper-serve = { version = "0.6", features = ["tls-rustls"] }
-tower-http = { version = "0.6", features = ["cors"] }
-
+moq-native = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-url = "2"
+tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
+url = "2"
 
 [[bin]]
 name = "hang"

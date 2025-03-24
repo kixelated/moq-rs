@@ -10,23 +10,14 @@ edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-native = { workspace = true }
-moq-lite = { workspace = true }
-
-# QUIC
-url = "2"
-
-# Async stuff
-tokio = { workspace = true, features = ["full"] }
-
-# CLI, logging, error handling
-clap = { version = "4", features = ["derive"] }
 anyhow = { version = "1", features = ["backtrace"] }
-tracing = "0.1"
-
-# CLOCK STUFF
 chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+moq-lite = { workspace = true }
+moq-native = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = "0.1"
+url = "2"

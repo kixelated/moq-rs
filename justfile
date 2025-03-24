@@ -20,11 +20,11 @@ setup:
 	# Make sure the right components are installed.
 	rustup component add rustfmt clippy
 
-	# Install cargo binstall if needed.
-	cargo install cargo-binstall
+	# Install cargo shear
+	cargo install cargo-shear
 
-	# Install cargo shear if needed.
-	cargo binstall --no-confirm cargo-shear
+	# Install cargo sort
+	cargo install cargo-sort
 
 # Run the relay, web server, and publish bbb.
 all:
@@ -115,7 +115,8 @@ check:
 	cargo clippy --all-targets --all-features -- -D warnings
 	cargo clippy -p moq-wasm --target wasm32-unknown-unknown
 	cargo fmt -- --check
-	cargo shear # requires: cargo binstall cargo-shear
+	cargo shear # requires: cargo install cargo-shear
+	cargo sort --workspace -- check # requires: cargo install cargo-sort
 	npm i && npm run check
 
 # Run any CI tests
@@ -128,8 +129,9 @@ fix:
 	cargo clippy --fix --allow-staged --all-targets --all-features
 	cargo clippy -p moq-wasm --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
-	npm i && npm run fix
 	cargo shear --fix
+	cargo sort --workspace
+	npm i && npm run fix
 
 # Upgrade any tooling
 upgrade:

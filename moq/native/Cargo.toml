@@ -12,26 +12,22 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-lite = { workspace = true }
-web-transport = { workspace = true }
-
-rustls = "0.23"
-rustls-pemfile = "2"
-rustls-native-certs = "0.8"
-quinn = "0.11"
-ring = "0.17"
-webpki = "0.22"
-rcgen = "0.13"
-time = "0.3"
-reqwest = { version = "0.12", default-features = false }
-
-hex = "0.4"
-url = "2"
-
-tokio = { workspace = true, features = ["full"] }
-futures = "0.3"
-
 anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+hex = "0.4"
+moq-lite = { workspace = true }
+quinn = "0.11"
+rcgen = "0.13"
+reqwest = { version = "0.12", default-features = false }
+ring = "0.17"
+rustls = "0.23"
+rustls-native-certs = "0.8"
+rustls-pemfile = "2"
+time = "0.3"
+tokio = { workspace = true, features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+web-transport = { workspace = true }
+webpki = "0.22"

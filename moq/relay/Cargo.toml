@@ -12,31 +12,20 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-lite = { workspace = true }
-moq-native = { workspace = true }
-web-transport = { workspace = true }
-
-# QUIC
-url = "2"
-
-# Async stuff
-tokio = { workspace = true, features = ["full"] }
-
-# Web server
+anyhow = { version = "1", features = ["backtrace"] }
 axum = { version = "0.8", features = ["tokio"] }
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+http-body = "1"
 hyper-serve = { version = "0.6", features = [
 	"tls-rustls",
 ] } # fork of axum-server
-tower-http = { version = "0.6", features = ["cors"] }
-http-body = "1"
-
-# Error handling
-anyhow = { version = "1", features = ["backtrace"] }
-
-# CLI
-clap = { version = "4", features = ["derive"] }
-
-tracing = "0.1"
-bytes = "1"
+moq-lite = { workspace = true }
+moq-native = { workspace = true }
 thiserror = "2"
-futures = "0.3"
+tokio = { workspace = true, features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+url = "2"
+web-transport = { workspace = true }

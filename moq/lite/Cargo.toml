@@ -13,17 +13,15 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 bytes = "1"
+futures = "0.3"
+num_enum = "0.7"
 thiserror = "2"
-tracing = "0.1"
-
 tokio = { workspace = true, features = [
 	"macros",
 	"io-util",
 	"sync",
 	"test-util",
 ] }
-
-web-transport = { workspace = true }
-futures = "0.3"
-num_enum = "0.7"
+tracing = "0.1"
 web-async = "0.1"
+web-transport = { workspace = true }

@@ -10,30 +10,23 @@ edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-lite = { workspace = true }
-
-web-async = "0.1"
 bytes = "1.10"
+futures = "0.3"
 hex = "0.4"
-
+lazy_static = "1"
+moq-lite = { workspace = true }
 mp4-atom = { version = "0.7.1", features = ["tokio", "bytes", "serde"] }
-
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = { version = "3", features = ["hex"] }
-
 thiserror = "2"
-tracing = "0.1"
-lazy_static = "1"
-regex = "1"
-futures = "0.3"
-
 tokio = { workspace = true, features = ["macros"] }
-
+tracing = "0.1"
+web-async = "0.1"
 web-time = "1"
 
 [dependencies.derive_more]

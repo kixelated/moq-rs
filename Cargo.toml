@@ -1,25 +1,23 @@
 [workspace]
 members = [
-	"moq/lite",
-	"moq/clock",
-	"moq/relay",
-	"moq/native",
-	"hang/lib",
 	"hang/cli",
+	"hang/lib",
 	"hang/wasm",
+	"moq/clock",
+	"moq/lite",
+	"moq/native",
+	"moq/relay",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-# Make it easy to test web-transport changes
 #web-transport = { path = "../web-transport-rs/web-transport" }
 web-transport = "0.8"
-
-moq-lite = { path = "moq/lite" }
-moq-native = { path = "moq/native" }
-hang = { path = "hang/lib" }
-
 tokio = "1.43"
+
+moq-lite = { version = "0.1", path = "moq/lite" }
+moq-native = { version = "0.6", path = "moq/native" }
+hang = { version = "0.1", path = "hang/lib" }
 
 [profile.release.package.moq-wasm]
 # Tell `rustc` to optimize for small code size.
