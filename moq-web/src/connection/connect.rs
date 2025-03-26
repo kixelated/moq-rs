@@ -22,7 +22,7 @@ pub struct Connect {
 
 impl Connect {
 	pub fn new(mut addr: Url) -> Self {
-		let path = addr.path().to_string();
+		let path = addr.path().strip_prefix('/').unwrap().to_string();
 
 		// Connect using the base of the URL.
 		addr.set_fragment(None);
