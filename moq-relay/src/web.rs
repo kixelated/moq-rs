@@ -112,8 +112,9 @@ async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl Int
 
 /// Serve the latest group for a given track
 async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::response::Result<ServeGroup> {
+	let parts: Vec<_> = path.split('/').filter(|s| !s.is_empty()).collect();
 	let track = moq_transfork::Track {
-		path: path.split("/").collect(),
+		path: format!("/{}", parts.join("/")),
 		priority: 0,
 		order: moq_transfork::GroupOrder::Desc,
 	};
