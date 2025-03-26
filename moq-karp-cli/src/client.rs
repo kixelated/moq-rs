@@ -21,7 +21,7 @@ impl<T: AsyncRead + Unpin> BroadcastClient<T> {
 
 	pub async fn run(&mut self) -> anyhow::Result<()> {
 		let url = Url::parse(&self.url).context("invalid URL")?;
-		let path = url.path().to_string();
+		let path = url.path().strip_prefix('/').unwrap().to_string();
 
 		let session = self.connect(url).await?;
 
