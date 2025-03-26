@@ -112,7 +112,6 @@ async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl Int
 
 /// Serve the latest group for a given track
 async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::response::Result<ServeGroup> {
-	println!("fetching: {}", path);
 	let track = moq_transfork::Track {
 		path,
 		priority: 0,
