@@ -87,20 +87,20 @@ rec {
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
-    "moq-transfork" = rec {
-      packageId = "moq-transfork";
+    "moq-lite" = rec {
+      packageId = "moq-lite";
       build = internal.buildRustCrateWithFeatures {
-        packageId = "moq-transfork";
+        packageId = "moq-lite";
       };
 
       # Debug support which might change between releases.
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
-    "moq-web" = rec {
-      packageId = "moq-web";
+    "hang-wasm" = rec {
+      packageId = "hang-wasm";
       build = internal.buildRustCrateWithFeatures {
-        packageId = "moq-web";
+        packageId = "hang-wasm";
       };
 
       # Debug support which might change between releases.

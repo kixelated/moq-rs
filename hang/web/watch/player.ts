@@ -4,7 +4,7 @@ import { Broadcast } from "./broadcast";
 
 export interface PlayerConfig {
 	connection: Connection;
-	path: string[];
+	path: string;
 	canvas: HTMLCanvasElement;
 }
 

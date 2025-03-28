@@ -40,12 +40,12 @@ FROM debian:bookworm-slim AS moq-clock
 COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
 ENTRYPOINT ["moq-clock"]
 
-## moq-karp (and moq-bbb)
-FROM debian:bookworm-slim AS moq-karp
+## hang (and hang-bbb)
+FROM debian:bookworm-slim AS hang
 RUN apt-get update && apt-get install -y ffmpeg wget
-COPY ./deploy/moq-bbb /usr/local/bin/moq-bbb
-COPY --from=build /usr/local/cargo/bin/moq-karp /usr/local/bin
-ENTRYPOINT ["moq-karp"]
+COPY ./deploy/hang-bbb /usr/local/bin/hang-bbb
+COPY --from=build /usr/local/cargo/bin/hang /usr/local/bin
+ENTRYPOINT ["hang"]
 
 ## moq-relay
 FROM debian:bookworm-slim AS moq-relay

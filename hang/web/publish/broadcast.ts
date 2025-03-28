@@ -7,7 +7,7 @@ import * as Hex from "../common/hex";
 import { isAudioTrackSettings, isVideoTrackSettings } from "../common/settings";
 
 export interface BroadcastConfig {
-	path: string[];
+	path: string;
 	media: MediaStream;
 	id?: number;
 
@@ -22,7 +22,7 @@ export interface BroadcastConfigTrack {
 
 export class Broadcast {
 	#config: BroadcastConfig;
-	#path: string[];
+	#path: string;
 
 	constructor(config: BroadcastConfig) {
 		const id = config.id || (new Date().getTime() / 1000).toFixed(0);

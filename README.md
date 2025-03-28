@@ -10,15 +10,19 @@ See [quic.video](https://quic.video) for more information.
 Note: this project is a [fork of the IETF draft](https://quic.video/blog/transfork) to speed up development.
 If you're curious about the protocol, check out the current [specification](https://github.com/kixelated/moq-drafts).
 
-The project is split into a few crates:
+The project is split into two categories:
 
--   [moq-relay](moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
-- [moq-wasm](moq-wasm): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
--   [moq-transfork](moq-transfork): The underlying network protocol. It can be used by live applications that need real-time and scale, even if they're not media.
-- [moq-karp](moq-karp): The underlying media protocol powered by moq-transfork. It includes a CLI for importing/exporting to other formats, for example integrating with ffmpeg.
--   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
--   [moq-native](moq-native): Helpers to configure the native MoQ tools.
-
+- [moq](moq): The core transport and libraries. Despite the name, this is not specific to media.
+  - [moq-relay](moq/relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
+  - [moq-lite](moq/lite): The underlying pub/sub protocol providing real-time latency and scale. This is a simplified fork of the IETF [moq-transport draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/).
+  - [moq-clock](moq/clock): A dumb clock client/server just to prove MoQ can be used for more than media.
+  - [moq-native](moq/native): Helpers to configure the MoQ on native platforms.
+  - [moq-web](moq/web): A web library written in Typescript.
+- [hang](hang): A media-specific application built on top of MoQ.
+	- [hang-lib](hang/lib): The underlying media protocol powered by moq-lite.
+	- [hang-cli](hang/cli): A CLI for publishing and subscribing to media.
+	- [hang-web](hang/web): A web client written in Typescript.
+	- [hang-wasm](hang/wasm): A web client written in Rust and using WASM. This is mostly unsupported for now.
 
 
 # Usage

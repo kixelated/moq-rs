@@ -16,7 +16,7 @@ export class Subscriber {
 		this.#quic = quic;
 	}
 
-	async announced(prefix: string[]): Promise<Queue<Announced>> {
+	async announced(prefix = ""): Promise<Queue<Announced>> {
 		const announced = new Queue<Announced>();
 
 		const msg = new Message.AnnounceInterest(prefix);
@@ -29,8 +29,8 @@ export class Subscriber {
 		return announced;
 	}
 
-	async runAnnounced(stream: Stream, announced: Queue<Announced>, prefix: string[]) {
-		const toggle: Map<string[], Announced> = new Map();
+	async runAnnounced(stream: Stream, announced: Queue<Announced>, prefix: string) {
+		const toggle: Map<string, Announced> = new Map();
 
 		try {
 			for (;;) {
@@ -115,11 +115,11 @@ export class Subscriber {
 }
 
 export class Announced {
-	readonly path: string[];
+	readonly path: string;
 
 	#closed = new Watch<Closed | undefined>(undefined);
 
-	constructor(path: string[]) {
+	constructor(path: string) {
 		this.path = path;
 	}
 

@@ -1,19 +1,18 @@
-import { asError } from "../common/error";
-import * as Message from "./message";
-import { Reader, Stream } from "./stream";
+import { asError } from "../util/error";
 
-import type { Queue } from "../common/async";
-import { Closed } from "./error";
-import type { Track, TrackReader } from "./model";
+import type { Queue } from "../util/async";
+import { Closed } from "../util/error";
+import type { Track, TrackReader } from "./track";
 import { Publisher } from "./publisher";
 import { type Announced, Subscriber } from "./subscriber";
+import * as Wire from "../wire";
 
 export class Connection {
 	// The established WebTransport session.
 	#quic: WebTransport;
 
 	// Use to receive/send session messages.
-	#session: Stream;
+	#session: Wire.Stream;
 
 	// Module for contributing tracks.
 	#publisher: Publisher;
@@ -24,7 +23,7 @@ export class Connection {
 	// Async work running in the background
 	#running: Promise<void>;
 
-	constructor(quic: WebTransport, session: Stream) {
+	constructor(quic: WebTransport, session: Wire.Stream) {
 		this.#quic = quic;
 		this.#session = session;
 
@@ -50,7 +49,7 @@ export class Connection {
 		this.#publisher.publish(track);
 	}
 
-	async announced(prefix: string[] = []): Promise<Queue<Announced>> {
+	async announced(prefix = ""): Promise<Queue<Announced>> {
 		return this.#subscriber.announced(prefix);
 	}
 
@@ -61,7 +60,7 @@ export class Connection {
 	async #runSession() {
 		// Receive messages until the connection is closed.
 		for (;;) {
-			const msg = await Message.SessionInfo.decode_maybe(this.#session.reader);
+			const msg = await Wire.SessionInfo.decode_maybe(this.#session.reader);
 			if (!msg) break;
 			// TODO use the session info
 		}
@@ -69,7 +68,7 @@ export class Connection {
 
 	async #runBidis() {
 		for (;;) {
-			const next = await Stream.accept(this.#quic);
+			const next = await Wire.Stream.accept(this.#quic);
 			if (!next) {
 				break;
 			}
@@ -81,53 +80,35 @@ export class Connection {
 		}
 	}
 
-	async #runBidi(msg: Message.Bi, stream: Stream) {
+	async #runBidi(msg: Wire.StreamBi, stream: Wire.Stream) {
 		console.debug("received bi stream: ", msg);
 
-		if (msg instanceof Message.SessionClient) {
+		if (msg instanceof Wire.SessionClient) {
 			throw new Error("duplicate session stream");
 		}
 
-		if (msg instanceof Message.AnnounceInterest) {
+		if (msg instanceof Wire.AnnounceInterest) {
 			if (!this.#subscriber) {
 				throw new Error("not a subscriber");
 			}
 
 			return await this.#publisher.runAnnounce(msg, stream);
 		}
-		if (msg instanceof Message.Subscribe) {
+
+		if (msg instanceof Wire.Subscribe) {
 			if (!this.#publisher) {
 				throw new Error("not a publisher");
 			}
 
 			return await this.#publisher.runSubscribe(msg, stream);
 		}
-		if (msg instanceof Message.Datagrams) {
-			if (!this.#publisher) {
-				throw new Error("not a publisher");
-			}
 
-			return await this.#publisher.runDatagrams(msg, stream);
-		}
-		if (msg instanceof Message.Fetch) {
-			if (!this.#publisher) {
-				throw new Error("not a publisher");
-			}
-
-			return await this.#publisher.runFetch(msg, stream);
-		}
-		if (msg instanceof Message.InfoRequest) {
-			if (!this.#publisher) {
-				throw new Error("not a publisher");
-			}
-
-			return await this.#publisher.runInfo(msg, stream);
-		}
+		throw new Error("unknown message: ", msg);
 	}
 
 	async #runUnis() {
 		for (;;) {
-			const next = await Reader.accept(this.#quic);
+			const next = await Wire.Reader.accept(this.#quic);
 			if (!next) {
 				break;
 			}
@@ -139,10 +120,10 @@ export class Connection {
 		}
 	}
 
-	async #runUni(msg: Message.Uni, stream: Reader) {
+	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
 		console.debug("received uni stream: ", msg);
 
-		if (msg instanceof Message.Group) {
+		if (msg instanceof Wire.Group) {
 			if (!this.#subscriber) {
 				throw new Error("not a subscriber");
 			}

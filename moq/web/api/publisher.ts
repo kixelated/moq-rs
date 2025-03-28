@@ -1,14 +1,13 @@
-import { Watch, type WatchNext } from "../common/async";
-import { Closed } from "./error";
-import * as Message from "./message";
-import type { GroupReader, TrackReader } from "./model";
-import { type Stream, Writer } from "./stream";
+import { Watch } from "../util/async";
+import { Closed } from "../util/error";
+import * as Wire from "../wire";
+import type { TrackReader } from "./track";
+import type { GroupReader } from "./group";
 
 export class Publisher {
 	#quic: WebTransport;
 
-	// Our announced broadcasts.
-	// NOTE: Because Javascript is dumb, we have to JSON.stringify the path.
+	// Our announced tracks.
 	#announce = new Watch(new Map<string, TrackReader>());
 
 	// Their subscribed tracks.
@@ -21,12 +20,7 @@ export class Publisher {
 	// Publish a track
 	publish(track: TrackReader) {
 		this.#announce.update((current) => {
-			const key = JSON.stringify(track.path);
-			if (current.has(key)) {
-				throw new Error(`already announced: ${track.path.toString()}`);
-			}
-
-			current.set(key, track);
+			current.set(track.path, track);
 			return current;
 		});
 
@@ -34,12 +28,11 @@ export class Publisher {
 		// track.closed().then(() => this.#announce.delete(track.path))
 	}
 
-	#get(path: string[]): TrackReader | undefined {
-		const key = JSON.stringify(path);
-		return this.#announce.value()[0].get(key);
+	#get(path: string): TrackReader | undefined {
+		return this.#announce.value()[0].get(path);
 	}
 
-	async runAnnounce(msg: Message.AnnounceInterest, stream: Stream) {
+	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
 		let current = this.#announce.value();
 		let seen = new Map<string, TrackReader>();
 
@@ -52,7 +45,7 @@ export class Publisher {
 				}
 
 				const prefix = announce.path.slice(0, msg.prefix.length);
-				if (!prefix.every((v, i) => v === msg.prefix[i])) {
+				if (prefix !== msg.prefix) {
 					continue;
 				}
 
@@ -65,14 +58,14 @@ export class Publisher {
 
 				// Add a new track
 				const suffix = announce.path.slice(msg.prefix.length);
-				const active = new Message.Announce(suffix, "active");
+				const active = new Wire.Announce(suffix, "active");
 				await active.encode(stream.writer);
 			}
 
 			// Remove any closed tracks
 			for (const announce of seen.values()) {
 				const suffix = announce.path.slice(msg.prefix.length);
-				const ended = new Message.Announce(suffix, "closed");
+				const ended = new Wire.Announce(suffix, "closed");
 				await ended.encode(stream.writer);
 			}
 
@@ -84,7 +77,7 @@ export class Publisher {
 		}
 	}
 
-	async runSubscribe(msg: Message.Subscribe, stream: Stream) {
+	async runSubscribe(msg: Wire.Subscribe, stream: Wire.Stream) {
 		if (this.#subscribe.has(msg.id)) {
 			throw new Error(`duplicate subscribe for id: ${msg.id}`);
 		}
@@ -101,14 +94,12 @@ export class Publisher {
 		subscribe.run().catch((err) => console.warn("failed to run subscribe: ", err));
 
 		try {
-			const info = new Message.Info(track.priority);
-			info.order = track.order;
-			info.latest = track.latest;
+			const info = new Wire.SubscribeInfo(track.priority, track.order, track.latest);
 			await info.encode(stream.writer);
 
 			for (;;) {
 				// TODO try_decode
-				const update = await Message.SubscribeUpdate.decode_maybe(stream.reader);
+				const update = await Wire.SubscribeUpdate.decode_maybe(stream.reader);
 				if (!update) {
 					subscribe.close();
 					break;
@@ -120,32 +111,6 @@ export class Publisher {
 			subscribe.close(Closed.from(err));
 		}
 	}
-
-	async runDatagrams(msg: Message.Datagrams, stream: Stream) {
-		await stream.writer.reset(501);
-		throw new Error("datagrams not implemented");
-	}
-
-	async runFetch(msg: Message.Fetch, stream: Stream) {
-		await stream.writer.reset(501);
-		throw new Error("fetch not implemented");
-	}
-
-	async runInfo(msg: Message.InfoRequest, stream: Stream) {
-		const track = this.#get(msg.path);
-		if (!track) {
-			await stream.writer.reset(404);
-			return;
-		}
-
-		const info = new Message.Info(track.priority);
-		info.order = track.order;
-		info.latest = track.latest;
-
-		await info.encode(stream.writer);
-
-		throw new Error("info not implemented");
-	}
 }
 
 class Subscribed {
@@ -155,7 +120,7 @@ class Subscribed {
 
 	#closed = new Watch<Closed | undefined>(undefined);
 
-	constructor(msg: Message.Subscribe, track: TrackReader, quic: WebTransport) {
+	constructor(msg: Wire.Subscribe, track: TrackReader, quic: WebTransport) {
 		this.#id = msg.id;
 		this.#track = track;
 		this.#quic = quic;
@@ -181,8 +146,8 @@ class Subscribed {
 	}
 
 	async #runGroup(group: GroupReader) {
-		const msg = new Message.Group(this.#id, group.id);
-		const stream = await Writer.open(this.#quic, msg);
+		const msg = new Wire.Group(this.#id, group.id);
+		const stream = await Wire.Writer.open(this.#quic, msg);
 
 		for (;;) {
 			const frame = await group.readFrame();

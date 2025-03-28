@@ -1,12 +1,12 @@
 {
 	"name": "@kixelated/moq",
 	"type": "module",
-	"version": "0.1.4",
+	"version": "0.2.0",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
-	"repository": "github:kixelated/moq-js",
+	"repository": "github:kixelated/moq",
 	"scripts": {
-		"build": "tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
+		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
 		"check": "biome check",
 		"fix": "biome check --write"
 	},

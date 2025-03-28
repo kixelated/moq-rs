@@ -1,5 +1,5 @@
 {
-	"include": ["web"],
+	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"],
 	"compilerOptions": {
 		"lib": ["es2022", "esnext.decorators", "dom"],
@@ -8,21 +8,18 @@
 		"moduleResolution": "bundler",
 
 		"strict": true,
-		"outDir": "dist",
-		"declaration": true,
-		"sourceMap": true,
 		"isolatedModules": true,
 
+		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noPropertyAccessFromIndexSignature": true,
+		// "noUncheckedIndexedAccess": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"skipLibCheck": true,
-
-		// JSX
-		"jsx": "react",
-		"jsxFactory": "jsx",
-		"jsxFragmentFactory": "jsxFragment"
-	},
-	"paths": {
-		"@/*": ["web/*"]
+		"skipLibCheck": true
 	}
 }

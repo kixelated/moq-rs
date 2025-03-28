@@ -1,0 +1,28 @@
+{
+	"include": ["**/*.ts", "**/*.tsx"],
+	"exclude": ["node_modules"],
+	"compilerOptions": {
+		"lib": ["es2022", "esnext.decorators", "dom"],
+		"target": "es2022",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+
+		"strict": true,
+		"outDir": "dist",
+		"declaration": true,
+		"sourceMap": true,
+		"isolatedModules": true,
+
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"skipLibCheck": true,
+
+		// JSX
+		"jsx": "react",
+		"jsxFactory": "jsx",
+		"jsxFragmentFactory": "jsxFragment"
+	},
+	"paths": {
+		"@/*": ["*"]
+	}
+}

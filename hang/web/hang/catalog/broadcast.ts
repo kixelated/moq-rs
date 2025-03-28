@@ -3,7 +3,7 @@ import { type Audio, decodeAudio } from "./audio";
 import { type Video, decodeVideo } from "./video";
 
 export interface Broadcast {
-	path: string[];
+	path: string;
 	video: Video[];
 	audio: Audio[];
 }
@@ -15,7 +15,7 @@ export function encode(catalog: Broadcast): Uint8Array {
 	return encoder.encode(str);
 }
 
-export function decode(path: string[], raw: Uint8Array): Broadcast {
+export function decode(path: string, raw: Uint8Array): Broadcast {
 	const decoder = new TextDecoder();
 	const str = decoder.decode(raw);
 
@@ -29,7 +29,7 @@ export function decode(path: string[], raw: Uint8Array): Broadcast {
 	return catalog;
 }
 
-export async function fetch(connection: Transfork.Connection, path: string[]): Promise<Broadcast> {
+export async function fetch(connection: Transfork.Connection, path: string): Promise<Broadcast> {
 	const track = new Transfork.Track(path, 0);
 	const sub = await connection.subscribe(track);
 	try {

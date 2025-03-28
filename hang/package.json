@@ -1,5 +1,5 @@
 {
-	"name": "@kixelated/moq",
+	"name": "@kixelated/hang",
 	"version": "0.0.1",
 	"type": "module",
 	"module": "./dist/index.js",

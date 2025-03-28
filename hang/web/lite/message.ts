@@ -146,22 +146,22 @@ export class SessionInfo {
 export type AnnounceStatus = "active" | "closed";
 
 export class Announce {
-	suffix: string[];
+	suffix: string;
 	status: AnnounceStatus;
 
-	constructor(suffix: string[], status: AnnounceStatus) {
+	constructor(suffix: string, status: AnnounceStatus) {
 		this.suffix = suffix;
 		this.status = status;
 	}
 
 	async encode(w: Writer) {
 		await w.u53(this.status === "active" ? 1 : 0);
-		await w.path(this.suffix);
+		await w.string(this.suffix);
 	}
 
 	static async decode(r: Reader): Promise<Announce> {
 		const status = (await r.u53()) === 1 ? "active" : "closed";
-		const suffix = await r.path();
+		const suffix = await r.string();
 		return new Announce(suffix, status);
 	}
 
@@ -174,14 +174,14 @@ export class Announce {
 export class AnnounceInterest {
 	static StreamID = 0x1;
 
-	constructor(public prefix: string[]) {}
+	constructor(public prefix: string) {}
 
 	async encode(w: Writer) {
-		await w.path(this.prefix);
+		await w.string(this.prefix);
 	}
 
 	static async decode(r: Reader): Promise<AnnounceInterest> {
-		const prefix = await r.path();
+		const prefix = await r.string();
 		return new AnnounceInterest(prefix);
 	}
 }
@@ -230,11 +230,11 @@ export class SubscribeUpdate {
 
 export class Subscribe extends SubscribeUpdate {
 	id: bigint;
-	path: string[];
+	path: string;
 
 	static StreamID = 0x2;
 
-	constructor(id: bigint, path: string[], priority: number) {
+	constructor(id: bigint, path: string, priority: number) {
 		super(priority);
 
 		this.id = id;
@@ -243,13 +243,13 @@ export class Subscribe extends SubscribeUpdate {
 
 	async encode(w: Writer) {
 		await w.u62(this.id);
-		await w.path(this.path);
+		await w.string(this.path);
 		await super.encode(w);
 	}
 
 	static async decode(r: Reader): Promise<Subscribe> {
 		const id = await r.u62();
-		const path = await r.path();
+		const path = await r.string();
 		const update = await SubscribeUpdate.decode(r);
 
 		const subscribe = new Subscribe(id, path, update.priority);
@@ -259,10 +259,6 @@ export class Subscribe extends SubscribeUpdate {
 
 		return subscribe;
 	}
-}
-
-export class Datagrams extends Subscribe {
-	static StreamID = 0x3;
 }
 
 export class Info {
@@ -290,70 +286,6 @@ export class Info {
 		info.order = order;
 
 		return info;
-	}
-}
-
-export class InfoRequest {
-	path: string[];
-
-	static StreamID = 0x5;
-
-	constructor(path: string[]) {
-		this.path = path;
-	}
-
-	async encode(w: Writer) {
-		await w.path(this.path);
-	}
-
-	static async decode(r: Reader): Promise<InfoRequest> {
-		const path = await r.path();
-		return new InfoRequest(path);
-	}
-}
-
-export class FetchUpdate {
-	priority: number;
-
-	constructor(priority: number) {
-		this.priority = priority;
-	}
-
-	async encode(w: Writer) {
-		await w.u53(this.priority);
-	}
-
-	static async decode(r: Reader): Promise<FetchUpdate> {
-		return new FetchUpdate(await r.u53());
-	}
-
-	static async decode_maybe(r: Reader): Promise<FetchUpdate | undefined> {
-		if (await r.done()) return;
-		return await FetchUpdate.decode(r);
-	}
-}
-
-export class Fetch extends FetchUpdate {
-	path: string[];
-
-	static StreamID = 0x4;
-
-	constructor(path: string[], priority: number) {
-		super(priority);
-		this.path = path;
-	}
-
-	async encode(w: Writer) {
-		await w.path(this.path);
-		await super.encode(w);
-	}
-
-	static async decode(r: Reader): Promise<Fetch> {
-		const path = await r.path();
-		const update = await FetchUpdate.decode(r);
-
-		const fetch = new Fetch(path, update.priority);
-		return fetch;
 	}
 }
 
@@ -419,5 +351,5 @@ export class Frame {
 	}
 }
 
-export type Bi = SessionClient | AnnounceInterest | Subscribe | Datagrams | Fetch | InfoRequest;
+export type Bi = SessionClient | AnnounceInterest | Subscribe;
 export type Uni = Group;

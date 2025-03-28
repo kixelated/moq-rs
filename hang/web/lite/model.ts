@@ -3,7 +3,7 @@ import type { Closed } from "./error";
 import { Order } from "./message";
 
 export class Track {
-	readonly path: string[];
+	readonly path: string;
 	readonly priority: number;
 	order = Order.Any;
 
@@ -13,7 +13,7 @@ export class Track {
 	readers = 0;
 	closed?: Closed;
 
-	constructor(path: string[], priority: number) {
+	constructor(path: string, priority: number) {
 		this.path = path;
 		this.priority = priority;
 	}

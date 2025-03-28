@@ -1,4 +1,4 @@
-import * as Message from "./message";
+import * as Wire from ".";
 
 const MAX_U6 = 2 ** 6 - 1;
 const MAX_U14 = 2 ** 14 - 1;
@@ -6,6 +6,9 @@ const MAX_U30 = 2 ** 30 - 1;
 const MAX_U31 = 2 ** 31 - 1;
 const MAX_U53 = Number.MAX_SAFE_INTEGER;
 const MAX_U62: bigint = 2n ** 62n - 1n;
+
+export type StreamBi = Wire.SessionClient | Wire.AnnounceInterest | Wire.Subscribe;
+export type StreamUni = Wire.Group;
 
 export class Stream {
 	reader: Reader;
@@ -19,28 +22,22 @@ export class Stream {
 		this.reader = new Reader(props.readable);
 	}
 
-	static async accept(quic: WebTransport): Promise<[Message.Bi, Stream] | undefined> {
+	static async accept(quic: WebTransport): Promise<[StreamBi, Stream] | undefined> {
 		const reader = quic.incomingBidirectionalStreams.getReader();
 		const next = await reader.read();
 		reader.releaseLock();
 
 		if (next.done) return;
 		const stream = new Stream(next.value);
-		let msg: Message.Bi;
+		let msg: StreamBi;
 
 		const typ = await stream.reader.u8();
-		if (typ === Message.SessionClient.StreamID) {
-			msg = await Message.SessionClient.decode(stream.reader);
-		} else if (typ === Message.AnnounceInterest.StreamID) {
-			msg = await Message.AnnounceInterest.decode(stream.reader);
-		} else if (typ === Message.Subscribe.StreamID) {
-			msg = await Message.Subscribe.decode(stream.reader);
-		} else if (typ === Message.Datagrams.StreamID) {
-			msg = await Message.Datagrams.decode(stream.reader);
-		} else if (typ === Message.Fetch.StreamID) {
-			msg = await Message.Fetch.decode(stream.reader);
-		} else if (typ === Message.InfoRequest.StreamID) {
-			msg = await Message.InfoRequest.decode(stream.reader);
+		if (typ === Wire.SessionClient.StreamID) {
+			msg = await Wire.SessionClient.decode(stream.reader);
+		} else if (typ === Wire.AnnounceInterest.StreamID) {
+			msg = await Wire.AnnounceInterest.decode(stream.reader);
+		} else if (typ === Wire.Subscribe.StreamID) {
+			msg = await Wire.Subscribe.decode(stream.reader);
 		} else {
 			throw new Error(`unknown stream type: ${typ}`);
 		}
@@ -50,24 +47,18 @@ export class Stream {
 		return [msg, stream];
 	}
 
-	static async open(quic: WebTransport, msg: Message.Bi): Promise<Stream> {
+	static async open(quic: WebTransport, msg: StreamBi): Promise<Stream> {
 		const stream = new Stream(await quic.createBidirectionalStream());
 
-		if (msg instanceof Message.SessionClient) {
-			await stream.writer.u8(Message.SessionClient.StreamID);
-		} else if (msg instanceof Message.AnnounceInterest) {
-			await stream.writer.u8(Message.AnnounceInterest.StreamID);
-		} else if (msg instanceof Message.Subscribe) {
-			await stream.writer.u8(Message.Subscribe.StreamID);
-		} else if (msg instanceof Message.Datagrams) {
-			await stream.writer.u8(Message.Datagrams.StreamID);
-		} else if (msg instanceof Message.Fetch) {
-			await stream.writer.u8(Message.Fetch.StreamID);
-		} else if (msg instanceof Message.InfoRequest) {
-			await stream.writer.u8(Message.InfoRequest.StreamID);
+		if (msg instanceof Wire.SessionClient) {
+			await stream.writer.u8(Wire.SessionClient.StreamID);
+		} else if (msg instanceof Wire.AnnounceInterest) {
+			await stream.writer.u8(Wire.AnnounceInterest.StreamID);
+		} else if (msg instanceof Wire.Subscribe) {
+			await stream.writer.u8(Wire.Subscribe.StreamID);
 		} else {
 			// Make sure we're not missing any types.
-			const _: never = msg;
+			msg as never;
 			throw new Error("invalid message type");
 		}
 
@@ -161,17 +152,6 @@ export class Reader {
 		return new TextDecoder().decode(buffer);
 	}
 
-	async path(): Promise<string[]> {
-		const parts = await this.u53();
-		const path = [];
-
-		for (let i = 0; i < parts; i++) {
-			path.push(await this.string());
-		}
-
-		return path;
-	}
-
 	async u8(): Promise<number> {
 		await this.#fillTo(1);
 		return this.#slice(1)[0];
@@ -236,18 +216,18 @@ export class Reader {
 		return [this.#buffer, this.#stream];
 	}
 
-	static async accept(quic: WebTransport): Promise<[Message.Group, Reader] | undefined> {
+	static async accept(quic: WebTransport): Promise<[StreamUni, Reader] | undefined> {
 		const reader = quic.incomingUnidirectionalStreams.getReader();
 		const next = await reader.read();
 		reader.releaseLock();
 
 		if (next.done) return;
 		const stream = new Reader(next.value);
-		let msg: Message.Uni;
+		let msg: StreamUni;
 
 		const typ = await stream.u8();
-		if (typ === Message.Group.StreamID) {
-			msg = await Message.Group.decode(stream);
+		if (typ === Wire.Group.StreamID) {
+			msg = await Wire.Group.decode(stream);
 		} else {
 			throw new Error(`unknown stream type: ${typ}`);
 		}
@@ -314,13 +294,6 @@ export class Writer {
 		await this.write(data);
 	}
 
-	async path(path: string[]) {
-		await this.u53(path.length);
-		for (const part of path) {
-			await this.string(part);
-		}
-	}
-
 	async close() {
 		this.#writer.releaseLock();
 		await this.#stream.close();
@@ -336,14 +309,14 @@ export class Writer {
 		return this.#stream;
 	}
 
-	static async open(quic: WebTransport, msg: Message.Uni): Promise<Writer> {
+	static async open(quic: WebTransport, msg: StreamUni): Promise<Writer> {
 		const stream = new Writer(await quic.createUnidirectionalStream());
 
-		if (msg instanceof Message.Group) {
-			await stream.u8(Message.Group.StreamID);
+		if (msg instanceof Wire.Group) {
+			await stream.u8(Wire.Group.StreamID);
 		} else {
 			// Make sure we're not missing any types.
-			const _: never = msg;
+			msg as never;
 			throw new Error("invalid message type");
 		}
 
