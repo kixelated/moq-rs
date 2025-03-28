@@ -1,5 +1,5 @@
-import * as Catalog from "../catalog";
 import type { Connection } from "@kixelated/moq";
+import * as Catalog from "../catalog";
 import { Broadcast } from "./broadcast";
 
 export interface WatchConfig {

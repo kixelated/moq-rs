@@ -1,8 +1,8 @@
 import { Watch } from "../util/async";
 import { Closed } from "../util/error";
 import * as Wire from "../wire";
-import type { TrackReader } from "./track";
 import type { GroupReader } from "./group";
+import type { TrackReader } from "./track";
 
 export class Publisher {
 	#quic: WebTransport;

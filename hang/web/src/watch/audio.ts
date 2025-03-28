@@ -1,6 +1,6 @@
-import { Ring, RingShared } from "../util/ring";
 import type * as Catalog from "../catalog";
 import type { Frame } from "../catalog/frame";
+import { Ring, RingShared } from "../util/ring";
 import type { Component } from "./timeline";
 
 export class Renderer {

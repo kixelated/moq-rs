@@ -1,6 +1,6 @@
-import * as Hex from "../util/hex";
 import type * as Catalog from "../catalog";
 import type { Frame } from "../catalog/frame";
+import * as Hex from "../util/hex";
 import type { Component } from "./timeline";
 
 export class Renderer {

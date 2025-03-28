@@ -1,5 +1,5 @@
-import * as Catalog from "../catalog";
 import * as Moq from "@kixelated/moq";
+import * as Catalog from "../catalog";
 import * as Audio from "./audio";
 import * as Video from "./video";
 

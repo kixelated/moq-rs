@@ -1,7 +1,7 @@
-import { Deferred } from "../util/async";
 import { Frame } from "../catalog/frame";
 import type { Group, Track } from "../lite";
 import { Closed } from "../lite/error";
+import { Deferred } from "../util/async";
 
 const SUPPORTED = [
 	"avc1", // H.264

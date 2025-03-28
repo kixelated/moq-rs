@@ -1,5 +1,5 @@
-import { Context } from "./util/context";
 import { MoqElement, attribute, element } from "./util/component";
+import { Context } from "./util/context";
 import { jsx } from "./util/jsx";
 
 import "@shoelace-style/shoelace/dist/components/button/button.js";

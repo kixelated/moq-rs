@@ -1,7 +1,7 @@
 import * as Hex from "../util/hex";
-import { Connection } from "./connection";
-import { Stream } from "../wire/stream";
 import { SessionClient, SessionServer, Version } from "../wire/session";
+import { Stream } from "../wire/stream";
+import { Connection } from "./connection";
 
 export interface ClientConfig {
 	url: string;

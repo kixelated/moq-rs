@@ -1,7 +1,7 @@
 import { Queue, Watch } from "../util/async";
 import { Closed } from "../util/error";
-import { FrameReader } from "./frame";
 import * as Wire from "../wire";
+import { FrameReader } from "./frame";
 import type { Track, TrackReader } from "./track";
 
 export class Subscriber {

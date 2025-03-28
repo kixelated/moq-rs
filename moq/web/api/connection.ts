@@ -2,10 +2,10 @@ import { asError } from "../util/error";
 
 import type { Queue } from "../util/async";
 import { Closed } from "../util/error";
-import type { Track, TrackReader } from "./track";
+import * as Wire from "../wire";
 import { Publisher } from "./publisher";
 import { type Announced, Subscriber } from "./subscriber";
-import * as Wire from "../wire";
+import type { Track, TrackReader } from "./track";
 
 export class Connection {
 	// The established WebTransport session.
