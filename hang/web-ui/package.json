@@ -1,29 +1,20 @@
 {
-	"name": "@kixelated/hang",
+	"name": "@kixelated/hang-ui",
 	"type": "module",
 	"version": "0.2.0",
-	"description": "Media over QUIC library",
+	"description": "UI components for the Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
-	"exports": {
-		"./watch": "./src/watch.ts",
-		"./publish": "./src/publish.ts",
-		"./catalog": "./src/catalog.ts"
-	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
 		"check": "biome check",
 		"fix": "biome check --write"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:../../moq/web",
-		"zod": "^3.24.2",
-		"comlink": "^4.4.2"
+		"@kixelated/hang": "workspace:../../hang/web",
+		"@shoelace-style/shoelace": "^2.19.1"
 	},
 	"devDependencies": {
-		"@types/audioworklet": "^0.0.50",
-		"@types/dom-mediacapture-transform": "^0.1.6",
-		"@types/dom-webcodecs": "^0.1.8",
 		"@typescript/lib-dom": "npm:@types/web@^0.0.115",
 		"typescript": "^5.1.6"
 	}

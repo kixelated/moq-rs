@@ -23,6 +23,9 @@
 			"recommended": true,
 			"a11y": {
 				"useMediaCaption": "off"
+			},
+			"style": {
+				"useImportType": "warn"
 			}
 		}
 	},

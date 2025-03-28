@@ -45,15 +45,20 @@ impl Video {
 			}
 		}
 
+		let bitrate = config.bit_rate.map(|b| b as _);
+
 		let info = hang::Video {
-			track: hang::Track { name, priority: 2 },
+			track: hang::Track {
+				name,
+				priority: 2,
+				bitrate,
+			},
 			codec: config.codec.into(),
 			description: decoder_config.description,
 			resolution: hang::Dimensions {
 				width: config.resolution.width,
 				height: config.resolution.height,
 			},
-			bitrate: config.bit_rate.map(|b| b as _),
 		};
 
 		Ok(Self {

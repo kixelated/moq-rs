@@ -26,9 +26,12 @@ setup:
 	# Install cargo sort
 	cargo install cargo-sort
 
+	# Install cargo-upgrades and cargo-edit
+	cargo install cargo-upgrades cargo-edit
+
 # Run the relay, web server, and publish bbb.
 all:
-	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:
@@ -40,7 +43,7 @@ leaf:
 
 # Run a cluster of relay servers
 cluster:
-	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
+	pnpm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
 # Download and stream the Big Buck Bunny video to the localhost relay server
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
@@ -98,7 +101,7 @@ pub-serve name:
 
 # Run the web server
 web:
-	npm i && npm run dev
+	pnpm -r i && pnpm -r run dev
 
 # Publish the clock broadcast
 clock-pub:
@@ -115,9 +118,14 @@ check:
 	cargo clippy --all-targets --all-features -- -D warnings
 	cargo clippy -p moq-wasm --target wasm32-unknown-unknown
 	cargo fmt -- --check
-	cargo shear # requires: cargo install cargo-shear
-	cargo sort --workspace -- check # requires: cargo install cargo-sort
-	npm i && npm run check
+
+	# requires: cargo install cargo-shear
+	cargo shear
+
+	# requires: cargo install cargo-sort
+	cargo sort --workspace --check
+
+	pnpm -r i && pnpm -r run check
 
 # Run any CI tests
 test:
@@ -129,31 +137,26 @@ fix:
 	cargo clippy --fix --allow-staged --all-targets --all-features
 	cargo clippy -p moq-wasm --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
+
+	# requires: cargo install cargo-shear
 	cargo shear --fix
+
+	# requires: cargo install cargo-sort
 	cargo sort --workspace
-	npm i && npm run fix
+
+	pnpm -r i && pnpm -r run fix
 
 # Upgrade any tooling
 upgrade:
 	rustup upgrade
 
-	# Install cargo-upgrades if needed.
-	cargo install cargo-upgrades cargo-edit
+	# Requires: cargo install cargo-upgrades cargo-edit
 	cargo upgrade
 
 	# Update the NPM dependencies
-	npm update
-	npm outdated
+	pnpm update
+	pnpm outdated
 
 # Build the release NPM package
 build:
-	npm i && npm run build
-
-# Build and link the NPM package
-link:
-	npm i && npm run build:dev && npm run build:tsc
-	npm link
-
-# Delete any ephemeral build files
-clean:
-	rm -r dist
+	pnpm -r i && pnpm -r run build
