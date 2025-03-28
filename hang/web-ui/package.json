@@ -12,10 +12,10 @@
 	},
 	"dependencies": {
 		"@kixelated/hang": "workspace:../../hang/web",
-		"@shoelace-style/shoelace": "^2.19.1"
+		"@shoelace-style/shoelace": "^2.20.1"
 	},
 	"devDependencies": {
-		"@typescript/lib-dom": "npm:@types/web@^0.0.115",
-		"typescript": "^5.1.6"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
+		"typescript": "^5.8.2"
 	}
 }

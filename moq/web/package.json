@@ -14,7 +14,7 @@
 		"fix": "biome check --write"
 	},
 	"devDependencies": {
-		"typescript": "^5.1.6",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.115"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
+		"typescript": "^5.8.2"
 	}
 }

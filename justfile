@@ -154,8 +154,8 @@ upgrade:
 	cargo upgrade
 
 	# Update the NPM dependencies
-	pnpm update
-	pnpm outdated
+	pnpm -r update
+	pnpm -r outdated
 
 # Build the release NPM package
 build:
