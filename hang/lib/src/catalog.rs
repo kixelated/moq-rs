@@ -62,26 +62,26 @@ mod test {
 				{
 					"track": {
 						"name": "video",
-						"priority": 2
+						"priority": 2,
+						"bitrate": 6000000
 					},
 					"codec": "avc1.64001f",
 					"resolution": {
 						"width": 1280,
 						"height": 720
 					},
-					"bitrate": 6000000
 				}
 			],
 			"audio": [
 				{
 					"track": {
 						"name": "audio",
-						"priority": 1
+						"priority": 1,
+						"bitrate": 128000
 					},
 					"codec": "opus",
 					"sample_rate": 48000,
-					"channel_count": 2,
-					"bitrate": 128000
+					"channel_count": 2
 				}
 			]
 		}"#
@@ -94,6 +94,7 @@ mod test {
 				track: Track {
 					name: "video".to_string(),
 					priority: 2,
+					bitrate: Some(6_000_000),
 				},
 				codec: H264 {
 					profile: 0x64,
@@ -106,17 +107,16 @@ mod test {
 					width: 1280,
 					height: 720,
 				},
-				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
 				track: Track {
 					name: "audio".to_string(),
 					priority: 1,
+					bitrate: Some(128_000),
 				},
 				codec: Opus,
 				sample_rate: 48_000,
 				channel_count: 2,
-				bitrate: Some(128_000),
 			}],
 		};
 

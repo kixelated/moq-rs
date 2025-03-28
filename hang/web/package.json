@@ -10,6 +10,10 @@
 		"check": "biome check",
 		"fix": "biome check --write"
 	},
+	"dependencies": {
+		"@kixelated/moq": "workspace:../../moq/web",
+		"zod": "^3.24.2"
+	},
 	"devDependencies": {
 		"@types/audioworklet": "^0.0.50",
 		"@types/dom-mediacapture-transform": "^0.1.6",

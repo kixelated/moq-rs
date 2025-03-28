@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 import { Ring, RingShared } from "../common/ring";
-import type * as Catalog from "../hang/catalog";
-import type { Frame } from "../hang/frame";
+import type * as Catalog from "../catalog";
+import type { Frame } from "../catalog/frame";
 import type { Component } from "./timeline";
 
 // This is a non-standard way of importing worklet/workers.

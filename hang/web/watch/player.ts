@@ -1,5 +1,5 @@
-import * as Catalog from "../hang/catalog";
-import type { Connection } from "../lite/connection";
+import * as Catalog from "../catalog";
+import type { Connection } from "@kixelated/moq";
 import { Broadcast } from "./broadcast";
 
 export interface PlayerConfig {
@@ -43,10 +43,10 @@ export class Player {
 				continue;
 			}
 
-			const catalog = await Catalog.fetch(this.#config.connection, announce.path);
+			const catalog = await Catalog.Broadcast.fetch(this.#config.connection, announce.path);
 
 			this.#active?.close();
-			this.#active = new Broadcast(this.#config.connection, catalog, this.#config.canvas);
+			this.#active = new Broadcast(this.#config.connection, announce.path, catalog, this.#config.canvas);
 			activeId = id;
 		}
 

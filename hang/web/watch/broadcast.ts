@@ -1,10 +1,7 @@
-import type * as Catalog from "../hang/catalog";
-import type { Connection } from "../lite/connection";
+import type * as Catalog from "../catalog";
+import { Connection, Track, GroupReader } from "@kixelated/moq";
 
-import { Track } from "../lite";
-
-import { Frame } from "../hang/frame";
-import type { GroupReader } from "../lite/model";
+import { Frame } from "../catalog/frame";
 import * as Audio from "./audio";
 import { Timeline } from "./timeline";
 import * as Video from "./video";
@@ -12,6 +9,7 @@ import * as Video from "./video";
 // This class must be created on the main thread due to AudioContext.
 export class Broadcast {
 	#connection: Connection;
+	#path: string;
 	#catalog: Catalog.Broadcast;
 
 	// Running is a promise that resolves when the player is closed.
@@ -24,8 +22,9 @@ export class Broadcast {
 	#audio?: Audio.Renderer;
 	#video?: Video.Renderer;
 
-	constructor(connection: Connection, catalog: Catalog.Broadcast, canvas: HTMLCanvasElement) {
+	constructor(connection: Connection, path: string, catalog: Catalog.Broadcast, canvas: HTMLCanvasElement) {
 		this.#connection = connection;
+		this.#path = path;
 		this.#catalog = catalog;
 
 		const running = [];
@@ -48,7 +47,8 @@ export class Broadcast {
 	}
 
 	async #runAudio(audio: Catalog.Audio) {
-		const track = new Track(this.#catalog.path.concat(audio.track.name), audio.track.priority);
+		const path = `${this.#path}/${audio.track.name}`;
+		const track = new Track(path, audio.track.priority);
 		const sub = await this.#connection.subscribe(track);
 
 		try {
@@ -66,7 +66,8 @@ export class Broadcast {
 	}
 
 	async #runVideo(video: Catalog.Video) {
-		const track = new Track(this.#catalog.path.concat(video.track.name), video.track.priority);
+		const path = `${this.#path}/${video.track.name}`;
+		const track = new Track(path, video.track.priority);
 		const sub = await this.#connection.subscribe(track);
 
 		try {

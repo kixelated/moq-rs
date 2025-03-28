@@ -22,6 +22,4 @@ pub struct Audio {
 
 	pub sample_rate: u32,
 	pub channel_count: u32,
-
-	pub bitrate: Option<u64>,
 }

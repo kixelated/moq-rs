@@ -2,7 +2,7 @@ import { Notify } from "../common/async";
 import type { BroadcastConfig } from "./broadcast";
 import { Segment } from "./segment";
 
-import type { Frame } from "../hang/frame";
+import type { Frame } from "../catalog/frame";
 import * as Audio from "./audio";
 import * as Video from "./video";
 

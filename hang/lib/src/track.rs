@@ -12,6 +12,9 @@ use derive_more::Debug;
 pub struct Track {
 	pub name: String,
 	pub priority: i8,
+
+	#[serde(default)]
+	pub bitrate: Option<u64>,
 }
 
 #[derive(Debug)]

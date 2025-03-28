@@ -1,4 +1,4 @@
-import * as Catalog from "../hang/catalog";
+import * as Catalog from "../catalog";
 import * as Transfork from "../lite";
 import * as Audio from "./audio";
 import * as Video from "./video";

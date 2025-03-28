@@ -1,4 +1,4 @@
-import type { Frame } from "../hang/frame";
+import type { Frame } from "../catalog/frame";
 
 export class Segment {
 	id: number;

@@ -38,7 +38,4 @@ pub struct Video {
 
 	// The encoded width/height of the media
 	pub resolution: Dimensions,
-
-	#[serde(default)]
-	pub bitrate: Option<u64>,
 }

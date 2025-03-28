@@ -108,7 +108,11 @@ impl Import {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = Track { name, priority: 2 };
+		let track = Track {
+			name,
+			priority: 2,
+			bitrate: None,
+		};
 
 		let codec = match stsd.codecs.len() {
 			0 => return Err(Error::MissingCodec),
@@ -136,7 +140,6 @@ impl Import {
 					}
 					.into(),
 					description: Some(description.freeze()),
-					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
@@ -149,7 +152,6 @@ impl Import {
 					width: vp08.visual.width as _,
 					height: vp08.visual.height as _,
 				},
-				bitrate: None,
 			},
 			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
@@ -173,7 +175,6 @@ impl Import {
 						width: vp09.visual.width as _,
 						height: vp09.visual.height as _,
 					},
-					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Av01(av01) => {
@@ -204,7 +205,6 @@ impl Import {
 						width: av01.visual.width as _,
 						height: av01.visual.height as _,
 					},
-					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
@@ -236,15 +236,12 @@ impl Import {
 				width: visual.width as _,
 				height: visual.height as _,
 			},
-			bitrate: None,
 		})
 	}
 
 	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
-
-		let track = Track { name, priority: 1 };
 
 		let codec = match stsd.codecs.len() {
 			0 => return Err(Error::MissingCodec),
@@ -266,6 +263,13 @@ impl Import {
 					return Err(Error::UnsupportedCodec("MPEG2".to_string()));
 				}
 
+				let bitrate = desc.avg_bitrate.max(desc.max_bitrate) as u64;
+				let track = Track {
+					name,
+					priority: 1,
+					bitrate: Some(bitrate),
+				};
+
 				Audio {
 					track,
 					codec: AAC {
@@ -274,7 +278,6 @@ impl Import {
 					.into(),
 					sample_rate: mp4a.samplerate.integer() as _,
 					channel_count: mp4a.channelcount as _,
-					bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),

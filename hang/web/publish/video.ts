@@ -1,5 +1,5 @@
 import { Deferred } from "../common/async";
-import { Frame } from "../hang/frame";
+import { Frame } from "../catalog/frame";
 import type { Group, Track } from "../lite";
 import { Closed } from "../lite/error";
 

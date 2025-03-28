@@ -13,7 +13,7 @@
 		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
 		"allowUnreachableCode": false,
 		"allowUnusedLabels": false,
-		"exactOptionalPropertyTypes": true,
+		// "exactOptionalPropertyTypes": true,
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"noPropertyAccessFromIndexSignature": true,

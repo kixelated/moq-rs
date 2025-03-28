@@ -5,6 +5,9 @@
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
+	"exports": {
+		".": "./api/index.ts"
+	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
 		"check": "biome check",
