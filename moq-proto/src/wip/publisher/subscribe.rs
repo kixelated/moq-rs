@@ -43,7 +43,7 @@ struct PublisherSubscribe {
 	stream: StreamId,
 
 	// Outbound
-	info: Option<message::SubscribeInfo>,
+	info: Option<message::Info>,
 	info_sent: bool,
 	dropped: VecDeque<(GroupId, ErrorCode)>,
 
@@ -110,7 +110,7 @@ impl PublisherSubscribe {
 		&self.request
 	}
 
-	pub fn reply(&mut self, info: message::SubscribeInfo) {
+	pub fn reply(&mut self, info: message::Info) {
 		assert!(self.info.is_none());
 		assert!(!self.info_sent);
 

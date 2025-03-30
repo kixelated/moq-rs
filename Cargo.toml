@@ -1,7 +1,7 @@
 [workspace]
 members = [
 	"moq-transfork",
-	"moq-transfork-proto",
+	"moq-proto",
 	"moq-relay",
 	"moq-clock",
 	"moq-native",

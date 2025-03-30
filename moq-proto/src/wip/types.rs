@@ -14,6 +14,10 @@ impl SubscribeRequest {
 			path: self.path,
 			priority: self.priority,
 			order: self.order,
+
+			// TODO remove
+			start: None,
+			end: None,
 		}
 	}
 }

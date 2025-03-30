@@ -60,7 +60,7 @@ async fn connect(config: &Config, url: &str) -> anyhow::Result<(Session, String)
 	tracing::info!(?url, "connecting");
 
 	let url = Url::parse(url).context("invalid URL")?;
-	let path = url.path().to_string();
+	let path = url.path().strip_prefix("/").unwrap().to_string();
 
 	let session = quic.client.connect(url).await?;
 	let session = Session::connect(session).await?;

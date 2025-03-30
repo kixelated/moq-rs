@@ -1,6 +1,4 @@
-use std::fmt;
-
-use moq_transfork_proto::coding::*;
+use moq_transfork::proto::coding::*;
 
 use derive_more::Debug;
 

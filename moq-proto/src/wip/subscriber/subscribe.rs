@@ -39,7 +39,7 @@ pub struct SubscriberSubscribe {
 	update: Option<message::SubscribeUpdate>,
 
 	// inbound
-	info: Option<message::SubscribeInfo>,
+	info: Option<message::Info>,
 	drops: VecDeque<message::GroupDrop>,
 }
 
@@ -70,7 +70,7 @@ impl SubscriberSubscribe {
 	/// Try to decode the next message from the stream.
 	pub fn decode<B: Buf>(&mut self, buf: &mut B) -> Result<(), Error> {
 		if self.info.is_none() {
-			self.info = Some(message::SubscribeInfo::decode(buf)?);
+			self.info = Some(message::Info::decode(buf)?);
 			return Ok(());
 		}
 
@@ -92,7 +92,7 @@ impl SubscriberSubscribe {
 	}
 
 	/// Return information about the track if received.
-	pub fn info(&mut self) -> Option<&message::SubscribeInfo> {
+	pub fn info(&mut self) -> Option<&message::Info> {
 		self.info.as_ref()
 	}
 

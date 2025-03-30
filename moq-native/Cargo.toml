@@ -12,7 +12,7 @@ keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
-moq-transfork = { path = "../moq-transfork", version = "0.11" }
+moq-transfork = { path = "../moq-transfork", version = "0.12" }
 web-transport = { workspace = true }
 
 rustls = "0.23"

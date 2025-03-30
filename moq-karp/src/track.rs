@@ -4,7 +4,7 @@ use crate::{Error, Frame, GroupConsumer, Timestamp};
 use futures::{stream::FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use moq_transfork_proto::coding::*;
+use moq_transfork::proto::coding::*;
 
 use derive_more::Debug;
 

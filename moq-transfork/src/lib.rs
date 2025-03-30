@@ -33,23 +33,38 @@
 //! If the publisher is dropped (clean FIN), then the above methods will return [None].
 //!
 mod announced;
-mod connection;
 mod error;
 mod frame;
 mod group;
+mod publisher;
+mod reader;
 mod router;
+mod session;
+mod stream;
+mod subscriber;
 mod track;
+mod writer;
 
 pub use announced::*;
-pub use connection::*;
-pub use error::*;
 pub use frame::*;
 pub use group::*;
 pub use router::*;
 pub use track::*;
 
+pub(crate) use publisher::*;
+pub(crate) use reader::*;
+pub(crate) use stream::*;
+pub(crate) use subscriber::*;
+pub(crate) use writer::*;
+
+pub use error::*;
+pub use session::*;
+
 /// The ALPN used when connecting via QUIC directly.
 pub const ALPN: &[u8] = b"moqf-02";
+
+/// Export the moq-proto crate.
+pub use moq_proto as proto;
 
 /// Export the web_transport crate.
 pub use web_transport;

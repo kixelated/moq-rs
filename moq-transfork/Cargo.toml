@@ -5,7 +5,7 @@ authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq-rs"
 license = "MIT OR Apache-2.0"
 
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
@@ -16,8 +16,6 @@ bytes = "1"
 thiserror = "2"
 tracing = "0.1"
 
-moq-transfork-proto = { path = "../moq-transfork-proto" }
-
 tokio = { version = "1.43", features = [
 	"macros",
 	"io-util",
@@ -25,6 +23,7 @@ tokio = { version = "1.43", features = [
 	"test-util",
 ] }
 
+moq-proto = { path = "../moq-proto", version = "0.1" }
 web-transport = { workspace = true }
 futures = "0.3"
 

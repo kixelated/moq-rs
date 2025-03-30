@@ -1323,7 +1323,6 @@ dependencies = [
  "moq-async",
  "moq-native",
  "moq-transfork",
- "moq-transfork-proto",
  "mp4-atom",
  "regex",
  "serde",
@@ -1362,6 +1361,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-proto"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "derive_more 2.0.1",
+ "enum_dispatch",
+ "num_enum",
+ "thiserror 2.0.11",
+ "tracing",
+]
+
+[[package]]
 name = "moq-relay"
 version = "0.6.22"
 dependencies = [
@@ -1384,30 +1395,17 @@ dependencies = [
 
 [[package]]
 name = "moq-transfork"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bytes",
  "futures",
  "moq-async",
- "moq-transfork-proto",
+ "moq-proto",
  "num_enum",
  "thiserror 2.0.11",
  "tokio",
  "tracing",
  "web-transport",
-]
-
-[[package]]
-name = "moq-transfork-proto"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "derive_more 2.0.1",
- "enum_dispatch",
- "num_enum",
- "quinn-proto",
- "thiserror 2.0.11",
- "tracing",
 ]
 
 [[package]]

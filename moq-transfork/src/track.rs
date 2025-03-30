@@ -16,7 +16,7 @@ use tokio::sync::watch;
 
 use super::{Group, GroupConsumer, GroupProducer};
 use crate::Error;
-pub use moq_transfork_proto::message::GroupOrder;
+pub use moq_proto::message::GroupOrder;
 
 use std::{cmp::Ordering, ops, sync::Arc};
 

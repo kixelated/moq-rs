@@ -34,6 +34,7 @@ impl Stream {
 				message::ControlType::Announce => StreamKind::Announce,
 				message::ControlType::Subscribe => StreamKind::Subscribe,
 				message::ControlType::Session => StreamKind::Session,
+				message::ControlType::Info => unimplemented!(),
 			},
 		};
 
