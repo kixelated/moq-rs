@@ -42,11 +42,20 @@ leaf:
 cluster:
 	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
-# Download and stream the Big Buck Bunny video
+# Download and stream the Big Buck Bunny video to the localhost relay server
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
+
+# Download and stream the Big Buck Bunny video to localhost directly
+bbb-serve: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-serve "bbb")
 
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
+
+# Download and stream AV1 content:
+av1: (download "av1" "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4") (pub "av1")
+
+# Download and stream HEVC content:
+hevc: (download "hevc" "https://test-videos.co.uk/vids/jellyfish/mp4/h265/1080/Jellyfish_1080_10s_30MB.mp4") (pub "hevc")
 
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name url:
@@ -74,6 +83,19 @@ pub name:
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
 
+# Publish a video using ffmpeg directly from moq-karp to the localhost
+pub-serve name:
+	# Pre-build the binary so we don't queue media while compiling.
+	cargo build --bin moq-karp
+
+	# Run ffmpeg and pipe the output to moq-karp
+	ffmpeg -hide_banner -v quiet \
+		-stream_loop -1 -re \
+		-i "dev/{{name}}.fmp4" \
+		-c copy \
+		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
+		- | cargo run --bin moq-karp -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
+
 # Run the web server
 web:
 	npm i && npm run dev
@@ -88,9 +110,9 @@ clock-sub:
 
 # Run the CI checks
 check:
-	cargo check --all-targets
+	cargo check --all-targets --all-features
 	cargo check -p moq-web --target wasm32-unknown-unknown
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --all-targets --all-features -- -D warnings
 	cargo clippy -p moq-web --target wasm32-unknown-unknown
 	cargo fmt -- --check
 	cargo shear # requires: cargo binstall cargo-shear

@@ -71,7 +71,7 @@ impl Backend {
 
 					// TODO make a helper in karp for this
 					let filter = moq_transfork::Filter::Wildcard {
-						prefix: path.clone(),
+						prefix: format!("{}/", path),
 						suffix: "/catalog.json".to_string(),
 					};
 

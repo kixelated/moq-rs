@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.7...moq-native-v0.6.8) - 2025-03-09
+
+### Other
+
+- Less aggressive idle timeout. ([#351](https://github.com/kixelated/moq-rs/pull/351))
+
+## [0.6.7](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.6...moq-native-v0.6.7) - 2025-03-01
+
+### Other
+
+- updated the following local packages: moq-transfork
+
 ## [0.6.6](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.5...moq-native-v0.6.6) - 2025-02-13
 
 ### Other

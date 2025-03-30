@@ -80,14 +80,14 @@ impl Web {
 async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl IntoResponse {
 	// Make anything without a / prefix private.
 	let filter = if path.is_empty() {
-		Filter::Prefix("/".into())
+		Filter::Any
 	} else if let Some((prefix, suffix)) = path.split_once("*") {
 		Filter::Wildcard {
-			prefix: format!("/{}", prefix),
+			prefix: prefix.to_string(),
 			suffix: suffix.to_string(),
 		}
 	} else {
-		Filter::Prefix(format!("/{}", path))
+		Filter::Prefix(path)
 	};
 
 	let mut local = cluster.locals.announced(filter.clone());
@@ -113,7 +113,7 @@ async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl Int
 /// Serve the latest group for a given track
 async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::response::Result<ServeGroup> {
 	let track = moq_transfork::Track {
-		path: path.split("/").collect(),
+		path,
 		priority: 0,
 		order: moq_transfork::GroupOrder::Desc,
 	};

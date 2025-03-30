@@ -57,7 +57,7 @@ impl TrackProducer {
 #[derive(Debug)]
 #[debug("{:?}", track.path)]
 pub struct TrackConsumer {
-	track: moq_transfork::TrackConsumer,
+	pub track: moq_transfork::TrackConsumer,
 
 	// The current group that we are reading from.
 	current: Option<GroupConsumer>,

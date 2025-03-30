@@ -1,10 +1,12 @@
+use super::{Error, Result};
+use crate::{
+	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC, AV1, H264,
+	H265, VP9,
+};
 use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
-
-use super::{Error, Result};
-use crate::{Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, AAC, H264, VP9};
 
 /// Converts fMP4 -> Karp
 pub struct Import {
@@ -83,17 +85,18 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.publish_video(track)?
+					self.broadcast.publish_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.publish_audio(track)?
+					self.broadcast.publish_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks.insert(track_id, track);
+			self.tracks
+				.insert(track_id, track.expect("Error while publishing track"));
 		}
 
 		self.moov = Some(moov);
@@ -105,110 +108,177 @@ impl Import {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = if let Some(avc1) = &stsd.avc1 {
-			let avcc = &avc1.avcc;
+		let track = Track { name, priority: 2 };
 
-			let mut description = BytesMut::new();
-			avcc.encode_body(&mut description)?;
+		let codec = match stsd.codecs.len() {
+			0 => return Err(Error::MissingCodec),
+			1 => &stsd.codecs[0],
+			_ => return Err(Error::MultipleCodecs),
+		};
 
-			Video {
-				track: Track { name, priority: 2 },
-				resolution: Dimensions {
-					width: avc1.width as _,
-					height: avc1.height as _,
-				},
-				codec: H264 {
-					profile: avcc.avc_profile_indication,
-					constraints: avcc.profile_compatibility,
-					level: avcc.avc_level_indication,
+		let track = match codec {
+			mp4_atom::Codec::Avc1(avc1) => {
+				let avcc = &avc1.avcc;
+
+				let mut description = BytesMut::new();
+				avcc.encode_body(&mut description)?;
+
+				Video {
+					track,
+					resolution: Dimensions {
+						width: avc1.visual.width as _,
+						height: avc1.visual.height as _,
+					},
+					codec: H264 {
+						profile: avcc.avc_profile_indication,
+						constraints: avcc.profile_compatibility,
+						level: avcc.avc_level_indication,
+					}
+					.into(),
+					description: Some(description.freeze()),
+					bitrate: None,
 				}
-				.into(),
-				description: Some(description.freeze()),
-				bitrate: None,
 			}
-		} else if let Some(hev1) = &stsd.hev1 {
-			let _hvcc = &hev1.hvcc;
-
-			/*
-			catalog::Video {
-				track: moq_transfork::Track::build(name).priority(2).into(),
-				width: hev1.width,
-				height: hev1.height,
-				codec: catalog::H265 {
-					profile: hvcc.general_profile_idc,
-					level: hvcc.general_level_idc,
-					constraints: hvcc.general_constraint_indicator_flag,
-				},
-				container: catalog::Container::Fmp4,
-				layers: vec![],
-				bit_rate: None,
-			}
-			*/
-
-			// Just waiting for a release:
-			// https://github.com/alfg/mp4-rust/commit/35560e94f5e871a2b2d88bfe964013b39af131e8
-			return Err(Error::UnsupportedCodec("HEVC"));
-		} else if let Some(vp09) = &stsd.vp09 {
-			// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
-			let vpcc = &vp09.vpcc;
-
-			Video {
-				track: Track { name, priority: 2 },
-				codec: VP9 {
-					profile: vpcc.profile,
-					level: vpcc.level,
-					bit_depth: vpcc.bit_depth,
-					chroma_subsampling: vpcc.chroma_subsampling,
-					color_primaries: vpcc.color_primaries,
-					transfer_characteristics: vpcc.transfer_characteristics,
-					matrix_coefficients: vpcc.matrix_coefficients,
-					full_range: vpcc.video_full_range_flag,
-				}
-				.into(),
+			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
+			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
+			mp4_atom::Codec::Vp08(vp08) => Video {
+				track,
+				codec: VideoCodec::VP8,
 				description: Default::default(),
 				resolution: Dimensions {
-					width: vp09.width as _,
-					height: vp09.height as _,
+					width: vp08.visual.width as _,
+					height: vp08.visual.height as _,
 				},
 				bitrate: None,
+			},
+			mp4_atom::Codec::Vp09(vp09) => {
+				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
+				let vpcc = &vp09.vpcc;
+
+				Video {
+					track,
+					codec: VP9 {
+						profile: vpcc.profile,
+						level: vpcc.level,
+						bit_depth: vpcc.bit_depth,
+						chroma_subsampling: vpcc.chroma_subsampling,
+						color_primaries: vpcc.color_primaries,
+						transfer_characteristics: vpcc.transfer_characteristics,
+						matrix_coefficients: vpcc.matrix_coefficients,
+						full_range: vpcc.video_full_range_flag,
+					}
+					.into(),
+					description: Default::default(),
+					resolution: Dimensions {
+						width: vp09.visual.width as _,
+						height: vp09.visual.height as _,
+					},
+					bitrate: None,
+				}
 			}
-		} else {
-			// TODO add av01 support: https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L251
-			return Err(Error::UnsupportedCodec("unknown"));
+			mp4_atom::Codec::Av01(av01) => {
+				let av1c = &av01.av1c;
+
+				Video {
+					track,
+					codec: AV1 {
+						profile: av1c.seq_profile,
+						level: av1c.seq_level_idx_0,
+						tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
+						bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
+							(true, true) => 12,
+							(true, false) => 10,
+							(false, true) => 10,
+							(false, false) => 8,
+						},
+						mono_chrome: av1c.monochrome,
+						chroma_subsampling_x: av1c.chroma_subsampling_x,
+						chroma_subsampling_y: av1c.chroma_subsampling_y,
+						chroma_sample_position: av1c.chroma_sample_position,
+						// TODO HDR stuff?
+						..Default::default()
+					}
+					.into(),
+					description: Default::default(),
+					resolution: Dimensions {
+						width: av01.visual.width as _,
+						height: av01.visual.height as _,
+					},
+					bitrate: None,
+				}
+			}
+			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
+			_ => return Err(Error::UnsupportedCodec("unknown".to_string())),
 		};
 
 		Ok(track)
+	}
+
+	// There's two almost identical hvcc atoms in the wild.
+	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
+		let mut description = BytesMut::new();
+		hvcc.encode_body(&mut description)?;
+
+		Ok(Video {
+			track,
+			codec: H265 {
+				in_band,
+				profile_space: hvcc.general_profile_space,
+				profile_idc: hvcc.general_profile_idc,
+				profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+				tier_flag: hvcc.general_tier_flag,
+				level_idc: hvcc.general_level_idc,
+				constraint_flags: hvcc.general_constraint_indicator_flags,
+			}
+			.into(),
+			description: Some(description.freeze()),
+			resolution: Dimensions {
+				width: visual.width as _,
+				height: visual.height as _,
+			},
+			bitrate: None,
+		})
 	}
 
 	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = if let Some(mp4a) = &stsd.mp4a {
-			let desc = &mp4a
-				.esds
-				.as_ref()
-				.ok_or(Error::MissingBox(Esds::KIND))?
-				.es_desc
-				.dec_config;
+		let track = Track { name, priority: 1 };
 
-			// TODO Also support mp4a.67
-			if desc.object_type_indication != 0x40 {
-				return Err(Error::UnsupportedCodec("MPEG2"));
-			}
+		let codec = match stsd.codecs.len() {
+			0 => return Err(Error::MissingCodec),
+			1 => &stsd.codecs[0],
+			_ => return Err(Error::MultipleCodecs),
+		};
 
-			Audio {
-				track: Track { name, priority: 1 },
-				codec: AAC {
-					profile: desc.dec_specific.profile,
+		let track = match codec {
+			mp4_atom::Codec::Mp4a(mp4a) => {
+				let desc = &mp4a
+					.esds
+					.as_ref()
+					.ok_or(Error::MissingBox(Esds::KIND))?
+					.es_desc
+					.dec_config;
+
+				// TODO Also support mp4a.67
+				if desc.object_type_indication != 0x40 {
+					return Err(Error::UnsupportedCodec("MPEG2".to_string()));
 				}
-				.into(),
-				sample_rate: mp4a.samplerate.integer() as _,
-				channel_count: mp4a.channelcount as _,
-				bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
+
+				Audio {
+					track,
+					codec: AAC {
+						profile: desc.dec_specific.profile,
+					}
+					.into(),
+					sample_rate: mp4a.samplerate.integer() as _,
+					channel_count: mp4a.channelcount as _,
+					bitrate: Some(std::cmp::max(desc.avg_bitrate, desc.max_bitrate) as _),
+				}
 			}
-		} else {
-			return Err(Error::UnsupportedCodec("unknown"));
+			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
+			_ => return Err(Error::UnsupportedCodec("unknown".to_string())),
 		};
 
 		Ok(track)

@@ -1,21 +1,25 @@
-use crate::{Audio, Catalog, Error, Result, Track, TrackConsumer, TrackProducer, Video};
-
-use moq_async::{spawn, Lock};
+use crate::track::TrackConsumer;
+use crate::{Audio, Catalog, Error, Result, Track, TrackProducer, Video};
+use derive_more::Debug;
+use moq_async::Lock;
 use moq_transfork::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
 
-use derive_more::Debug;
+struct BroadcastProducerState {
+	catalog: CatalogProducer,
+	tracks: Vec<moq_transfork::TrackProducer>,
+	subscribers: Vec<Session>,
+}
 
 #[derive(Debug, Clone)]
 #[debug("{:?}", path)]
 pub struct BroadcastProducer {
-	pub session: Session,
 	pub path: String,
 	id: u64,
-	catalog: Lock<CatalogProducer>,
+	state: Lock<BroadcastProducerState>,
 }
 
 impl BroadcastProducer {
-	pub fn new(mut session: Session, path: String) -> Result<Self> {
+	pub fn new(path: String) -> Result<Self> {
 		// Generate a "unique" ID for this broadcast session.
 		// If we crash, then the viewers will automatically reconnect to the new ID.
 		let id = web_time::SystemTime::now()
@@ -23,100 +27,107 @@ impl BroadcastProducer {
 			.unwrap()
 			.as_millis() as u64;
 
-		let full = format!("{}/{}/catalog.json", path, id);
-
-		let catalog = moq_transfork::Track {
+		// Create the catalog track
+		let full = format!("{}/{}/catalog.json", path.clone(), id.clone());
+		let (catalog, _) = moq_transfork::Track {
 			path: full,
 			priority: -1,
 			order: moq_transfork::GroupOrder::Desc,
 		}
 		.produce();
+		let catalog = CatalogProducer::new(catalog)?;
 
-		// Publish the catalog track, even if it's empty.
-		session.publish(catalog.1)?;
-
-		let catalog = Lock::new(CatalogProducer::new(catalog.0)?);
-
-		Ok(Self {
-			session,
-			path,
-			id,
+		// Create the BroadcastProducerState
+		let state = Lock::new(BroadcastProducerState {
 			catalog,
-		})
-	}
-
-	/// Return the latest catalog.
-	pub fn catalog(&self) -> Catalog {
-		self.catalog.lock().current.clone()
-	}
-
-	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
-		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
-
-		let (producer, consumer) = moq_transfork::Track {
-			path,
-			priority: info.track.priority,
-			// TODO add these to the catalog and support higher latencies.
-			order: moq_transfork::GroupOrder::Desc,
-		}
-		.produce();
-
-		self.session.publish(consumer)?;
-
-		let mut catalog = self.catalog.lock();
-		catalog.current.video.push(info.clone());
-		catalog.publish()?;
-
-		let producer = TrackProducer::new(producer);
-		let consumer = producer.subscribe();
-
-		// Start a task that will remove the catalog on drop.
-		let catalog = self.catalog.clone();
-		spawn(async move {
-			consumer.closed().await.ok();
-
-			let mut catalog = catalog.lock();
-			catalog.current.video.retain(|v| v.track != info.track);
-			catalog.publish().unwrap();
+			tracks: vec![],
+			subscribers: vec![],
 		});
+
+		Ok(Self { path, id, state })
+	}
+
+	/// Add a session to the broadcast.
+	/// If the session closes, it will be removed from the broadcast automatically.
+	pub fn add_session(&mut self, mut session: Session) -> Result<()> {
+		let mut state = self.state.lock();
+
+		// Publish the catalog
+		session.publish(state.catalog.track.subscribe())?;
+
+		// Publish all tracks
+		for track in &state.tracks {
+			tracing::info!("publishing track, {:?}", track.path);
+			session.publish(track.subscribe())?;
+		}
+
+		// Add the session to the list of subscribers
+		state.subscribers.push(session.clone());
+
+		// If the session closes, remove it from the list of subscribers
+		let state = self.state.clone();
+		moq_async::spawn(async move {
+			session.closed().await;
+			state.lock().subscribers.retain(|s| s != &session);
+		});
+
+		Ok(())
+	}
+
+	/// Remove a session from the broadcast.
+	pub fn remove_session(&mut self, session: &Session) {
+		let mut state = self.state.lock();
+		state.subscribers.retain(|s| s != session);
+	}
+
+	/// Publish a video track to all listeners & future listeners.
+	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
+		let mut state = self.state.lock();
+
+		let producer = self.publish(info.track.clone(), &mut state)?;
+		state.catalog.current.video.push(info);
+		state.catalog.publish()?;
 
 		Ok(producer)
 	}
 
+	/// Publish an audio track to all listeners & future listeners.
 	pub fn publish_audio(&mut self, info: Audio) -> Result<TrackProducer> {
-		let path = format!("{}/{}/{}.karp", self.path, self.id, &info.track.name);
+		let mut state = self.state.lock();
 
-		let (producer, consumer) = moq_transfork::Track {
+		let producer = self.publish(info.track.clone(), &mut state)?;
+		state.catalog.current.audio.push(info);
+		state.catalog.publish()?;
+
+		Ok(producer)
+	}
+
+	fn publish(&self, track: Track, state: &mut BroadcastProducerState) -> Result<TrackProducer> {
+		// Create the TrackProducer
+		let path = format!("{}/{}/{}.karp", self.path, self.id, &track.name);
+		let (producer, _) = moq_transfork::Track {
 			path,
-			priority: info.track.priority,
+			priority: track.priority,
 			// TODO add these to the catalog and support higher latencies.
 			order: moq_transfork::GroupOrder::Desc,
 		}
 		.produce();
 
-		self.session.publish(consumer)?;
-
-		let mut catalog = self.catalog.lock();
-		catalog.current.audio.push(info.clone());
-		catalog.publish()?;
-
-		let producer = TrackProducer::new(producer);
-		let consumer = producer.subscribe();
-
-		// Start a task that will remove the catalog on drop.
-		let catalog = self.catalog.clone();
-		spawn(async move {
-			consumer.closed().await.ok();
-
-			let mut catalog = catalog.lock();
-			catalog.current.audio.retain(|v| v.track != info.track);
-			catalog.publish().unwrap();
+		// Let all the listeners know about the new video track
+		state.subscribers.iter_mut().for_each(|session| {
+			session.publish(producer.subscribe()).unwrap();
 		});
 
+		// Update the state
+		state.tracks.push(producer.clone());
+
+		// Return the producer
+		let producer = TrackProducer::new(producer);
 		Ok(producer)
 	}
 }
 
+#[derive(Debug, Clone)]
 struct CatalogProducer {
 	current: Catalog,
 	track: moq_transfork::TrackProducer,
@@ -169,7 +180,7 @@ pub struct BroadcastConsumer {
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: String) -> Self {
 		let filter = moq_transfork::Filter::Wildcard {
-			prefix: path.clone(),
+			prefix: format!("{}/", path),
 			suffix: "/catalog.json".to_string(),
 		};
 		let announced = session.announced(filter);
