@@ -3,14 +3,12 @@ use std::collections::{hash_map, HashMap};
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use crate::{
-	message,
-	model::{GroupConsumer, Track, TrackConsumer},
-	Announced, AnnouncedConsumer, AnnouncedProducer, Error, GroupOrder, RouterConsumer,
+	Announced, AnnouncedConsumer, AnnouncedProducer, Error, GroupConsumer, GroupOrder, RouterConsumer, Stream, Track,
+	TrackConsumer, Writer,
 };
 
 use moq_async::{spawn, FuturesExt, Lock, OrClose};
-
-use super::{Stream, Writer};
+use moq_proto::message;
 
 #[derive(Clone)]
 pub(super) struct Publisher {
@@ -127,15 +125,15 @@ impl Publisher {
 		let track = Track {
 			path: subscribe.path,
 			priority: subscribe.priority,
-			order: subscribe.group_order,
+			order: subscribe.order,
 		};
 
 		let mut track = self.get_track(track).await?;
 
 		let info = message::Info {
-			group_latest: track.latest_group(),
-			group_order: track.order,
-			track_priority: track.priority,
+			latest: track.latest_group(),
+			order: track.order,
+			priority: track.priority,
 		};
 
 		tracing::info!(?info, "active");
@@ -264,9 +262,9 @@ impl Publisher {
 		let track = self.get_track(track).await?;
 
 		let info = message::Info {
-			group_latest: track.latest_group(),
-			track_priority: track.priority,
-			group_order: track.order,
+			latest: track.latest_group(),
+			priority: track.priority,
+			order: track.order,
 		};
 
 		stream.writer.encode(&info).await?;

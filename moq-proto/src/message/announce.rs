@@ -1,8 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::coding::*;
-
 use super::Filter;
+use crate::coding::*;
 
 /// Send by the publisher, used to determine the message that follows.
 #[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]

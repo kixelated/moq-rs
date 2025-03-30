@@ -1364,6 +1364,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "moq-proto"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "derive_more 2.0.1",
+ "num_enum",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "moq-relay"
 version = "0.6.24"
 dependencies = [
@@ -1391,7 +1401,7 @@ dependencies = [
  "bytes",
  "futures",
  "moq-async",
- "num_enum",
+ "moq-proto",
  "thiserror 2.0.12",
  "tokio",
  "tracing",

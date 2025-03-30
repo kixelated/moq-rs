@@ -2,9 +2,9 @@ use std::{cmp, fmt, io};
 
 use bytes::{Buf, Bytes, BytesMut};
 
-use crate::{coding::*, Error};
-
-use super::Close;
+use crate::Error;
+use moq_async::Close;
+use moq_proto::coding::*;
 
 pub struct Reader {
 	stream: web_transport::RecvStream,
