@@ -27,6 +27,4 @@ moq-proto = { path = "../moq-proto", version = "0.1" }
 web-transport = { workspace = true }
 futures = "0.3"
 
-num_enum = "0.7"
-
 moq-async = { path = "../moq-async", version = "0.1" }
