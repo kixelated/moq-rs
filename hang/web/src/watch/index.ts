@@ -1,69 +1,94 @@
-import type { Connection } from "@kixelated/moq";
+import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import { Broadcast } from "./broadcast";
+import { Abortable, Context } from "../util/context";
 
-export interface WatchConfig {
-	connection: Connection;
-	path: string;
-	canvas: HTMLCanvasElement;
+export function onceler<Target extends (context: Context, ...args: any) => Promise<any>>(
+	target: Target,
+	context: ClassMethodDecoratorContext<ThisParameterType<Target>, Target>,
+) {
+	let active: Context | undefined = undefined;
+
+	return (...args: Parameters<Target>) => {
+		active?.abort();
+		active = new Context();
+
+		return target(active, ...args);
+	};
 }
 
 // This class must be created on the main thread due to AudioContext.
 export class Watch {
-	#config: WatchConfig;
-	#running: Promise<void>;
-	#active?: Broadcast;
+	#url?: string;
+	#canvas?: HTMLCanvasElement;
 
-	constructor(config: WatchConfig) {
-		this.#config = config;
-		this.#running = this.#run();
+	#connection?: Abortable<Moq.Connection>;
+	#discover?: Abortable<void>;
+	#catalog?: Abortable<Catalog.Broadcast>;
+	#running?: Abortable<void>;
+
+	@onceler
+	async #connectTest(context: Context, url: string): Promise<Moq.Connection> {
+		return Moq.Connection.connect(url);
 	}
 
-	async #run() {
-		const announced = await this.#config.connection.announced(this.#config.path);
+	get url(): string | undefined {
+		this.#connectTest(url);
+		return this.#url;
+	}
 
-		let activeId = -1;
+	set url(url: string | undefined) {
+		this.#url = url;
+		this.#connection?.abort();
 
-		for (;;) {
-			const announce = await announced.next();
-			if (!announce) break;
+		if (url) {
+			this.#connection = new Abortable((context) => this.#connect(context, url));
+		} else {
+			this.#connection = undefined;
+		}
+	}
 
-			if (announce.path.length === this.#config.path.length) {
-				throw new Error("expected resumable broadcast");
-			}
+	async #connect(context: Context, url: string): Promise<Moq.Connection> {
+		// TODO support abort
+		const connection = await Moq.Connection.connect(url);
+		context.done.finally(() => connection.close());
 
-			if (announce.path.length !== this.#config.path.length + 1) {
-				// Ignore subtracks
-				continue;
-			}
-
-			const id = Number.parseInt(announce.path[announce.path.length - 1]);
-			if (id <= activeId) {
-				console.warn("skipping old broadcast", announce.path);
-				continue;
-			}
-
-			const catalog = await Catalog.Broadcast.fetch(this.#config.connection, announce.path);
-
-			this.#active?.close();
-			this.#active = new Broadcast(this.#config.connection, announce.path, catalog, this.#config.canvas);
-			activeId = id;
+		if (!context.aborted) {
+			this.#discover?.abort();
+			this.#discover = new Abortable((context) => this.#runDiscover(context, connection));
 		}
 
-		this.#active?.close();
+		return connection;
 	}
 
-	close() {
-		this.#config.connection.close();
-		this.#active?.close();
-		this.#active = undefined;
+	async #runDiscover(context: Context, connection: Moq.Connection) {
+		// Remove the leading slash
+		const path = connection.url.pathname.slice(1);
+		const announced = await connection.announced(path);
+
+		for (;;) {
+			const announce = await Promise.any([announced.next(), context.done]);
+			if (!announce) break;
+
+			if (!announce.path.endsWith("catalog.json")) {
+				continue;
+			}
+
+			console.log("found catalog", announce.path);
+
+			this.#catalog?.abort();
+			this.#catalog = new Abortable((context) => this.#runCatalog(context, connection, announce.path));
+		}
 	}
 
-	async closed() {
-		await Promise.any([this.#running, this.#config.connection.closed()]);
+	async #runCatalog(context: Context, connection: Moq.Connection, path: string): Promise<Catalog.Broadcast> {
+		const catalog = await Catalog.Broadcast.fetch(connection, path);
+		if (!context.aborted) {
+			this.#running = new Abortable((context) => this.#run(context, connection, catalog));
+		}
+
+		return catalog;
 	}
 
-	unmute() {
-		this.#active?.unmute();
-	}
+	async #run(context: Context, connection: Moq.Connection, catalog: Catalog.Broadcast) {}
 }

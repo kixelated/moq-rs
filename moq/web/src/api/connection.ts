@@ -8,6 +8,9 @@ import { type Announced, Subscriber } from "./subscriber";
 import type { Track, TrackReader } from "./track";
 
 export class Connection {
+	// The URL of the connection.
+	#url: URL;
+
 	// The established WebTransport session.
 	#quic: WebTransport;
 
@@ -23,7 +26,8 @@ export class Connection {
 	// Async work running in the background
 	#running: Promise<void>;
 
-	constructor(quic: WebTransport, session: Wire.Stream) {
+	constructor(url: URL | string, quic: WebTransport, session: Wire.Stream) {
+		this.#url = url instanceof URL ? url : new URL(url);
 		this.#quic = quic;
 		this.#session = session;
 
@@ -31,6 +35,30 @@ export class Connection {
 		this.#subscriber = new Subscriber(this.#quic);
 
 		this.#running = this.#run();
+	}
+
+	static async connect(url: string): Promise<Connection> {
+		// Helper function to make creating a promise easier
+		const options: WebTransportOptions = {};
+
+		const quic = new WebTransport(url, options);
+		await quic.ready;
+
+		const client = new Wire.SessionClient([Wire.Version.FORK_04]);
+		const stream = await Wire.Stream.open(quic, client);
+
+		const server = await Wire.SessionServer.decode(stream.reader);
+		if (server.version !== Wire.Version.FORK_04) {
+			throw new Error(`unsupported server version: ${server.version}`);
+		}
+
+		console.log(`established connection: version=${server.version}`);
+
+		return new Connection(url, quic, stream);
+	}
+
+	get url(): URL {
+		return this.#url;
 	}
 
 	close(code = 0, reason = "") {

@@ -1,6 +1,3 @@
-export { Client } from "./client";
-export type { ClientConfig } from "./client";
-
 export { Connection } from "./connection";
 export { Track, TrackReader } from "./track";
 export { Group, GroupReader } from "./group";

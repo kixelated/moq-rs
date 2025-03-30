@@ -1,6 +1,8 @@
-import { Publish, type PublishDevice } from "../../wasm/src/publish";
+import { Broadcast, Device } from "@kixelated/hang/publish";
 
-import { Context, MoqElement, element, jsx } from "./util";
+import { Context } from "./util/context";
+import { element, MoqElement } from "./util/component";
+import { jsx } from "./util/jsx";
 
 import "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
 import "@shoelace-style/shoelace/dist/components/radio-button/radio-button.js";
@@ -8,14 +10,16 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
 @element("hang-publish")
-export class PublishUi extends MoqElement {
+export class Publish extends MoqElement {
 	#slot: HTMLSlotElement;
 	#controls: HTMLDivElement;
 	#status: HTMLDivElement;
 
-	// The Publish element can be slotted, so we have to do extra work.
-	#inner?: Publish;
-	#context?: Context;
+	#broadcast: Broadcast;
+	#context?: Context; // Cancel background tasks when not in the DOM.
+
+	// The canvas element can be slotted, so we have to do extra work.
+	#canvas?: HTMLCanvasElement;
 
 	constructor() {
 		super();
@@ -69,8 +73,16 @@ export class PublishUi extends MoqElement {
 			</div>
 		) as HTMLDivElement;
 
-		this.#slot = (<slot>Unable to find `moq-publish` element.</slot>) as HTMLSlotElement;
-		this.#slot.addEventListener("slotchange", () => this.#init());
+		// Create a slot with a default canvas element.
+		this.#slot = (
+			<slot>
+				<canvas />
+			</slot>
+		) as HTMLSlotElement;
+		this.#slot.addEventListener("slotchange", () => this.#updateCanvas());
+
+		this.#broadcast = new Broadcast();
+		// TODO set the default canvas
 
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
@@ -79,38 +91,41 @@ export class PublishUi extends MoqElement {
 		shadow.appendChild(this.#controls);
 	}
 
-	#init() {
-		for (const element of this.#slot.assignedElements({ flatten: true })) {
-			if (element instanceof Publish) {
-				if (this.#context) {
-					this.#context.cancel("removed from DOM");
-				}
+	connectedCallback() {
+		this.#context = new Context();
+		this.#run(this.#context);
+	}
 
-				this.#inner = element;
-				this.#context = new Context();
-				this.#run(element, this.#context);
+	disconnectedCallback() {
+		this.#context?.cancel("removed from DOM");
+	}
+
+	#updateCanvas() {
+		for (const element of this.#slot.assignedElements({ flatten: true })) {
+			if (element instanceof HTMLCanvasElement) {
+				this.#broadcast.canvas = element;
 				return;
 			}
 		}
 
-		throw new Error("Expected <moq-publish> element.");
+		throw new Error("Expected slotted <canvas> element.");
 	}
 
-	async #run(inner: Publish, context: Context) {
+	async #run(context: Context) {
 		this.#status.replaceChildren(<sl-spinner />, "Initiailizing...");
 
 		try {
-			const connection = inner.connectionStatus();
+			const status = this.#broadcast.status();
 
 			for (;;) {
-				const { done, value } = await Promise.race([connection.next(), context.done]);
+				const { done, value } = await Promise.race([status.next(), context.done]);
 				if (done) {
 					return;
 				}
 
 				switch (value) {
 					case "disconnected":
-						if (this.#inner?.device !== "") {
+						if (this.#broadcast.device !== "") {
 							this.#status.replaceChildren("Disconnected");
 						} else {
 							this.#status.replaceChildren();
@@ -125,8 +140,8 @@ export class PublishUi extends MoqElement {
 						this.#status.replaceChildren();
 						break;
 					default: {
-						const _exhaustive: never = value;
-						throw new Error(`Unhandled state: ${_exhaustive}`);
+						value as never;
+						throw new Error(`Unhandled state: ${value}`);
 					}
 				}
 			}
@@ -142,19 +157,15 @@ export class PublishUi extends MoqElement {
 		}
 	}
 
-	#share(device: PublishDevice) {
-		if (!this.#inner) {
-			return;
-		}
-
-		this.#inner.device = device;
+	#share(device: Device) {
+		this.#broadcast.device = device;
 	}
 }
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-publish-ui": PublishUi;
+		"hang-publish": Publish;
 	}
 }
 
-export default PublishUi;
+export default Publish;

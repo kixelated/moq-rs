@@ -1,5 +1,5 @@
-import { Watch } from "../util/async";
-import { Closed } from "../util/error";
+import { Watch } from "./util/async";
+import { Closed } from "./util/error";
 
 export class Group {
 	readonly id: number;

@@ -6,7 +6,7 @@
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
-		".": "./api/index.ts"
+		".": "./src/api/index.ts"
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
@@ -14,7 +14,6 @@
 		"fix": "biome check --write"
 	},
 	"devDependencies": {
-		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
-		"typescript": "^5.8.2"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214"
 	}
 }

@@ -1,7 +1,9 @@
-import type { Frame } from "../catalog/frame";
-import type { Group, Track } from "../lite";
-import { Closed } from "../lite/error";
+import { Closed } from "../../../../moq/web/src/util/error";
+import { Frame } from "../catalog/frame";
 import { Deferred } from "../util/async";
+
+import * as Moq from "@kixelated/moq";
+import { Context } from "../util/context";
 
 const SUPPORTED = [
 	// TODO support AAC
@@ -9,80 +11,27 @@ const SUPPORTED = [
 	"Opus",
 ];
 
-export class Packer {
-	#source: MediaStreamTrackProcessor<AudioData>;
-	#encoder: Encoder;
-
-	#data: Track;
-	#current?: Group;
-
-	constructor(track: MediaStreamAudioTrack, encoder: Encoder, data: Track) {
-		this.#source = new MediaStreamTrackProcessor({ track });
-		this.#encoder = encoder;
-		this.#data = data;
-	}
-
-	async run() {
-		const output = new WritableStream({
-			write: (chunk) => this.#write(chunk),
-			close: () => this.#close(),
-			abort: (e) => this.#close(e),
-		});
-
-		return this.#source.readable.pipeThrough(this.#encoder.frames).pipeTo(output);
-	}
-
-	#write(frame: Frame) {
-		// TODO use a fixed interval instead of keyframes (audio)
-		// TODO actually just align with video
-		if (!this.#current || frame.type === "key") {
-			if (this.#current) {
-				this.#current.close();
-			}
-
-			this.#current = this.#data.appendGroup();
-		}
-
-		this.#current.writeFrame(frame.data);
-	}
-
-	#close(err?: unknown) {
-		const closed = Closed.from(err);
-		if (this.#current) {
-			this.#current.close(closed);
-		}
-
-		this.#data.close(closed);
-	}
-}
+export type EncoderConfig = AudioEncoderConfig;
 
 export class Encoder {
-	#encoder!: AudioEncoder;
+	#output: Moq.Track;
+
+	#encoder: AudioEncoder;
 	#encoderConfig: AudioEncoderConfig;
-	#decoderConfig: AudioDecoderConfig;
+	#decoder: AudioDecoderConfig;
 
-	frames: TransformStream<AudioData, EncodedAudioChunk>;
+	constructor(config: AudioEncoderConfig, output: Moq.Track) {
+		this.#output = output;
 
-	constructor(config: AudioEncoderConfig) {
 		this.#encoderConfig = config;
-		this.#decoderConfig = {
+		this.#decoder = {
 			codec: config.codec,
 			numberOfChannels: config.numberOfChannels,
 			sampleRate: config.sampleRate,
 		};
 
-		this.frames = new TransformStream({
-			start: this.#start.bind(this),
-			transform: this.#transform.bind(this),
-			flush: this.#flush.bind(this),
-		});
-	}
-
-	#start(controller: TransformStreamDefaultController<EncodedAudioChunk>) {
 		this.#encoder = new AudioEncoder({
-			output: (frame, metadata) => {
-				controller.enqueue(frame);
-			},
+			output: (frame, metadata) => this.#encoded(frame, metadata),
 			error: (err) => {
 				throw err;
 			},
@@ -91,13 +40,47 @@ export class Encoder {
 		this.#encoder.configure(this.#encoderConfig);
 	}
 
-	#transform(frame: AudioData) {
+	get config() {
+		return this.#encoderConfig;
+	}
+
+	decoder(): AudioDecoderConfig {
+		return this.#decoder;
+	}
+
+	async run(context: Context, media: MediaStreamAudioTrack) {
+		const input = new MediaStreamTrackProcessor({ track: media });
+		const reader = input.readable.getReader();
+
+		for (;;) {
+			const { done, value } = await Promise.any([reader.read(), context.done]);
+			if (done) {
+				break;
+			}
+
+			this.#encoder.encode(value);
+		}
+	}
+
+	#encode(frame: AudioData) {
 		this.#encoder.encode(frame);
 		frame.close();
 	}
 
-	#flush() {
-		this.#encoder.close();
+	#encoded(frame: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) {
+		if (frame.type !== "key") {
+			throw new Error("only key frames are supported");
+		}
+
+		const group = this.#output.appendGroup();
+
+		const buffer = new Uint8Array(frame.byteLength);
+		frame.copyTo(buffer);
+
+		const hang = new Frame(frame.type, frame.timestamp, buffer);
+		hang.encode(group);
+
+		group.close();
 	}
 
 	static async isSupported(config: AudioEncoderConfig) {
@@ -107,13 +90,5 @@ export class Encoder {
 
 		const res = await AudioEncoder.isConfigSupported(config);
 		return !!res.supported;
-	}
-
-	get config() {
-		return this.#encoderConfig;
-	}
-
-	decoderConfig(): AudioDecoderConfig {
-		return this.#decoderConfig;
 	}
 }

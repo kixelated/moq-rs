@@ -1,7 +1,7 @@
 import { Frame } from "../catalog/frame";
-import type { Group, Track } from "../lite";
-import { Closed } from "../lite/error";
+import * as Moq from "@kixelated/moq";
 import { Deferred } from "../util/async";
+import { Context } from "../util/context";
 
 const SUPPORTED = [
 	"avc1", // H.264
@@ -13,59 +13,16 @@ export interface EncoderSupported {
 	codecs: string[];
 }
 
-export class Packer {
-	#source: MediaStreamTrackProcessor<VideoFrame>;
-	#encoder: Encoder;
-
-	#data: Track;
-	#current?: Group;
-
-	constructor(track: MediaStreamVideoTrack, encoder: Encoder, data: Track) {
-		this.#source = new MediaStreamTrackProcessor({ track });
-		this.#encoder = encoder;
-		this.#data = data;
-	}
-
-	async run() {
-		const output = new WritableStream<EncodedVideoChunk>({
-			write: (chunk) => this.#write(chunk),
-			close: () => this.#close(),
-			abort: (e) => this.#close(e),
-		});
-
-		return this.#source.readable.pipeThrough(this.#encoder.frames).pipeTo(output);
-	}
-
-	#write(frame: EncodedVideoChunk) {
-		if (!this.#current || frame.type === "key") {
-			if (this.#current) {
-				this.#current.close();
-			}
-
-			this.#current = this.#data.appendGroup();
-		}
-
-		const buffer = new Uint8Array(frame.byteLength);
-		frame.copyTo(buffer);
-
-		const karp = new Frame(frame.type, frame.timestamp, buffer);
-		karp.encode(this.#current);
-	}
-
-	#close(err?: unknown) {
-		const closed = Closed.from(err);
-		if (this.#current) {
-			this.#current.close(closed);
-		}
-
-		this.#data.close(closed);
-	}
-}
+export type EncoderConfig = VideoEncoderConfig;
 
 export class Encoder {
-	#encoder!: VideoEncoder;
+	#outputTrack: Moq.Track;
+	#outputGroup?: Moq.Group;
+
+	#encoder: VideoEncoder;
 	#encoderConfig: VideoEncoderConfig;
-	#decoderConfig = new Deferred<VideoDecoderConfig>();
+
+	#decoder = new Deferred<VideoDecoderConfig>();
 
 	// true if we should insert a keyframe, undefined when the encoder should decide
 	#keyframeNext: true | undefined = true;
@@ -73,20 +30,25 @@ export class Encoder {
 	// Count the number of frames without a keyframe.
 	#keyframeCounter = 0;
 
-	// Converts raw rames to encoded frames.
-	frames: TransformStream<VideoFrame, EncodedVideoChunk>;
+	constructor(config: VideoEncoderConfig, output: Moq.Track) {
+		this.#outputTrack = output;
 
-	constructor(config: VideoEncoderConfig) {
 		config.bitrateMode ??= "constant";
 		config.latencyMode ??= "realtime";
 
 		this.#encoderConfig = config;
 
-		this.frames = new TransformStream({
-			start: this.#start.bind(this),
-			transform: this.#transform.bind(this),
-			flush: this.#flush.bind(this),
+		this.#encoder = new VideoEncoder({
+			output: (frame, metadata) => {
+				this.#encoded(frame, metadata);
+			},
+			error: (err) => {
+				this.#decoder.reject(err);
+				throw err;
+			},
 		});
+
+		this.#encoder.configure(this.#encoderConfig);
 	}
 
 	static async isSupported(config: VideoEncoderConfig) {
@@ -107,47 +69,42 @@ export class Encoder {
 		return !!res.supported;
 	}
 
-	async decoderConfig(): Promise<VideoDecoderConfig> {
-		return await this.#decoderConfig.promise;
+	get config() {
+		return this.#encoderConfig;
 	}
 
-	#start(controller: TransformStreamDefaultController<EncodedVideoChunk>) {
-		this.#encoder = new VideoEncoder({
-			output: (frame, metadata) => {
-				this.#enqueue(controller, frame, metadata);
-			},
-			error: (err) => {
-				this.#decoderConfig.reject(err);
-				throw err;
-			},
-		});
-
-		this.#encoder.configure(this.#encoderConfig);
+	async decoder(): Promise<VideoDecoderConfig> {
+		return await this.#decoder.promise;
 	}
 
-	#transform(frame: VideoFrame) {
-		const encoder = this.#encoder;
+	async run(context: Context, media: MediaStreamVideoTrack) {
+		const input = new MediaStreamTrackProcessor({ track: media });
+		const reader = input.readable.getReader();
 
-		// Set keyFrame to undefined when we're not sure so the encoder can decide.
-		encoder.encode(frame, { keyFrame: this.#keyframeNext });
-		this.#keyframeNext = undefined;
+		for (;;) {
+			const { done, value } = await Promise.any([reader.read(), context.done]);
+			if (done) {
+				break;
+			}
 
-		frame.close();
+			// Set keyFrame to undefined when we're not sure so the encoder can decide.
+			this.#encoder.encode(value, { keyFrame: this.#keyframeNext });
+			this.#keyframeNext = undefined;
+			value.close();
+		}
 	}
 
-	#enqueue(
-		controller: TransformStreamDefaultController<EncodedVideoChunk>,
-		frame: EncodedVideoChunk,
-		metadata?: EncodedVideoChunkMetadata,
-	) {
-		if (this.#decoderConfig.pending) {
+	async #encoded(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
+		if (this.#decoder.pending) {
 			const config = metadata?.decoderConfig;
 			if (!config) throw new Error("missing decoder config");
-			this.#decoderConfig.resolve(config);
+			this.#decoder.resolve(config);
 		}
 
 		if (frame.type === "key") {
 			this.#keyframeCounter = 0;
+			this.#outputGroup?.close();
+			this.#outputGroup = this.#outputTrack.appendGroup();
 		} else {
 			this.#keyframeCounter += 1;
 			const framesPerGop = this.#encoderConfig.framerate ? 2 * this.#encoderConfig.framerate : 60;
@@ -156,14 +113,12 @@ export class Encoder {
 			}
 		}
 
-		controller.enqueue(frame);
-	}
+		if (!this.#outputGroup) throw new Error("missing keyframe");
 
-	#flush() {
-		this.#encoder.close();
-	}
+		const buffer = new Uint8Array(frame.byteLength);
+		frame.copyTo(buffer);
 
-	get config() {
-		return this.#encoderConfig;
+		const karp = new Frame(frame.type, frame.timestamp, buffer);
+		karp.encode(this.#outputGroup);
 	}
 }

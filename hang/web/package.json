@@ -6,9 +6,9 @@
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
-		"./watch": "./src/watch.ts",
-		"./publish": "./src/publish.ts",
-		"./catalog": "./src/catalog.ts"
+		"./watch": "./src/watch/index.ts",
+		"./publish": "./src/publish/index.ts",
+		"./catalog": "./src/catalog/index.ts"
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
@@ -24,7 +24,6 @@
 		"@types/audioworklet": "^0.0.72",
 		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/dom-webcodecs": "^0.1.14",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
-		"typescript": "^5.8.2"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214"
 	}
 }
