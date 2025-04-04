@@ -1,12 +1,12 @@
 [workspace]
 members = [
-	"hang/cli",
-	"hang/lib",
-	"hang/wasm",
-	"moq/clock",
-	"moq/lite",
-	"moq/native",
-	"moq/relay",
+	"hang",
+	"hang-cli",
+	"hang-wasm",
+	"moq-clock",
+	"moq-lite",
+	"moq-native",
+	"moq-relay",
 ]
 resolver = "2"
 
@@ -15,9 +15,9 @@ resolver = "2"
 web-transport = "0.8"
 tokio = "1.44"
 
-moq-lite = { version = "0.1", path = "moq/lite" }
-moq-native = { version = "0.6", path = "moq/native" }
-hang = { version = "0.1", path = "hang/lib" }
+hang = { version = "0.1", path = "hang" }
+moq-lite = { version = "0.1", path = "moq-lite" }
+moq-native = { version = "0.6", path = "moq-native" }
 
 [profile.release.package.moq-wasm]
 # Tell `rustc` to optimize for small code size.

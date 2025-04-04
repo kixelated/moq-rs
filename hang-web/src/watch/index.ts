@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
-import { Broadcast } from "./broadcast";
 import { Abortable, Context } from "../util/context";
+import { Broadcast } from "./broadcast";
 
 export function onceler<Target extends (context: Context, ...args: any) => Promise<any>>(
 	target: Target,

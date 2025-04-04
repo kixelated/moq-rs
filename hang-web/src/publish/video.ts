@@ -1,5 +1,5 @@
-import { Frame } from "../catalog/frame";
 import * as Moq from "@kixelated/moq";
+import { Frame } from "../catalog/frame";
 import { Deferred } from "../util/async";
 import { Context } from "../util/context";
 

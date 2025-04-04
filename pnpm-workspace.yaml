@@ -1,4 +1,4 @@
 packages:
-  - 'moq/web'
-  - 'hang/web'
-  - 'hang/web-ui'
+  - 'moq-web'
+  - 'hang-web'
+  - 'hang-web-ui'

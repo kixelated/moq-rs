@@ -1,7 +1,7 @@
 import { Broadcast, Device } from "@kixelated/hang/publish";
 
+import { MoqElement, element } from "./util/component";
 import { Context } from "./util/context";
-import { element, MoqElement } from "./util/component";
 import { jsx } from "./util/jsx";
 
 import "@shoelace-style/shoelace/dist/components/radio-group/radio-group.js";
