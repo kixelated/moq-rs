@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# This is used to stream the demo Big Buck Bunny video on quic.video.
+# TODO Move this to the quic.video repo instead of hijacking the docker image.
+
 set -euo pipefail
 
 URL=${URL:-"http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"}

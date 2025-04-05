@@ -1,47 +1,51 @@
 export class Context {
-	done: Promise<never>;
-	aborted: boolean;
-	abort!: (reason?: unknown) => void;
+	#aborted: Promise<never>;
+	#abort!: (reason?: unknown) => void;
 
 	constructor() {
-		this.aborted = false;
-
-		this.done = new Promise((_, reject) => {
-			this.abort = (reason?: unknown) => {
-				this.aborted = true;
-				reject(reason);
-			};
-		});
-	}
-}
-
-export class Abortable<T> {
-	#result: Promise<T>;
-	#context: Context;
-	#current?: T;
-
-	constructor(fn: (context: Context) => Promise<T>) {
-		this.#context = new Context();
-
-		this.#result = fn(this.#context).then((value) => {
-			this.#current = value;
-			return value;
+		this.#aborted = new Promise((_, reject) => {
+			this.#abort = reject;
 		});
 	}
 
 	abort(reason?: unknown) {
-		this.#context.abort(reason);
+		this.#abort(reason);
 	}
 
-	get result(): Promise<T> {
-		return this.#result;
+	async run<T>(promise: Promise<T>): Promise<T> {
+		return await Promise.race([promise, this.#aborted]);
 	}
 
-	get aborted(): boolean {
-		return this.#context.aborted;
+	async race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>> {
+		return await Promise.race([...values, this.#aborted]);
+	}
+}
+
+export class Task<Args extends unknown[] = unknown[]> {
+	#context?: Context;
+	#fn: (context: Context, ...args: Args) => Promise<void>;
+	#active?: Promise<void>;
+
+	constructor(fn: (context: Context, ...args: Args) => Promise<void>) {
+		this.#fn = fn;
 	}
 
-	get current(): T | undefined {
-		return this.#current;
+	async start(context: Context, ...args: Args): Promise<void> {
+		await this.abort();
+
+		this.#context = context;
+		this.#active = this.#fn(this.#context, ...args).catch((error) => {
+			this.#context = undefined;
+			throw error;
+		});
+
+		return this.#active;
+	}
+
+	async abort(reason?: unknown) {
+		this.#context?.abort(reason);
+		// Wait for the task to finish, erroring after 2 seconds.
+		const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("task failed to abort")), 2_000));
+		await Promise.race([this.#active, timeout]);
 	}
 }

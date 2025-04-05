@@ -150,7 +150,7 @@ class Subscribed {
 		const stream = await Wire.Writer.open(this.#quic, msg);
 
 		for (;;) {
-			const frame = await group.readFrame();
+			const frame = await group.nextFrame();
 			if (!frame) break;
 
 			await stream.u53(frame.byteLength);

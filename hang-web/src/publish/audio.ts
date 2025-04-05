@@ -1,5 +1,5 @@
 import { Closed } from "../../../../moq/web/src/util/error";
-import { Frame } from "../catalog/frame";
+import { Frame } from "../container/frame";
 import { Deferred } from "../util/async";
 
 import * as Moq from "@kixelated/moq";

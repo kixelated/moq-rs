@@ -1,33 +1,31 @@
 import type { Group, GroupReader } from "@kixelated/moq";
 import { getVint53, setVint53 } from "../util/vint";
 
-export type FrameType = "key" | "delta";
-
 export class Frame {
-	type: FrameType;
+	keyframe: boolean;
 	timestamp: number;
 	data: Uint8Array;
 
-	constructor(type: FrameType, timestamp: number, data: Uint8Array) {
-		this.type = type;
+	constructor(keyframe: boolean, timestamp: number, data: Uint8Array) {
+		this.keyframe = keyframe;
 		this.timestamp = timestamp;
 		this.data = data;
 	}
 
 	static async decode(group: GroupReader): Promise<Frame | undefined> {
-		const kind = group.index === 0 ? "key" : "delta";
-		const payload = await group.readFrame();
+		const keyframe = group.index === 0;
+		const payload = await group.nextFrame();
 		if (!payload) {
 			return undefined;
 		}
 
 		const [timestamp, data] = getVint53(payload);
-		return new Frame(kind, timestamp, data);
+		return new Frame(keyframe, timestamp, data);
 	}
 
 	encode(group: Group) {
-		if ((group.length === 0) !== (this.type === "key")) {
-			throw new Error(`invalid ${this.type} position`);
+		if ((group.length === 0) !== this.keyframe) {
+			throw new Error("keyframe must start a group");
 		}
 
 		let frame = new Uint8Array(8 + this.data.byteLength);

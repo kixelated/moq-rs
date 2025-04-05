@@ -11,7 +11,7 @@
 		"fix": "biome check --write"
 	},
 	"dependencies": {
-		"@kixelated/hang": "workspace:../../hang/web",
+		"@kixelated/hang": "workspace:../hang-web",
 		"@shoelace-style/shoelace": "^2.20.1"
 	},
 	"devDependencies": {

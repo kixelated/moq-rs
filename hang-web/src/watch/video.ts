@@ -1,76 +1,47 @@
 import type * as Catalog from "../catalog";
-import type { Frame } from "../catalog/frame";
+import type { Frame } from "../container/frame";
 import * as Hex from "../util/hex";
-import type { Component } from "./timeline";
 
-export class Renderer {
-	#track: Catalog.Video;
+export class Video {
 	#canvas: HTMLCanvasElement;
-	#timeline: Component;
+	#decoder: VideoDecoder;
 
-	#decoder!: VideoDecoder;
-	#queue: TransformStream<Frame, VideoFrame>;
-
-	constructor(track: Catalog.Video, canvas: HTMLCanvasElement, timeline: Component) {
-		this.#track = track;
+	constructor(track: Catalog.Video, canvas: HTMLCanvasElement) {
 		this.#canvas = canvas;
-		this.#timeline = timeline;
-
-		this.#queue = new TransformStream({
-			start: this.#start.bind(this),
-			transform: this.#transform.bind(this),
-		});
-
-		this.#run().catch((err) => console.error("failed to run video renderer: ", err));
-	}
-
-	close() {
-		// TODO
-	}
-
-	async #run() {
-		const reader = this.#timeline.frames.pipeThrough(this.#queue).getReader();
-		for (;;) {
-			const { value: frame, done } = await reader.read();
-			if (done) break;
-
-			self.requestAnimationFrame(() => {
-				this.#canvas.width = frame.displayWidth;
-				this.#canvas.height = frame.displayHeight;
-
-				const ctx = this.#canvas.getContext("2d");
-				if (!ctx) throw new Error("failed to get canvas context");
-
-				ctx.drawImage(frame, 0, 0, frame.displayWidth, frame.displayHeight); // TODO respect aspect ratio
-				frame.close();
-			});
-		}
-	}
-
-	#start(controller: TransformStreamDefaultController<VideoFrame>) {
 		this.#decoder = new VideoDecoder({
-			output: (frame: VideoFrame) => {
-				controller.enqueue(frame);
-			},
-			error: console.error,
+			output: (frame) => this.#decoded(frame),
+			error: (error) => console.error(error),
 		});
 
 		this.#decoder.configure({
-			codec: this.#track.codec,
-			codedHeight: this.#track.resolution.height,
-			codedWidth: this.#track.resolution.width,
-			description: this.#track.description ? Hex.decode(this.#track.description) : undefined,
+			codec: track.codec,
+			codedHeight: track.resolution.height,
+			codedWidth: track.resolution.width,
+			description: track.description ? Hex.decode(track.description) : undefined,
 			optimizeForLatency: true,
 		});
 	}
 
-	#transform(frame: Frame) {
+	decode(frame: Frame) {
 		const chunk = new EncodedVideoChunk({
-			type: frame.type,
+			type: frame.keyframe ? "key" : "delta",
 			data: frame.data,
 			timestamp: frame.timestamp,
 		});
 
 		this.#decoder.decode(chunk);
+	}
+
+	#decoded(frame: VideoFrame) {
+		self.requestAnimationFrame(() => {
+			this.#canvas.width = frame.displayWidth;
+			this.#canvas.height = frame.displayHeight;
+
+			const ctx = this.#canvas.getContext("2d");
+			if (!ctx) throw new Error("failed to get canvas context");
+
+			ctx.drawImage(frame, 0, 0, frame.displayWidth, frame.displayHeight); // TODO respect aspect ratio
+			frame.close();
+		});
 	}
 }

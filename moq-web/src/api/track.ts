@@ -1,7 +1,7 @@
 import { Group, GroupReader } from "./group";
-import { Watch } from "./util/async";
-import { Closed } from "./util/error";
-import { GroupOrder } from "./wire";
+import { Watch } from "../util/async";
+import { Closed } from "../util/error";
+import { GroupOrder } from "../wire";
 
 export class Track {
 	readonly path: string;

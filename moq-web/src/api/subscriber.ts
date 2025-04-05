@@ -88,7 +88,6 @@ export class Subscriber {
 
 			return subscribe.track.reader();
 		} catch (err) {
-			console.error(err);
 			this.#subscribe.delete(subscribe.id);
 			await subscribe.close(Closed.from(err));
 			throw err;

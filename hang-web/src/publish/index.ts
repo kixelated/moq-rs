@@ -3,7 +3,7 @@ import * as Catalog from "../catalog";
 import * as Audio from "./audio";
 import * as Video from "./video";
 
-import { Abortable, Context } from "../util/context";
+import { Context } from "../util/context";
 import * as Hex from "../util/hex";
 import { isAudioTrackSettings, isVideoTrackSettings } from "../util/settings";
 

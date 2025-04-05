@@ -16,7 +16,7 @@
 		"fix": "biome check --write"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:../../moq/web",
+		"@kixelated/moq": "workspace:../moq-web",
 		"comlink": "^4.4.2",
 		"zod": "^3.24.2"
 	},

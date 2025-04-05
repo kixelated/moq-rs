@@ -47,7 +47,7 @@ export class GroupReader {
 		this.#group = group;
 	}
 
-	async readFrame(): Promise<Uint8Array | undefined> {
+	async nextFrame(): Promise<Uint8Array | undefined> {
 		let [chunks, next] = this.#group.chunks.value();
 
 		for (;;) {

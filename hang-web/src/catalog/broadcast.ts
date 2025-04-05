@@ -37,7 +37,7 @@ export class Broadcast {
 			const segment = await sub.nextGroup();
 			if (!segment) throw new Error("no catalog data");
 
-			const frame = await segment.readFrame();
+			const frame = await segment.nextFrame();
 			if (!frame) throw new Error("no catalog frame");
 
 			segment.close();

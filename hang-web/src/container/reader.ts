@@ -1,0 +1,81 @@
+import * as Moq from "@kixelated/moq";
+import { Frame } from "./frame";
+
+export class Reader {
+	#track: Moq.TrackReader;
+	#group?: Moq.GroupReader;
+
+	#nextGroup?: Promise<Moq.GroupReader | undefined>;
+	#nextFrame?: Promise<Frame | undefined>;
+
+	constructor(track: Moq.TrackReader) {
+		this.#track = track;
+		this.#nextGroup = track.nextGroup();
+	}
+
+	async next(): Promise<Frame | undefined> {
+		for (;;) {
+			if (this.#nextGroup && this.#nextFrame) {
+				// Figure out if nextFrame or nextGroup wins the race.
+				// TODO support variable latency
+				const next: { frame: Frame | undefined } | { group: Moq.GroupReader | undefined } = await Promise.race([
+					this.#nextFrame.then((frame) => ({ frame })),
+					this.#nextGroup.then((group) => ({ group })),
+				]);
+
+				if ("frame" in next) {
+					const frame = next.frame;
+					if (!frame) {
+						// The group is done, wait for the next one.
+						this.#group?.close(); // just a precaution
+						this.#nextFrame = undefined;
+						continue;
+					}
+
+					// We got a frame; return it.
+					// But first start fetching the next frame (note: group cannot be undefined).
+					this.#nextFrame = this.#group ? Frame.decode(this.#group) : undefined;
+					return frame;
+				}
+
+				const group = next.group;
+				if (!group) {
+					// The track is done, but finish with the current group.
+					this.#nextGroup = undefined;
+					continue;
+				}
+
+				// Start fetching the next group.
+				this.#nextGroup = this.#track.nextGroup();
+
+				if (this.#group && this.#group.id >= group.id) {
+					// Skip this old group.
+					console.warn(`skipping old group: ${group.id} < ${this.#group.id}`);
+					group.close();
+					continue;
+				}
+
+				// Skip the rest of the current group.
+				this.#group?.close();
+				this.#group = next.group;
+			} else if (this.#nextGroup) {
+				// Wait for the next group.
+				this.#group?.close(); // just a precaution
+				this.#group = await this.#nextGroup;
+				this.#nextGroup = this.#track.nextGroup();
+			} else if (this.#nextFrame) {
+				// We got the next frame, or potentially the end of the track.
+				const frame = await this.#nextFrame;
+				this.#nextFrame = this.#group ? Frame.decode(this.#group) : undefined;
+				return frame;
+			} else {
+				return undefined;
+			}
+		}
+	}
+
+	close() {
+		this.#group?.close();
+		this.#track.close();
+	}
+}
