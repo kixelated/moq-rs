@@ -14,7 +14,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-karp = { path = "../moq-karp", version = "0.15" }
+moq-karp = { path = "../moq-karp", version = "0.16" }
 
 moq-native = { path = "../moq-native", version = "0.6" }
 clap = { version = "4", features = ["derive"] }
