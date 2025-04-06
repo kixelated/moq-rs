@@ -25,6 +25,10 @@ const config = {
 		new HtmlWebpackPlugin({
 			template: "moq-web/src/demo/index.html",
 		}),
+		new HtmlWebpackPlugin({
+			template: "moq-web/src/demo/meet.html",
+			filename: "meet.html",
+		}),
 		new MiniCssExtractPlugin(),
 		new CopyPlugin({
 			patterns: [

@@ -31,9 +31,6 @@ export class Publish extends MoqElement {
 				:host {
 					display: block;
 					position: relative;
-
-					max-width: 100%;
-					max-height: 100%;
 				}
 				`}
 			</style>

@@ -24,7 +24,7 @@ export class MeetUi extends MoqElement {
 					display: flex;
 					flex-direction: column;
 
-					max-width: 100%;
+					width: 100%;
 					max-height: 100%;
 				}
 				`}

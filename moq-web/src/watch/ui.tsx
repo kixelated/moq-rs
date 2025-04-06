@@ -44,11 +44,6 @@ export class WatchUi extends MoqElement {
 					display: block;
 					position: relative;
 					overflow: hidden;
-
-					max-width: 100%;
-					max-height: 100%;
-
-					justify-content: center;
 				}
 
 				:host #controls {

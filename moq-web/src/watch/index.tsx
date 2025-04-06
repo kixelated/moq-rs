@@ -29,6 +29,7 @@ const worker: Promise<Comlink.Remote<Bridge>> = new Promise((resolve) => {
 @element("moq-watch")
 export class Watch extends MoqElement {
 	#worker: Promise<Comlink.Remote<Rust.Watch>>;
+	#slot: HTMLSlotElement;
 	#canvas: HTMLCanvasElement | null = null;
 
 	@attribute
@@ -55,10 +56,6 @@ export class Watch extends MoqElement {
 					display: block;
 					position: relative;
 					overflow: hidden;
-
-					max-width: 100%;
-					max-height: 100%;
-
 					justify-content: center;
 				}
 				`}
@@ -68,16 +65,31 @@ export class Watch extends MoqElement {
 		const shadow = this.attachShadow({ mode: "open" });
 		shadow.appendChild(style);
 
-		this.#canvas = shadow.appendChild(
-			<canvas width={0} height={0} css={{ maxWidth: "100%", height: "auto" }} />,
+		const defaultCanvas = (
+			<canvas width={0} height={0} css={{ maxWidth: "100%", height: "auto" }} />
 		) as HTMLCanvasElement;
 
-		const offscreen = this.#canvas.transferControlToOffscreen();
+		const offscreen = defaultCanvas.transferControlToOffscreen();
 		this.#worker.then((worker) => worker.canvas(Comlink.transfer(offscreen, offscreen ? [offscreen] : [])));
+
+		this.#slot = shadow.appendChild(<slot>{defaultCanvas}</slot>) as HTMLSlotElement;
+		this.#slot.addEventListener("slotchange", () => this.#initCanvas());
 
 		// Set data- attributes and fire callbacks.
 		this.#runConnectionStatus();
 		this.#runRendererStatus();
+	}
+
+	#initCanvas() {
+		for (const element of this.#slot.assignedElements({ flatten: true })) {
+			if (element instanceof HTMLCanvasElement) {
+				const offscreen = element.transferControlToOffscreen();
+				this.#worker.then((worker) => worker.canvas(Comlink.transfer(offscreen, offscreen ? [offscreen] : [])));
+				return;
+			}
+		}
+
+		throw new Error("unable to find <canvas> element");
 	}
 
 	private urlChange(value: string) {
