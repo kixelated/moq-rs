@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="sl-theme-dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 8px;
+		}
+	</style>
+</head>
+
+<body>
+	<!-- Publish our own broadcast. -->
+	<moq-publish-ui>
+		<moq-publish url="http://localhost:4443/demo/me"></moq-publish>
+	</moq-publish-ui>
+
+	<!-- Show all participants under the /demo prefix -->
+	<moq-meet-ui>
+		<moq-meet url="http://localhost:4443/demo"></moq-meet>
+	</moq-meet-ui>
+
+	<h3>Tips:</h3>
+	<ul>
+		<li>Choose a media source (at the top) to publish your own broadcast.</li>
+		<li>Use `just tos` to add another participant to this `/demo` meeting.</li>
+		<li>Change the `moq-publish` URL to replace `/me` with a unique identifier for multiple broadcasts.</li>
+		<li>No audio support yet.</li>
+	</ul>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="index.html">Watch a broadcast, including a UI.</a></li>
+	</ul>
+</body>
+
+</html>

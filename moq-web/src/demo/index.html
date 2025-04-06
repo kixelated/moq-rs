@@ -9,35 +9,44 @@
 		body {
 			margin: 0;
 			padding: 8px;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		}
-
-		moq-meet {
-			width: 100%;
-			max-height: 100vh;
 		}
 	</style>
 </head>
 
 <body>
-	<!-- Publish our own broadcast. -->
-	<moq-publish-ui>
-		<moq-publish url="http://localhost:4443/demo/me"></moq-publish>
-	</moq-publish-ui>
-
-	<!-- Show all participants under the /demo prefix -->
-	<moq-meet-ui>
-		<moq-meet url="http://localhost:4443/demo"></moq-meet>
-	</moq-meet-ui>
-
-	<!-- Or watch a single broadcast
+	<!-- Optionally wrap to use a default UI, but requires shoelace assets -->
 	<moq-watch-ui>
-		<moq-watch url="http://localhost:4443/demo/bbb"></moq-watch>
+		<!-- Watch the demo/bbb broadcast -->
+		<moq-watch url="http://localhost:4443/demo/bbb">
+			<!-- Includes the ability to provide an optional <canvas> tag instead of using the default. -->
+			<canvas style="max-width: 100%; height: auto; border-radius: 5px"></canvas>
+		</moq-watch>
 	</moq-watch-ui>
-	-->
 
+	<h3>Tips:</h3>
+	<ul>
+		<li>You can use CSS to stretch the canvas:
+			<ul>
+				<li>`width: 100%` instead of `max-width: 100%`.</li>
+				<li>The HTML width/height is set automatically and cannot be adjusted due to OffscreenCanvas
+					limitations.</li>
+			</ul>
+		</li>
+
+		<li>Use `moq-meet` to watch multiple broadcasts under the same `demo/` prefix.</li>
+		<li>Try restarting `just bbb` and playback will automatically recover.
+			<ul>
+				<li>Instead of `just all`, you'll need to run `just relay`, `just web`, and `just bbb` separately.</li>
+				<li>The "newer" (unix timestamp) broadcast is used when there are duplicates.</li>
+			</ul>
+		</li>
+		<li>No audio support yet.</li>
+	</ul>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="meet.html">A "meeting" with multiple participants.</a></li>
+	</ul>
 </body>
 
 </html>
