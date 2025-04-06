@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::{coding::*, message, Error};
+use crate::Error;
+use moq_proto::{coding::*, message};
 
 use moq_async::Close;
 

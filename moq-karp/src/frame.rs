@@ -1,4 +1,4 @@
-use moq_transfork::coding::*;
+use moq_transfork::proto::coding::*;
 
 use derive_more::Debug;
 

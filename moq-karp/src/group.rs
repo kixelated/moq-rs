@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{Frame, Result, Timestamp};
-use moq_transfork::coding::Decode;
+use moq_transfork::proto::coding::Decode;
 
 #[derive(Debug)]
 pub struct GroupConsumer {

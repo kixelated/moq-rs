@@ -6,7 +6,7 @@ pub enum Error {
 	Transfork(#[from] moq_transfork::Error),
 
 	#[error("decode error: {0}")]
-	Decode(#[from] moq_transfork::coding::DecodeError),
+	Decode(#[from] moq_transfork::proto::coding::DecodeError),
 
 	#[error("json error: {0}")]
 	Json(Arc<serde_json::Error>),

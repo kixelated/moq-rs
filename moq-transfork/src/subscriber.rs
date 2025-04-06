@@ -3,15 +3,10 @@ use std::{
 	sync::{atomic, Arc},
 };
 
-use crate::{
-	message,
-	model::{Track, TrackConsumer},
-	AnnouncedProducer, Error, Filter, TrackProducer,
-};
+use crate::{AnnouncedConsumer, AnnouncedProducer, Error, Filter, Reader, Stream, Track, TrackConsumer, TrackProducer};
 
 use moq_async::{spawn, Lock, OrClose};
-
-use super::{AnnouncedConsumer, Reader, Stream};
+use moq_proto::message;
 
 #[derive(Clone)]
 pub(super) struct Subscriber {
@@ -145,12 +140,11 @@ impl Subscriber {
 			id,
 			path: track.path.clone(),
 			priority: track.priority,
-
-			group_order: track.order,
+			order: track.order,
 
 			// TODO
-			group_min: None,
-			group_max: None,
+			start: None,
+			end: None,
 		};
 
 		stream.writer.encode(&request).await?;

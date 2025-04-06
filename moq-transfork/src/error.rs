@@ -1,4 +1,4 @@
-use crate::{coding, message};
+use moq_proto::{coding, message};
 
 /// A list of possible errors that can occur during the session.
 #[derive(thiserror::Error, Debug, Clone)]
