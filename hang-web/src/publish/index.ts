@@ -10,26 +10,29 @@ import { isAudioTrackSettings, isVideoTrackSettings } from "../util/settings";
 export type Device = "screen" | "camera" | undefined;
 
 export class Publish {
-	#url?: string;
+	#url?: URL;
 	#device?: Device;
 	#render?: HTMLVideoElement;
 
-	#connection = new Task(this.#connect);
-	#media = new Task(this.#request);
-	#running = new Task(this.#run);
+	#connecting = new Task(this.#connect.bind(this));
+	#media = new Task(this.#request.bind(this));
+	#running = new Task(this.#run.bind(this));
 
-	get url(): string | undefined {
+	get url(): URL | undefined {
 		return this.#url;
 	}
 
-	set url(url: string | undefined) {
+	set url(url: URL | undefined) {
 		this.#url = url;
-		this.#connection.start(url);
+
+		if (url) {
+			this.#connecting.start(url);
+		} else {
+			this.#connecting.abort();
+		}
 	}
 
-	async #connect(context: Context, url?: string): Promise<Moq.Connection | undefined> {
-		if (!url) return;
-
+	async #connect(context: Context, url: URL): Promise<Moq.Connection> {
 		const connect = Moq.Connection.connect(url);
 
 		// Make a promise to clean up a (successful) connection on abort.
@@ -37,7 +40,7 @@ export class Publish {
 
 		// Wait for the connection to be established, or undefined if aborted.
 		const connection = await context.race(connect);
-		await this.#running.start(connection, this.#media.value);
+		await this.#running.start(connection, this.#media.latest?.result);
 
 		// Return the connection value, caching it.
 		return connection;
@@ -66,7 +69,7 @@ export class Publish {
 			stream = await context.race(navigator.mediaDevices.getDisplayMedia({ video: true }));
 		}
 
-		await this.#running.start(this.#connection.value, stream);
+		await this.#running.start(this.#connecting.latest?.result, stream);
 
 		return stream;
 	}
@@ -167,8 +170,10 @@ export class Publish {
 	}
 
 	close() {
-		this.#connection?.abort();
+		this.#connecting?.abort();
 		this.#media?.abort();
 		this.#running?.abort();
 	}
 }
+
+export default Publish;

@@ -1,11 +1,15 @@
-import { asError } from "../util/error";
+import { asError } from "./util/error";
 
-import type { Queue } from "../util/async";
-import { Closed } from "../util/error";
-import * as Wire from "../wire";
 import { Publisher } from "./publisher";
 import { type Announced, Subscriber } from "./subscriber";
-import type { Track, TrackReader } from "./track";
+import { TrackReader, TrackWriter } from "./track";
+import type { Queue } from "./util/async";
+import { Closed } from "./util/error";
+import * as Hex from "./util/hex";
+import * as Wire from "./wire";
+
+// A pool of connections.
+const pool: Map<URL, Promise<Connection>> = new Map();
 
 export class Connection {
 	// The URL of the connection.
@@ -23,25 +27,64 @@ export class Connection {
 	// Module for distributing tracks.
 	#subscriber: Subscriber;
 
-	// Async work running in the background
-	#running: Promise<void>;
+	// The ref count, closed when it reaches 0.
+	#refs = 1;
 
-	constructor(url: URL | string, quic: WebTransport, session: Wire.Stream) {
-		this.#url = url instanceof URL ? url : new URL(url);
+	constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
+		this.#url = url;
 		this.#quic = quic;
 		this.#session = session;
 
 		this.#publisher = new Publisher(this.#quic);
 		this.#subscriber = new Subscriber(this.#quic);
 
-		this.#running = this.#run();
+		this.#run().catch((err) => console.error("failed to run connection: ", err));
 	}
 
-	static async connect(url: string): Promise<Connection> {
-		// Helper function to make creating a promise easier
-		const options: WebTransportOptions = {};
+	// Connect to a server at the given URL.
+	// This uses a connection pool under the hood.
+	static async connect(url: URL): Promise<Connection> {
+		const cached = pool.get(url);
+		if (cached) {
+			cached.then((conn) => conn.#refs++);
+			return cached;
+		}
+
+		const connect = Connection.#connect(url);
+		pool.set(url, connect);
+		return connect;
+	}
+
+	static async #connect(url: URL): Promise<Connection> {
+		const options: WebTransportOptions = {
+			allowPooling: false,
+			congestionControl: "low-latency",
+			requireUnreliable: true,
+		};
+
+		if (url.protocol === "http:") {
+			const fingerprintUrl = new URL(url);
+			fingerprintUrl.pathname = "/certificate.sha256";
+
+			// Fetch the fingerprint from the server.
+			const fingerprint = await fetch(fingerprintUrl);
+			const bytes = Hex.decode(await fingerprint.text());
+
+			options.serverCertificateHashes = [
+				{
+					algorithm: "sha-256",
+					value: bytes,
+				},
+			];
+
+			url.protocol = "https:";
+		}
 
 		const quic = new WebTransport(url, options);
+		quic.closed.then(() => {
+			pool.delete(url);
+		});
+
 		await quic.ready;
 
 		const client = new Wire.SessionClient([Wire.Version.FORK_04]);
@@ -53,7 +96,6 @@ export class Connection {
 		}
 
 		console.log(`established connection: version=${server.version}`);
-
 		return new Connection(url, quic, stream);
 	}
 
@@ -61,14 +103,18 @@ export class Connection {
 		return this.#url;
 	}
 
-	close(code = 0, reason = "") {
-		this.#quic.close({ closeCode: code, reason });
+	close() {
+		this.#refs--;
+
+		if (this.#refs <= 0) {
+			this.#quic.close();
+		}
 	}
 
 	async #run(): Promise<void> {
-		const session = this.#runSession().catch((err) => new Error("failed to run session: ", err));
-		const bidis = this.#runBidis().catch((err) => new Error("failed to run bidis: ", err));
-		const unis = this.#runUnis().catch((err) => new Error("failed to run unis: ", err));
+		const session = this.#runSession();
+		const bidis = this.#runBidis();
+		const unis = this.#runUnis();
 
 		await Promise.all([session, bidis, unis]);
 	}
@@ -81,7 +127,7 @@ export class Connection {
 		return this.#subscriber.announced(prefix);
 	}
 
-	async subscribe(track: Track): Promise<TrackReader> {
+	async subscribe(track: TrackWriter): Promise<TrackReader> {
 		return await this.#subscriber.subscribe(track);
 	}
 
@@ -160,12 +206,7 @@ export class Connection {
 		}
 	}
 
-	async closed(): Promise<Error> {
-		try {
-			await this.#running;
-			return new Error("closed");
-		} catch (e) {
-			return asError(e);
-		}
+	async closed(): Promise<void> {
+		await this.#quic.closed;
 	}
 }

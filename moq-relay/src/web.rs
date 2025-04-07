@@ -15,7 +15,6 @@ use axum::{
 use bytes::Bytes;
 use futures::FutureExt;
 use hyper_serve::accept::DefaultAcceptor;
-use moq_lite::Filter;
 use std::future::Future;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -41,7 +40,7 @@ impl Web {
 		let fingerprint = config.tls.fingerprints.first().expect("missing certificate").clone();
 
 		let app = Router::new()
-			.route("/fingerprint", get(fingerprint))
+			.route("/certificate.sha256", get(fingerprint))
 			.route(
 				"/announced",
 				get({
@@ -77,33 +76,21 @@ impl Web {
 }
 
 /// Serve the announced tracks for a given prefix.
-async fn serve_announced(Path(path): Path<String>, cluster: Cluster) -> impl IntoResponse {
-	// Make anything without a / prefix private.
-	let filter = if path.is_empty() {
-		Filter::Prefix("/".into())
-	} else if let Some((prefix, suffix)) = path.split_once("*") {
-		Filter::Wildcard {
-			prefix: format!("/{}", prefix),
-			suffix: suffix.to_string(),
-		}
-	} else {
-		Filter::Prefix(format!("/{}", path))
-	};
-
-	let mut local = cluster.locals.announced(filter.clone());
-	let mut remote = cluster.remotes.announced(filter);
+async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl IntoResponse {
+	let mut local = cluster.locals.announced(&prefix);
+	let mut remote = cluster.remotes.announced(&prefix);
 
 	let mut tracks = Vec::new();
 
 	while let Some(Some(local)) = local.next().now_or_never() {
-		if let moq_lite::Announced::Active(track) = local {
-			tracks.push(track.to_full());
+		if let moq_lite::Announced::Active { suffix } = local {
+			tracks.push(suffix);
 		}
 	}
 
 	while let Some(Some(remote)) = remote.next().now_or_never() {
-		if let moq_lite::Announced::Active(track) = remote {
-			tracks.push(track.to_full());
+		if let moq_lite::Announced::Active { suffix } = remote {
+			tracks.push(suffix);
 		}
 	}
 

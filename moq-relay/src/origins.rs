@@ -3,7 +3,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use moq_lite::{Announced, AnnouncedConsumer, AnnouncedProducer, Filter, Session};
+use moq_lite::{Announced, AnnouncedConsumer, AnnouncedProducer, Session};
 
 #[derive(Clone)]
 pub struct Origins {
@@ -32,8 +32,8 @@ impl Origins {
 	pub async fn announce(&mut self, mut announced: AnnouncedConsumer, origin: Option<Session>) {
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(am) => self.announce_track(am.to_full(), origin.clone()),
-				Announced::Ended(am) => self.unannounce_track(am.full(), &origin),
+				Announced::Active { suffix } => self.announce_track(suffix, origin.clone()),
+				Announced::Ended { suffix } => self.unannounce_track(&suffix, &origin),
 				Announced::Live => {
 					// Ignore.
 				}
@@ -73,8 +73,8 @@ impl Origins {
 		}
 	}
 
-	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
-		self.unique.subscribe(filter)
+	pub fn announced(&self, prefix: &str) -> AnnouncedConsumer {
+		self.unique.subscribe(prefix)
 	}
 
 	pub fn route(&self, path: &str) -> Option<Session> {

@@ -6,7 +6,7 @@ import { Context, Task } from "../util/context";
 import * as Hex from "../util/hex";
 
 export class Video {
-	#canvas: HTMLCanvasElement;
+	#canvas?: HTMLCanvasElement;
 	#decoder: VideoDecoder;
 	#visible = true;
 
@@ -14,25 +14,44 @@ export class Video {
 	#prefix?: string;
 	#tracks?: Catalog.Video[];
 
+	#latency = 0;
 	#running = new Task(this.#run);
 
-	constructor(canvas: HTMLCanvasElement) {
-		this.#canvas = canvas;
+	#observer: IntersectionObserver;
 
+	constructor() {
 		this.#decoder = new VideoDecoder({
 			output: (frame) => this.#decoded(frame),
 			error: (error) => console.error(error),
 		});
 
 		// TODO use MutationObserver to detect `display: none`?
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				this.#visible = entry.isIntersecting;
+		this.#observer = new IntersectionObserver(
+			([canvas]) => {
+				this.#visible = canvas.isIntersecting;
 				this.#reload();
 			},
 			{ threshold: 0 },
 		);
-		observer.observe(this.#canvas);
+	}
+
+	get canvas(): HTMLCanvasElement | undefined {
+		return this.#canvas;
+	}
+
+	set canvas(canvas: HTMLCanvasElement | undefined) {
+		if (this.#canvas) {
+			this.#observer.unobserve(this.#canvas);
+		}
+
+		this.#canvas = canvas;
+		if (canvas) {
+			this.#observer.observe(canvas);
+		}
+	}
+
+	set latency(latency: number) {
+		this.#latency = latency;
 	}
 
 	async load(connection: Moq.Connection, path: string, tracks: Catalog.Video[]) {
@@ -54,6 +73,7 @@ export class Video {
 	async #reload() {
 		await this.#running.abort();
 
+		if (!this.#canvas) return;
 		if (!this.#visible) return;
 		if (!this.#tracks || !this.#connection || !this.#prefix) return;
 
@@ -96,6 +116,8 @@ export class Video {
 
 	#decoded(frame: VideoFrame) {
 		self.requestAnimationFrame(() => {
+			if (!this.#canvas) return;
+
 			this.#canvas.width = frame.displayWidth;
 			this.#canvas.height = frame.displayHeight;
 

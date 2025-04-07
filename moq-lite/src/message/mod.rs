@@ -3,7 +3,6 @@
 //! This module could be used directly but 99% of the time you should use the higher-level [crate::Session] API.
 mod announce;
 mod extensions;
-mod filter;
 mod frame;
 mod group;
 mod info;
@@ -15,7 +14,6 @@ mod versions;
 
 pub use announce::*;
 pub use extensions::*;
-pub use filter::*;
 pub use frame::*;
 pub use group::*;
 pub use info::*;

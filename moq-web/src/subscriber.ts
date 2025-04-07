@@ -1,8 +1,8 @@
-import { Queue, Watch } from "../util/async";
-import { Closed } from "../util/error";
-import * as Wire from "../wire";
 import { FrameReader } from "./frame";
-import type { Track, TrackReader } from "./track";
+import type { TrackReader, TrackWriter } from "./track";
+import { Queue, Watch } from "./util/async";
+import { Closed } from "./util/error";
+import * as Wire from "./wire";
 
 export class Subscriber {
 	#quic: WebTransport;
@@ -66,7 +66,7 @@ export class Subscriber {
 	}
 
 	// TODO: Deduplicate identical subscribes
-	async subscribe(track: Track): Promise<TrackReader> {
+	async subscribe(track: TrackWriter): Promise<TrackReader> {
 		const id = this.#subscribeNext++;
 		const msg = new Wire.Subscribe(id, track.path, track.priority, track.order);
 
@@ -137,13 +137,13 @@ export class Announced {
 
 export class Subscribe {
 	readonly id: bigint;
-	readonly track: Track;
+	readonly track: TrackWriter;
 	readonly stream: Wire.Stream;
 
 	// A queue of received streams for this subscription.
 	//#closed = new Watch<Closed | undefined>(undefined);
 
-	constructor(id: bigint, stream: Wire.Stream, track: Track) {
+	constructor(id: bigint, stream: Wire.Stream, track: TrackWriter) {
 		this.id = id;
 		this.track = track;
 		this.stream = stream;

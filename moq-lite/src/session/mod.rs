@@ -1,4 +1,4 @@
-use crate::{message, AnnouncedConsumer, Error, Filter, RouterConsumer, Track, TrackConsumer};
+use crate::{message, AnnouncedConsumer, Error, RouterConsumer, Track, TrackConsumer};
 
 use web_async::spawn;
 
@@ -182,8 +182,8 @@ impl Session {
 	}
 
 	/// Discover any tracks published by the remote matching a (wildcard) filter.
-	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
-		self.subscriber.announced(filter)
+	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
+		self.subscriber.announced(prefix.to_string())
 	}
 
 	/// Close the underlying WebTransport session.

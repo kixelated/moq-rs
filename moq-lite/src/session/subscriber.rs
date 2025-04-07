@@ -6,7 +6,7 @@ use std::{
 use crate::{
 	message,
 	model::{Track, TrackConsumer},
-	AnnouncedProducer, Error, Filter, TrackProducer,
+	AnnouncedProducer, Error, TrackProducer,
 };
 
 use web_async::{spawn, Lock};
@@ -34,9 +34,10 @@ impl Subscriber {
 	}
 
 	/// Discover any tracks matching a filter.
-	pub fn announced(&self, filter: Filter) -> AnnouncedConsumer {
+	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
+		let prefix = prefix.to_string();
 		let producer = AnnouncedProducer::default();
-		let consumer = producer.subscribe(filter.clone());
+		let consumer = producer.subscribe(prefix.clone());
 
 		let mut session = self.session.clone();
 		spawn(async move {
@@ -48,7 +49,7 @@ impl Subscriber {
 				}
 			};
 
-			if let Err(err) = Self::run_announce(&mut stream, filter, producer)
+			if let Err(err) = Self::run_announce(&mut stream, prefix, producer)
 				.await
 				.or_close(&mut stream)
 			{
@@ -59,20 +60,20 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announce(stream: &mut Stream, filter: Filter, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announce(stream: &mut Stream, prefix: String, mut announced: AnnouncedProducer) -> Result<(), Error> {
+		tracing::debug!(?prefix, "waiting for announcements");
+
 		stream
 			.writer
-			.encode(&message::AnnouncePlease { filter: filter.clone() })
+			.encode(&message::AnnouncePlease { prefix: prefix.clone() })
 			.await?;
-
-		tracing::debug!(?filter, "waiting for announcements");
 
 		loop {
 			tokio::select! {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
 						// Handle the announce
-						Some(announce) => Self::recv_announce(announce, &filter, &mut announced)?,
+						Some(announce) => Self::recv_announce(announce, &prefix, &mut announced)?,
 						// Stop if the stream has been closed
 						None => return Ok(()),
 					}
@@ -85,19 +86,17 @@ impl Subscriber {
 
 	fn recv_announce(
 		announce: message::Announce,
-		filter: &Filter,
+		prefix: &str,
 		announced: &mut AnnouncedProducer,
 	) -> Result<(), Error> {
 		match announce {
-			message::Announce::Active(capture) => {
-				let path = filter.reconstruct(&capture);
-				if !announced.announce(path) {
+			message::Announce::Active { suffix } => {
+				if !announced.announce_parts(prefix, &suffix) {
 					return Err(Error::Duplicate);
 				}
 			}
-			message::Announce::Ended(capture) => {
-				let path = filter.reconstruct(&capture);
-				if !announced.unannounce(&path) {
+			message::Announce::Ended { suffix } => {
+				if !announced.unannounce_parts(prefix, &suffix) {
 					return Err(Error::NotFound);
 				}
 			}

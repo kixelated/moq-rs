@@ -32,7 +32,7 @@ pub enum Command {
 	Publish {
 		/// The URL must start with `https://` or `http://`.
 		///
-		/// - If `http` is used, a HTTP fetch to "/fingerprint" is first made to get the TLS certificiate fingerprint (insecure).
+		/// - If `http` is used, a HTTP fetch to "/certificate.sha256" is first made to get the TLS certificiate fingerprint (insecure).
 		///   The URL is then upgraded to `https`.
 		///
 		/// - If `https` is used, then A WebTransport connection is made via QUIC to the provided host/port.

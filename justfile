@@ -3,7 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
-export RUST_LOG := "info"
+export RUST_LOG := "debug"
 
 # List all of the available commands.
 default:
@@ -31,7 +31,11 @@ setup:
 
 # Run the relay, web server, and publish bbb.
 all:
-	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	# Compile the relay server first so it'll win the race.
+	cargo build --bin moq-relay
+
+	# Run the relay, web server, and publish bbb.
+	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "just bbb" "just web"
 
 # Run a localhost relay server
 relay:
@@ -76,28 +80,28 @@ download name url:
 # Publish a video using ffmpeg to the localhost relay server
 pub name:
 	# Pre-build the binary so we don't queue media while compiling.
-	cargo build --bin moq-karp
+	cargo build --bin hang
 
-	# Run ffmpeg and pipe the output to moq-karp
+	# Run ffmpeg and pipe the output to hang
 	ffmpeg -hide_banner -v quiet \
 		-stream_loop -1 -re \
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
+		- | cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}"
 
-# Publish a video using ffmpeg directly from moq-karp to the localhost
+# Publish a video using ffmpeg directly from hang to the localhost
 pub-serve name:
 	# Pre-build the binary so we don't queue media while compiling.
-	cargo build --bin moq-karp
+	cargo build --bin hang
 
-	# Run ffmpeg and pipe the output to moq-karp
+	# Run ffmpeg and pipe the output to hang
 	ffmpeg -hide_banner -v quiet \
 		-stream_loop -1 -re \
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
 
 # Run the web server
 web:
@@ -125,12 +129,20 @@ check:
 	# requires: cargo install cargo-sort
 	cargo sort --workspace --check
 
-	# Format the JS packages
+	# Javascript time
 	pnpm -r i
+
+	# Format the JS packages
 	biome check
 
 	# Make sure Typescript compiles
 	pnpm -r run check
+
+	# Make sure the JS packages are not vulnerable
+	pnpm -r exec pnpm audit
+
+	# Beta: Check for unused imports
+	pnpm exec knip
 
 # Run any CI tests
 test:
@@ -151,7 +163,12 @@ fix:
 
 	# Fix the JS packages
 	pnpm -r i
+
+	# Format and lint
 	biome check --fix --unsafe
+
+	# Make sure the JS packages are not vulnerable
+	pnpm -r exec pnpm audit --fix
 
 # Upgrade any tooling
 upgrade:

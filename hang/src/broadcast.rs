@@ -1,7 +1,7 @@
 use crate::track::TrackConsumer;
 use crate::{Audio, Catalog, Error, Result, Track, TrackProducer, Video};
 use derive_more::Debug;
-use moq_lite::{Announced, AnnouncedConsumer, AnnouncedMatch, Session};
+use moq_lite::{Announced, AnnouncedConsumer, Session};
 use web_async::Lock;
 
 struct BroadcastProducerState {
@@ -179,11 +179,7 @@ pub struct BroadcastConsumer {
 
 impl BroadcastConsumer {
 	pub fn new(session: Session, path: String) -> Self {
-		let filter = moq_lite::Filter::Wildcard {
-			prefix: format!("{}/", path),
-			suffix: "/catalog.json".to_string(),
-		};
-		let announced = session.announced(filter);
+		let announced = session.announced(&path);
 
 		Self {
 			session,
@@ -216,8 +212,8 @@ impl BroadcastConsumer {
 				Some(announced) = self.announced.next() => {
 					// Load or unload based on the announcement.
 					match announced {
-						Announced::Active(am) => self.load(am),
-						Announced::Ended(am) => self.unload(am),
+						Announced::Active { suffix } => self.load(&suffix),
+						Announced::Ended { suffix } => self.unload(&suffix),
 						Announced::Live => {
 							// Return None if we're caught up to live with no broadcast.
 							if self.current.is_none() {
@@ -240,8 +236,8 @@ impl BroadcastConsumer {
 		}
 	}
 
-	fn load(&mut self, am: AnnouncedMatch) {
-		let id = am.capture();
+	fn load(&mut self, suffix: &str) {
+		let id = suffix;
 
 		if let Some(current) = &self.current {
 			// I'm extremely lazy and using string comparison.
@@ -255,7 +251,7 @@ impl BroadcastConsumer {
 
 		// Make a clone of the match
 		let id = id.to_string();
-		let path = am.to_full();
+		let path = format!("{}/{}/catalog.json", self.path, id);
 		tracing::info!(?path, "loading catalog");
 
 		let track = moq_lite::Track {
@@ -268,9 +264,9 @@ impl BroadcastConsumer {
 		self.current = Some(id);
 	}
 
-	fn unload(&mut self, am: AnnouncedMatch) {
+	fn unload(&mut self, suffix: &str) {
 		if let Some(current) = self.current.as_ref() {
-			if current.as_str() == am.capture() {
+			if current.as_str() == suffix {
 				self.current = None;
 				self.catalog_track = None;
 				self.catalog_group = None;

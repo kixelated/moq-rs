@@ -71,8 +71,8 @@ impl Publisher {
 		spawn(async move {
 			while let Some(announced) = upstream.next().await {
 				match announced {
-					Announced::Active(m) => downstream.announce(m.full()),
-					Announced::Ended(m) => downstream.unannounce(m.full()),
+					Announced::Active { suffix } => downstream.announce(&suffix),
+					Announced::Ended { suffix } => downstream.unannounce(&suffix),
 
 					// Indicate that we're caught up to live.
 					Announced::Live => downstream.live(),
@@ -91,23 +91,27 @@ impl Publisher {
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnouncePlease>().await?;
-		let filter = interest.filter;
-		tracing::debug!(?filter, "announce interest");
+		let prefix = interest.prefix;
+		tracing::debug!(?prefix, "announce interest");
 
-		let mut announced = self.announced.subscribe(filter);
+		let mut announced = self.announced.subscribe(&prefix);
 
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(m) => {
-					let msg = message::Announce::Active(m.capture().to_string());
+				Announced::Active { suffix } => {
+					tracing::debug!(?prefix, ?suffix, "announce active");
+					let msg = message::Announce::Active { suffix };
 					stream.writer.encode(&msg).await?;
 				}
-				Announced::Ended(m) => {
-					let msg = message::Announce::Ended(m.capture().to_string());
+				Announced::Ended { suffix } => {
+					tracing::debug!(?prefix, ?suffix, "announce ended");
+					let msg = message::Announce::Ended { suffix };
 					stream.writer.encode(&msg).await?;
 				}
 				Announced::Live => {
+					tracing::debug!(?prefix, "announce live");
+
 					// Indicate that we're caught up to live.
 					stream.writer.encode(&message::Announce::Live).await?;
 				}

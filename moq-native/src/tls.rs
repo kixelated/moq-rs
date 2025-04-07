@@ -44,7 +44,7 @@ pub struct Args {
 	/// Generate a self-signed certificate for the provided hostnames (comma separated).
 	///
 	/// This is useful for local development and testing.
-	/// This can be combined with the `/fingerprint` endpoint for clients to fetch the fingerprint.
+	/// This can be combined with the `/certificate.sha256` endpoint for clients to fetch the fingerprint.
 	#[arg(long = "tls-self-sign", value_delimiter = ',')]
 	pub self_sign: Vec<String>,
 }

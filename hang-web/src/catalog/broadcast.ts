@@ -41,7 +41,10 @@ export class Broadcast {
 			if (!frame) throw new Error("no catalog frame");
 
 			segment.close();
-			return Broadcast.decode(frame);
+			const broadcast = Broadcast.decode(frame);
+
+			console.log("loaded catalog", broadcast);
+			return broadcast;
 		} finally {
 			sub.close();
 		}

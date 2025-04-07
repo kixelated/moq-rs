@@ -5,7 +5,7 @@ const attributesMetadataKey = Symbol("attributes");
 (Symbol as { metadata: symbol }).metadata ??= Symbol("metadata");
 
 interface MoqClassDecoratorTarget {
-	new (): MoqElement;
+	new (): CustomElement;
 }
 
 export function element(name: string) {
@@ -16,7 +16,7 @@ export function element(name: string) {
 	};
 }
 
-export class MoqElement extends HTMLElement {
+export class CustomElement extends HTMLElement {
 	static get observedAttributes(): string[] {
 		// biome-ignore lint/complexity/noThisInStatic: Required for inheritance
 		const metadata = this[Symbol.metadata];

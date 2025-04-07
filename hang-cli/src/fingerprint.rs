@@ -17,7 +17,7 @@ impl FingerprintServer {
 		let fingerprint = tls.fingerprints.first().expect("missing certificate").clone();
 
 		let app = Router::new()
-			.route("/fingerprint", get(fingerprint))
+			.route("/certificate.sha256", get(fingerprint))
 			.layer(CorsLayer::new().allow_origin(Any).allow_methods([Method::GET]));
 
 		let server = hyper_serve::bind(bind);

@@ -8,11 +8,13 @@
 	"exports": {
 		"./watch": "./src/watch/index.ts",
 		"./publish": "./src/publish/index.ts",
-		"./catalog": "./src/catalog/index.ts"
+		"./catalog": "./src/catalog/index.ts",
+		"./container": "./src/container/index.ts"
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
-		"check": "tsc --noEmit"
+		"check": "tsc --noEmit",
+		"dev": "webpack serve"
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:../moq-web",
@@ -23,6 +25,12 @@
 		"@types/audioworklet": "^0.0.72",
 		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/dom-webcodecs": "^0.1.14",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.214"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
+		"webpack": "^5.97.1",
+		"webpack-cli": "^6.0.1",
+		"webpack-dev-server": "^5.2.0",
+		"ts-loader": "^9.5.2",
+		"ts-node": "^10.9.2",
+		"html-webpack-plugin": "^5.6.0"
 	}
 }

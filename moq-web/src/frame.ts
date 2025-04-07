@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "../wire/stream";
+import type { Reader, Writer } from "./wire/stream";
 
 export class FrameReader {
 	#stream: Reader;

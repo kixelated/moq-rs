@@ -1,5 +1,3 @@
-use moq_lite::Filter;
-
 use crate::Cluster;
 
 pub struct Connection {
@@ -21,11 +19,11 @@ impl Connection {
 		session.route(self.cluster.router);
 
 		// TODO things will get weird if locals and remotes announce the same path.
-		session.announce(self.cluster.locals.announced(Filter::Any));
-		session.announce(self.cluster.remotes.announced(Filter::Any));
+		session.announce(self.cluster.locals.announced(""));
+		session.announce(self.cluster.remotes.announced(""));
 
 		// Add any announcements to the cluster, indicating we're the origin.
-		let all = session.announced(Filter::Any);
+		let all = session.announced("");
 		self.cluster.locals.announce(all, Some(session.clone())).await;
 
 		Ok(())

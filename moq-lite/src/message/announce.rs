@@ -2,8 +2,6 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::coding::*;
 
-use super::Filter;
-
 /// Send by the publisher, used to determine the message that follows.
 #[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
@@ -17,16 +15,20 @@ enum AnnounceStatus {
 /// The payload contains the contents of the wildcard.
 #[derive(Clone, Debug)]
 pub enum Announce {
-	Active(String),
-	Ended(String),
+	Active { suffix: String },
+	Ended { suffix: String },
 	Live,
 }
 
 impl Decode for Announce {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(match AnnounceStatus::decode(r)? {
-			AnnounceStatus::Active => Self::Active(String::decode(r)?),
-			AnnounceStatus::Ended => Self::Ended(String::decode(r)?),
+			AnnounceStatus::Active => Self::Active {
+				suffix: String::decode(r)?,
+			},
+			AnnounceStatus::Ended => Self::Ended {
+				suffix: String::decode(r)?,
+			},
 			AnnounceStatus::Live => Self::Live,
 		})
 	}
@@ -35,13 +37,13 @@ impl Decode for Announce {
 impl Encode for Announce {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		match self {
-			Self::Active(capture) => {
+			Self::Active { suffix } => {
 				AnnounceStatus::Active.encode(w);
-				capture.encode(w);
+				suffix.encode(w);
 			}
-			Self::Ended(capture) => {
+			Self::Ended { suffix } => {
 				AnnounceStatus::Ended.encode(w);
-				capture.encode(w);
+				suffix.encode(w);
 			}
 			Self::Live => AnnounceStatus::Live.encode(w),
 		}
@@ -51,20 +53,20 @@ impl Encode for Announce {
 /// Sent by the subscriber to request ANNOUNCE messages.
 #[derive(Clone, Debug)]
 pub struct AnnouncePlease {
-	/// A wildcard filter.
-	pub filter: Filter,
+	// Request tracks with this prefix.
+	pub prefix: String,
 }
 
 impl Decode for AnnouncePlease {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let filter = Filter::decode(r)?;
-		Ok(Self { filter })
+		let prefix = String::decode(r)?;
+		Ok(Self { prefix })
 	}
 }
 
 impl Encode for AnnouncePlease {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.filter.encode(w)
+		self.prefix.encode(w)
 	}
 }
 

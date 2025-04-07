@@ -1,6 +1,6 @@
-import { Broadcast, Device } from "@kixelated/hang/publish";
+import Hang from "@kixelated/hang/publish";
 
-import { MoqElement, element } from "./util/component";
+import { CustomElement, element } from "./util/component";
 import { Context } from "./util/context";
 import { jsx } from "./util/jsx";
 
@@ -10,12 +10,12 @@ import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import "@shoelace-style/shoelace/dist/components/tooltip/tooltip.js";
 
 @element("hang-publish")
-export class Publish extends MoqElement {
+export class Publish extends CustomElement {
 	#slot: HTMLSlotElement;
 	#controls: HTMLDivElement;
 	#status: HTMLDivElement;
 
-	#broadcast: Broadcast;
+	#broadcast: Hang;
 	#context?: Context; // Cancel background tasks when not in the DOM.
 
 	// The canvas element can be slotted, so we have to do extra work.

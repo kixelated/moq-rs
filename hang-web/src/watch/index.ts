@@ -1,78 +1,136 @@
 import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
-import * as Container from "../container";
 import { Context, Task } from "../util/context";
 import { Video } from "./video";
 
-// This class must be created on the main thread due to AudioContext.
 export class Watch {
-	#url?: string;
+	#url?: URL;
 
-	#connecting = new Task(this.#connect);
-	#loading = new Task(this.#load);
+	#connection = new Task(this.#connect.bind(this));
+	#loading = new Task(this.#load.bind(this));
 
 	#catalog?: Catalog.Broadcast;
-	#video?: Video;
+	#video = new Video();
 
-	constructor(canvas?: HTMLCanvasElement) {
-		this.#video = canvas ? new Video(canvas) : undefined;
-	}
+	#latency = 0;
+	#paused = false;
 
-	get url(): string | undefined {
+	get url(): URL | undefined {
 		return this.#url;
 	}
 
-	set url(url: string | undefined) {
+	set url(url: URL | undefined) {
 		this.#url = url;
 
 		if (url) {
-			this.#connecting.start(url);
+			this.#connection.start(url);
 		} else {
-			this.#connecting.abort();
+			this.#connection.abort();
 		}
 	}
 
-	get catalog() {
+	get catalog(): Catalog.Broadcast | undefined {
 		return this.#catalog;
 	}
 
-	async #connect(context: Context, url: string): Promise<Moq.Connection | undefined> {
-		await this.#video?.abort();
-		await this.#loading.abort();
+	get latency(): number {
+		return this.#latency;
+	}
 
-		// TODO close the pending connection.
-		const connection = await context.race(Moq.Connection.connect(url));
-		if (!connection) return;
+	set latency(latency: number) {
+		this.#latency = latency;
+		this.#video.latency = latency;
+	}
+
+	get paused(): boolean {
+		return this.#paused;
+	}
+
+	set paused(paused: boolean) {
+		this.#paused = paused;
+	}
+
+	get canvas(): HTMLCanvasElement | undefined {
+		return this.#video.canvas;
+	}
+
+	set canvas(canvas: HTMLCanvasElement | undefined) {
+		this.#video.canvas = canvas;
+	}
+
+	async #connect(context: Context, url: URL) {
+		const path = url.pathname.slice(1);
+
+		// Connect to the URL without the path
+		const base = new URL(url);
+		base.pathname = "";
+
+		const connection = await context.race(Moq.Connection.connect(base));
 
 		try {
-			// Remove the leading slash
-			const path = connection.url.pathname.slice(1);
 			const announced = await context.race(connection.announced(path));
-			if (!announced) return;
 
 			for (;;) {
 				const announce = await context.race(announced.next());
-				if (!announce) return;
-
-				if (!announce.path.endsWith("catalog.json")) {
-					continue;
-				}
+				console.log("got announce", announce);
+				if (!announce) break;
+				if (!announce.path.endsWith("catalog.json")) continue;
 
 				// TODO Only cancel the previous task after a successful (async) load.
 				this.#loading.start(connection, announce.path);
 			}
 		} finally {
 			connection.close();
-			context.abort();
 		}
 	}
 
 	async #load(context: Context, connection: Moq.Connection, path: string) {
+		console.log("starting load", path);
+
 		const catalog = await context.race(Catalog.Broadcast.fetch(connection, path));
 		if (!catalog) return;
 
-		if (this.#video) {
-			await this.#video.load(connection, path, catalog.video);
+		await this.#video.load(connection, path, catalog.video);
+	}
+}
+
+// A custom element making it easier to insert a Watch into the DOM.
+export class WatchElement extends HTMLElement {
+	static observedAttributes = ["url", "latency", "paused"];
+
+	#watch: Watch = new Watch();
+
+	constructor() {
+		super();
+
+		const canvas = document.createElement("canvas");
+
+		const slot = document.createElement("slot");
+		for (const el of slot.assignedElements({ flatten: true })) {
+			this.#watch.canvas = el as HTMLCanvasElement;
+		}
+
+		slot.appendChild(canvas);
+		this.attachShadow({ mode: "open" }).appendChild(slot);
+	}
+
+	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+		if (name === "url") {
+			this.#watch.url = newValue ? new URL(newValue) : undefined;
+		} else if (name === "latency") {
+			this.#watch.latency = newValue ? Number.parseInt(newValue) : 0;
+		} else if (name === "paused") {
+			this.#watch.paused = newValue !== undefined;
 		}
 	}
 }
+
+customElements.define("hang-watch", WatchElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"hang-watch": WatchElement;
+	}
+}
+
+export default WatchElement;

@@ -1,4 +1,4 @@
-import { MoqElement, attribute, element } from "./util/component";
+import { CustomElement, attribute, element } from "./util/component";
 import { Context } from "./util/context";
 import { jsx } from "./util/jsx";
 
@@ -17,10 +17,10 @@ import type SlButton from "@shoelace-style/shoelace/dist/components/button/butto
 import type SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.js";
 import type SlRange from "@shoelace-style/shoelace/dist/components/range/range.js";
 
-import { Watch } from "@kixelated/hang";
+import Watch from "@kixelated/hang/watch";
 
 @element("hang-watch")
-export class WatchUi extends MoqElement {
+export class WatchUi extends CustomElement {
 	#inner?: Watch;
 	#slot: HTMLSlotElement;
 	#context?: Context;
@@ -309,8 +309,8 @@ export class WatchUi extends MoqElement {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-watch-ui": WatchUi;
+		"moq-watch-ui": Watch;
 	}
 }
 
-export default WatchUi;
+export default Watch;

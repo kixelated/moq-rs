@@ -15,7 +15,7 @@ You need a client to connect to that address, to both publish and consume media.
 ## HTTP
 Primarily for debugging, you can also connect to the relay via HTTP.
 
--  `GET /fingerprint`: Returns the fingerprint of the TLS certificate.
+-  `GET /certificate.sha256`: Returns the fingerprint of the TLS certificate.
 -  `GET /announced/*prefix`: Returns all of the announced tracks with the given (optional) prefix.
 -  `GET /fetch/*path`: Returns the latest group of the given track.
 

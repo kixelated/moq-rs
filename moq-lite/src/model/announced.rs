@@ -1,21 +1,14 @@
-use std::{
-	collections::{BTreeSet, VecDeque},
-	fmt,
-};
+use std::collections::{BTreeSet, VecDeque};
 use tokio::sync::mpsc;
 use web_async::{Lock, LockWeak};
 
-pub use crate::message::Filter;
-use crate::message::FilterMatch;
-
-/// The suffix of each announced track.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Announced {
-	// Indicates the track, returning the captured wildcard.
-	Active(AnnouncedMatch),
+	// The track was announced.
+	Active { suffix: String },
 
-	// Indicates the track is no longer active, returning the captured wildcard.
-	Ended(AnnouncedMatch),
+	// The track is no longer active.
+	Ended { suffix: String },
 
 	// Indicates we're caught up to the current state of the world.
 	Live,
@@ -25,14 +18,14 @@ pub enum Announced {
 impl Announced {
 	pub fn assert_active(&self, expected: &str) {
 		match self {
-			Announced::Active(m) => assert_eq!(m.capture(), expected),
+			Announced::Active { suffix } => assert_eq!(suffix, expected),
 			_ => panic!("expected active announce"),
 		}
 	}
 
 	pub fn assert_ended(&self, expected: &str) {
 		match self {
-			Announced::Ended(m) => assert_eq!(m.capture(), expected),
+			Announced::Ended { suffix } => assert_eq!(suffix, expected),
 			_ => panic!("expected ended announce"),
 		}
 	}
@@ -42,50 +35,6 @@ impl Announced {
 			Announced::Live => (),
 			_ => panic!("expected live announce"),
 		}
-	}
-}
-
-// An owned version of FilterMatch
-#[derive(Clone, PartialEq, Eq)]
-pub struct AnnouncedMatch {
-	full: String,
-	capture: (usize, usize),
-}
-
-impl AnnouncedMatch {
-	pub fn full(&self) -> &str {
-		&self.full
-	}
-
-	pub fn capture(&self) -> &str {
-		&self.full[self.capture.0..self.capture.1]
-	}
-
-	pub fn to_full(self) -> String {
-		self.full
-	}
-
-	pub fn to_capture(mut self) -> String {
-		self.full.truncate(self.capture.1);
-		self.full.split_off(self.capture.0)
-	}
-}
-
-impl From<FilterMatch<'_>> for AnnouncedMatch {
-	fn from(value: FilterMatch) -> Self {
-		AnnouncedMatch {
-			full: value.full().to_string(),
-			capture: value.capture_index(),
-		}
-	}
-}
-
-impl fmt::Debug for AnnouncedMatch {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("AnnouncedMatch")
-			.field("full", &self.full())
-			.field("capture", &self.capture())
-			.finish()
 	}
 }
 
@@ -158,19 +107,19 @@ impl ProducerState {
 		true
 	}
 
-	fn consumer(&mut self, filter: Filter) -> ConsumerState {
+	fn consumer(&mut self, prefix: String) -> ConsumerState {
 		let mut added = VecDeque::new();
 
 		for active in &self.active {
-			if let Some(m) = filter.matches(active) {
-				added.push_back(m.into());
+			if let Some(suffix) = active.strip_prefix(&prefix) {
+				added.push_back(suffix.to_string());
 			}
 		}
 
 		ConsumerState {
+			prefix,
 			added,
 			removed: VecDeque::new(),
-			filter,
 			live: self.live,
 		}
 	}
@@ -197,44 +146,25 @@ impl Drop for ProducerState {
 
 #[derive(Clone)]
 struct ConsumerState {
-	filter: Filter,
-	added: VecDeque<AnnouncedMatch>,
-	removed: VecDeque<AnnouncedMatch>,
+	prefix: String,
+	added: VecDeque<String>,
+	removed: VecDeque<String>,
 	live: bool,
 }
 
 impl ConsumerState {
 	pub fn insert(&mut self, path: &str) {
-		let added: AnnouncedMatch = match self.filter.matches(path) {
-			Some(m) => m.into(),
-			None => return,
-		};
-
-		// Remove any matches that haven't been consumed yet.
-		// TODO make this faster while maintaining order
-		if let Some(index) = self
-			.removed
-			.iter()
-			.position(|removed| removed.capture() == added.capture())
-		{
-			self.removed.remove(index);
-		} else {
-			self.added.push_back(added);
+		if let Some(suffix) = path.strip_prefix(&self.prefix) {
+			self.removed.retain(|removed| removed != suffix);
+			self.added.push_back(suffix.to_string());
 		}
 	}
 
 	pub fn remove(&mut self, path: &str) {
-		let removed: AnnouncedMatch = match self.filter.matches(path) {
-			Some(m) => m.into(),
-			None => return,
-		};
-
-		// Remove any matches that haven't been consumed yet.
-		// TODO make this faster while maintaining insertion order.
-		if let Some(index) = self.added.iter().position(|added| added.capture() == removed.capture()) {
-			self.added.remove(index);
-		} else {
-			self.removed.push_back(removed);
+		if let Some(suffix) = path.strip_prefix(&self.prefix) {
+			// Check if we haven't consumed this suffix yet.
+			self.added.retain(|added| added != suffix);
+			self.removed.push_back(suffix.to_string());
 		}
 	}
 
@@ -268,6 +198,12 @@ impl AnnouncedProducer {
 		state.insert(path)
 	}
 
+	pub fn announce_parts(&mut self, prefix: &str, suffix: &str) -> bool {
+		let path = format!("{}{}", prefix, suffix);
+		let mut state = self.state.lock();
+		state.insert(path)
+	}
+
 	/// Check if a track is active.
 	pub fn is_active(&self, path: &str) -> bool {
 		self.state.lock().active.contains(path)
@@ -284,6 +220,12 @@ impl AnnouncedProducer {
 		state.remove(path)
 	}
 
+	pub fn unannounce_parts(&mut self, prefix: &str, suffix: &str) -> bool {
+		let path = format!("{}{}", prefix, suffix);
+		let mut state = self.state.lock();
+		state.remove(&path)
+	}
+
 	/// Indicate that we're caught up to the current state of the world.
 	pub fn live(&mut self) -> bool {
 		let mut state = self.state.lock();
@@ -291,9 +233,9 @@ impl AnnouncedProducer {
 	}
 
 	/// Subscribe to all announced tracks matching the (wildcard) filter.
-	pub fn subscribe(&self, filter: Filter) -> AnnouncedConsumer {
+	pub fn subscribe<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
 		let mut state = self.state.lock();
-		let consumer = Lock::new(state.consumer(filter));
+		let consumer = Lock::new(state.consumer(prefix.to_string()));
 		let notify = state.subscribe(consumer.clone());
 		AnnouncedConsumer::new(self.state.downgrade(), consumer, notify)
 	}
@@ -366,11 +308,11 @@ impl AnnouncedConsumer {
 				let mut state = self.state.lock();
 
 				if let Some(removed) = state.removed.pop_front() {
-					return Some(Announced::Ended(removed));
+					return Some(Announced::Ended { suffix: removed });
 				}
 
 				if let Some(added) = state.added.pop_front() {
-					return Some(Announced::Active(added));
+					return Some(Announced::Active { suffix: added });
 				}
 
 				if !self.live && state.live {
@@ -451,7 +393,7 @@ mod test {
 	#[test]
 	fn simple() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		assert!(!producer.is_active("a/b"));
 		assert!(producer.announce("a/b"));
@@ -469,7 +411,7 @@ mod test {
 	#[test]
 	fn multi() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -490,7 +432,7 @@ mod test {
 		assert!(producer.announce("a/c"));
 
 		// Subscribe after announcing.
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		assert!(producer.announce("d/e"));
 		assert!(producer.announce("d/d"));
@@ -506,7 +448,7 @@ mod test {
 	#[test]
 	fn prefix() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Prefix("a/".into()));
+		let mut consumer = producer.subscribe("a/");
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -520,7 +462,7 @@ mod test {
 	#[test]
 	fn prefix_unannounce() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Prefix("a/".into()));
+		let mut consumer = producer.subscribe("a/");
 
 		assert!(producer.announce("a/b"));
 		assert!(producer.announce("a/c"));
@@ -542,7 +484,7 @@ mod test {
 	#[test]
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		assert!(!producer.is_active("a/b"));
 		assert!(producer.announce("a/b"));
@@ -557,7 +499,7 @@ mod test {
 	#[test]
 	fn dropped() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		producer.announce("a/b");
 		consumer.assert_active("a/b");
@@ -576,7 +518,7 @@ mod test {
 	#[test]
 	fn live() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		producer.announce("a/b");
 		producer.live();
@@ -599,7 +541,7 @@ mod test {
 		tokio::time::pause();
 
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe(Filter::Any);
+		let mut consumer = producer.subscribe("");
 
 		tokio::spawn(async move {
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

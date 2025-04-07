@@ -6,7 +6,7 @@
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
-		".": "./src/api/index.ts"
+		".": "./src/index.ts"
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",

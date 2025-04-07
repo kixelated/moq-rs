@@ -4,6 +4,9 @@
 	"private": true,
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
+		"@types/node": "^22.14.0",
+		"concurrently": "^9.1.2",
+		"knip": "^5.47.0",
 		"typescript": "^5.8.2"
 	}
 }

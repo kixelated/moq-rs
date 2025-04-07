@@ -1,4 +1,4 @@
-use hang::moq_lite::{self, Announced, AnnouncedConsumer, AnnouncedProducer};
+use hang::moq_lite::{Announced, AnnouncedConsumer, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen::prelude::*;
 
@@ -17,7 +17,7 @@ impl Meet {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Self {
 		let producer = AnnouncedProducer::new();
-		let consumer = producer.subscribe(moq_lite::Filter::Any);
+		let consumer = producer.subscribe("");
 
 		let controls = Controls::default().baton();
 		let status = Status::default().baton();
@@ -85,13 +85,13 @@ impl MeetAnnounced {
 
 	pub async fn next(&mut self) -> Option<MeetAnnounce> {
 		Some(match self.inner.next().await? {
-			Announced::Active(track) => MeetAnnounce {
+			Announced::Active { suffix } => MeetAnnounce {
 				action: MeetAction::Join,
-				name: track.to_full(),
+				name: suffix.to_string(),
 			},
-			Announced::Ended(track) => MeetAnnounce {
+			Announced::Ended { suffix } => MeetAnnounce {
 				action: MeetAction::Leave,
-				name: track.to_full(),
+				name: suffix.to_string(),
 			},
 			Announced::Live => MeetAnnounce {
 				action: MeetAction::Live,

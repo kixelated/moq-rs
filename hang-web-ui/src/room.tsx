@@ -1,17 +1,19 @@
-import { Meet } from ".";
+import Room from "@kixelated/hang/room";
 
-import { Context, MoqElement, attribute, element, jsx } from "./util";
+import { CustomElement, attribute, element } from "./util/component";
+import { Context } from "./util/context";
+import { jsx } from "./util/jsx";
 
 import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import "@shoelace-style/shoelace/dist/components/alert/alert.js";
 import "@shoelace-style/shoelace/dist/components/icon/icon.js";
 
 @element("hang-room")
-export class MeetUi extends MoqElement {
+export class RoomUi extends CustomElement {
 	#slot: HTMLSlotElement;
 	#status: HTMLDivElement;
 
-	#inner: Meet | null = null;
+	#inner?: Room;
 	#context?: Context;
 
 	constructor() {
@@ -53,7 +55,7 @@ export class MeetUi extends MoqElement {
 
 	#init() {
 		for (const element of this.#slot.assignedElements({ flatten: true })) {
-			if (element instanceof Meet) {
+			if (element instanceof Room) {
 				if (this.#context) {
 					this.#context.cancel("removed from DOM");
 				}
@@ -68,7 +70,7 @@ export class MeetUi extends MoqElement {
 		throw new Error("Expected <moq-meet> element.");
 	}
 
-	async #run(element: Meet, context: Context) {
+	async #run(element: Room, context: Context) {
 		this.#status.replaceChildren(<sl-spinner />, "Initializing...");
 
 		try {
@@ -97,8 +99,7 @@ export class MeetUi extends MoqElement {
 						this.#status.replaceChildren("🦗 nobody is here 🦗");
 						break;
 					default: {
-						const _exhaustive: never = value;
-						throw new Error(`Unhandled state: ${_exhaustive}`);
+						value as never;
 					}
 				}
 			}
@@ -117,8 +118,8 @@ export class MeetUi extends MoqElement {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"moq-meet-ui": MeetUi;
+		"moq-meet-ui": Room;
 	}
 }
 
-export default MeetUi;
+export default Room;

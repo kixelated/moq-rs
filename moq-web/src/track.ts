@@ -1,9 +1,9 @@
-import { Watch } from "../util/async";
-import { Closed } from "../util/error";
-import { GroupOrder } from "../wire";
-import { Group, GroupReader } from "./group";
+import { GroupReader, GroupWriter } from "./group";
+import { Watch } from "./util/async";
+import { Closed } from "./util/error";
+import { GroupOrder } from "./wire";
 
-export class Track {
+export class TrackWriter {
 	readonly path: string;
 	readonly priority: number;
 	order = GroupOrder.Any;
@@ -19,15 +19,15 @@ export class Track {
 		this.priority = priority;
 	}
 
-	appendGroup(): Group {
+	appendGroup(): GroupWriter {
 		const next = this.latest.value()[0]?.id ?? 0;
 		return this.createGroup(next);
 	}
 
-	createGroup(sequence: number): Group {
+	createGroup(sequence: number): GroupWriter {
 		if (this.closed) throw this.closed;
 
-		const group = new Group(sequence);
+		const group = new GroupWriter(sequence);
 		const [current, _] = this.latest.value();
 
 		// TODO use an array
@@ -54,9 +54,9 @@ export class Track {
 
 export class TrackReader {
 	latest: number | null = null;
-	#track: Track;
+	#track: TrackWriter;
 
-	constructor(track: Track) {
+	constructor(track: TrackWriter) {
 		this.#track = track;
 	}
 

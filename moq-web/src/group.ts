@@ -1,7 +1,7 @@
 import { Watch } from "./util/async";
 import { Closed } from "./util/error";
 
-export class Group {
+export class GroupWriter {
 	readonly id: number;
 
 	chunks = new Watch<Uint8Array[]>([]);
@@ -40,10 +40,10 @@ export class Group {
 }
 
 export class GroupReader {
-	#group: Group;
+	#group: GroupWriter;
 	#index = 0;
 
-	constructor(group: Group) {
+	constructor(group: GroupWriter) {
 		this.#group = group;
 	}
 

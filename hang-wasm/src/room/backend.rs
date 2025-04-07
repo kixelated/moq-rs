@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use baton::Baton;
-use hang::moq_lite::{self, Announced, AnnouncedConsumer, AnnouncedMatch, AnnouncedProducer};
+use hang::moq_lite::{Announced, AnnouncedConsumer, AnnouncedProducer};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
@@ -69,20 +69,14 @@ impl Backend {
 					self.producer.reset();
 					let path = self.connect.take().unwrap().path;
 
-					// TODO make a helper in karp for this
-					let filter = moq_lite::Filter::Wildcard {
-						prefix: format!("{}/", path),
-						suffix: "/catalog.json".to_string(),
-					};
-
-					self.announced = Some(session.announced(filter));
+					self.announced = Some(session.announced(path));
 					self.status.connection.update(ConnectionStatus::Connected);
 				},
 				Some(announce) = async { Some(self.announced.as_mut()?.next().await) } => {
 					let announce = announce.ok_or(Error::Closed)?;
 					match announce {
-						Announced::Active(track) => self.announced(track),
-						Announced::Ended(track) => self.unannounced(track),
+						Announced::Active { suffix } => self.announced(&suffix),
+						Announced::Ended { suffix } => self.unannounced(&suffix),
 						Announced::Live => self.live(),
 					}
 				},
@@ -92,24 +86,24 @@ impl Backend {
 	}
 
 	// Parse the user's name out of the "name/id" pair
-	fn parse_name(track: AnnouncedMatch) -> std::result::Result<String, AnnouncedMatch> {
-		match track.capture().find("/") {
+	fn parse_name(suffix: &str) -> std::result::Result<String, &str> {
+		match suffix.find("/") {
 			Some(index) => {
 				// Make sure there's only one slash for bonus points
-				if track.capture()[index + 1..].contains("/") {
-					return Err(track);
+				if suffix[index + 1..].contains("/") {
+					return Err(suffix);
 				}
 
-				let mut capture = track.to_capture();
+				let mut capture = suffix.to_string();
 				capture.truncate(index);
 				Ok(capture)
 			}
-			None => Err(track),
+			None => Err(suffix),
 		}
 	}
 
-	fn announced(&mut self, track: AnnouncedMatch) {
-		let name = match Self::parse_name(track) {
+	fn announced(&mut self, suffix: &str) {
+		let name = match Self::parse_name(suffix) {
 			Ok(name) => name,
 			Err(name) => {
 				tracing::warn!(?name, "failed to parse track name");
@@ -131,8 +125,8 @@ impl Backend {
 		self.update_status();
 	}
 
-	fn unannounced(&mut self, track: AnnouncedMatch) {
-		let name = match Self::parse_name(track) {
+	fn unannounced(&mut self, suffix: &str) {
+		let name = match Self::parse_name(suffix) {
 			Ok(name) => name,
 			Err(_) => return,
 		};
