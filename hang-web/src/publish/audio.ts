@@ -1,4 +1,3 @@
-import { Closed } from "../../../../moq/web/src/util/error";
 import { Frame } from "../container/frame";
 import { Deferred } from "../util/async";
 

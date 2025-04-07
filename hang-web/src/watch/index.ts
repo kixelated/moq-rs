@@ -7,13 +7,16 @@ import { Video } from "./video";
 // This class must be created on the main thread due to AudioContext.
 export class Watch {
 	#url?: string;
-	#canvas?: HTMLCanvasElement;
 
-	connecting = new Task(this.connect);
+	#connecting = new Task(this.#connect);
 	#loading = new Task(this.#load);
 
 	#catalog?: Catalog.Broadcast;
 	#video?: Video;
+
+	constructor(canvas?: HTMLCanvasElement) {
+		this.#video = canvas ? new Video(canvas) : undefined;
+	}
 
 	get url(): string | undefined {
 		return this.#url;
@@ -23,9 +26,9 @@ export class Watch {
 		this.#url = url;
 
 		if (url) {
-			this.connecting.start(new Context(), url);
+			this.#connecting.start(url);
 		} else {
-			this.connecting.abort();
+			this.#connecting.abort();
 		}
 	}
 
@@ -33,25 +36,30 @@ export class Watch {
 		return this.#catalog;
 	}
 
-	async connect(context: Context, url: string) {
+	async #connect(context: Context, url: string): Promise<Moq.Connection | undefined> {
+		await this.#video?.abort();
+		await this.#loading.abort();
+
 		// TODO close the pending connection.
-		const connection = await context.run(Moq.Connection.connect(url));
+		const connection = await context.race(Moq.Connection.connect(url));
+		if (!connection) return;
+
 		try {
 			// Remove the leading slash
 			const path = connection.url.pathname.slice(1);
-			const announced = await context.run(connection.announced(path));
+			const announced = await context.race(connection.announced(path));
+			if (!announced) return;
 
 			for (;;) {
-				const announce = await context.run(announced.next());
-				if (!announce) {
-					return;
-				}
+				const announce = await context.race(announced.next());
+				if (!announce) return;
 
 				if (!announce.path.endsWith("catalog.json")) {
 					continue;
 				}
 
-				this.#loading.start(context, connection, announce.path);
+				// TODO Only cancel the previous task after a successful (async) load.
+				this.#loading.start(connection, announce.path);
 			}
 		} finally {
 			connection.close();
@@ -60,32 +68,11 @@ export class Watch {
 	}
 
 	async #load(context: Context, connection: Moq.Connection, path: string) {
-		const catalog = await context.run(Catalog.Broadcast.fetch(connection, path));
+		const catalog = await context.race(Catalog.Broadcast.fetch(connection, path));
+		if (!catalog) return;
 
-		const video = catalog.video.at(0);
-		if (video) {
-			this.#video = new Video(video, canvas);
-		}
-
-		const audio = catalog.audio.at(0);
-		if (audio) {
-			//this.#audio.start(context, connection, path, audio);
-		} else {
-			//this.#audio.abort("no audio");
-		}
-	}
-
-	async #loadVideo(context: Context, connection: Moq.Connection, path: string, video: Catalog.Video) {
-		const track = new Moq.Track(`${path}/${video.track.name}`, video.track.priority);
-		const reader = await connection.subscribe(track);
-		const container = new Container.Reader(reader);
-
-		try {
-			for (;;) {
-				const frame = await context.run(container.next());
-			}
-		} finally {
-			container.close();
+		if (this.#video) {
+			await this.#video.load(connection, path, catalog.video);
 		}
 	}
 }

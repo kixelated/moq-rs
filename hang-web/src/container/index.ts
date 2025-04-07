@@ -1,2 +1,2 @@
-import { Frame } from "./frame";
-import { Reader } from "./reader";
+export { Frame } from "./frame";
+export { Reader } from "./reader";

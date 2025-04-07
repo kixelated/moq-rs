@@ -3,20 +3,20 @@ import * as Catalog from "../catalog";
 import * as Audio from "./audio";
 import * as Video from "./video";
 
-import { Context } from "../util/context";
+import { Context, Task } from "../util/context";
 import * as Hex from "../util/hex";
 import { isAudioTrackSettings, isVideoTrackSettings } from "../util/settings";
 
-export type Device = "screen" | "camera" | "";
+export type Device = "screen" | "camera" | undefined;
 
 export class Publish {
 	#url?: string;
 	#device?: Device;
 	#render?: HTMLVideoElement;
 
-	#connection?: Abortable<Moq.Connection>;
-	#media?: Abortable<MediaStream>;
-	#running?: Abortable<void>;
+	#connection = new Task(this.#connect);
+	#media = new Task(this.#request);
+	#running = new Task(this.#run);
 
 	get url(): string | undefined {
 		return this.#url;
@@ -24,90 +24,64 @@ export class Publish {
 
 	set url(url: string | undefined) {
 		this.#url = url;
-		this.#connection?.abort();
-
-		if (url) {
-			this.#connection = new Abortable((context) => this.#connect(context, url));
-		} else {
-			this.#connection = undefined;
-		}
+		this.#connection.start(url);
 	}
 
-	async #connect(context: Context, url: string): Promise<Moq.Connection> {
-		// TODO support abort
-		const connection = await Moq.Connection.connect(url);
+	async #connect(context: Context, url?: string): Promise<Moq.Connection | undefined> {
+		if (!url) return;
 
-		context.done.finally(() => connection.close());
-		if (!context.aborted) {
-			this.#start(connection, this.#media?.current);
-		}
+		const connect = Moq.Connection.connect(url);
 
+		// Make a promise to clean up a (successful) connection on abort.
+		context.all(connect).then((connection) => connection.close());
+
+		// Wait for the connection to be established, or undefined if aborted.
+		const connection = await context.race(connect);
+		await this.#running.start(connection, this.#media.value);
+
+		// Return the connection value, caching it.
 		return connection;
 	}
 
-	get device(): Device | undefined {
+	get device(): Device {
 		return this.#device;
 	}
 
 	set device(device: Device) {
 		this.#device = device;
 
-		if (this.#device === "camera") {
-			this.#media = new Abortable(async (context) => {
-				const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-				context.done.finally(() => {
-					for (const track of stream.getTracks()) {
-						track.stop();
-					}
-				});
-
-				if (!context.aborted) {
-					this.#start(this.#connection?.current, stream);
-				}
-
-				return stream;
-			});
-		} else if (this.#device === "screen") {
-			this.#media = new Abortable(async (context) => {
-				const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-				context.done.finally(() => {
-					for (const track of stream.getTracks()) {
-						track.stop();
-					}
-				});
-
-				if (!context.aborted) {
-					this.#start(this.#connection?.current, stream);
-				}
-
-				return stream;
-			});
+		if (device) {
+			this.#media.start(device);
 		} else {
-			this.#media?.abort();
-			this.#media = undefined;
-			return;
+			this.#media.abort();
 		}
+	}
+
+	async #request(context: Context, device: Device): Promise<MediaStream | undefined> {
+		let stream: MediaStream | undefined;
+
+		if (device === "camera") {
+			stream = await context.race(navigator.mediaDevices.getUserMedia({ video: true }));
+		} else if (device === "screen") {
+			stream = await context.race(navigator.mediaDevices.getDisplayMedia({ video: true }));
+		}
+
+		await this.#running.start(this.#connection.value, stream);
+
+		return stream;
 	}
 
 	get render(): HTMLVideoElement | undefined {
 		return this.#render;
 	}
 
-	set render(render: HTMLVideoElement) {
+	set render(render: HTMLVideoElement | undefined) {
 		this.#render = render;
 	}
 
-	#start(connection: Moq.Connection | undefined, media: MediaStream | undefined) {
-		this.#running?.abort();
+	async #run(context: Context, connection?: Moq.Connection, media?: MediaStream) {
+		if (!connection || !media) return;
 
-		if (!connection || !media) {
-			return;
-		}
-
-		this.#running = new Abortable((context) => this.#run(context, connection, media));
-	}
-
-	async #run(context: Context, connection: Moq.Connection, media: MediaStream) {
 		const broadcast = new Catalog.Broadcast();
 
 		// Remove the leading slash
@@ -123,7 +97,7 @@ export class Publish {
 
 			const trackPath = `${path}/${info.name}`;
 			const trackProducer = new Moq.Track(trackPath, info.priority);
-			context.done.finally(() => trackProducer.close());
+			context.done.then(() => trackProducer.close());
 
 			if (isVideoTrackSettings(settings)) {
 				const videoTrack = track as MediaStreamVideoTrack;
@@ -183,7 +157,7 @@ export class Publish {
 
 		const catalogPath = `${path}/catalog.json`;
 		const catalogProducer = new Moq.Track(catalogPath, 0);
-		context.done.finally(() => catalogProducer.close());
+		context.done.then(() => catalogProducer.close());
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(broadcast.encode());
@@ -196,9 +170,5 @@ export class Publish {
 		this.#connection?.abort();
 		this.#media?.abort();
 		this.#running?.abort();
-
-		this.#connection = undefined;
-		this.#media = undefined;
-		this.#running = undefined;
 	}
 }
