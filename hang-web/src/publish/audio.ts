@@ -52,18 +52,15 @@ export class Encoder {
 		const reader = input.readable.getReader();
 
 		for (;;) {
-			const { done, value } = await Promise.any([reader.read(), context.done]);
-			if (done) {
+			const result = await context.race(reader.read());
+			if (!result || result.done) {
 				break;
 			}
 
-			this.#encoder.encode(value);
+			const frame = result.value;
+			this.#encoder.encode(frame);
+			frame.close();
 		}
-	}
-
-	#encode(frame: AudioData) {
-		this.#encoder.encode(frame);
-		frame.close();
 	}
 
 	#encoded(frame: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) {
@@ -76,7 +73,7 @@ export class Encoder {
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
-		const hang = new Frame(frame.type, frame.timestamp, buffer);
+		const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
 		hang.encode(group);
 
 		group.close();

@@ -125,7 +125,12 @@ check:
 	# requires: cargo install cargo-sort
 	cargo sort --workspace --check
 
-	pnpm -r i && pnpm -r run check
+	# Format the JS packages
+	pnpm -r i
+	biome check
+
+	# Make sure Typescript compiles
+	pnpm -r run check
 
 # Run any CI tests
 test:
@@ -144,7 +149,9 @@ fix:
 	# requires: cargo install cargo-sort
 	cargo sort --workspace
 
-	pnpm -r i && pnpm -r run fix
+	# Fix the JS packages
+	pnpm -r i
+	biome check --fix --unsafe
 
 # Upgrade any tooling
 upgrade:

@@ -82,15 +82,17 @@ export class Encoder {
 		const reader = input.readable.getReader();
 
 		for (;;) {
-			const { done, value } = await Promise.any([reader.read(), context.done]);
-			if (done) {
+			const result = await context.race(reader.read());
+			if (!result || result.done) {
 				break;
 			}
 
+			const frame = result.value;
+
 			// Set keyFrame to undefined when we're not sure so the encoder can decide.
-			this.#encoder.encode(value, { keyFrame: this.#keyframeNext });
+			this.#encoder.encode(frame, { keyFrame: this.#keyframeNext });
 			this.#keyframeNext = undefined;
-			value.close();
+			frame.close();
 		}
 	}
 
@@ -118,7 +120,7 @@ export class Encoder {
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
-		const karp = new Frame(frame.type, frame.timestamp, buffer);
+		const karp = new Frame(frame.type === "key", frame.timestamp, buffer);
 		karp.encode(this.#outputGroup);
 	}
 }

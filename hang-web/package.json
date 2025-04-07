@@ -12,8 +12,7 @@
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
-		"check": "biome check",
-		"fix": "biome check --write"
+		"check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:../moq-web",

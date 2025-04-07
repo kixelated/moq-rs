@@ -10,8 +10,7 @@
 	},
 	"scripts": {
 		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
-		"check": "biome check",
-		"fix": "biome check --write"
+		"check": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@typescript/lib-dom": "npm:@types/web@^0.0.214"

@@ -1,9 +1,9 @@
+import * as Moq from "@kixelated/moq";
 import type * as Catalog from "../catalog";
+import * as Container from "../container";
 import type { Frame } from "../container/frame";
 import { Context, Task } from "../util/context";
 import * as Hex from "../util/hex";
-import * as Moq from "@kixelated/moq";
-import * as Container from "../container";
 
 export class Video {
 	#canvas: HTMLCanvasElement;
