@@ -22,6 +22,7 @@ export class Broadcast {
 		const decoder = new TextDecoder();
 		const str = decoder.decode(raw);
 		const json = JSON.parse(str);
+		console.log("decoding catalog:", json);
 		const parsed = BroadcastSchema.parse(json);
 
 		const broadcast = new Broadcast();
@@ -31,7 +32,9 @@ export class Broadcast {
 	}
 
 	static async fetch(connection: Moq.Connection, path: string): Promise<Broadcast> {
-		const track = new Moq.Track(path, 0);
+		const track = new Moq.TrackWriter(path, 0);
+		console.debug("fetching catalog:", path);
+
 		const sub = await connection.subscribe(track);
 		try {
 			const segment = await sub.nextGroup();
@@ -41,9 +44,10 @@ export class Broadcast {
 			if (!frame) throw new Error("no catalog frame");
 
 			segment.close();
+
 			const broadcast = Broadcast.decode(frame);
 
-			console.log("loaded catalog", broadcast);
+			console.debug("decoded catalog:", broadcast);
 			return broadcast;
 		} finally {
 			sub.close();

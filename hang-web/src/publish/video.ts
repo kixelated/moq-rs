@@ -16,7 +16,7 @@ export interface EncoderSupported {
 export type EncoderConfig = VideoEncoderConfig;
 
 export class Encoder {
-	#outputTrack: Moq.Track;
+	#outputTrack: Moq.TrackWriter;
 	#outputGroup?: Moq.Group;
 
 	#encoder: VideoEncoder;
@@ -30,7 +30,7 @@ export class Encoder {
 	// Count the number of frames without a keyframe.
 	#keyframeCounter = 0;
 
-	constructor(config: VideoEncoderConfig, output: Moq.Track) {
+	constructor(config: VideoEncoderConfig, output: Moq.TrackWriter) {
 		this.#outputTrack = output;
 
 		config.bitrateMode ??= "constant";

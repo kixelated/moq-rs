@@ -110,7 +110,7 @@ impl Session {
 	}
 
 	async fn run_session(mut stream: Stream) -> Result<(), Error> {
-		while let Some(_info) = stream.reader.decode_maybe::<message::Info>().await? {}
+		while let Some(_info) = stream.reader.decode_maybe::<message::SubscribeInfo>().await? {}
 		Err(Error::Cancel)
 	}
 
@@ -152,7 +152,6 @@ impl Session {
 			message::ControlType::Session => Err(Error::UnexpectedStream(kind)),
 			message::ControlType::Announce => publisher.recv_announce(stream).await,
 			message::ControlType::Subscribe => publisher.recv_subscribe(stream).await,
-			message::ControlType::Info => publisher.recv_info(stream).await,
 		}
 	}
 

@@ -80,6 +80,8 @@ export class Video {
 		const info = this.#tracks.at(0);
 		if (!info) throw new Error("no video track");
 
+		console.log("starting load", this.#prefix, info);
+
 		this.#running.start(this.#connection, this.#prefix, info);
 	}
 
@@ -92,7 +94,7 @@ export class Video {
 			optimizeForLatency: true,
 		});
 
-		const writer = new Moq.Track(`${this.#prefix}/${info.track.name}`, info.track.priority);
+		const writer = new Moq.TrackWriter(`${this.#prefix}/${info.track.name}`, info.track.priority);
 		const reader = await connection.subscribe(writer);
 		const container = new Container.Reader(reader);
 

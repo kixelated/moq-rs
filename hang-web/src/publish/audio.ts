@@ -13,13 +13,13 @@ const SUPPORTED = [
 export type EncoderConfig = AudioEncoderConfig;
 
 export class Encoder {
-	#output: Moq.Track;
+	#output: Moq.TrackWriter;
 
 	#encoder: AudioEncoder;
 	#encoderConfig: AudioEncoderConfig;
 	#decoder: AudioDecoderConfig;
 
-	constructor(config: AudioEncoderConfig, output: Moq.Track) {
+	constructor(config: AudioEncoderConfig, output: Moq.TrackWriter) {
 		this.#output = output;
 
 		this.#encoderConfig = config;

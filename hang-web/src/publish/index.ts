@@ -99,7 +99,7 @@ export class Publish {
 			};
 
 			const trackPath = `${path}/${info.name}`;
-			const trackProducer = new Moq.Track(trackPath, info.priority);
+			const trackProducer = new Moq.TrackWriter(trackPath, info.priority);
 			context.done.then(() => trackProducer.close());
 
 			if (isVideoTrackSettings(settings)) {
@@ -159,7 +159,7 @@ export class Publish {
 		}
 
 		const catalogPath = `${path}/catalog.json`;
-		const catalogProducer = new Moq.Track(catalogPath, 0);
+		const catalogProducer = new Moq.TrackWriter(catalogPath, 0);
 		context.done.then(() => catalogProducer.close());
 
 		const encoder = new TextEncoder();

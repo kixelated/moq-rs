@@ -5,7 +5,6 @@ pub enum ControlType {
 	Session,
 	Announce,
 	Subscribe,
-	Info,
 }
 
 impl Decode for ControlType {
@@ -15,7 +14,6 @@ impl Decode for ControlType {
 			0 => Ok(Self::Session),
 			1 => Ok(Self::Announce),
 			2 => Ok(Self::Subscribe),
-			3 => Ok(Self::Info),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}
@@ -27,7 +25,6 @@ impl Encode for ControlType {
 			Self::Session => 0,
 			Self::Announce => 1,
 			Self::Subscribe => 2,
-			Self::Info => 3,
 		};
 		v.encode(w)
 	}

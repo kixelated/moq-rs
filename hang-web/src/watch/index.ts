@@ -72,7 +72,6 @@ export class Watch {
 
 			for (;;) {
 				const announce = await context.race(announced.next());
-				console.log("got announce", announce);
 				if (!announce) break;
 				if (!announce.path.endsWith("catalog.json")) continue;
 
@@ -85,8 +84,7 @@ export class Watch {
 	}
 
 	async #load(context: Context, connection: Moq.Connection, path: string) {
-		console.log("starting load", path);
-
+		console.log("loading:", path);
 		const catalog = await context.race(Catalog.Broadcast.fetch(connection, path));
 		if (!catalog) return;
 

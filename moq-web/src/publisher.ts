@@ -94,7 +94,7 @@ export class Publisher {
 		subscribe.run().catch((err) => console.warn("failed to run subscribe: ", err));
 
 		try {
-			const info = new Wire.SubscribeInfo(track.priority, track.order, track.latest);
+			const info = new Wire.SubscribeInfo(track.priority, track.latest);
 			await info.encode(stream.writer);
 
 			for (;;) {

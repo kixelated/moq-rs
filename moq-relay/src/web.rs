@@ -102,7 +102,6 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 	let track = moq_lite::Track {
 		path: path.split("/").collect(),
 		priority: 0,
-		order: moq_lite::GroupOrder::Desc,
 	};
 
 	tracing::info!(?track, "subscribing to track");

@@ -25,33 +25,6 @@ impl Encode for Group {
 	}
 }
 
-/// Indicates if groups should be delivered in ascending or descending order.
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-pub enum GroupOrder {
-	Asc,
-	Desc,
-}
-
-impl Decode for GroupOrder {
-	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		match u64::decode(r)? {
-			0 => Ok(Self::Asc),
-			1 => Ok(Self::Desc),
-			_ => Err(DecodeError::InvalidValue),
-		}
-	}
-}
-
-impl Encode for GroupOrder {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		let v: u64 = match self {
-			Self::Asc => 0,
-			Self::Desc => 1,
-		};
-		v.encode(w)
-	}
-}
-
 #[derive(Clone, Debug)]
 pub struct GroupDrop {
 	pub sequence: u64,

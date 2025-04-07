@@ -144,18 +144,12 @@ impl Subscriber {
 			id,
 			path: track.path.clone(),
 			priority: track.priority,
-
-			group_order: track.order,
-
-			// TODO
-			group_min: None,
-			group_max: None,
 		};
 
 		stream.writer.encode(&request).await?;
 
 		// TODO use the response to correctly populate the track info
-		let info: message::Info = stream.reader.decode().await?;
+		let info: message::SubscribeInfo = stream.reader.decode().await?;
 
 		tracing::info!(?info, "active");
 

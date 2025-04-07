@@ -1,12 +1,10 @@
 import { GroupReader, GroupWriter } from "./group";
 import { Watch } from "./util/async";
 import { Closed } from "./util/error";
-import { GroupOrder } from "./wire";
 
 export class TrackWriter {
 	readonly path: string;
 	readonly priority: number;
-	order = GroupOrder.Any;
 
 	// TODO use an array
 	latest = new Watch<GroupReader | undefined>(undefined);
@@ -78,10 +76,6 @@ export class TrackReader {
 
 	get path() {
 		return this.#track.path;
-	}
-
-	get order() {
-		return this.#track.order;
 	}
 
 	get priority() {

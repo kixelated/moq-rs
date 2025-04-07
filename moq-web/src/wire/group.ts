@@ -1,11 +1,5 @@
 import type { Reader, Writer } from "./stream";
 
-export enum GroupOrder {
-	Any = 0,
-	Ascending = 1,
-	Descending = 2,
-}
-
 export class Group {
 	subscribe: bigint;
 	sequence: number;

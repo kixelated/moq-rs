@@ -32,7 +32,6 @@ impl BroadcastProducer {
 		let (catalog, _) = moq_lite::Track {
 			path: full,
 			priority: -1,
-			order: moq_lite::GroupOrder::Desc,
 		}
 		.produce();
 		let catalog = CatalogProducer::new(catalog)?;
@@ -108,8 +107,6 @@ impl BroadcastProducer {
 		let (producer, _) = moq_lite::Track {
 			path,
 			priority: track.priority,
-			// TODO add these to the catalog and support higher latencies.
-			order: moq_lite::GroupOrder::Desc,
 		}
 		.produce();
 
@@ -254,11 +251,7 @@ impl BroadcastConsumer {
 		let path = format!("{}/{}/catalog.json", self.path, id);
 		tracing::info!(?path, "loading catalog");
 
-		let track = moq_lite::Track {
-			path,
-			priority: -1,
-			order: moq_lite::GroupOrder::Desc,
-		};
+		let track = moq_lite::Track { path, priority: -1 };
 
 		self.catalog_track = Some(self.session.subscribe(track));
 		self.current = Some(id);
@@ -283,9 +276,6 @@ impl BroadcastConsumer {
 			// TODO use the catalog to find the path
 			path: format!("{}/{}/{}.karp", self.path, id, &track.name),
 			priority: track.priority,
-
-			// TODO add these to the catalog and support higher latencies.
-			order: moq_lite::GroupOrder::Desc,
 		};
 
 		let track = self.session.subscribe(track);

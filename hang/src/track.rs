@@ -8,6 +8,8 @@ use moq_lite::coding::*;
 
 use derive_more::Debug;
 
+#[serde_with::serde_as]
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Track {
 	pub name: String,

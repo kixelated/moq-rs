@@ -15,7 +15,6 @@
 use tokio::sync::watch;
 
 use super::{Group, GroupConsumer, GroupProducer};
-pub use crate::message::GroupOrder;
 use crate::Error;
 
 use std::{cmp::Ordering, ops, sync::Arc};
@@ -28,9 +27,6 @@ pub struct Track {
 
 	/// The priority of the track, relative to other tracks in the same session/broadcast.
 	pub priority: i8,
-
-	/// The preferred order to deliver groups in the track.
-	pub order: GroupOrder,
 }
 
 impl Track {
@@ -61,7 +57,6 @@ impl Default for Track {
 		Self {
 			path: Default::default(),
 			priority: 0,
-			order: GroupOrder::Desc,
 		}
 	}
 }
@@ -91,11 +86,6 @@ impl TrackBuilder {
 
 	pub fn priority(mut self, priority: i8) -> Self {
 		self.track.priority = priority;
-		self
-	}
-
-	pub fn group_order(mut self, order: GroupOrder) -> Self {
-		self.track.order = order;
 		self
 	}
 

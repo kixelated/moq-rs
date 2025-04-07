@@ -68,7 +68,7 @@ export class Subscriber {
 	// TODO: Deduplicate identical subscribes
 	async subscribe(track: TrackWriter): Promise<TrackReader> {
 		const id = this.#subscribeNext++;
-		const msg = new Wire.Subscribe(id, track.path, track.priority, track.order);
+		const msg = new Wire.Subscribe(id, track.path, track.priority);
 
 		const stream = await Wire.Stream.open(this.#quic, msg);
 		const subscribe = new Subscribe(id, stream, track);
@@ -77,7 +77,8 @@ export class Subscriber {
 		this.#subscribe.set(subscribe.id, subscribe);
 
 		try {
-			await Wire.SessionInfo.decode(stream.reader);
+			const info = await Wire.SubscribeInfo.decode(stream.reader);
+			console.log("subscribe info", info);
 
 			/*
 			for (;;) {
