@@ -24,7 +24,7 @@ axum = { version = "0.8", features = ["tokio"] }
 hyper-serve = { version = "0.6", features = ["tls-rustls"] }
 tower-http = { version = "0.6", features = ["cors"] }
 
-tokio = { version = "1.43", features = ["full"] }
+tokio = { version = "1.44", features = ["full"] }
 url = "2"
 tracing = "0.1"
 
