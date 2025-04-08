@@ -16,7 +16,7 @@ bytes = "1"
 thiserror = "2"
 tracing = "0.1"
 
-tokio = { version = "1.43", features = [
+tokio = { version = "1.44", features = [
 	"macros",
 	"io-util",
 	"sync",
