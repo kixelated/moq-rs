@@ -1,14 +1,14 @@
 import type { GroupReader } from "./group";
-import type { TrackReader } from "./track";
+import type { TrackReader, TrackWriter } from "./track";
 import { Watch } from "./util/async";
-import { Closed } from "./util/error";
+import { Fanout } from "./util/fanout";
 import * as Wire from "./wire";
 
 export class Publisher {
 	#quic: WebTransport;
 
-	// Our announced tracks.
-	#announce = new Watch(new Map<string, TrackReader>());
+	// Our published tracks.
+	#tracks = new Watch(new Map<string, TrackReader>());
 
 	// Their subscribed tracks.
 	#subscribe = new Map<bigint, Subscribed>();
@@ -19,25 +19,30 @@ export class Publisher {
 
 	// Publish a track
 	publish(track: TrackReader) {
-		this.#announce.update((current) => {
+		this.#tracks.update((current) => {
 			current.set(track.path, track);
 			return current;
 		});
 
-		// TODO: clean up announcements
-		// track.closed().then(() => this.#announce.delete(track.path))
+		track.closed().finally(() =>
+			this.#tracks.update((current) => {
+				current.delete(track.path);
+				return current;
+			}),
+		);
 	}
 
 	#get(path: string): TrackReader | undefined {
-		return this.#announce.value()[0].get(path);
+		return this.#tracks.latest()[0].get(path);
 	}
 
+	// TODO: This is very inefficient for many tracks.
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		let current = this.#announce.value();
-		let seen = new Map<string, TrackReader>();
+		let current = this.#tracks.latest();
+		let seen = new Set<string>();
 
 		while (current) {
-			const newSeen = new Map<string, TrackReader>();
+			const newSeen = new Set<string>();
 
 			for (const [key, announce] of current[0]) {
 				if (announce.path.length < msg.prefix.length) {
@@ -49,7 +54,7 @@ export class Publisher {
 					continue;
 				}
 
-				newSeen.set(key, announce);
+				newSeen.add(key);
 
 				if (seen.delete(key)) {
 					// Already exists
@@ -63,8 +68,8 @@ export class Publisher {
 			}
 
 			// Remove any closed tracks
-			for (const announce of seen.values()) {
-				const suffix = announce.path.slice(msg.prefix.length);
+			for (const announce of seen) {
+				const suffix = announce.slice(msg.prefix.length);
 				const ended = new Wire.Announce(suffix, "closed");
 				await ended.encode(stream.writer);
 			}
@@ -93,22 +98,15 @@ export class Publisher {
 		// TODO close the stream when done
 		subscribe.run().catch((err) => console.warn("failed to run subscribe: ", err));
 
-		try {
-			const info = new Wire.SubscribeInfo(track.priority, track.latest);
-			await info.encode(stream.writer);
+		const info = new Wire.SubscribeInfo(track.priority, track.latest);
+		await info.encode(stream.writer);
 
-			for (;;) {
-				// TODO try_decode
-				const update = await Wire.SubscribeUpdate.decode_maybe(stream.reader);
-				if (!update) {
-					subscribe.close();
-					break;
-				}
+		for (;;) {
+			// TODO try_decode
+			const update = await Wire.SubscribeUpdate.decode_maybe(stream.reader);
+			if (!update) break;
 
-				// TODO use the update
-			}
-		} catch (err) {
-			subscribe.close(Closed.from(err));
+			// TODO use the update
 		}
 	}
 }
@@ -118,8 +116,6 @@ class Subscribed {
 	#track: TrackReader;
 	#quic: WebTransport;
 
-	#closed = new Watch<Closed | undefined>(undefined);
-
 	constructor(msg: Wire.Subscribe, track: TrackReader, quic: WebTransport) {
 		this.#id = msg.id;
 		this.#track = track;
@@ -127,22 +123,12 @@ class Subscribed {
 	}
 
 	async run() {
-		const closed = this.closed();
-
 		for (;;) {
-			const group = await Promise.any([this.#track.nextGroup(), closed]);
-			if (group instanceof Closed) {
-				this.close(group);
-				return;
-			}
-
+			const group = await this.#track.read();
 			if (!group) break;
 
 			this.#runGroup(group).catch((err) => console.warn("failed to run group: ", err));
 		}
-
-		// TODO wait until all groups are done
-		this.close();
 	}
 
 	async #runGroup(group: GroupReader) {
@@ -158,20 +144,5 @@ class Subscribed {
 		}
 
 		await stream.close();
-	}
-
-	close(err = new Closed()) {
-		this.#closed.update(err);
-		this.#track.close();
-	}
-
-	async closed(): Promise<Closed> {
-		let [closed, next] = this.#closed.value();
-
-		for (;;) {
-			if (closed !== undefined) return closed;
-			if (!next) return new Closed();
-			[closed, next] = await next;
-		}
 	}
 }

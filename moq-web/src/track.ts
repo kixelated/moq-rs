@@ -1,89 +1,66 @@
-import { GroupReader, GroupWriter } from "./group";
-import { Watch } from "./util/async";
-import { Closed } from "./util/error";
+import { Group, GroupReader, GroupWriter } from "./group";
+import { Watch, WatchNext } from "./util/async";
+import { Queue, QueueReader, QueueWriter } from "./util/queue";
 
 export class TrackWriter {
 	readonly path: string;
 	readonly priority: number;
 
-	// TODO use an array
-	latest = new Watch<GroupReader | undefined>(undefined);
-
-	readers = 0;
-	closed: Closed | null = null;
+	#group = new Watch<GroupReader | undefined>(undefined);
 
 	constructor(path: string, priority: number) {
 		this.path = path;
 		this.priority = priority;
 	}
 
-	appendGroup(): GroupWriter {
-		const next = this.latest.value()[0]?.id ?? 0;
-		return this.createGroup(next);
+	async append(): Promise<GroupWriter> {
+		const [latest, _] = this.#group.value();
+
+		const group = new Group(latest ? latest.id + 1 : 0);
+		this.#group.update(group.reader);
+		return group.writer;
 	}
 
-	createGroup(sequence: number): GroupWriter {
-		if (this.closed) throw this.closed;
-
-		const group = new GroupWriter(sequence);
-		const [current, _] = this.latest.value();
-
-		// TODO use an array
-		if (!current || current.id < sequence) {
-			const reader = new GroupReader(group);
-			this.latest.update(reader);
+	async insert(group: GroupReader) {
+		const [current, _] = this.#group.value();
+		if (current && group.id < current.id) {
+			throw new Error("old group");
 		}
 
-		return group;
+		this.#group.update(group);
 	}
 
-	close(closed?: Closed) {
-		if (this.closed) return;
-		this.closed = closed ?? new Closed();
-		this.latest.close();
+	async close() {
+		this.#group.close();
 	}
 
-	reader(): TrackReader {
-		// VERY important that readers are closed to decrement the count
-		this.readers += 1;
-		return new TrackReader(this);
+	async abort(reason?: unknown) {
+		this.#group.abort(reason);
 	}
 }
 
 export class TrackReader {
-	latest: number | null = null;
-	#track: TrackWriter;
+	readonly path: string;
+	readonly priority: number;
 
-	constructor(track: TrackWriter) {
-		this.#track = track;
+	#groups?: Promise<WatchNext<GroupReader | undefined>>;
+	#closed?: Promise<void>;
+
+	constructor(path: string, priority: number, groups: Watch<GroupReader | undefined>) {
+		this.path = path;
+		this.priority = priority;
+		this.#groups = Promise.resolve(groups.value());
+		this.#closed = groups.closed();
 	}
 
-	async nextGroup(): Promise<GroupReader | undefined> {
-		let [current, next] = this.#track.latest.value();
-
-		for (;;) {
-			if (current && this.latest !== current.id) {
-				this.latest = current.id;
-				return current;
-			}
-
-			if (this.#track.closed) throw this.#track.closed;
-
-			if (!next) return;
-			[current, next] = await next;
-		}
+	async next(): Promise<GroupReader | undefined> {
+		if (!this.#groups) return;
+		const [current, next] = await this.#groups;
+		this.#groups = next;
+		return current;
 	}
 
-	get path() {
-		return this.#track.path;
-	}
-
-	get priority() {
-		return this.#track.priority;
-	}
-
-	close() {
-		this.#track.readers -= 1;
-		if (this.#track.readers <= 0) this.#track.close();
+	async closed() {
+		return this.#closed;
 	}
 }

@@ -1,11 +1,8 @@
-import { asError } from "./util/error";
-
 import { Publisher } from "./publisher";
 import { type Announced, Subscriber } from "./subscriber";
 import { TrackReader, TrackWriter } from "./track";
-import type { Queue } from "./util/async";
-import { Closed } from "./util/error";
 import * as Hex from "./util/hex";
+import { QueueReader } from "./util/fanout";
 import * as Wire from "./wire";
 
 // A pool of connections.
@@ -123,7 +120,7 @@ export class Connection {
 		this.#publisher.publish(track);
 	}
 
-	async announced(prefix = ""): Promise<Queue<Announced>> {
+	async announced(prefix = ""): Promise<QueueReader<Announced>> {
 		return this.#subscriber.announced(prefix);
 	}
 
@@ -149,7 +146,7 @@ export class Connection {
 
 			const [msg, stream] = next;
 			this.#runBidi(msg, stream)
-				.catch((err) => stream.writer.reset(Closed.extract(err)))
+				.catch((err) => stream.writer.reset(err))
 				.finally(() => stream.writer.close());
 		}
 	}
@@ -189,7 +186,7 @@ export class Connection {
 
 			const [msg, stream] = next;
 			this.#runUni(msg, stream)
-				.catch((err) => stream.stop(Closed.extract(err)))
+				.catch((err) => stream.stop(err))
 				.finally(() => stream.stop(0));
 		}
 	}

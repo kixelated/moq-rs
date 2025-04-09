@@ -1,80 +1,39 @@
-import { Watch } from "./util/async";
-import { Closed } from "./util/error";
+import { Queue, QueueReader, QueueWriter } from "./util/queue";
 
-export class GroupWriter {
+export class Group {
 	readonly id: number;
-
-	chunks = new Watch<Uint8Array[]>([]);
-	readers = 0;
-	closed: Closed | null = null;
+	readonly writer: GroupWriter;
+	readonly reader: GroupReader;
 
 	constructor(id: number) {
 		this.id = id;
+		const frames = new Queue<Uint8Array>();
+		this.writer = new GroupWriter(id, frames.writer);
+		this.reader = new GroupReader(id, frames.reader);
 	}
+}
 
-	writeFrame(frame: Uint8Array) {
-		if (this.closed) throw this.closed;
-		this.chunks.update((chunks) => [...chunks, frame]);
-	}
+export class GroupWriter {
+	readonly id: number;
+	readonly frames: Watch<Uint8Array>;
 
-	writeFrames(...frames: Uint8Array[]) {
-		if (this.closed) throw this.closed;
-		this.chunks.update((chunks) => [...chunks, ...frames]);
-		this.close();
-	}
-
-	reader(): GroupReader {
-		this.readers += 1;
-		return new GroupReader(this);
-	}
-
-	get length(): number {
-		return this.chunks.value()[0].length;
-	}
-
-	close(closed?: Closed) {
-		if (this.closed) return;
-		this.closed = closed ?? new Closed();
-		this.chunks.close();
+	constructor(id: number, frames: QueueWriter<Uint8Array>) {
+		this.id = id;
+		this.frames = frames;
 	}
 }
 
 export class GroupReader {
-	#group: GroupWriter;
-	#index = 0;
+	readonly id: number;
+	readonly frames: QueueReader<Uint8Array>;
 
-	constructor(group: GroupWriter) {
-		this.#group = group;
+	constructor(id: number, frames: QueueReader<Uint8Array>) {
+		this.id = id;
+		this.frames = frames;
 	}
 
-	async nextFrame(): Promise<Uint8Array | undefined> {
-		let [chunks, next] = this.#group.chunks.value();
-
-		for (;;) {
-			if (this.#index < chunks.length) {
-				this.#index += 1;
-				return chunks[this.#index - 1];
-			}
-
-			if (this.#group.closed) {
-				throw this.#group.closed;
-			}
-
-			if (!next) return;
-			[chunks, next] = await next;
-		}
-	}
-
-	get index(): number {
-		return this.#index;
-	}
-
-	get id(): number {
-		return this.#group.id;
-	}
-
-	close() {
-		this.#group.readers -= 1;
-		if (this.#group.readers <= 0) this.#group.close();
+	tee(): [GroupReader, GroupReader] {
+		const [one, two] = this.frames.tee();
+		return [new GroupReader(this.id, one), new GroupReader(this.id, two)];
 	}
 }

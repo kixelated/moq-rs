@@ -7,7 +7,6 @@ export class Watch {
 	#url?: URL;
 
 	#connection = new Task(this.#connect.bind(this));
-	#loading = new Task(this.#load.bind(this));
 
 	#catalog?: Catalog.Broadcast;
 	#video = new Video();
@@ -75,20 +74,13 @@ export class Watch {
 				if (!announce) break;
 				if (!announce.path.endsWith("catalog.json")) continue;
 
-				// TODO Only cancel the previous task after a successful (async) load.
-				this.#loading.start(connection, announce.path);
+				Catalog.Broadcast.fetch(connection, path).then((catalog) => {
+					this.#video.load(connection, path, catalog.video);
+				});
 			}
 		} finally {
 			connection.close();
 		}
-	}
-
-	async #load(context: Context, connection: Moq.Connection, path: string) {
-		console.log("loading:", path);
-		const catalog = await context.race(Catalog.Broadcast.fetch(connection, path));
-		if (!catalog) return;
-
-		await this.#video.load(connection, path, catalog.video);
 	}
 }
 

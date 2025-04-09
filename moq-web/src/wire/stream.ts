@@ -69,12 +69,12 @@ export class Stream {
 		return stream;
 	}
 
-	async close(code?: number) {
-		if (code === undefined) {
+	async close(reason?: unknown) {
+		if (reason === undefined) {
 			await this.writer.close();
 		} else {
-			await this.writer.reset(code);
-			await this.reader.stop(code);
+			await this.writer.reset(reason);
+			await this.reader.stop(reason);
 		}
 	}
 }
@@ -202,9 +202,9 @@ export class Reader {
 		return !(await this.#fill());
 	}
 
-	async stop(code: number) {
+	async stop(reason?: unknown) {
 		this.#reader.releaseLock();
-		await this.#stream.cancel(code);
+		await this.#stream.cancel(reason);
 	}
 
 	async closed() {
@@ -299,9 +299,9 @@ export class Writer {
 		await this.#stream.close();
 	}
 
-	async reset(code: number) {
+	async reset(reason?: unknown) {
 		this.#writer.releaseLock();
-		await this.#stream.abort(code);
+		await this.#stream.abort(reason);
 	}
 
 	release(): WritableStream<Uint8Array> {

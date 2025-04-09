@@ -23,6 +23,7 @@ export type WatchNext<T> = [T, Promise<WatchNext<T>> | undefined];
 export class Watch<T> {
 	#current: WatchNext<T>;
 	#next = new Deferred<WatchNext<T>>();
+	#closed = new Deferred<void>();
 
 	constructor(init: T) {
 		this.#next = new Deferred<WatchNext<T>>();
@@ -55,10 +56,17 @@ export class Watch<T> {
 	close() {
 		this.#current[1] = undefined;
 		this.#next.resolve(this.#current);
+		this.#closed.resolve();
 	}
 
-	closed() {
-		return !this.#next.pending;
+	abort(reason?: unknown) {
+		this.#current[1] = undefined;
+		this.#next.reject(reason);
+		this.#closed.reject(reason);
+	}
+
+	async closed(): Promise<void> {
+		return this.#closed.promise;
 	}
 }
 

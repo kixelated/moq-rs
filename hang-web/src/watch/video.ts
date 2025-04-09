@@ -72,6 +72,7 @@ export class Video {
 
 	async #reload() {
 		await this.#running.abort();
+		console.log(this);
 
 		if (!this.#canvas) return;
 		if (!this.#visible) return;
@@ -80,7 +81,7 @@ export class Video {
 		const info = this.#tracks.at(0);
 		if (!info) throw new Error("no video track");
 
-		console.log("starting load", this.#prefix, info);
+		console.log("video track:", info);
 
 		this.#running.start(this.#connection, this.#prefix, info);
 	}

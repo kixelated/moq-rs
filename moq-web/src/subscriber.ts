@@ -1,7 +1,6 @@
 import { FrameReader } from "./frame";
 import type { TrackReader, TrackWriter } from "./track";
 import { Queue, Watch } from "./util/async";
-import { Closed } from "./util/error";
 import * as Wire from "./wire";
 
 export class Subscriber {
@@ -31,36 +30,29 @@ export class Subscriber {
 	async runAnnounced(stream: Wire.Stream, announced: Queue<Announced>, prefix: string) {
 		const toggle: Map<string, Announced> = new Map();
 
-		try {
-			for (;;) {
-				const announce = await Wire.Announce.decode_maybe(stream.reader);
-				if (!announce) {
-					break;
-				}
-
-				const path = prefix.concat(announce.suffix);
-
-				const existing = toggle.get(announce.suffix);
-				if (existing) {
-					if (announce.status === "active") {
-						throw new Error("duplicate announce");
-					}
-
-					existing.close();
-					toggle.delete(announce.suffix);
-				} else {
-					if (announce.status === "closed") {
-						throw new Error("unknown announce");
-					}
-
-					const item = new Announced(path);
-					await announced.push(item);
-					toggle.set(announce.suffix, item);
-				}
+		for (;;) {
+			const announce = await Wire.Announce.decode_maybe(stream.reader);
+			if (!announce) {
+				break;
 			}
-		} finally {
-			for (const item of toggle.values()) {
-				item.close();
+
+			const path = prefix.concat(announce.suffix);
+
+			const existing = toggle.get(announce.suffix);
+			if (existing) {
+				if (announce.status === "active") {
+					throw new Error("duplicate announce");
+				}
+
+				toggle.delete(announce.suffix);
+			} else {
+				if (announce.status === "closed") {
+					throw new Error("unknown announce");
+				}
+
+				const item = new Announced(path);
+				await announced.push(item);
+				toggle.set(announce.suffix, item);
 			}
 		}
 	}
@@ -72,7 +64,6 @@ export class Subscriber {
 
 		const stream = await Wire.Stream.open(this.#quic, msg);
 		const subscribe = new Subscribe(id, stream, track);
-		subscribe.run().catch((err) => console.warn("failed to run subscribe: ", err));
 
 		this.#subscribe.set(subscribe.id, subscribe);
 
@@ -90,7 +81,7 @@ export class Subscriber {
 			return subscribe.track.reader();
 		} catch (err) {
 			this.#subscribe.delete(subscribe.id);
-			await subscribe.close(Closed.from(err));
+			await subscribe.close(err);
 			throw err;
 		}
 	}
@@ -116,23 +107,8 @@ export class Subscriber {
 export class Announced {
 	readonly path: string;
 
-	#closed = new Watch<Closed | undefined>(undefined);
-
 	constructor(path: string) {
 		this.path = path;
-	}
-
-	close(err = new Closed()) {
-		this.#closed.update(err);
-	}
-
-	async closed(): Promise<Closed> {
-		let [closed, next] = this.#closed.value();
-		for (;;) {
-			if (closed !== undefined) return closed;
-			if (!next) return new Closed();
-			[closed, next] = await next;
-		}
 	}
 }
 
@@ -141,27 +117,14 @@ export class Subscribe {
 	readonly track: TrackWriter;
 	readonly stream: Wire.Stream;
 
-	// A queue of received streams for this subscription.
-	//#closed = new Watch<Closed | undefined>(undefined);
-
 	constructor(id: bigint, stream: Wire.Stream, track: TrackWriter) {
 		this.id = id;
 		this.track = track;
 		this.stream = stream;
 	}
 
-	async run() {
-		try {
-			await this.closed();
-			await this.close();
-		} catch (err) {
-			await this.close(Closed.from(err));
-		}
-	}
-
-	async close(closed?: Closed) {
-		this.track.close(closed);
-		await this.stream.close(closed?.code ?? undefined);
+	async close(reason?: unknown) {
+		await this.stream.close(reason);
 	}
 
 	async closed() {

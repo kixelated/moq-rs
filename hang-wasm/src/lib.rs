@@ -1,9 +1,11 @@
+mod command;
 mod connection;
 mod error;
 mod publish;
 mod room;
 mod watch;
 
+pub use command::*;
 pub use connection::*;
 pub use error::*;
 pub use publish::*;
@@ -23,4 +25,24 @@ pub fn start() {
 		..Default::default()
 	};
 	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
+
+	// Get the worker Worker scope
+	let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
+
+	let closure = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+		handle_message(event.data());
+	}) as Box<dyn FnMut(_)>);
+
+	global.set_onmessage(Some(closure.as_ref().unchecked_ref()));
+	closure.forget(); // Leak it — persistent handler
+}
+
+fn handle_message(data: JsValue) {
+	let command = Command::from_message(data).unwrap();
+	println!("Received message: {:?}", command);
+}
+
+fn post_message(data: JsValue) {
+	let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
+	global.post_message(&data);
 }
