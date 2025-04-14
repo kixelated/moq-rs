@@ -17,91 +17,22 @@ use tokio::sync::watch;
 use super::{Group, GroupConsumer, GroupProducer};
 use crate::Error;
 
-use std::{cmp::Ordering, ops, sync::Arc};
+use std::cmp::Ordering;
 
-/// A track, a collection of indepedent groups (streams) with a specified order/priority.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
-	/// The path of the track.
-	pub path: String,
-
-	/// The priority of the track, relative to other tracks in the same session/broadcast.
+	pub name: String,
 	pub priority: i8,
 }
 
 impl Track {
-	pub fn new<S: ToString>(path: S) -> Self {
-		Self {
-			path: path.to_string(),
-			..Default::default()
-		}
+	pub fn new(name: String, priority: i8) -> Self {
+		Self { name, priority }
 	}
 
-	pub fn build() -> TrackBuilder {
-		TrackBuilder::new()
-	}
-
-	pub fn produce(self) -> (TrackProducer, TrackConsumer) {
-		let (send, recv) = watch::channel(TrackState::default());
-		let info = Arc::new(self);
-
-		let writer = TrackProducer::new(send, info.clone());
-		let reader = TrackConsumer::new(recv, info);
-
-		(writer, reader)
-	}
-}
-
-impl Default for Track {
-	fn default() -> Self {
-		Self {
-			path: Default::default(),
-			priority: 0,
-		}
-	}
-}
-
-/// Build a track with optional parameters.
-pub struct TrackBuilder {
-	track: Track,
-}
-
-impl Default for TrackBuilder {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-impl TrackBuilder {
-	pub fn new() -> Self {
-		Self {
-			track: Default::default(),
-		}
-	}
-
-	pub fn path<T: ToString>(mut self, path: T) -> Self {
-		self.track.path = path.to_string();
-		self
-	}
-
-	pub fn priority(mut self, priority: i8) -> Self {
-		self.track.priority = priority;
-		self
-	}
-
-	pub fn produce(self) -> (TrackProducer, TrackConsumer) {
-		self.track.produce()
-	}
-
-	// I don't know why From isn't sufficient, but this prevents annoying Rust errors.
-	pub fn into(self) -> Track {
-		self.track
-	}
-}
-
-impl From<TrackBuilder> for Track {
-	fn from(builder: TrackBuilder) -> Self {
-		builder.track
+	pub fn produce(self) -> TrackProducer {
+		TrackProducer::new(self)
 	}
 }
 
@@ -123,37 +54,43 @@ impl Default for TrackState {
 /// A producer for a track, used to create new groups.
 #[derive(Clone, Debug)]
 pub struct TrackProducer {
-	pub info: Arc<Track>,
+	pub info: Track,
 	state: watch::Sender<TrackState>,
 }
 
 impl TrackProducer {
-	fn new(state: watch::Sender<TrackState>, info: Arc<Track>) -> Self {
-		Self { info, state }
+	pub fn new(info: Track) -> Self {
+		Self {
+			info,
+			state: Default::default(),
+		}
 	}
 
-	/// Build a new group with the given sequence number.
-	pub fn create_group(&mut self, sequence: u64) -> GroupProducer {
-		let group = Group::new(sequence);
-		let (writer, reader) = group.produce();
-
+	/// Insert a group into the track, returning true if this is the latest group.
+	pub fn insert_group(&mut self, group: GroupConsumer) -> bool {
 		self.state.send_if_modified(|state| {
 			if let Some(latest) = &state.latest {
-				match reader.sequence.cmp(&latest.sequence) {
-					Ordering::Less => return false,  // Not modified,
-					Ordering::Equal => return false, // TODO error?
+				match group.info.cmp(&latest.info) {
+					Ordering::Less => return false,
+					Ordering::Equal => return false,
 					Ordering::Greater => (),
 				}
 			}
 
-			state.latest = Some(reader);
+			state.latest = Some(group.clone());
 			true
-		});
-
-		writer
+		})
 	}
 
-	/// Build a new group with the next sequence number.
+	/// Create a new group with the given sequence number.
+	///
+	/// If the sequence number is not the latest, this method will return None.
+	pub fn create_group(&mut self, info: Group) -> Option<GroupProducer> {
+		let group = GroupProducer::new(info);
+		self.insert_group(group.consume()).then_some(group)
+	}
+
+	/// Create a new group with the next sequence number.
 	pub fn append_group(&mut self) -> GroupProducer {
 		// TODO remove this extra lock
 		let sequence = self
@@ -161,9 +98,10 @@ impl TrackProducer {
 			.borrow()
 			.latest
 			.as_ref()
-			.map_or(0, |group| group.sequence + 1);
+			.map_or(0, |group| group.info.sequence + 1);
 
-		self.create_group(sequence)
+		let group = Group { sequence };
+		self.create_group(group).unwrap()
 	}
 
 	/// Close the track with an error.
@@ -174,8 +112,12 @@ impl TrackProducer {
 	}
 
 	/// Create a new consumer for the track.
-	pub fn subscribe(&self) -> TrackConsumer {
-		TrackConsumer::new(self.state.subscribe(), self.info.clone())
+	pub fn consume(&self) -> TrackConsumer {
+		TrackConsumer {
+			info: self.info.clone(),
+			state: self.state.subscribe(),
+			prev: None,
+		}
 	}
 
 	/// Block until there are no active consumers.
@@ -184,52 +126,31 @@ impl TrackProducer {
 	}
 }
 
-impl ops::Deref for TrackProducer {
-	type Target = Track;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
+impl From<Track> for TrackProducer {
+	fn from(info: Track) -> Self {
+		TrackProducer::new(info)
 	}
 }
 
 /// A consumer for a track, used to read groups.
 #[derive(Clone, Debug)]
 pub struct TrackConsumer {
-	pub info: Arc<Track>,
+	pub info: Track,
 	state: watch::Receiver<TrackState>,
 	prev: Option<u64>, // The previous sequence number
 }
 
 impl TrackConsumer {
-	fn new(state: watch::Receiver<TrackState>, info: Arc<Track>) -> Self {
-		Self {
-			state,
-			info,
-			prev: None,
-		}
-	}
-
-	pub fn get_group(&self, sequence: u64) -> Result<GroupConsumer, Error> {
-		let state = self.state.borrow();
-
-		// TODO support more than just the latest group
-		if let Some(latest) = &state.latest {
-			if latest.sequence == sequence {
-				return Ok(latest.clone());
-			}
-		}
-
-		state.closed.clone()?;
-		Err(Error::NotFound)
-	}
-
-	// NOTE: This can return groups out of order.
-	// TODO obey order
+	/// Return the next group in order.
+	///
+	/// NOTE: This can have gaps if the reader is too slow or there were network slowdowns.
 	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>, Error> {
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self
 			.state
-			.wait_for(|state| state.latest.as_ref().map(|group| group.sequence) != self.prev || state.closed.is_err())
+			.wait_for(|state| {
+				state.latest.as_ref().map(|group| group.info.sequence) != self.prev || state.closed.is_err()
+			})
 			.await
 		{
 			Ok(state) => state,
@@ -238,8 +159,8 @@ impl TrackConsumer {
 
 		// If there's a new latest group, return it.
 		if let Some(group) = state.latest.as_ref() {
-			if Some(group.sequence) != self.prev {
-				self.prev = Some(group.sequence);
+			if Some(group.info.sequence) != self.prev {
+				self.prev = Some(group.info.sequence);
 				return Ok(Some(group.clone()));
 			}
 		}
@@ -248,24 +169,11 @@ impl TrackConsumer {
 		Err(state.closed.clone().unwrap_err())
 	}
 
-	// Returns the largest group
-	pub fn latest_group(&self) -> u64 {
-		let state = self.state.borrow();
-		state.latest.as_ref().map(|group| group.sequence).unwrap_or_default()
-	}
-
+	/// Block until the track is closed and return the error.
 	pub async fn closed(&self) -> Result<(), Error> {
 		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
 			Ok(state) => state.closed.clone(),
 			Err(_) => Ok(()),
 		}
-	}
-}
-
-impl ops::Deref for TrackConsumer {
-	type Target = Track;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }

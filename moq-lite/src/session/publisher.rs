@@ -1,12 +1,6 @@
 use std::collections::{hash_map, HashMap};
 
-use futures::{stream::FuturesUnordered, StreamExt};
-
-use crate::{
-	message,
-	model::{GroupConsumer, Track, TrackConsumer},
-	Announced, AnnouncedConsumer, AnnouncedProducer, Error, RouterConsumer,
-};
+use crate::{message, model::GroupConsumer, Announced, AnnouncedProducer, Broadcast, BroadcastConsumer, Error, Track};
 
 use web_async::{spawn, FuturesExt, Lock};
 
@@ -16,77 +10,47 @@ use super::{OrClose, Stream, Writer};
 pub(super) struct Publisher {
 	session: web_transport::Session,
 	announced: AnnouncedProducer,
-	tracks: Lock<HashMap<String, TrackConsumer>>,
-	router: Lock<Option<RouterConsumer>>,
+	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
 }
 
 impl Publisher {
 	pub fn new(session: web_transport::Session) -> Self {
 		// We start the publisher in live mode because we're producing content.
-		let mut announced = AnnouncedProducer::new();
-		announced.live();
+		let announced = AnnouncedProducer::new();
 
 		Self {
 			session,
 			announced,
-			tracks: Default::default(),
-			router: Default::default(),
+			broadcasts: Default::default(),
 		}
 	}
 
-	/// Publish a track.
-	#[tracing::instrument("publish", skip_all, err, fields(?track))]
-	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
-		if !self.announced.announce(&track.path) {
+	/// Publish a broadcast.
+	///
+	// TODO support duplicates to avoid errors, using only the most recent publish?
+	#[tracing::instrument("publish", skip_all, err, fields(broadcast = ?broadcast.info))]
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
+		if !self.announced.announce(broadcast.info.clone()) {
 			return Err(Error::Duplicate);
 		}
 
-		match self.tracks.lock().entry(track.path.clone()) {
+		match self.broadcasts.lock().entry(broadcast.info.clone()) {
 			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-			hash_map::Entry::Vacant(entry) => entry.insert(track.clone()),
+			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
 		};
 
 		let mut this = self.clone();
 
 		spawn(async move {
 			tokio::select! {
-				_ = track.closed() => (),
+				_ = broadcast.closed() => (),
 				_ = this.session.closed() => (),
 			}
-			this.tracks.lock().remove(&track.path);
-			this.announced.unannounce(&track.path);
+			this.broadcasts.lock().remove(&broadcast.info);
+			this.announced.unannounce(&broadcast.info);
 		});
 
 		Ok(())
-	}
-
-	/// Announce the given tracks.
-	///
-	/// This is an advanced API for producing tracks dynamically.
-	/// NOTE: You may want to call [Self::route] to process any subscriptions for these paths.
-	/// [crate::AnnouncedConsumer] will automatically unannounce if the [crate::AnnouncedProducer] is dropped.
-	pub fn announce(&mut self, mut upstream: AnnouncedConsumer) {
-		let mut downstream = self.announced.clone();
-
-		spawn(async move {
-			while let Some(announced) = upstream.next().await {
-				match announced {
-					Announced::Active { suffix } => downstream.announce(&suffix),
-					Announced::Ended { suffix } => downstream.unannounce(&suffix),
-
-					// Indicate that we're caught up to live.
-					Announced::Live => downstream.live(),
-				};
-			}
-		});
-	}
-
-	/// Optionally support requests for arbitrary paths using the provided router.
-	/// This is an advanced API for producing tracks dynamically.
-	/// NOTE: You may want to call [Self::announce] to advertise these paths.
-	pub fn route(&mut self, router: RouterConsumer) {
-		// TODO support multiple routers?
-		self.router.lock().replace(router);
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -99,21 +63,22 @@ impl Publisher {
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active { suffix } => {
-					tracing::debug!(?prefix, ?suffix, "announce active");
-					let msg = message::Announce::Active { suffix };
-					stream.writer.encode(&msg).await?;
-				}
-				Announced::Ended { suffix } => {
-					tracing::debug!(?prefix, ?suffix, "announce ended");
-					let msg = message::Announce::Ended { suffix };
-					stream.writer.encode(&msg).await?;
-				}
-				Announced::Live => {
-					tracing::debug!(?prefix, "announce live");
+				Announced::Active(broadcast) => {
+					tracing::debug!(?broadcast, "announce active");
+					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 
-					// Indicate that we're caught up to live.
-					stream.writer.encode(&message::Announce::Live).await?;
+					let msg = message::Announce::Active {
+						suffix: suffix.path.to_string(),
+					};
+					stream.writer.encode(&msg).await?;
+				}
+				Announced::Ended(broadcast) => {
+					tracing::debug!(?broadcast, "announce ended");
+					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+					let msg = message::Announce::Ended {
+						suffix: suffix.path.to_string(),
+					};
+					stream.writer.encode(&msg).await?;
 				}
 			}
 		}
@@ -126,25 +91,26 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("publishing", skip_all, err, fields(track = ?subscribe.path, id = subscribe.id))]
+	#[tracing::instrument("publishing", skip_all, err, fields(broadcast = ?subscribe.broadcast, track = ?subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
-			path: subscribe.path,
+			name: subscribe.track,
 			priority: subscribe.priority,
 		};
 
-		let mut track = self.get_track(track).await?;
+		let broadcast = Broadcast::new(subscribe.broadcast);
 
-		let info = message::SubscribeInfo {
-			priority: track.priority,
-			group: track.latest_group(),
+		let broadcast = self.broadcasts.lock().get(&broadcast).ok_or(Error::NotFound)?.clone();
+		let mut track = broadcast.request(track).await?;
+
+		let info = message::SubscribeOk {
+			priority: track.info.priority,
 		};
 
 		tracing::info!(?info, "active");
 
 		stream.writer.encode(&info).await?;
 
-		let mut tasks = FuturesUnordered::new();
 		let mut complete = false;
 
 		loop {
@@ -152,11 +118,12 @@ impl Publisher {
 				Some(group) = track.next_group().transpose() => {
 					let mut group = group?;
 					let session = self.session.clone();
-					let priority = Self::stream_priority(track.priority, group.sequence);
+					let priority = Self::stream_priority(track.info.priority, group.info.sequence);
 
-					tasks.push(async move {
-						let res = Self::serve_group(session, subscribe.id, priority, &mut group).await;
-						(group, res)
+					spawn(async move {
+						if let Err(err) = Self::serve_group(session, subscribe.id, priority, &mut group).await {
+							tracing::warn!(?err, subscribe = ?subscribe.id, group = ?group.info, "dropped");
+						}
 					});
 				},
 				res = stream.reader.decode_maybe::<message::SubscribeUpdate>(), if !complete => match res? {
@@ -168,21 +135,6 @@ impl Publisher {
 						complete = true;
 					}
 				},
-				Some(res) = tasks.next() => {
-					let (group, res) = res;
-
-					if let Err(err) = res {
-						tracing::warn!(?err, subscribe = ?subscribe.id, group = group.sequence, "dropped");
-
-						let drop = message::GroupDrop {
-							sequence: group.sequence,
-							count: 0,
-							code: err.to_code(),
-						};
-
-						stream.writer.encode(&drop).await?;
-					}
-				},
 				else => break,
 			}
 		}
@@ -192,7 +144,7 @@ impl Publisher {
 		Ok(())
 	}
 
-	#[tracing::instrument("group", skip_all, fields(?subscribe, ?priority, sequence = group.sequence))]
+	#[tracing::instrument("group", skip_all, fields(?subscribe, ?priority, sequence = ?group.info.sequence))]
 	pub async fn serve_group(
 		mut session: web_transport::Session,
 		subscribe: u64,
@@ -217,7 +169,7 @@ impl Publisher {
 	) -> Result<(), Error> {
 		let msg = message::Group {
 			subscribe,
-			sequence: group.sequence,
+			sequence: group.info.sequence,
 		};
 
 		stream.encode(&msg).await?;
@@ -225,13 +177,13 @@ impl Publisher {
 		let mut frames = 0;
 
 		while let Some(mut frame) = group.next_frame().await? {
-			let header = message::Frame { size: frame.size };
+			let header = message::Frame { size: frame.info.size };
 			stream.encode(&header).await?;
 
-			let mut remain = frame.size;
+			let mut remain = frame.info.size;
 
 			while let Some(chunk) = frame.read().await? {
-				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
+				remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
 				tracing::trace!(chunk = chunk.len(), remain, "chunk");
 
 				stream.write(&chunk).await?;
@@ -250,18 +202,6 @@ impl Publisher {
 		// writer.finish().await?;
 
 		Ok(())
-	}
-
-	async fn get_track(&self, track: Track) -> Result<TrackConsumer, Error> {
-		if let Some(track) = self.tracks.lock().get(&track.path) {
-			return Ok(track.clone());
-		}
-
-		let router = self.router.lock().clone();
-		match router {
-			Some(router) => router.subscribe(track).await,
-			None => Err(Error::NotFound),
-		}
 	}
 
 	// Quinn takes a i32 priority.

@@ -22,9 +22,13 @@ pub struct Config {
 	#[command(flatten)]
 	pub tls: moq_native::tls::Args,
 
-	/// The path of the clock track.
+	/// The path of the clock broadcast.
 	#[arg(long, default_value = "clock")]
-	pub path: String,
+	pub broadcast: String,
+
+	/// The name of the clock track.
+	#[arg(long, default_value = "seconds")]
+	pub track: String,
 
 	/// The log configuration.
 	#[command(flatten)]
@@ -55,20 +59,25 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(config.url).await?;
 	let mut session = moq_lite::Session::connect(session).await?;
 
-	let track = Track::new(config.path);
+	let broadcast = Broadcast::new(config.broadcast);
+	let track = Track::new(config.track, 0);
 
 	match config.role {
 		Command::Publish => {
-			let (writer, reader) = track.produce();
-			session.publish(reader).context("failed to announce broadcast")?;
+			let broadcast = broadcast.produce().map();
+			let track = broadcast.create(track);
+			let clock = clock::Publisher::new(track);
 
-			let clock = clock::Publisher::new(writer);
+			session
+				.publish(broadcast.consume())
+				.context("failed to announce broadcast")?;
 
 			clock.run().await
 		}
 		Command::Subscribe => {
-			let reader = session.subscribe(track);
-			let clock = clock::Subscriber::new(reader);
+			let broadcast = session.subscribe(broadcast);
+			let track = broadcast.request(track).await?;
+			let clock = clock::Subscriber::new(track);
 
 			clock.run().await
 		}

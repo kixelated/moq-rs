@@ -85,18 +85,17 @@ impl Import {
 			let track = match handler.as_ref() {
 				b"vide" => {
 					let track = Self::init_video(trak)?;
-					self.broadcast.publish_video(track)
+					self.broadcast.create_video(track)
 				}
 				b"soun" => {
 					let track = Self::init_audio(trak)?;
-					self.broadcast.publish_audio(track)
+					self.broadcast.create_audio(track)
 				}
 				b"sbtl" => return Err(Error::UnsupportedTrack("subtitle")),
 				_ => return Err(Error::UnsupportedTrack("unknown")),
 			};
 
-			self.tracks
-				.insert(track_id, track.expect("Error while publishing track"));
+			self.tracks.insert(track_id, track);
 		}
 
 		self.moov = Some(moov);
@@ -108,11 +107,7 @@ impl Import {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = Track {
-			name,
-			priority: 2,
-			bitrate: None,
-		};
+		let track = Track { name, priority: 2 };
 
 		let codec = match stsd.codecs.len() {
 			0 => return Err(Error::MissingCodec),
@@ -129,10 +124,11 @@ impl Import {
 
 				Video {
 					track,
-					resolution: Dimensions {
+					// TODO: factor in pixel aspect ratio
+					resolution: Some(Dimensions {
 						width: avc1.visual.width as _,
 						height: avc1.visual.height as _,
-					},
+					}),
 					codec: H264 {
 						profile: avcc.avc_profile_indication,
 						constraints: avcc.profile_compatibility,
@@ -140,6 +136,7 @@ impl Import {
 					}
 					.into(),
 					description: Some(description.freeze()),
+					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
@@ -148,10 +145,12 @@ impl Import {
 				track,
 				codec: VideoCodec::VP8,
 				description: Default::default(),
-				resolution: Dimensions {
+				// TODO: factor in pixel aspect ratio
+				resolution: Some(Dimensions {
 					width: vp08.visual.width as _,
 					height: vp08.visual.height as _,
-				},
+				}),
+				bitrate: None,
 			},
 			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
@@ -171,10 +170,12 @@ impl Import {
 					}
 					.into(),
 					description: Default::default(),
-					resolution: Dimensions {
+					// TODO: factor in pixel aspect ratio
+					resolution: Some(Dimensions {
 						width: vp09.visual.width as _,
 						height: vp09.visual.height as _,
-					},
+					}),
+					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Av01(av01) => {
@@ -201,10 +202,12 @@ impl Import {
 					}
 					.into(),
 					description: Default::default(),
-					resolution: Dimensions {
+					// TODO: factor in pixel aspect ratio
+					resolution: Some(Dimensions {
 						width: av01.visual.width as _,
 						height: av01.visual.height as _,
-					},
+					}),
+					bitrate: None,
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
@@ -232,10 +235,12 @@ impl Import {
 			}
 			.into(),
 			description: Some(description.freeze()),
-			resolution: Dimensions {
+			// TODO: factor in pixel aspect ratio
+			resolution: Some(Dimensions {
 				width: visual.width as _,
 				height: visual.height as _,
-			},
+			}),
+			bitrate: None,
 		})
 	}
 
@@ -264,11 +269,7 @@ impl Import {
 				}
 
 				let bitrate = desc.avg_bitrate.max(desc.max_bitrate) as u64;
-				let track = Track {
-					name,
-					priority: 1,
-					bitrate: Some(bitrate),
-				};
+				let track = Track { name, priority: 1 };
 
 				Audio {
 					track,
@@ -278,6 +279,7 @@ impl Import {
 					.into(),
 					sample_rate: mp4a.samplerate.integer() as _,
 					channel_count: mp4a.channelcount as _,
+					bitrate: Some(bitrate),
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),

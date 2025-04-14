@@ -56,7 +56,7 @@ impl Web {
 				}),
 			)
 			.route(
-				"/fetch/{*path}",
+				"/fetch/{*broadcast}/{track}",
 				get({
 					let cluster = config.cluster.clone();
 					move |path| serve_fetch(path, cluster)
@@ -83,14 +83,14 @@ async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl I
 	let mut tracks = Vec::new();
 
 	while let Some(Some(local)) = local.next().now_or_never() {
-		if let moq_lite::Announced::Active { suffix } = local {
-			tracks.push(suffix);
+		if let moq_lite::Announced::Active(broadcast) = local {
+			tracks.push(broadcast.path);
 		}
 	}
 
 	while let Some(Some(remote)) = remote.next().now_or_never() {
-		if let moq_lite::Announced::Active { suffix } = remote {
-			tracks.push(suffix);
+		if let moq_lite::Announced::Active(broadcast) = remote {
+			tracks.push(broadcast.path);
 		}
 	}
 
@@ -98,19 +98,21 @@ async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl I
 }
 
 /// Serve the latest group for a given track
-async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::response::Result<ServeGroup> {
+async fn serve_fetch(
+	Path((broadcast, track)): Path<(String, String)>,
+	cluster: Cluster,
+) -> axum::response::Result<ServeGroup> {
+	let broadcast = moq_lite::Broadcast::new(broadcast);
+
 	let track = moq_lite::Track {
-		path: path.split("/").collect(),
+		name: track,
 		priority: 0,
 	};
 
-	tracing::info!(?track, "subscribing to track");
+	tracing::info!(?broadcast, ?track, "subscribing to track");
 
-	let mut track = match cluster.router.subscribe(track).await {
-		Ok(track) => track,
-		Err(moq_lite::Error::NotFound) => return Err(StatusCode::NOT_FOUND.into()),
-		Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into()),
-	};
+	let broadcast = cluster.route(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
+	let mut track = broadcast.request(track).await.map_err(|_| StatusCode::NOT_FOUND)?;
 
 	let group = match track.next_group().await {
 		Ok(group) => group,

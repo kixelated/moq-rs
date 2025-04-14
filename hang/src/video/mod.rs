@@ -37,5 +37,9 @@ pub struct Video {
 	pub description: Option<Bytes>,
 
 	// The encoded width/height of the media
-	pub resolution: Dimensions,
+	pub resolution: Option<Dimensions>,
+
+	// The maximum bitrate of the video track
+	#[serde(default)]
+	pub bitrate: Option<u64>,
 }

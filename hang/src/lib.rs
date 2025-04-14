@@ -4,6 +4,7 @@ mod catalog;
 mod error;
 mod frame;
 mod group;
+mod room;
 mod track;
 mod video;
 
@@ -13,6 +14,7 @@ pub use catalog::*;
 pub use error::*;
 pub use frame::*;
 pub use group::*;
+pub use room::*;
 pub use track::*;
 pub use video::*;
 

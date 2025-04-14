@@ -13,19 +13,16 @@ impl Connection {
 
 	#[tracing::instrument("session", skip_all, err, fields(id = self.id))]
 	pub async fn run(mut self) -> anyhow::Result<()> {
-		let mut session = moq_lite::Session::accept(self.session).await?;
+		let session = moq_lite::Session::accept(self.session).await?;
 
-		// Route any subscriptions to the cluster
-		session.route(self.cluster.router);
+		let locals = self.cluster.locals.clone();
 
-		// TODO things will get weird if locals and remotes announce the same path.
-		session.announce(self.cluster.locals.announced(""));
-		session.announce(self.cluster.remotes.announced(""));
-
-		// Add any announcements to the cluster, indicating we're the origin.
-		let all = session.announced("");
-		self.cluster.locals.announce(all, Some(session.clone())).await;
-
-		Ok(())
+		// TODO There will be errors if locals and remotes announce the same path.
+		tokio::select! {
+			res = locals.publish_to(session.clone()) => res,
+			res = self.cluster.remotes.publish_to(session.clone()) => res,
+			_ = self.cluster.locals.subscribe_from(session.clone()) => Ok(()),
+			err = session.closed() => Err(err.into()),
+		}
 	}
 }

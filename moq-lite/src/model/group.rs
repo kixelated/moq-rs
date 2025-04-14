@@ -8,33 +8,49 @@
 //!
 //! The stream is closed with [ServeError::MoqError] when all writers or readers are dropped.
 use bytes::Bytes;
-use std::ops;
 use tokio::sync::watch;
 
 use crate::Error;
 
 use super::{Frame, FrameConsumer, FrameProducer};
 
-/// An independent group of frames.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Group {
-	// The sequence number of the group within the track.
-	// NOTE: These may be received out of order
 	pub sequence: u64,
 }
 
 impl Group {
-	pub fn new(sequence: u64) -> Group {
+	pub fn new(sequence: u64) -> Self {
 		Self { sequence }
 	}
 
-	pub fn produce(self) -> (GroupProducer, GroupConsumer) {
-		let (send, recv) = watch::channel(GroupState::default());
+	pub fn produce(self) -> GroupProducer {
+		GroupProducer::new(self)
+	}
+}
 
-		let writer = GroupProducer::new(send, self.clone());
-		let reader = GroupConsumer::new(recv, self);
+impl From<usize> for Group {
+	fn from(sequence: usize) -> Self {
+		Self::new(sequence as u64)
+	}
+}
 
-		(writer, reader)
+impl From<u64> for Group {
+	fn from(sequence: u64) -> Self {
+		Self::new(sequence)
+	}
+}
+
+impl From<u32> for Group {
+	fn from(sequence: u32) -> Self {
+		Self::new(sequence as u64)
+	}
+}
+
+impl From<u16> for Group {
+	fn from(sequence: u16) -> Self {
+		Self::new(sequence as u64)
 	}
 }
 
@@ -67,30 +83,47 @@ pub struct GroupProducer {
 }
 
 impl GroupProducer {
-	fn new(state: watch::Sender<GroupState>, info: Group) -> Self {
-		Self { state, info }
+	pub fn new(info: Group) -> Self {
+		Self {
+			info,
+			state: Default::default(),
+		}
 	}
 
-	// Write a frame in one go
+	/// A helper method to write a frame from a single byte buffer.
+	///
+	/// If you want to write multiple chunks, use [Self::create_frame] or [Self::append_frame].
+	/// But an upfront size is required.
 	pub fn write_frame<B: Into<Bytes>>(&mut self, frame: B) {
-		let frame = frame.into();
-		self.create_frame(frame.len()).write(frame);
+		let data = frame.into();
+		let frame = Frame::new(data.len() as u64);
+		self.create_frame(frame).write(data);
 	}
 
-	// Create a frame with an upfront size
-	pub fn create_frame(&mut self, size: usize) -> FrameProducer {
-		let (writer, reader) = Frame::new(size).produce();
-		self.state.send_modify(|state| state.frames.push(reader));
-		writer
+	/// Create a frame with an upfront size
+	pub fn create_frame(&mut self, info: Frame) -> FrameProducer {
+		let producer = FrameProducer::new(info);
+		self.append_frame(producer.consume());
+		producer
 	}
 
-	pub fn frame_count(&self) -> usize {
-		self.state.borrow().frames.len()
+	/// Append a frame to the group.
+	pub fn append_frame(&mut self, consumer: FrameConsumer) {
+		self.state.send_modify(|state| state.frames.push(consumer));
 	}
 
 	/// Create a new consumer for the group.
-	pub fn subscribe(&self) -> GroupConsumer {
-		GroupConsumer::new(self.state.subscribe(), self.info.clone())
+	pub fn consume(&self) -> GroupConsumer {
+		GroupConsumer {
+			info: self.info.clone(),
+			state: self.state.subscribe(),
+			index: 0,
+			active: None,
+		}
+	}
+
+	pub async fn unused(&self) {
+		self.state.closed().await;
 	}
 
 	/// Close the stream with an error.
@@ -101,11 +134,9 @@ impl GroupProducer {
 	}
 }
 
-impl ops::Deref for GroupProducer {
-	type Target = Group;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
+impl From<Group> for GroupProducer {
+	fn from(info: Group) -> Self {
+		GroupProducer::new(info)
 	}
 }
 
@@ -127,16 +158,7 @@ pub struct GroupConsumer {
 }
 
 impl GroupConsumer {
-	fn new(state: watch::Receiver<GroupState>, group: Group) -> Self {
-		Self {
-			state,
-			info: group,
-			index: 0,
-			active: None,
-		}
-	}
-
-	// Read the next frame.
+	/// Read the next frame.
 	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, Error> {
 		// In order to be cancel safe, we need to save the active frame.
 		// That way if this method gets caneclled, we can resume where we left off.
@@ -154,7 +176,7 @@ impl GroupConsumer {
 		Ok(Some(frame))
 	}
 
-	// Return a reader for the next frame.
+	/// Return a reader for the next frame.
 	pub async fn next_frame(&mut self) -> Result<Option<FrameConsumer>, Error> {
 		// Just in case someone called read_frame, cancelled it, then called next_frame.
 		if let Some(frame) = self.active.take() {
@@ -179,18 +201,11 @@ impl GroupConsumer {
 		}
 	}
 
+	/// Block until the group is closed and return the error.
 	pub async fn closed(&self) -> Result<(), Error> {
 		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
 			Ok(state) => state.closed.clone(),
 			Err(_) => Ok(()),
 		}
-	}
-}
-
-impl ops::Deref for GroupConsumer {
-	type Target = Group;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }

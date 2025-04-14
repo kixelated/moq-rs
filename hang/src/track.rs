@@ -2,33 +2,22 @@ use std::collections::VecDeque;
 
 use crate::{Error, Frame, GroupConsumer, Timestamp};
 use futures::{stream::FuturesUnordered, StreamExt};
-use serde::{Deserialize, Serialize};
 
 use moq_lite::coding::*;
 
 use derive_more::Debug;
 
-#[serde_with::serde_as]
-#[serde_with::skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Track {
-	pub name: String,
-	pub priority: i8,
+pub use moq_lite::Track;
 
-	#[serde(default)]
-	pub bitrate: Option<u64>,
-}
-
-#[derive(Debug)]
-#[debug("{:?}", track.path)]
+#[derive(Debug, Clone)]
 pub struct TrackProducer {
-	track: moq_lite::TrackProducer,
+	pub inner: moq_lite::TrackProducer,
 	group: Option<moq_lite::GroupProducer>,
 }
 
 impl TrackProducer {
-	pub fn new(track: moq_lite::TrackProducer) -> Self {
-		Self { track, group: None }
+	pub fn new(inner: moq_lite::TrackProducer) -> Self {
+		Self { inner, group: None }
 	}
 
 	pub fn write(&mut self, frame: Frame) {
@@ -38,31 +27,36 @@ impl TrackProducer {
 
 		let mut group = match self.group.take() {
 			Some(group) if !frame.keyframe => group,
-			_ => self.track.append_group(),
+			_ => self.inner.append_group(),
 		};
 
 		if frame.keyframe {
-			tracing::debug!(group = ?group.sequence, ?frame, "encoded keyframe");
+			tracing::debug!(group = ?group.info, ?frame, "encoded keyframe");
 		} else {
-			tracing::trace!(group = ?group.sequence, index = ?group.frame_count(), ?frame, "encoded frame");
+			tracing::trace!(group = ?group.info, ?frame, "encoded frame");
 		}
 
-		let mut chunked = group.create_frame(header.len() + frame.payload.len());
+		let size = header.len() + frame.payload.len();
+		let mut chunked = group.create_frame(size.into());
 		chunked.write(header.freeze());
 		chunked.write(frame.payload);
 
 		self.group.replace(group);
 	}
 
-	pub fn subscribe(&self) -> TrackConsumer {
-		TrackConsumer::new(self.track.subscribe())
+	pub fn consume(&self) -> TrackConsumer {
+		TrackConsumer::new(self.inner.consume())
 	}
 }
 
-#[derive(Debug)]
-#[debug("{:?}", track.path)]
+impl From<moq_lite::TrackProducer> for TrackProducer {
+	fn from(inner: moq_lite::TrackProducer) -> Self {
+		Self::new(inner)
+	}
+}
+
 pub struct TrackConsumer {
-	pub track: moq_lite::TrackConsumer,
+	pub inner: moq_lite::TrackConsumer,
 
 	// The current group that we are reading from.
 	current: Option<GroupConsumer>,
@@ -78,9 +72,9 @@ pub struct TrackConsumer {
 }
 
 impl TrackConsumer {
-	pub fn new(track: moq_lite::TrackConsumer) -> Self {
+	pub fn new(inner: moq_lite::TrackConsumer) -> Self {
 		Self {
-			track,
+			inner,
 			current: None,
 			pending: VecDeque::new(),
 			max_timestamp: Timestamp::default(),
@@ -115,18 +109,18 @@ impl TrackConsumer {
 						}
 					};
 				},
-				Some(res) = async { self.track.next_group().await.transpose() } => {
+				Some(res) = async { self.inner.next_group().await.transpose() } => {
 					let group = GroupConsumer::new(res?);
 					drop(buffering);
 
 					match self.current.as_ref() {
-						Some(current) if group.sequence < current.sequence => {
+						Some(current) if group.info.sequence < current.info.sequence => {
 							// Ignore old groups
-							tracing::debug!(old = ?group.sequence, current = ?current.sequence, "skipping old group");
+							tracing::debug!(old = ?group.info.sequence, current = ?current.info.sequence, "skipping old group");
 						},
 						Some(_) => {
 							// Insert into pending based on the sequence number ascending.
-							let index = self.pending.partition_point(|g| g.sequence < group.sequence);
+							let index = self.pending.partition_point(|g| g.info.sequence < group.info.sequence);
 							self.pending.insert(index, group);
 						},
 						None => self.current = Some(group),
@@ -153,6 +147,12 @@ impl TrackConsumer {
 	}
 
 	pub async fn closed(&self) -> Result<(), Error> {
-		self.track.closed().await.map_err(Into::into)
+		Ok(self.inner.closed().await?)
+	}
+}
+
+impl From<moq_lite::TrackConsumer> for TrackConsumer {
+	fn from(inner: moq_lite::TrackConsumer) -> Self {
+		Self::new(inner)
 	}
 }

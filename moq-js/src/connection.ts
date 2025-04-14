@@ -1,8 +1,8 @@
 import { Publisher } from "./publisher";
 import { type Announced, Subscriber } from "./subscriber";
 import { TrackReader, TrackWriter } from "./track";
-import * as Hex from "./util/hex";
 import { QueueReader } from "./util/fanout";
+import * as Hex from "./util/hex";
 import * as Wire from "./wire";
 
 // A pool of connections.

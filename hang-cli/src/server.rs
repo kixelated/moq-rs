@@ -3,81 +3,95 @@ use super::{Config, FingerprintServer};
 use anyhow::Context;
 use hang::cmaf::Import;
 use hang::moq_lite;
+use hang::BroadcastConsumer;
 use hang::BroadcastProducer;
 use moq_lite::web_transport;
 use moq_native::quic;
-use moq_native::quic::Server;
 use tokio::io::AsyncRead;
 
-pub struct BroadcastServer<T: AsyncRead + Unpin> {
+pub struct BroadcastServer {
 	config: Config,
-	path: String,
-	input: T,
+	broadcast: hang::Broadcast,
 }
 
-impl<T: AsyncRead + Unpin> BroadcastServer<T> {
-	pub fn new(config: Config, path: String, input: T) -> Self {
-		Self { config, path, input }
+impl BroadcastServer {
+	pub fn new(config: Config, broadcast: hang::Broadcast) -> Self {
+		Self { config, broadcast }
 	}
 
-	pub async fn run(&mut self) -> anyhow::Result<()> {
-		self.config.bind = tokio::net::lookup_host(self.config.bind)
+	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
+		let producer = BroadcastProducer::new(self.broadcast.clone().into());
+		let consumer = producer.consume();
+
+		tokio::select! {
+			res = self.accept(consumer) => res,
+			res = self.publish(producer, input) => res,
+		}
+	}
+
+	async fn accept(&self, consumer: BroadcastConsumer) -> anyhow::Result<()> {
+		let mut config = self.config.clone();
+
+		config.bind = tokio::net::lookup_host(config.bind)
 			.await
 			.context("invalid bind address")?
 			.next()
 			.context("invalid bind address")?;
 
-		let tls = self.config.tls.load()?;
+		let tls = config.tls.load()?;
 		if tls.server.is_none() {
 			anyhow::bail!("missing TLS certificates");
 		}
 
 		let quic = quic::Endpoint::new(quic::Config {
-			bind: self.config.bind,
+			bind: config.bind,
 			tls: tls.clone(),
 		})?;
-		let server = quic.server.context("missing TLS certificate")?;
+		let mut server = quic.server.context("missing TLS certificate")?;
 
 		// Create a web server to serve the fingerprint.
-		let web = FingerprintServer::new(self.config.bind, tls);
+		let web = FingerprintServer::new(config.bind, tls);
 		tokio::spawn(async move {
 			web.run().await.expect("failed to run web server");
 		});
 
-		// Create the broadcast
-		let broadcast = BroadcastProducer::new(self.path.clone())?;
+		tracing::info!(addr = %config.bind, "listening");
 
-		let mut import = Import::new(broadcast.clone());
-		import
-			.init_from(&mut self.input)
-			.await
-			.context("failed to initialize cmaf from input")?;
+		let mut conn_id = 0;
 
-		self.accept(server, broadcast)?;
-		import.read_from(&mut self.input).await?; // Blocking method
+		while let Some(session) = server.accept().await {
+			let id = conn_id;
+			conn_id += 1;
+
+			let consumer = consumer.clone();
+
+			// Handle the connection in a new task.
+			tokio::spawn(async move {
+				let session: web_transport::Session = session.into();
+				let mut session = moq_lite::Session::accept(session)
+					.await
+					.expect("failed to accept session");
+
+				session.publish(consumer.inner).expect("failed to publish");
+
+				tracing::info!(?id, "accepted");
+			});
+		}
 
 		Ok(())
 	}
 
-	fn accept(&mut self, mut server: Server, mut broadcast: BroadcastProducer) -> anyhow::Result<()> {
-		tracing::info!(addr = %self.config.bind, "listening");
+	async fn publish<T: AsyncRead + Unpin>(&self, producer: BroadcastProducer, input: &mut T) -> anyhow::Result<()> {
+		let mut import = Import::new(producer);
 
-		let mut conn_id = 0;
+		import
+			.init_from(input)
+			.await
+			.context("failed to initialize cmaf from input")?;
 
-		tokio::spawn(async move {
-			while let Some(conn) = server.accept().await {
-				// Create a new connection
-				let session: web_transport::Session = conn.into();
-				let transfork_session = moq_lite::Session::accept(session)
-					.await
-					.expect("failed to accept session");
+		tracing::info!("initialized");
 
-				conn_id += 1;
-				broadcast.add_session(transfork_session).expect("failed to add session");
-
-				tracing::info!(id = conn_id.clone(), "accepted");
-			}
-		});
+		import.read_from(input).await?;
 
 		Ok(())
 	}

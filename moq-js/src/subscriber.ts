@@ -68,7 +68,7 @@ export class Subscriber {
 		this.#subscribe.set(subscribe.id, subscribe);
 
 		try {
-			const info = await Wire.SubscribeInfo.decode(stream.reader);
+			const info = await Wire.SubscribeOk.decode(stream.reader);
 			console.log("subscribe info", info);
 
 			/*

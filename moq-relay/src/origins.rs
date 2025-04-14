@@ -1,9 +1,10 @@
 use std::{
-	collections::{hash_map, HashMap},
+	collections::HashMap,
 	sync::{Arc, Mutex},
 };
 
-use moq_lite::{Announced, AnnouncedConsumer, AnnouncedProducer, Session};
+use moq_lite::{AnnouncedConsumer, AnnouncedProducer, Broadcast, BroadcastConsumer, Session};
+use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct Origins {
@@ -11,7 +12,7 @@ pub struct Origins {
 	unique: AnnouncedProducer,
 
 	// Active routes based on path.
-	routes: Arc<Mutex<HashMap<String, Vec<Option<Session>>>>>,
+	routes: Arc<Mutex<HashMap<Broadcast, (BroadcastConsumer, JoinHandle<()>)>>>,
 }
 
 impl Default for Origins {
@@ -28,60 +29,62 @@ impl Origins {
 		}
 	}
 
-	// Route any announcements from the cluster.
-	pub async fn announce(&mut self, mut announced: AnnouncedConsumer, origin: Option<Session>) {
-		while let Some(announced) = announced.next().await {
-			match announced {
-				Announced::Active { suffix } => self.announce_track(suffix, origin.clone()),
-				Announced::Ended { suffix } => self.unannounce_track(&suffix, &origin),
-				Announced::Live => {
-					// Ignore.
-				}
-			}
+	// Announce a broadcast, replacing the previous announcement if it exists.
+	pub fn announce(&mut self, broadcast: BroadcastConsumer) {
+		let mut routes = self.routes.lock().unwrap();
+
+		let broadcast2 = broadcast.clone();
+		let routes2 = self.routes.clone();
+		let mut unique2 = self.unique.clone();
+
+		// TODO figure out a better way to do this.
+		let cleanup = tokio::spawn(async move {
+			broadcast2.closed().await;
+			routes2.lock().unwrap().remove(&broadcast2.info);
+			unique2.unannounce(&broadcast2.info);
+
+			tracing::info!(broadcast = ?broadcast2.info.path, "unannounced origin");
+		});
+
+		if let Some(existing) = routes.insert(broadcast.info.clone(), (broadcast.clone(), cleanup)) {
+			tracing::info!(broadcast = ?broadcast.info, "re-announced origin");
+			existing.1.abort();
+		} else {
+			tracing::info!(broadcast = ?broadcast.info, "announced origin");
+			self.unique.announce(broadcast.info);
 		}
 	}
 
-	fn announce_track(&mut self, path: String, origin: Option<Session>) {
-		tracing::info!(?path, "announced origin");
+	pub fn route(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+		// Return the session that most recently announced the path.
+		let routes = self.routes.lock().unwrap();
+		routes.get(broadcast).map(|(broadcast, _)| broadcast.clone())
+	}
 
-		let mut routes = self.routes.lock().unwrap();
-		match routes.entry(path.clone()) {
-			hash_map::Entry::Occupied(mut entry) => entry.get_mut().push(origin),
-			hash_map::Entry::Vacant(entry) => {
-				entry.insert(vec![origin]);
-				self.unique.announce(path);
-			}
+	// Subscribe to all broadcasts from the given session.
+	pub async fn subscribe_from(&mut self, upstream: Session) {
+		let mut announced = upstream.announced("");
+
+		while let Some(broadcast) = announced.active().await {
+			let broadcast = upstream.subscribe(broadcast);
+			self.announce(broadcast);
 		}
 	}
 
-	fn unannounce_track(&mut self, path: &str, origin: &Option<Session>) {
-		tracing::info!(?path, "unannounced origin");
+	// Route all broadcasts to the given session
+	pub async fn publish_to(&self, mut downstream: Session) -> anyhow::Result<()> {
+		let mut remotes = self.unique.subscribe("");
 
-		let mut routes = self.routes.lock().unwrap();
-		let entry = match routes.entry(path.to_string()) {
-			hash_map::Entry::Occupied(entry) => entry.into_mut(),
-			hash_map::Entry::Vacant(_) => return,
-		};
-
-		// Technically this is wrong, as it will remove more than one None value.
-		// But currently there can only be one None that will never be removed, so it's fine.
-		entry.retain(|s| s != origin);
-
-		if entry.is_empty() {
-			routes.remove(path);
-			self.unique.unannounce(path);
+		while let Some(broadcast) = remotes.active().await {
+			if let Some(upstream) = self.route(&broadcast) {
+				downstream.publish(upstream)?;
+			}
 		}
+
+		Ok(())
 	}
 
 	pub fn announced(&self, prefix: &str) -> AnnouncedConsumer {
 		self.unique.subscribe(prefix)
-	}
-
-	pub fn route(&self, path: &str) -> Option<Session> {
-		// Return the session that most recently announced the path.
-		let routes = self.routes.lock().unwrap();
-
-		let available = routes.get(path)?;
-		available.iter().find(|route| route.is_some()).cloned().unwrap()
 	}
 }

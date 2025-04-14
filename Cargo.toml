@@ -14,6 +14,7 @@ resolver = "2"
 #web-transport = { path = "../web-transport-rs/web-transport" }
 web-transport = "0.8"
 tokio = "1.44"
+serde = { version = "1", features = ["derive"] }
 
 hang = { version = "0.1", path = "hang" }
 moq-lite = { version = "0.1", path = "moq-lite" }

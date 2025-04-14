@@ -5,8 +5,8 @@ use std::{
 
 use crate::{
 	message,
-	model::{Track, TrackConsumer},
-	AnnouncedProducer, Error, TrackProducer,
+	model::{BroadcastConsumer, BroadcastProducer},
+	AnnouncedProducer, Broadcast, Error, Frame, Group, TrackProducer,
 };
 
 use web_async::{spawn, Lock};
@@ -17,7 +17,7 @@ use super::{AnnouncedConsumer, OrClose, Reader, Stream};
 pub(super) struct Subscriber {
 	session: web_transport::Session,
 
-	tracks: Lock<HashMap<String, TrackProducer>>,
+	broadcasts: Lock<HashMap<String, BroadcastProducer>>,
 	subscribes: Lock<HashMap<u64, TrackProducer>>,
 	next_id: Arc<atomic::AtomicU64>,
 }
@@ -27,7 +27,7 @@ impl Subscriber {
 		Self {
 			session,
 
-			tracks: Default::default(),
+			broadcasts: Default::default(),
 			subscribes: Default::default(),
 			next_id: Default::default(),
 		}
@@ -91,65 +91,116 @@ impl Subscriber {
 	) -> Result<(), Error> {
 		match announce {
 			message::Announce::Active { suffix } => {
-				if !announced.announce_parts(prefix, &suffix) {
+				let broadcast = match prefix {
+					"" => Broadcast::new(suffix),
+					prefix => Broadcast::new(format!("{}/{}", prefix, suffix)),
+				};
+
+				if !announced.announce(broadcast) {
 					return Err(Error::Duplicate);
 				}
 			}
 			message::Announce::Ended { suffix } => {
-				if !announced.unannounce_parts(prefix, &suffix) {
+				let broadcast = match prefix {
+					"" => Broadcast::new(suffix),
+					prefix => Broadcast::new(format!("{}/{}", prefix, suffix)),
+				};
+
+				if !announced.unannounce(&broadcast) {
 					return Err(Error::NotFound);
 				}
 			}
-			message::Announce::Live => {
-				announced.live();
-			}
-		};
-
+		}
 		Ok(())
 	}
 
-	/// Subscribe to a given track.
-	pub fn subscribe(&self, track: Track) -> TrackConsumer {
-		let path = track.path.clone();
-		let (writer, reader) = track.clone().produce();
+	/// Subscribe to a given broadcast.
+	pub fn subscribe(&self, broadcast: Broadcast) -> BroadcastConsumer {
+		if let Some(producer) = self.broadcasts.lock().get(&broadcast.path) {
+			return producer.consume();
+		}
 
-		// Check if we can deduplicate this subscription
-		match self.tracks.lock().entry(path.clone()) {
-			hash_map::Entry::Occupied(entry) => return entry.get().subscribe(),
-			hash_map::Entry::Vacant(entry) => entry.insert(writer.clone()),
-		};
+		let producer = broadcast.produce();
+		let consumer = producer.consume();
 
-		let mut this = self.clone();
-		let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+		// Run the broadcast in the background until all consumers are dropped.
+		spawn(self.clone().run_broadcast(producer));
 
-		spawn(async move {
-			if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
-				if let Err(err) = this.run_subscribe(id, writer, &mut stream).await.or_close(&mut stream) {
-					tracing::warn!(?err, "subscribe error");
-				}
-			}
-
-			this.subscribes.lock().remove(&id);
-			this.tracks.lock().remove(&path);
-		});
-
-		reader
+		consumer
 	}
 
-	#[tracing::instrument("subscribe", skip_all, fields(?id, track = ?track.path))]
-	async fn run_subscribe(&mut self, id: u64, track: TrackProducer, stream: &mut Stream) -> Result<(), Error> {
+	async fn run_broadcast(self, broadcast: BroadcastProducer) {
+		let tracks = Lock::new(HashMap::<String, TrackProducer>::new());
+
+		// Actually start subscriptions.
+		loop {
+			// Keep serving requests until there are no more consumers.
+			// This way we'll clean up the task when the broadcast is no longer needed.
+			let request = tokio::select! {
+				request = broadcast.requested() => request,
+				_ = broadcast.unused() => break,
+			};
+
+			// Check if we can deduplicate this subscription
+			let mut lookup = tracks.lock();
+			let entry = lookup.entry(request.track.name.clone());
+
+			if let hash_map::Entry::Occupied(entry) = &entry {
+				request.serve(entry.get().consume());
+				continue;
+			}
+
+			let producer = request.produce();
+			entry.insert_entry(producer.clone());
+
+			let mut this = self.clone();
+			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
+			let tracks = tracks.clone();
+			let broadcast = broadcast.info.clone();
+
+			spawn(async move {
+				let track = producer.info.clone();
+
+				if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
+					if let Err(err) = this
+						.run_subscribe(id, broadcast.path, producer, &mut stream)
+						.await
+						.or_close(&mut stream)
+					{
+						tracing::warn!(?err, "subscribe error");
+					}
+				}
+
+				this.subscribes.lock().remove(&id);
+				tracks.lock().remove(&track.name);
+			});
+		}
+
+		// Remove the broadcast from the lookup.
+		self.broadcasts.lock().remove(&broadcast.info.path);
+	}
+
+	#[tracing::instrument("subscribe", skip_all, fields(?id, ?broadcast, track = ?track.info.name))]
+	async fn run_subscribe(
+		&mut self,
+		id: u64,
+		broadcast: String,
+		track: TrackProducer,
+		stream: &mut Stream,
+	) -> Result<(), Error> {
 		self.subscribes.lock().insert(id, track.clone());
 
 		let request = message::Subscribe {
 			id,
-			path: track.path.clone(),
-			priority: track.priority,
+			broadcast,
+			track: track.info.name.clone(),
+			priority: track.info.priority,
 		};
 
 		stream.writer.encode(&request).await?;
 
-		// TODO use the response to correctly populate the track info
-		let info: message::SubscribeInfo = stream.reader.decode().await?;
+		// TODO use the response correctly populate the track info
+		let info: message::SubscribeOk = stream.reader.decode().await?;
 
 		tracing::info!(?info, "active");
 
@@ -186,17 +237,21 @@ impl Subscriber {
 			let mut subs = self.subscribes.lock();
 			let track = subs.get_mut(&group.subscribe).ok_or(Error::Cancel)?;
 
-			track.create_group(group.sequence)
+			let group = Group {
+				sequence: group.sequence,
+			};
+			track.create_group(group).ok_or(Error::Old)?
 		};
 
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
-			let mut frame = group.create_frame(frame.size);
+			let frame = Frame { size: frame.size };
 			let mut remain = frame.size;
+			let mut frame = group.create_frame(frame);
 
 			while remain > 0 {
-				let chunk = stream.read(remain).await?.ok_or(Error::WrongSize)?;
+				let chunk = stream.read(remain as usize).await?.ok_or(Error::WrongSize)?;
 
-				remain = remain.checked_sub(chunk.len()).ok_or(Error::WrongSize)?;
+				remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
 				tracing::trace!(size = chunk.len(), remain, "chunk");
 
 				frame.write(chunk);

@@ -1,18 +1,16 @@
-mod command;
-mod connection;
+mod connect;
 mod error;
 mod publish;
-mod room;
+mod rpc;
 mod watch;
 
-pub use command::*;
-pub use connection::*;
+pub use connect::*;
 pub use error::*;
 pub use publish::*;
-pub use room::*;
+pub use rpc::*;
 pub use watch::*;
 
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -26,23 +24,10 @@ pub fn start() {
 	};
 	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
 
-	// Get the worker Worker scope
-	let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
-
-	let closure = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
-		handle_message(event.data());
-	}) as Box<dyn FnMut(_)>);
-
-	global.set_onmessage(Some(closure.as_ref().unchecked_ref()));
-	closure.forget(); // Leak it — persistent handler
+	wasm_bindgen_futures::spawn_local(run());
 }
 
-fn handle_message(data: JsValue) {
-	let command = Command::from_message(data).unwrap();
-	println!("Received message: {:?}", command);
-}
-
-fn post_message(data: JsValue) {
-	let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
-	global.post_message(&data);
+async fn run() {
+	let mut backend = Backend::new();
+	backend.run().await.unwrap();
 }

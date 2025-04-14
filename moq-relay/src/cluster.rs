@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use clap::Parser;
-use moq_lite::{Announced, AnnouncedProducer, Error, Router, RouterConsumer, RouterProducer};
+use moq_lite::{Announced, Broadcast, BroadcastConsumer};
 use moq_native::quic;
 use tracing::Instrument;
 use url::Url;
@@ -36,46 +36,22 @@ pub struct Cluster {
 
 	// Tracks announced by remote servers (cluster).
 	pub remotes: Origins,
-
-	// Used to route incoming requests to the origins above.
-	pub router: RouterConsumer,
 }
 
 impl Cluster {
 	const ORIGINS: &str = "internal/origins/";
 
 	pub fn new(config: ClusterConfig, client: quic::Client) -> Self {
-		let (producer, consumer) = Router { capacity: 1024 }.produce();
-
-		let this = Cluster {
+		Cluster {
 			config,
 			client,
-			router: consumer,
 			locals: Origins::new(),
 			remotes: Origins::new(),
-		};
-
-		tokio::spawn(this.clone().run_router(producer).in_current_span());
-
-		this
+		}
 	}
 
-	// This is the GUTS of the entire relay.
-	// We route any incoming track requests to the appropriate session.
-	async fn run_router(self, mut router: RouterProducer) {
-		while let Some(req) = router.requested().await {
-			let origin = if let Some(origin) = self.locals.route(&req.track.path).clone() {
-				origin
-			} else if let Some(origin) = self.remotes.route(&req.track.path).clone() {
-				origin
-			} else {
-				req.close(Error::NotFound);
-				continue;
-			};
-
-			let track = origin.subscribe(req.track.clone());
-			req.serve(track)
-		}
+	pub fn route(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+		self.locals.route(broadcast).or_else(|| self.remotes.route(broadcast))
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
@@ -85,11 +61,15 @@ impl Cluster {
 		tracing::info!(?root, ?node, "initializing cluster");
 
 		// If we're a node, then we need to announce ourselves as an origin.
-		let mut myself = AnnouncedProducer::new();
-		if let Some(node) = self.config.cluster_node.as_ref() {
+		// We do this by creating a "broadcast" with no tracks.
+		let myself = if let Some(node) = self.config.cluster_node.as_ref() {
 			let origin = format!("internal/origins/{}", node);
-			myself.announce(origin);
-		}
+			let broadcast = Broadcast { path: origin };
+			let producer = broadcast.produce();
+			Some(producer)
+		} else {
+			None
+		};
 
 		// If we're using a root node, then we have to connect to it.
 		let mut announced = match root.as_ref() {
@@ -105,7 +85,9 @@ impl Cluster {
 					.context("failed to establish root session")?;
 
 				// Announce ourselves as an origin to the root node.
-				root.announce(myself.subscribe(""));
+				if let Some(myself) = &myself {
+					root.publish(myself.consume())?;
+				}
 
 				// Subscribe to available origins.
 				root.announced(Self::ORIGINS)
@@ -115,11 +97,9 @@ impl Cluster {
 				// Announce ourselves as an origin to all connected clients.
 				// Technically, we should only announce to cluster clients (not end users), but who cares.
 				let mut locals = self.locals.clone();
-				tokio::spawn(async move {
-					// Run this in a background task so we don't block the main loop.
-					// (it will never exit)
-					locals.announce(myself.subscribe(""), None).await
-				});
+				if let Some(myself) = &myself {
+					locals.announce(myself.consume());
+				}
 
 				// Subscribe to the available origins.
 				self.locals.announced(Self::ORIGINS)
@@ -134,8 +114,9 @@ impl Cluster {
 		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
 		while let Some(announce) = announced.next().await {
 			match announce {
-				Announced::Active { suffix } => {
-					let host = suffix;
+				Announced::Active(broadcast) => {
+					let host = broadcast.strip_prefix(Self::ORIGINS).unwrap().path;
+
 					if Some(&host) == node.as_ref() {
 						// Skip ourselves.
 						continue;
@@ -162,15 +143,13 @@ impl Cluster {
 
 					remotes.insert(host, handle);
 				}
-				Announced::Ended { suffix } => {
-					let host = suffix;
+				Announced::Ended(broadcast) => {
+					let host = broadcast.strip_prefix(Self::ORIGINS).unwrap().path;
+
 					if let Some(handle) = remotes.remove(&host) {
 						tracing::warn!(?host, "terminating remote");
 						handle.abort();
 					}
-				}
-				Announced::Live => {
-					// Ignore.
 				}
 			}
 		}
@@ -185,20 +164,17 @@ impl Cluster {
 		// Connect to the remote node.
 		let conn = self.client.connect(url).await.context("failed to connect to remote")?;
 
-		let mut session = moq_lite::Session::connect(conn)
+		let session = moq_lite::Session::connect(conn)
 			.await
 			.context("failed to establish session")?;
 
-		session.route(self.router.clone());
-
-		// NOTE: We only announce local tracks to remote nodes.
-		// Otherwise there would be conflicts and we wouldn't know which node is the origin.
-		session.announce(self.locals.announced(""));
-
-		// Add any tracks to the list of remotes for routing.
-		let all = session.announced("");
-		self.remotes.announce(all, Some(session.clone())).await;
-
-		Ok(())
+		tokio::select! {
+			// NOTE: We only announce local tracks to remote nodes.
+			// Otherwise there would be conflicts and we wouldn't know which node is the origin.
+			res = self.locals.publish_to(session.clone()) => res,
+			// Fetch any remote broadcasts.
+			_ = self.remotes.subscribe_from(session.clone()) => Ok(()),
+			err = session.closed() => Err(err.into()),
+		}
 	}
 }

@@ -1,5 +1,5 @@
 packages:
-  - 'moq-web'
-  - 'hang-web'
-  - 'hang-web-ui'
+  - 'moq-js'
+  - 'hang-js'
+  - 'hang-ui'
   - 'hang-wasm'

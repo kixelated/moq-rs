@@ -107,6 +107,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
 
 [[package]]
+name = "async-channel"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89b47800b0be77592da0afd425cc03468052844aff33b84e33cc696f64e77b6a"
+dependencies = [
+ "concurrent-queue",
+ "event-listener-strategy",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -218,26 +230,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "baton"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6660dd92cb154f7232d93a66df1e17578ae2058864829c93d23d525018b5394"
-dependencies = [
- "baton-derive",
- "tokio",
-]
-
-[[package]]
-name = "baton-derive"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2771aaa087ac2d81e1ab8c0801051c51b2bc3f25408914f62ac981162df60284"
-dependencies = [
- "quote",
- "syn",
-]
 
 [[package]]
 name = "bindgen"
@@ -419,6 +411,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "concurrent-queue"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -453,6 +454,12 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "darling"
@@ -578,6 +585,27 @@ checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "event-listener"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3492acde4c3fc54c845eaab3eed8bd00c7a7d881f78bfc801e43a93dec1331ae"
+dependencies = [
+ "concurrent-queue",
+ "parking",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "event-listener-strategy"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
+dependencies = [
+ "event-listener",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -787,7 +815,6 @@ dependencies = [
  "tokio",
  "tracing",
  "web-async",
- "web-time",
 ]
 
 [[package]]
@@ -1332,9 +1359,11 @@ dependencies = [
 name = "moq-lite"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "bytes",
  "futures",
  "num_enum",
+ "serde",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -1392,7 +1421,6 @@ dependencies = [
 name = "moq-wasm"
 version = "0.1.0"
 dependencies = [
- "baton",
  "console_error_panic_hook",
  "gloo-net",
  "hang",
@@ -1576,6 +1604,12 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
+
+[[package]]
+name = "parking"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "parking_lot"
@@ -2607,6 +2641,7 @@ dependencies = [
  "lazy_static",
  "thiserror 2.0.12",
  "ts-rs-macros",
+ "url",
 ]
 
 [[package]]
@@ -2816,19 +2851,16 @@ dependencies = [
 [[package]]
 name = "web-message"
 version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b103d6fc6aee41299a5e04f631db21042089e6de7b303edf84a3f2557ebaed85"
 dependencies = [
- "js-sys",
  "thiserror 2.0.12",
+ "url",
  "web-message-derive",
+ "web-sys",
 ]
 
 [[package]]
 name = "web-message-derive"
 version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0b295682b3a9ae5d88a67a62b3bb16125df695e7db66285a10af824cdf50fe4"
 dependencies = [
  "proc-macro2",
  "quote",

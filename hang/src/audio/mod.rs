@@ -22,4 +22,8 @@ pub struct Audio {
 
 	pub sample_rate: u32,
 	pub channel_count: u32,
+
+	// The bitrate of the audio track
+	#[serde(default)]
+	pub bitrate: Option<u64>,
 }

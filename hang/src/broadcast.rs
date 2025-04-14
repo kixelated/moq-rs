@@ -1,284 +1,113 @@
 use crate::track::TrackConsumer;
-use crate::{Audio, Catalog, Error, Result, Track, TrackProducer, Video};
-use derive_more::Debug;
-use moq_lite::{Announced, AnnouncedConsumer, Session};
-use web_async::Lock;
+use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, Result, TrackProducer, Video};
+use moq_lite::Track;
+use web_async::spawn;
 
-struct BroadcastProducerState {
-	catalog: CatalogProducer,
-	tracks: Vec<moq_lite::TrackProducer>,
-	subscribers: Vec<Session>,
-}
+pub use moq_lite::Broadcast;
 
-#[derive(Debug, Clone)]
-#[debug("{:?}", path)]
+#[derive(Clone)]
 pub struct BroadcastProducer {
-	pub path: String,
-	id: u64,
-	state: Lock<BroadcastProducerState>,
+	pub catalog: CatalogProducer,
+	pub tracks: moq_lite::BroadcastMap,
 }
 
 impl BroadcastProducer {
-	pub fn new(path: String) -> Result<Self> {
-		// Generate a "unique" ID for this broadcast session.
-		// If we crash, then the viewers will automatically reconnect to the new ID.
-		let id = web_time::SystemTime::now()
-			.duration_since(web_time::SystemTime::UNIX_EPOCH)
-			.unwrap()
-			.as_millis() as u64;
+	pub fn new(producer: moq_lite::BroadcastProducer) -> Self {
+		let producer = producer.map();
 
-		// Create the catalog track
-		let full = format!("{}/{}/catalog.json", path.clone(), id.clone());
-		let (catalog, _) = moq_lite::Track {
-			path: full,
-			priority: -1,
-		}
-		.produce();
-		let catalog = CatalogProducer::new(catalog)?;
+		let catalog = Catalog::default().produce();
+		producer.insert(catalog.consume().track);
 
-		// Create the BroadcastProducerState
-		let state = Lock::new(BroadcastProducerState {
+		Self {
+			tracks: producer,
 			catalog,
-			tracks: vec![],
-			subscribers: vec![],
-		});
-
-		Ok(Self { path, id, state })
-	}
-
-	/// Add a session to the broadcast.
-	/// If the session closes, it will be removed from the broadcast automatically.
-	pub fn add_session(&mut self, mut session: Session) -> Result<()> {
-		let mut state = self.state.lock();
-
-		// Publish the catalog
-		session.publish(state.catalog.track.subscribe())?;
-
-		// Publish all tracks
-		for track in &state.tracks {
-			tracing::info!("publishing track, {:?}", track.path);
-			session.publish(track.subscribe())?;
 		}
+	}
 
-		// Add the session to the list of subscribers
-		state.subscribers.push(session.clone());
+	pub fn consume(&self) -> BroadcastConsumer {
+		self.tracks.inner.consume().into()
+	}
 
-		// If the session closes, remove it from the list of subscribers
-		let state = self.state.clone();
-		web_async::spawn(async move {
-			session.closed().await;
-			state.lock().subscribers.retain(|s| s != &session);
+	pub fn path(&self) -> &str {
+		&self.tracks.inner.info.path
+	}
+
+	/// Add a video track to the broadcast.
+	pub fn add_video(&mut self, track: TrackConsumer, info: Video) {
+		self.tracks.insert(track.inner.clone());
+		self.catalog.add_video(info.clone());
+		self.catalog.publish();
+
+		let mut this = self.clone();
+		spawn(async move {
+			let _ = track.closed().await;
+			this.tracks.remove(&track.inner.info.name);
+			this.catalog.remove_video(&info);
+			this.catalog.publish();
 		});
-
-		Ok(())
 	}
 
-	/// Remove a session from the broadcast.
-	pub fn remove_session(&mut self, session: &Session) {
-		let mut state = self.state.lock();
-		state.subscribers.retain(|s| s != session);
-	}
+	/// Add an audio track to the broadcast.
+	pub fn add_audio(&mut self, track: TrackConsumer, info: Audio) {
+		self.tracks.insert(track.inner.clone());
+		self.catalog.add_audio(info.clone());
+		self.catalog.publish();
 
-	/// Publish a video track to all listeners & future listeners.
-	pub fn publish_video(&mut self, info: Video) -> Result<TrackProducer> {
-		let mut state = self.state.lock();
-
-		let producer = self.publish(info.track.clone(), &mut state)?;
-		state.catalog.current.video.push(info);
-		state.catalog.publish()?;
-
-		Ok(producer)
-	}
-
-	/// Publish an audio track to all listeners & future listeners.
-	pub fn publish_audio(&mut self, info: Audio) -> Result<TrackProducer> {
-		let mut state = self.state.lock();
-
-		let producer = self.publish(info.track.clone(), &mut state)?;
-		state.catalog.current.audio.push(info);
-		state.catalog.publish()?;
-
-		Ok(producer)
-	}
-
-	fn publish(&self, track: Track, state: &mut BroadcastProducerState) -> Result<TrackProducer> {
-		// Create the TrackProducer
-		let path = format!("{}/{}/{}.karp", self.path, self.id, &track.name);
-		let (producer, _) = moq_lite::Track {
-			path,
-			priority: track.priority,
-		}
-		.produce();
-
-		// Let all the listeners know about the new video track
-		state.subscribers.iter_mut().for_each(|session| {
-			session.publish(producer.subscribe()).unwrap();
+		let mut this = self.clone();
+		spawn(async move {
+			let _ = track.closed().await;
+			this.tracks.remove(&track.inner.info.name);
+			this.catalog.remove_audio(&info);
+			this.catalog.publish();
 		});
+	}
 
-		// Update the state
-		state.tracks.push(producer.clone());
+	pub fn create_video(&mut self, video: Video) -> TrackProducer {
+		let producer: TrackProducer = video.track.clone().produce().into();
+		self.add_video(producer.consume(), video);
+		producer
+	}
 
-		// Return the producer
-		let producer = TrackProducer::new(producer);
-		Ok(producer)
+	pub fn create_audio(&mut self, audio: Audio) -> TrackProducer {
+		let producer: TrackProducer = audio.track.clone().produce().into();
+		self.add_audio(producer.consume(), audio);
+		producer
 	}
 }
 
-#[derive(Debug, Clone)]
-struct CatalogProducer {
-	current: Catalog,
-	track: moq_lite::TrackProducer,
-}
-
-impl CatalogProducer {
-	fn new(track: moq_lite::TrackProducer) -> Result<Self> {
-		let mut this = Self {
-			current: Catalog::default(),
-			track,
-		};
-
-		// Perform the initial publish
-		this.publish()?;
-
-		Ok(this)
-	}
-
-	fn publish(&mut self) -> Result<()> {
-		let frame = self.current.to_string()?;
-
-		let mut group = self.track.append_group();
-		group.write_frame(frame);
-
-		Ok(())
+impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
+	fn from(inner: moq_lite::BroadcastProducer) -> Self {
+		Self::new(inner)
 	}
 }
 
-// A broadcast consumer, supporting the ability to reload the catalog potentially on a crash.
-#[derive(Debug)]
-#[debug("{:?}", path)]
+#[derive(Clone)]
 pub struct BroadcastConsumer {
-	pub session: Session,
-	pub path: String,
-
-	// Discovers new broadcasts as they are announced.
-	announced: AnnouncedConsumer,
-
-	// The ID of the current broadcast
-	current: Option<String>,
-
-	// True if we should None because the broadcast has ended.
-	ended: bool,
-
-	catalog_latest: Option<Catalog>,
-	catalog_track: Option<moq_lite::TrackConsumer>,
-	catalog_group: Option<moq_lite::GroupConsumer>,
+	pub inner: moq_lite::BroadcastConsumer,
 }
 
 impl BroadcastConsumer {
-	pub fn new(session: Session, path: String) -> Self {
-		let announced = session.announced(&path);
-
-		Self {
-			session,
-			path,
-			announced,
-			current: None,
-			ended: false,
-			catalog_latest: None,
-			catalog_track: None,
-			catalog_group: None,
-		}
+	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
+		Self { inner }
 	}
 
-	pub fn catalog(&self) -> Option<&Catalog> {
-		self.catalog_latest.as_ref()
-	}
-
-	/// Returns the latest catalog, or None if the channel is offline.
-	pub async fn next_catalog(&mut self) -> Result<Option<&Catalog>> {
-		loop {
-			if self.ended {
-				// Avoid returning None again.
-				self.ended = false;
-				return Ok(None);
-			}
-
-			tokio::select! {
-				biased;
-				// Wait for new announcements.
-				Some(announced) = self.announced.next() => {
-					// Load or unload based on the announcement.
-					match announced {
-						Announced::Active { suffix } => self.load(&suffix),
-						Announced::Ended { suffix } => self.unload(&suffix),
-						Announced::Live => {
-							// Return None if we're caught up to live with no broadcast.
-							if self.current.is_none() {
-								return Ok(None)
-							}
-						},
-					}
-				},
-				Some(group) = async { self.catalog_track.as_mut()?.next_group().await.transpose() } => {
-					// Use the new group.
-					self.catalog_group.replace(group?);
-				},
-				Some(frame) = async { self.catalog_group.as_mut()?.read_frame().await.transpose() } => {
-					self.catalog_latest = Some(Catalog::from_slice(&frame?)?);
-					self.catalog_group.take(); // We don't support deltas yet
-					return Ok(self.catalog_latest.as_ref());
-				},
-				else => return Err(self.session.closed().await.into()),
-			}
-		}
-	}
-
-	fn load(&mut self, suffix: &str) {
-		let id = suffix;
-
-		if let Some(current) = &self.current {
-			// I'm extremely lazy and using string comparison.
-			// This will be wrong when the number of milliseconds since 1970 adds a new digit...
-			// But the odds of that happening are low.
-			if id <= current.as_str() {
-				tracing::warn!(?id, ?current, "ignoring old broadcast");
-				return;
-			}
-		}
-
-		// Make a clone of the match
-		let id = id.to_string();
-		let path = format!("{}/{}/catalog.json", self.path, id);
-		tracing::info!(?path, "loading catalog");
-
-		let track = moq_lite::Track { path, priority: -1 };
-
-		self.catalog_track = Some(self.session.subscribe(track));
-		self.current = Some(id);
-	}
-
-	fn unload(&mut self, suffix: &str) {
-		if let Some(current) = self.current.as_ref() {
-			if current.as_str() == suffix {
-				self.current = None;
-				self.catalog_track = None;
-				self.catalog_group = None;
-				self.ended = true;
-			}
-		}
+	pub async fn catalog(&self) -> Result<CatalogConsumer> {
+		let track = Track {
+			name: Catalog::DEFAULT_NAME.to_string(),
+			priority: -1,
+		};
+		Ok(self.inner.request(track).await?.into())
 	}
 
 	/// Subscribes to a track
-	pub fn track(&self, track: &Track) -> Result<TrackConsumer> {
-		let id = self.current.as_ref().ok_or(Error::MissingTrack)?;
-
-		let track = moq_lite::Track {
-			// TODO use the catalog to find the path
-			path: format!("{}/{}/{}.karp", self.path, id, &track.name),
-			priority: track.priority,
-		};
-
-		let track = self.session.subscribe(track);
+	pub async fn track(&self, track: Track) -> Result<TrackConsumer> {
+		let track = self.inner.request(track).await?;
 		Ok(TrackConsumer::new(track))
+	}
+}
+
+impl From<moq_lite::BroadcastConsumer> for BroadcastConsumer {
+	fn from(inner: moq_lite::BroadcastConsumer) -> Self {
+		Self::new(inner)
 	}
 }

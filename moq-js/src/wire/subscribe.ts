@@ -48,23 +48,19 @@ export class Subscribe extends SubscribeUpdate {
 	}
 }
 
-export class SubscribeInfo {
+export class SubscribeOk {
 	priority: number;
-	latest: number | null;
 
-	constructor(priority: number, latest: number | null) {
+	constructor(priority: number) {
 		this.priority = priority;
-		this.latest = latest;
 	}
 
 	async encode(w: Writer) {
 		await w.u53(this.priority);
-		await w.u53(this.latest ? this.latest + 1 : 0);
 	}
 
-	static async decode(r: Reader): Promise<SubscribeInfo> {
+	static async decode(r: Reader): Promise<SubscribeOk> {
 		const priority = await r.u53();
-		const latest = await r.u53();
-		return new SubscribeInfo(priority, latest === 0 ? null : latest - 1);
+		return new SubscribeOk(priority);
 	}
 }

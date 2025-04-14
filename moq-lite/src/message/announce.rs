@@ -8,7 +8,6 @@ use crate::coding::*;
 enum AnnounceStatus {
 	Ended = 0,
 	Active = 1,
-	Live = 2,
 }
 
 /// Sent by the publisher to announce the availability of a track.
@@ -17,7 +16,6 @@ enum AnnounceStatus {
 pub enum Announce {
 	Active { suffix: String },
 	Ended { suffix: String },
-	Live,
 }
 
 impl Decode for Announce {
@@ -29,7 +27,6 @@ impl Decode for Announce {
 			AnnounceStatus::Ended => Self::Ended {
 				suffix: String::decode(r)?,
 			},
-			AnnounceStatus::Live => Self::Live,
 		})
 	}
 }
@@ -45,7 +42,6 @@ impl Encode for Announce {
 				AnnounceStatus::Ended.encode(w);
 				suffix.encode(w);
 			}
-			Self::Live => AnnounceStatus::Live.encode(w),
 		}
 	}
 }
@@ -76,7 +72,6 @@ impl Decode for AnnounceStatus {
 		match status {
 			0 => Ok(Self::Ended),
 			1 => Ok(Self::Active),
-			2 => Ok(Self::Live),
 			_ => Err(DecodeError::InvalidValue),
 		}
 	}

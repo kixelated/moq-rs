@@ -2,16 +2,19 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
 
 use hang::Dimensions;
 use wasm_bindgen::{prelude::*, JsCast};
-use wasm_bindgen_futures::spawn_local;
 use web_codecs::{Timestamp, VideoFrame};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use web_time::Instant;
 
-use super::{ControlsRecv, RendererStatus, StatusSend};
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RendererStatus {
+	Idle,
+	Paused,
+	Buffering,
+	Live,
+}
 
 struct Render {
-	status: StatusSend,
-
 	state: RendererStatus,
 	scheduled: bool,
 	resolution: Dimensions,
@@ -31,9 +34,8 @@ struct Render {
 }
 
 impl Render {
-	pub fn new(status: StatusSend) -> Self {
+	pub fn new() -> Self {
 		Self {
-			status,
 			scheduled: false,
 			state: RendererStatus::Idle,
 			canvas: None,
@@ -208,7 +210,6 @@ impl Render {
 
 	fn set_state(&mut self, state: RendererStatus) {
 		self.state = state;
-		self.status.render.update(state);
 	}
 
 	fn set_live(&mut self) {
@@ -238,8 +239,8 @@ pub struct Renderer {
 }
 
 impl Renderer {
-	pub fn new(controls: ControlsRecv, status: StatusSend) -> Self {
-		let render = Rc::new(RefCell::new(Render::new(status)));
+	pub fn new() -> Self {
+		let render = Rc::new(RefCell::new(Render::new()));
 		let render2 = render.clone();
 		let render3 = render.clone();
 
@@ -253,28 +254,7 @@ impl Renderer {
 		}) as Box<dyn FnMut()>)
 		.into();
 
-		let this = Self { state: render };
-		let this2 = this.clone();
-		spawn_local(async move { this2.run(controls).await });
-
-		this
-	}
-
-	async fn run(&self, mut controls: ControlsRecv) {
-		loop {
-			tokio::select! {
-				Some(paused) = controls.paused.next() => {
-					self.state.borrow_mut().set_paused(paused);
-				},
-				Some(latency) = controls.latency.next() => {
-					self.state.borrow_mut().set_latency(latency);
-				},
-				Some(canvas) = controls.canvas.next() => {
-					self.state.borrow_mut().set_canvas(canvas);
-				},
-				else => break,
-			}
-		}
+		Self { state: render }
 	}
 
 	pub fn set_resolution(&self, resolution: Dimensions) {

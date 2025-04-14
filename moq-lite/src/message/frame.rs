@@ -2,14 +2,12 @@ use crate::coding::*;
 
 #[derive(Clone, Debug)]
 pub struct Frame {
-	pub size: usize,
+	pub size: u64,
 }
 
 impl Decode for Frame {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		Ok(Self {
-			size: usize::decode(r)?,
-		})
+		Ok(Self { size: u64::decode(r)? })
 	}
 }
 

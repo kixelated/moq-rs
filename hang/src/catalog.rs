@@ -1,4 +1,6 @@
 //! This module contains the structs and functions for the MoQ catalog format
+use std::sync::{Arc, Mutex};
+
 /// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,8 @@ pub struct Catalog {
 }
 
 impl Catalog {
+	pub const DEFAULT_NAME: &str = "catalog.json";
+
 	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(s: &str) -> Result<Self> {
 		Ok(serde_json::from_str(s)?)
@@ -47,6 +51,129 @@ impl Catalog {
 	pub fn is_empty(&self) -> bool {
 		self.video.is_empty() && self.audio.is_empty()
 	}
+
+	pub fn produce(self) -> CatalogProducer {
+		let track = moq_lite::Track {
+			name: Catalog::DEFAULT_NAME.to_string(),
+			priority: -1,
+		}
+		.produce();
+
+		CatalogProducer::new(track, self)
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogProducer {
+	pub track: moq_lite::TrackProducer,
+	current: Arc<Mutex<Catalog>>,
+}
+
+impl CatalogProducer {
+	pub fn new(track: moq_lite::TrackProducer, init: Catalog) -> Self {
+		Self {
+			current: Arc::new(Mutex::new(init)),
+			track,
+		}
+	}
+
+	pub fn add_video(&mut self, video: Video) {
+		let mut current = self.current.lock().unwrap();
+		current.video.push(video);
+	}
+
+	pub fn add_audio(&mut self, audio: Audio) {
+		let mut current = self.current.lock().unwrap();
+		current.audio.push(audio);
+	}
+
+	pub fn remove_video(&mut self, video: &Video) {
+		let mut current = self.current.lock().unwrap();
+		current.video.retain(|v| v != video);
+	}
+
+	pub fn remove_audio(&mut self, audio: &Audio) {
+		let mut current = self.current.lock().unwrap();
+		current.audio.retain(|a| a != audio);
+	}
+
+	/// Publish any changes to the catalog.
+	pub fn publish(&mut self) {
+		let current = self.current.lock().unwrap();
+
+		// TODO decide if this should return an error, or be impossible to fail
+		let frame = current.to_string().expect("invalid catalog");
+
+		let mut group = self.track.append_group();
+		group.write_frame(frame);
+
+		// Make sure the lock is held for the duration of the write.
+		drop(current);
+	}
+
+	pub fn consume(&self) -> CatalogConsumer {
+		CatalogConsumer::new(self.track.consume())
+	}
+}
+
+impl From<moq_lite::TrackProducer> for CatalogProducer {
+	fn from(inner: moq_lite::TrackProducer) -> Self {
+		Self::new(inner, Catalog::default())
+	}
+}
+
+impl Default for CatalogProducer {
+	fn default() -> Self {
+		let track = moq_lite::Track {
+			name: Catalog::DEFAULT_NAME.to_string(),
+			priority: -1,
+		}
+		.produce();
+
+		CatalogProducer::new(track, Catalog::default())
+	}
+}
+
+#[derive(Clone)]
+pub struct CatalogConsumer {
+	pub track: moq_lite::TrackConsumer,
+	group: Option<moq_lite::GroupConsumer>,
+}
+
+impl CatalogConsumer {
+	pub fn new(track: moq_lite::TrackConsumer) -> Self {
+		Self { track, group: None }
+	}
+
+	pub async fn next(&mut self) -> Result<Option<Catalog>> {
+		loop {
+			tokio::select! {
+				res = self.track.next_group() => {
+					match res? {
+						Some(group) => {
+							// Use the new group.
+							self.group = Some(group);
+						}
+						None => {
+							// The track has ended, so we should return None.
+							return Ok(None);
+						}
+					}
+				},
+				Some(frame) = async { self.group.as_mut()?.read_frame().await.transpose() } => {
+					self.group.take(); // We don't support deltas yet
+					let catalog = Catalog::from_slice(&frame?)?;
+					return Ok(Some(catalog));
+				}
+			}
+		}
+	}
+}
+
+impl From<moq_lite::TrackConsumer> for CatalogConsumer {
+	fn from(inner: moq_lite::TrackConsumer) -> Self {
+		Self::new(inner)
+	}
 }
 
 #[cfg(test)]
@@ -62,26 +189,26 @@ mod test {
 				{
 					"track": {
 						"name": "video",
-						"priority": 2,
-						"bitrate": 6000000
+						"priority": 2
 					},
 					"codec": "avc1.64001f",
 					"resolution": {
 						"width": 1280,
 						"height": 720
 					},
+					"bitrate": 6000000
 				}
 			],
 			"audio": [
 				{
 					"track": {
 						"name": "audio",
-						"priority": 1,
-						"bitrate": 128000
+						"priority": 1
 					},
 					"codec": "opus",
 					"sample_rate": 48000,
-					"channel_count": 2
+					"channel_count": 2,
+					"bitrate": 128000
 				}
 			]
 		}"#
@@ -94,7 +221,6 @@ mod test {
 				track: Track {
 					name: "video".to_string(),
 					priority: 2,
-					bitrate: Some(6_000_000),
 				},
 				codec: H264 {
 					profile: 0x64,
@@ -103,20 +229,21 @@ mod test {
 				}
 				.into(),
 				description: Default::default(),
-				resolution: Dimensions {
+				resolution: Some(Dimensions {
 					width: 1280,
 					height: 720,
-				},
+				}),
+				bitrate: Some(6_000_000),
 			}],
 			audio: vec![Audio {
 				track: Track {
 					name: "audio".to_string(),
 					priority: 1,
-					bitrate: Some(128_000),
 				},
 				codec: Opus,
 				sample_rate: 48_000,
 				channel_count: 2,
+				bitrate: Some(128_000),
 			}],
 		};
 

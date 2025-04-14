@@ -16,7 +16,11 @@ async fn main() -> anyhow::Result<()> {
 	config.log.init();
 
 	match config.command.clone() {
-		Command::Serve { path } => BroadcastServer::new(config, path, tokio::io::stdin()).run().await,
-		Command::Publish { url } => BroadcastClient::new(config, url, tokio::io::stdin()).run().await,
+		Command::Serve { path } => {
+			BroadcastServer::new(config, path.into())
+				.run(&mut tokio::io::stdin())
+				.await
+		}
+		Command::Publish { url } => BroadcastClient::new(config, url).run(&mut tokio::io::stdin()).await,
 	}
 }

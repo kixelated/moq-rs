@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::net;
+use url::Url;
 
 #[derive(Parser, Clone)]
 pub struct Config {
@@ -37,6 +38,6 @@ pub enum Command {
 		///
 		/// - If `https` is used, then A WebTransport connection is made via QUIC to the provided host/port.
 		///   The path is used to identify the broadcast, with the rest of the URL (ex. query/fragment) currently ignored.
-		url: String,
+		url: Url,
 	},
 }

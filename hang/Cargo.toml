@@ -17,17 +17,16 @@ bytes = "1.10"
 futures = "0.3"
 hex = "0.4"
 lazy_static = "1"
-moq-lite = { workspace = true }
+moq-lite = { workspace = true, features = ["serde"] }
 mp4-atom = { version = "0.7.2", features = ["tokio", "bytes", "serde"] }
 regex = "1"
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true }
 serde_json = "1"
 serde_with = { version = "3", features = ["hex"] }
 thiserror = "2"
 tokio = { workspace = true, features = ["macros"] }
 tracing = "0.1"
 web-async = "0.1"
-web-time = "1"
 
 [dependencies.derive_more]
 version = "2"

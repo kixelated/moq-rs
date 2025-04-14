@@ -1,27 +1,46 @@
 use bytes::{Bytes, BytesMut};
-use std::{fmt, ops};
+use std::fmt;
 use tokio::sync::watch;
 
 use crate::Error;
 
-/// A frame of data with an upfront size.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Frame {
-	pub size: usize,
+	pub size: u64,
 }
 
 impl Frame {
-	pub fn new(size: usize) -> Frame {
+	pub fn new(size: u64) -> Self {
 		Self { size }
 	}
 
-	pub fn produce(self) -> (FrameProducer, FrameConsumer) {
-		let (send, recv) = watch::channel(FrameState::default());
+	pub fn produce(self) -> FrameProducer {
+		FrameProducer::new(self)
+	}
+}
 
-		let writer = FrameProducer::new(send, self.clone());
-		let reader = FrameConsumer::new(recv, self);
+impl From<usize> for Frame {
+	fn from(size: usize) -> Self {
+		Self::new(size as u64)
+	}
+}
 
-		(writer, reader)
+impl From<u64> for Frame {
+	fn from(size: u64) -> Self {
+		Self::new(size)
+	}
+}
+
+impl From<u32> for Frame {
+	fn from(size: u32) -> Self {
+		Self::new(size as u64)
+	}
+}
+
+impl From<u16> for Frame {
+	fn from(size: u16) -> Self {
+		Self::new(size as u64)
 	}
 }
 
@@ -54,16 +73,19 @@ impl fmt::Debug for FrameState {
 /// Used to write a frame's worth of data in chunks.
 #[derive(Clone, Debug)]
 pub struct FrameProducer {
-	// Mutable stream state.
-	state: watch::Sender<FrameState>,
-
 	// Immutable stream state.
 	pub info: Frame,
+
+	// Mutable stream state.
+	state: watch::Sender<FrameState>,
 }
 
 impl FrameProducer {
-	fn new(state: watch::Sender<FrameState>, info: Frame) -> Self {
-		Self { state, info }
+	pub fn new(info: Frame) -> Self {
+		Self {
+			info,
+			state: Default::default(),
+		}
 	}
 
 	pub fn write<B: Into<Bytes>>(&mut self, chunk: B) {
@@ -76,27 +98,33 @@ impl FrameProducer {
 	}
 
 	/// Create a new consumer for the frame.
-	pub fn subscribe(&self) -> FrameConsumer {
-		FrameConsumer::new(self.state.subscribe(), self.info.clone())
+	pub fn consume(&self) -> FrameConsumer {
+		FrameConsumer {
+			info: self.info.clone(),
+			state: self.state.subscribe(),
+			index: 0,
+		}
+	}
+
+	pub async fn unused(&self) {
+		self.state.closed().await;
 	}
 }
 
-impl ops::Deref for FrameProducer {
-	type Target = Frame;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
+impl From<Frame> for FrameProducer {
+	fn from(info: Frame) -> Self {
+		FrameProducer::new(info)
 	}
 }
 
 /// Used to consume a frame's worth of data in chunks.
 #[derive(Clone, Debug)]
 pub struct FrameConsumer {
-	// Modify the stream state.
-	state: watch::Receiver<FrameState>,
-
 	// Immutable stream state.
 	pub info: Frame,
+
+	// Modify the stream state.
+	state: watch::Receiver<FrameState>,
 
 	// The number of frames we've read.
 	// NOTE: Cloned readers inherit this offset, but then run in parallel.
@@ -104,14 +132,6 @@ pub struct FrameConsumer {
 }
 
 impl FrameConsumer {
-	fn new(state: watch::Receiver<FrameState>, group: Frame) -> Self {
-		Self {
-			state,
-			info: group,
-			index: 0,
-		}
-	}
-
 	// Return the next chunk.
 	pub async fn read(&mut self) -> Result<Option<Bytes>, Error> {
 		loop {
@@ -162,13 +182,5 @@ impl FrameConsumer {
 			Ok(state) => state.closed.clone(),
 			Err(_) => Ok(()),
 		}
-	}
-}
-
-impl ops::Deref for FrameConsumer {
-	type Target = Frame;
-
-	fn deref(&self) -> &Self::Target {
-		&self.info
 	}
 }

@@ -34,6 +34,10 @@ pub enum Error {
 	#[error("cancelled")]
 	Cancel,
 
+	/// The group is older than the latest group and dropped.
+	#[error("old")]
+	Old,
+
 	// The application closes the stream with a code.
 	#[error("app code={0}")]
 	App(u32),
@@ -54,6 +58,7 @@ impl Error {
 		match self {
 			Self::Cancel => 0,
 			Self::RequiredExtension(_) => 1,
+			Self::Old => 2,
 			Self::WebTransport(_) => 4,
 			Self::Decode(_) => 5,
 			Self::Version(..) => 9,

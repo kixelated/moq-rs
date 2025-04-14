@@ -41,6 +41,9 @@ pub enum Error {
 
 	#[error("http error: {0}")]
 	Http(Arc<gloo_net::Error>),
+
+	#[error("unclassified: {0}")]
+	Js(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -48,6 +51,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<Error> for JsValue {
 	fn from(err: Error) -> JsValue {
 		JsValue::from_str(&format!("{}", err))
+	}
+}
+
+impl From<JsValue> for Error {
+	fn from(value: JsValue) -> Self {
+		Error::Js(value.as_string().unwrap_or_default())
 	}
 }
 

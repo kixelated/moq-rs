@@ -1,4 +1,4 @@
-use crate::{message, AnnouncedConsumer, Error, RouterConsumer, Track, TrackConsumer};
+use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error};
 
 use web_async::spawn;
 
@@ -110,7 +110,7 @@ impl Session {
 	}
 
 	async fn run_session(mut stream: Stream) -> Result<(), Error> {
-		while let Some(_info) = stream.reader.decode_maybe::<message::SubscribeInfo>().await? {}
+		while let Some(_info) = stream.reader.decode_maybe::<message::SubscribeOk>().await? {}
 		Err(Error::Cancel)
 	}
 
@@ -155,32 +155,19 @@ impl Session {
 		}
 	}
 
-	/// Publish a track, automatically announcing and serving it.
-	pub fn publish(&mut self, track: TrackConsumer) -> Result<(), Error> {
-		self.publisher.publish(track)
+	/// Publish a broadcast, automatically announcing and serving it.
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
+		self.publisher.publish(broadcast)
 	}
 
-	/// Optionally announce the provided tracks.
+	/// Subscribe to a broadcast, returning a handle that can request tracks.
 	///
-	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::route].
-	/// [AnnouncedConsumer] will automatically unannounce if the [crate::AnnouncedProducer] is dropped.
-	pub fn announce(&mut self, announced: AnnouncedConsumer) {
-		self.publisher.announce(announced);
+	/// No data flows over the network until [BroadcastConsumer::request] is called.
+	pub fn subscribe(&self, broadcast: Broadcast) -> BroadcastConsumer {
+		self.subscriber.subscribe(broadcast)
 	}
 
-	/// Optionally route unknown paths.
-	///
-	/// This is advanced functionality if you wish to perform dynamic track generation in conjunction with [Self::announce].
-	pub fn route(&mut self, router: RouterConsumer) {
-		self.publisher.route(router);
-	}
-
-	/// Subscribe to a track and start receiving data over the network.
-	pub fn subscribe(&self, track: Track) -> TrackConsumer {
-		self.subscriber.subscribe(track)
-	}
-
-	/// Discover any tracks published by the remote matching a (wildcard) filter.
+	/// Discover any broadcasts published by the remote matching a prefix.
 	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
 		self.subscriber.announced(prefix.to_string())
 	}
@@ -195,11 +182,3 @@ impl Session {
 		self.webtransport.closed().await.into()
 	}
 }
-
-impl PartialEq for Session {
-	fn eq(&self, other: &Self) -> bool {
-		self.webtransport == other.webtransport
-	}
-}
-
-impl Eq for Session {}
