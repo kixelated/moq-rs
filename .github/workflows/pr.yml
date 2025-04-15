@@ -24,10 +24,6 @@ jobs:
           components: clippy, rustfmt
           target: wasm32-unknown-unknown
 
-      # Install Shear to find unused dependencies
-      - uses: cargo-bins/cargo-binstall@main
-      - run: cargo binstall --no-confirm --force cargo-shear
-
       # Install Node for moq-wasm
       - uses: actions/setup-node@v4
 
@@ -35,5 +31,6 @@ jobs:
       - run: echo "RUSTFLAGS=--cfg=web_sys_unstable_apis" >> $GITHUB_ENV
 
       # Make sure u guys don't write bad code
+      - run: just setup
       - run: just check
       - run: just test

@@ -2,13 +2,14 @@ mod aac;
 mod codec;
 
 pub use aac::*;
+use bytes::Bytes;
 pub use codec::*;
 
 use crate::Track;
 
 use super::Error;
 use serde::{Deserialize, Serialize};
-use serde_with::DisplayFromStr;
+use serde_with::{hex::Hex, DisplayFromStr};
 
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
@@ -26,4 +27,10 @@ pub struct Audio {
 	// The bitrate of the audio track
 	#[serde(default)]
 	pub bitrate: Option<u64>,
+
+	// Some codecs unfortunately aren't self-describing and include extra metadata.
+	// For example, AAC can include an ADTS header out of band.
+	#[serde(default)]
+	#[serde_as(as = "Option<Hex>")]
+	pub description: Option<Bytes>,
 }

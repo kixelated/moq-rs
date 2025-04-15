@@ -1,0 +1,36 @@
+{
+	"name": "@kixelated/hang",
+	"type": "module",
+	"collaborators": [
+		"Luke Curley <kixelated@gmail.com>"
+	],
+	"description": "Web implementation for MoQ utilizing WebAssembly+Typescript",
+	"version": "0.1.0",
+	"license": "MIT OR Apache-2.0",
+	"repository": "github:kixelated/moq",
+	"files": [
+		"dist",
+		"pkg"
+	],
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"sideEffects": [
+		"./pkg/index.js",
+		"./pkg/snippets/*"
+	],
+	"scripts": {
+		"build": "wasm-pack build --out-name index && cargo test export_bindings && tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist",
+		"check": "cargo test && tsc --noEmit",
+		"dev": "webpack serve"
+	},
+	"devDependencies": {
+		"@wasm-tool/wasm-pack-plugin": "^1.7.0",
+		"html-webpack-plugin": "^5.6.3",
+		"ts-loader": "^9.5.2",
+		"wasm-pack": "^0.13.1",
+		"webpack": "^5.99.5",
+		"webpack-cli": "^6.0.1",
+		"webpack-dev-server": "^5.2.1"
+	}
+}

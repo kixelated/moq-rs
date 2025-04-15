@@ -228,7 +228,7 @@ mod test {
 					level: 0x1f,
 				}
 				.into(),
-				description: Default::default(),
+				description: None,
 				resolution: Some(Dimensions {
 					width: 1280,
 					height: 720,
@@ -244,6 +244,7 @@ mod test {
 				sample_rate: 48_000,
 				channel_count: 2,
 				bitrate: Some(128_000),
+				description: None,
 			}],
 		};
 

@@ -2,7 +2,7 @@
 members = [
 	"hang",
 	"hang-cli",
-	"hang-wasm",
+	"hang-web",
 	"moq-clock",
 	"moq-lite",
 	"moq-native",

@@ -1,13 +1,13 @@
-mod connect;
+mod bridge;
 mod error;
 mod publish;
-mod rpc;
+mod room;
 mod watch;
 
-pub use connect::*;
+pub use bridge::*;
 pub use error::*;
 pub use publish::*;
-pub use rpc::*;
+pub use room::*;
 pub use watch::*;
 
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -24,10 +24,9 @@ pub fn start() {
 	};
 	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
 
-	wasm_bindgen_futures::spawn_local(run());
-}
-
-async fn run() {
-	let mut backend = Backend::new();
-	backend.run().await.unwrap();
+	wasm_bindgen_futures::spawn_local(async move {
+		let bridge = Bridge::new();
+		let mut room = Room::new(bridge);
+		room.run().await.unwrap();
+	});
 }

@@ -11,9 +11,6 @@ default:
 
 # Install any required dependencies.
 setup:
-	# Upgrade Rust
-	rustup update
-
 	# Make sure the WASM target is installed.
 	rustup target add wasm32-unknown-unknown
 

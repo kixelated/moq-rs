@@ -280,6 +280,7 @@ impl Import {
 					sample_rate: mp4a.samplerate.integer() as _,
 					channel_count: mp4a.channelcount as _,
 					bitrate: Some(bitrate),
+					description: None, // TODO?
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),

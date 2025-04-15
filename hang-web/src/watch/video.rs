@@ -15,9 +15,9 @@ impl Video {
 		let (decoder, decoded) = web_codecs::VideoDecoderConfig {
 			codec: info.codec.to_string(),
 			description: info.description.clone(),
-			resolution: Some(web_codecs::Dimensions {
-				width: info.resolution.width,
-				height: info.resolution.height,
+			resolution: info.resolution.map(|r| web_codecs::Dimensions {
+				width: r.width,
+				height: r.height,
 			}),
 			latency_optimized: Some(true),
 			..Default::default()

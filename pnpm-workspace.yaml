@@ -1,5 +1,4 @@
 packages:
-  - 'moq-js'
-  - 'hang-js'
-  - 'hang-ui'
-  - 'hang-wasm'
+  - hang-web
+onlyBuiltDependencies:
+  - wasm-pack

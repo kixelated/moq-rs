@@ -1,5 +1,10 @@
-use ts_rs::TS;
-use web_message::Message;
+mod command;
+mod renderer;
+mod video;
+
+pub use command::*;
+pub use renderer::*;
+pub use video::*;
 
 use crate::Result;
 
@@ -7,35 +12,17 @@ use crate::Result;
 pub struct Watch {
 	room: Option<hang::Room>,
 	canvas: Option<web_sys::OffscreenCanvas>,
-	latency: u64,
-}
-
-#[derive(Debug, Message, TS)]
-#[ts(export, export_to = "../src/rpc.ts")]
-pub enum WatchCommand {
-	// Render the video to the given canvas if visible.
-	#[ts(type = "OffscreenCanvas | null")]
-	Canvas(Option<web_sys::OffscreenCanvas>),
-
-	// Use the given latency for the video.
-	Latency(u64),
+	latency: u32,
 }
 
 impl Watch {
-	pub fn new() -> Self {
-		Self {
-			room: None,
-			canvas: None,
-			latency: 0,
-		}
-	}
-
 	pub async fn run(&mut self) -> Result<()> {
 		loop {
 			tokio::select! {
 				Some(_broadcast) = async { self.room.as_mut()?.joined().await } => {
 					// TODO Add broadcast
 				}
+				else => return Ok(()),
 			}
 		}
 	}

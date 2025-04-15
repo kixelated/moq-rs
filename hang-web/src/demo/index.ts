@@ -1,0 +1,1 @@
+export { RoomElement } from "../room";

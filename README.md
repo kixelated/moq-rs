@@ -21,8 +21,7 @@ The project is split into two categories:
 - [hang](hang): A media-specific application built on top of MoQ.
 	- [hang-lib](hang/lib): The underlying media protocol powered by moq-lite.
 	- [hang-cli](hang/cli): A CLI for publishing and subscribing to media.
-	- [hang-web](hang/web): A web client written in Typescript.
-	- [hang-wasm](hang/wasm): A web client written in Rust and using WASM. This is mostly unsupported for now.
+	- [hang-web](hang-web): A web client written in Rust and using WASM.
 
 
 # Usage
