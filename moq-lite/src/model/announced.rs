@@ -123,16 +123,23 @@ struct ConsumerState {
 impl ConsumerState {
 	pub fn insert(&mut self, broadcast: &Broadcast) {
 		if broadcast.path.starts_with(&self.prefix) {
-			self.removed.retain(|removed| removed != broadcast);
-			self.added.push_back(broadcast.clone());
+			// Remove any matches that haven't been consumed yet.
+			if let Some(index) = self.removed.iter().position(|removed| removed == broadcast) {
+				self.removed.remove(index);
+			} else {
+				self.added.push_back(broadcast.clone());
+			}
 		}
 	}
 
 	pub fn remove(&mut self, broadcast: &Broadcast) {
 		if broadcast.path.starts_with(&self.prefix) {
-			// Check if we haven't consumed this suffix yet.
-			self.added.retain(|added| added != broadcast);
-			self.removed.push_back(broadcast.clone());
+			// Remove any matches that haven't been consumed yet.
+			if let Some(index) = self.added.iter().position(|added| added == broadcast) {
+				self.added.remove(index);
+			} else {
+				self.removed.push_back(broadcast.clone());
+			}
 		}
 	}
 
@@ -488,7 +495,6 @@ mod test {
 
 		assert!(producer.announce(ab.clone()));
 		assert!(producer.announce(ac.clone()));
-		assert!(producer.announce(de.clone()));
 
 		producer.announce(ab.clone());
 		consumer.assert_active(&ab);

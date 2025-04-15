@@ -210,7 +210,7 @@ impl Publisher {
 	// But even with a group per frame, it will take ~6 days to reach that point.
 	// TODO The behavior when two tracks share the same priority is undefined. Should we round-robin?
 	fn stream_priority(track_priority: i8, group_sequence: u64) -> i32 {
-		let sequence = (group_sequence as u32) & 0xFFFFFF;
+		let sequence = (0xFFFFFF - group_sequence as u32) & 0xFFFFFF;
 		((track_priority as i32) << 24) | sequence as i32
 	}
 }
@@ -228,16 +228,10 @@ mod test {
 		const U24: i32 = (1 << 24) - 1;
 
 		// NOTE: The lower the value, the higher the priority.
-		assert(-1, 0, -U24 - 1);
-		assert(-1, 50, -U24 + 49);
 		assert(-1, 50, -51);
 		assert(-1, 0, -1);
-		assert(0, 0, 0);
-		assert(0, 50, 50);
 		assert(0, 50, U24 - 50);
 		assert(0, 0, U24);
-		assert(1, 0, U24 + 1);
-		assert(1, 50, U24 + 51);
 		assert(1, 50, 2 * U24 - 49);
 		assert(1, 0, 2 * U24 + 1);
 	}
