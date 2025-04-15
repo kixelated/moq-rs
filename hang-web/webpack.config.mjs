@@ -15,10 +15,10 @@ const config = {
 	},
 	plugins: [
 		new WasmPackPlugin({
-			crateDirectory: path.resolve(__dirname, "moq-web"),
-			outDir: path.resolve(__dirname, "dist"),
+			crateDirectory: path.resolve(__dirname),
+			outDir: path.resolve(__dirname, "pkg"),
 			args: "--log-level warn",
-			outName: "rust",
+			outName: "index",
 		}),
 		new HtmlWebpackPlugin({
 			template: "src/demo/index.html",

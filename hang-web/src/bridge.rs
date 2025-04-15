@@ -30,6 +30,8 @@ impl Bridge {
 		global.set_onmessage(Some(closure.as_ref().unchecked_ref()));
 		closure.forget();
 
+		Self::send(Status::Init).unwrap();
+
 		Self { commands: rx }
 	}
 
@@ -42,6 +44,7 @@ impl Bridge {
 		let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
 		let mut transfer = js_sys::Array::new();
 		let message = status.into_message(&mut transfer);
+		tracing::info!(?message, "sending status");
 		global.post_message_with_transfer(&message, &transfer)?;
 		Ok(())
 	}

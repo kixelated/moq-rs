@@ -5,11 +5,9 @@ use futures::{stream::FuturesUnordered, StreamExt};
 
 use moq_lite::coding::*;
 
-use derive_more::Debug;
-
 pub use moq_lite::Track;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TrackProducer {
 	pub inner: moq_lite::TrackProducer,
 	group: Option<moq_lite::GroupProducer>,
@@ -29,12 +27,6 @@ impl TrackProducer {
 			Some(group) if !frame.keyframe => group,
 			_ => self.inner.append_group(),
 		};
-
-		if frame.keyframe {
-			tracing::debug!(group = ?group.info, ?frame, "encoded keyframe");
-		} else {
-			tracing::trace!(group = ?group.info, ?frame, "encoded frame");
-		}
 
 		let size = header.len() + frame.payload.len();
 		let mut chunked = group.create_frame(size.into());

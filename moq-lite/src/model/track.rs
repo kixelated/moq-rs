@@ -36,7 +36,6 @@ impl Track {
 	}
 }
 
-#[derive(Debug)]
 struct TrackState {
 	latest: Option<GroupConsumer>,
 	closed: Result<(), Error>,
@@ -52,7 +51,7 @@ impl Default for TrackState {
 }
 
 /// A producer for a track, used to create new groups.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TrackProducer {
 	pub info: Track,
 	state: watch::Sender<TrackState>,
@@ -133,7 +132,7 @@ impl From<Track> for TrackProducer {
 }
 
 /// A consumer for a track, used to read groups.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TrackConsumer {
 	pub info: Track,
 	state: watch::Receiver<TrackState>,

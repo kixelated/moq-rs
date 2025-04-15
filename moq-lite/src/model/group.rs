@@ -54,7 +54,6 @@ impl From<u16> for Group {
 	}
 }
 
-#[derive(Debug)]
 struct GroupState {
 	// The frames that has been written thus far
 	frames: Vec<FrameConsumer>,
@@ -73,7 +72,7 @@ impl Default for GroupState {
 }
 
 /// Create a group, frame-by-frame.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GroupProducer {
 	// Mutable stream state.
 	state: watch::Sender<GroupState>,
@@ -141,7 +140,7 @@ impl From<Group> for GroupProducer {
 }
 
 /// Consume a group, frame-by-frame.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GroupConsumer {
 	// Modify the stream state.
 	state: watch::Receiver<GroupState>,

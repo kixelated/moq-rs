@@ -28,11 +28,8 @@ setup:
 
 # Run the relay, web server, and publish bbb.
 all:
-	# Compile the relay server first so it'll win the race.
-	cargo build --bin moq-relay
-
 	# Run the relay, web server, and publish bbb.
-	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "just bbb" "just web"
+	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Run a localhost relay server
 relay:

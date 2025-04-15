@@ -63,7 +63,7 @@ impl Catalog {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CatalogProducer {
 	pub track: moq_lite::TrackProducer,
 	current: Arc<Mutex<Catalog>>,

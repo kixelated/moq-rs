@@ -3,9 +3,8 @@ use std::collections::VecDeque;
 use crate::{Frame, Result, Timestamp};
 use moq_lite::coding::Decode;
 
-#[derive(Debug)]
 pub struct GroupConsumer {
-	// The group (no timestamp information)
+	// The group.
 	group: moq_lite::GroupConsumer,
 
 	// The current frame index
@@ -50,12 +49,6 @@ impl GroupConsumer {
 			timestamp,
 			payload,
 		};
-
-		if frame.keyframe {
-			tracing::debug!(?frame, group = ?self.group, "decoded keyframe");
-		} else {
-			tracing::trace!(?frame, group = ?self.group, index = self.index, "decoded frame");
-		}
 
 		self.index += 1;
 		self.max_timestamp = Some(self.max_timestamp.unwrap_or_default().max(timestamp));

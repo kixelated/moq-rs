@@ -19,7 +19,8 @@ impl Watch {
 	pub async fn run(&mut self) -> Result<()> {
 		loop {
 			tokio::select! {
-				Some(_broadcast) = async { self.room.as_mut()?.joined().await } => {
+				Some(broadcast) = async { self.room.as_mut()?.joined().await } => {
+					tracing::info!(broadcast = ?broadcast.inner.info, "joined");
 					// TODO Add broadcast
 				}
 				else => return Ok(()),

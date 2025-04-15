@@ -50,6 +50,7 @@ impl Room {
 
 		match command {
 			RoomCommand::Connect { url } => {
+				tracing::info!(?url, "connecting");
 				if let Some(url) = url {
 					self.connecting = Some(Connect::new(url));
 				} else {

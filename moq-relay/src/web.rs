@@ -56,7 +56,7 @@ impl Web {
 				}),
 			)
 			.route(
-				"/fetch/{*broadcast}/{track}",
+				"/fetch/{*path}",
 				get({
 					let cluster = config.cluster.clone();
 					move |path| serve_fetch(path, cluster)
@@ -98,12 +98,16 @@ async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl I
 }
 
 /// Serve the latest group for a given track
-async fn serve_fetch(
-	Path((broadcast, track)): Path<(String, String)>,
-	cluster: Cluster,
-) -> axum::response::Result<ServeGroup> {
-	let broadcast = moq_lite::Broadcast::new(broadcast);
+async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::response::Result<ServeGroup> {
+	let mut path: Vec<&str> = path.split("/").collect();
+	if path.len() < 2 {
+		return Err(StatusCode::BAD_REQUEST.into());
+	}
 
+	let track = path.pop().unwrap().to_string();
+	let broadcast = path.join("/");
+
+	let broadcast = moq_lite::Broadcast::new(broadcast);
 	let track = moq_lite::Track {
 		name: track,
 		priority: 0,

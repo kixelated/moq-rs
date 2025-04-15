@@ -1,5 +1,4 @@
 use bytes::{Bytes, BytesMut};
-use std::fmt;
 use tokio::sync::watch;
 
 use crate::Error;
@@ -61,17 +60,8 @@ impl Default for FrameState {
 	}
 }
 
-impl fmt::Debug for FrameState {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("FrameState")
-			.field("chunks", &self.chunks.len())
-			.field("closed", &self.closed)
-			.finish()
-	}
-}
-
 /// Used to write a frame's worth of data in chunks.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FrameProducer {
 	// Immutable stream state.
 	pub info: Frame,
@@ -118,7 +108,7 @@ impl From<Frame> for FrameProducer {
 }
 
 /// Used to consume a frame's worth of data in chunks.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FrameConsumer {
 	// Immutable stream state.
 	pub info: Frame,

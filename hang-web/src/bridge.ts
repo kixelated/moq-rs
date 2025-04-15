@@ -7,6 +7,7 @@ export class Bridge {
 	#worker: Promise<Worker>;
 
 	constructor() {
+		console.log("loading worker");
 		this.#worker = new Promise((resolve, reject) => {
 			// NOTE: This file has to be in the root of `src` to work with the current setup.
 			// That way `../pkg` works pre and post build.
@@ -14,9 +15,13 @@ export class Bridge {
 				type: "module",
 			});
 
+			console.log("worker loaded");
+
 			worker.addEventListener(
 				"message",
 				(event: MessageEvent<Status>) => {
+					console.debug("received init:", event.data);
+
 					if (event.data === "Init") {
 						resolve(worker);
 					} else {
@@ -31,16 +36,18 @@ export class Bridge {
 	addEventListener(callback: (event: Status) => void) {
 		this.#worker.then((worker) => {
 			worker.addEventListener("message", (event: MessageEvent<Status>) => {
+				console.debug("received status:", event.data);
 				callback(event.data);
 			});
 		});
 	}
 
-	postMessage(msg: Command) {
-		const transfer = collectTransferables(msg);
+	postMessage(cmd: Command) {
+		const transfer = collectTransferables(cmd);
 
 		this.#worker.then((worker) => {
-			worker.postMessage(msg, { transfer });
+			console.debug("sent command:", cmd);
+			worker.postMessage(cmd, { transfer });
 		});
 	}
 }

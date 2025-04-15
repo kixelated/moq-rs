@@ -19,7 +19,7 @@ pub fn start() {
 	console_error_panic_hook::set_once();
 
 	let config = wasm_tracing::WasmLayerConfig {
-		max_level: tracing::Level::INFO,
+		max_level: tracing::Level::DEBUG,
 		..Default::default()
 	};
 	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
