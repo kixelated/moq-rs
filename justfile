@@ -17,14 +17,16 @@ setup:
 	# Make sure the right components are installed.
 	rustup component add rustfmt clippy
 
-	# Install cargo shear
-	cargo install cargo-shear
+	# We use binstall to install the other tools because it's faster than from source.
+	cargo install cargo-binstall
 
-	# Install cargo sort
-	cargo install cargo-sort
+	# Install the tools
+	just setup-tools
 
-	# Install cargo-upgrades and cargo-edit
-	cargo install cargo-upgrades cargo-edit
+# CI calls this script directly because it gets rust/binstall from other sources.
+setup-tools:
+	# Install utilities
+	cargo binstall -y cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run the relay, web server, and publish bbb.
 all:
@@ -123,6 +125,12 @@ check:
 	# requires: cargo install cargo-sort
 	cargo sort --workspace --check
 
+	# requires: cargo install cargo-deny
+	cargo deny check
+
+	# requires: cargo install cargo-audit
+	cargo audit
+
 	# Javascript time
 	pnpm -r i
 
@@ -137,10 +145,6 @@ check:
 
 	# Beta: Check for unused imports
 	pnpm exec knip
-
-# Run any CI tests
-test:
-	cargo test
 
 # Automatically fix some issues.
 fix:
@@ -163,6 +167,10 @@ fix:
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix
+
+# Run any CI tests
+test:
+	cargo test
 
 # Upgrade any tooling
 upgrade:

@@ -15,22 +15,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install Just to run CI scripts
-      - uses: extractions/setup-just@v3
-
       # Install Rust with clippy/rustfmt
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
           target: wasm32-unknown-unknown
 
+      # Install Just to run CI scripts
+      - uses: extractions/setup-just@v3
+
       # Install Node for moq-wasm
       - uses: actions/setup-node@v4
+
+      # Cargo binstall is used to install tools faster than compiling them from source.
+      - uses: cargo-bins/cargo-binstall@main
+      - run: just setup-tools
 
       # Required for unstable WebCodecs and WebTransport
       - run: echo "RUSTFLAGS=--cfg=web_sys_unstable_apis" >> $GITHUB_ENV
 
       # Make sure u guys don't write bad code
-      - run: just setup
       - run: just check
       - run: just test

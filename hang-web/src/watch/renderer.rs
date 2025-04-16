@@ -238,6 +238,12 @@ pub struct Renderer {
 	state: Rc<RefCell<Render>>,
 }
 
+impl Default for Renderer {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Renderer {
 	pub fn new() -> Self {
 		let render = Rc::new(RefCell::new(Render::new()));

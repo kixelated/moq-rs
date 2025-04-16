@@ -118,8 +118,8 @@ impl Publish {
 
 	pub async fn run(&mut self) -> Result<()> {
 		tokio::select! {
-			Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => return Err(err),
-			Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => return Err(err),
+			Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => Err(err),
+			Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => Err(err),
 			else => Ok(()),
 		}
 	}

@@ -24,6 +24,8 @@ pub fn start() {
 	};
 	wasm_tracing::set_as_global_default_with_config(config).expect("failed to install logger");
 
+	tracing::info!("creating bridge");
+
 	wasm_bindgen_futures::spawn_local(async move {
 		let bridge = Bridge::new();
 		let mut room = Room::new(bridge);
