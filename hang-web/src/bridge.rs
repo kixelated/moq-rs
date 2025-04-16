@@ -35,8 +35,8 @@ impl Bridge {
 		Self { commands: rx }
 	}
 
-	pub async fn recv(&mut self) -> Option<Command> {
-		self.commands.recv().await
+	pub async fn recv(&mut self) -> Command {
+		self.commands.recv().await.expect("somehow our callback was dropped?")
 	}
 
 	pub fn send(status: Status) -> Result<()> {

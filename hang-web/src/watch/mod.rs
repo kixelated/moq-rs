@@ -6,8 +6,6 @@ pub use command::*;
 pub use renderer::*;
 pub use video::*;
 
-use crate::Result;
-
 #[derive(Default)]
 pub struct Watch {
 	room: Option<hang::Room>,
@@ -16,14 +14,14 @@ pub struct Watch {
 }
 
 impl Watch {
-	pub async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) {
 		loop {
 			tokio::select! {
 				Some(broadcast) = async { self.room.as_mut()?.joined().await } => {
 					tracing::info!(broadcast = ?broadcast.inner.info, "joined");
 					// TODO Add broadcast
 				}
-				else => return Ok(()),
+				else => return,
 			}
 		}
 	}

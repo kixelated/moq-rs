@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use moq_lite::Broadcast;
 use web_async::Lock;
 
-use crate::{BroadcastConsumer, BroadcastProducer, Result};
+use crate::{BroadcastConsumer, BroadcastProducer};
 
 #[derive(Clone)]
 pub struct Room {
@@ -23,14 +23,14 @@ impl Room {
 		}
 	}
 
-	pub fn join(&mut self, name: String) -> Result<BroadcastProducer> {
+	pub fn join(&mut self, name: String) -> BroadcastProducer {
 		let broadcast = Broadcast::new(format!("{}/{}", self.path, name));
 		let ourselves = self.ourselves.clone();
 
 		ourselves.lock().insert(broadcast.clone());
 
 		let producer = broadcast.clone().produce();
-		self.session.publish(producer.consume())?;
+		self.session.publish(producer.consume());
 
 		let consumer = producer.consume();
 
@@ -39,7 +39,7 @@ impl Room {
 			ourselves.lock().remove(&broadcast);
 		});
 
-		Ok(producer.into())
+		producer.into()
 	}
 
 	pub async fn joined(&mut self) -> Option<BroadcastConsumer> {

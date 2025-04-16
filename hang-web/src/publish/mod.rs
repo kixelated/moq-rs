@@ -46,7 +46,7 @@ impl Publish {
 		match command {
 			PublishCommand::Name(name) => {
 				self.name = name;
-				self.create_broadcast()?;
+				self.create_broadcast();
 			}
 			PublishCommand::VideoInit { width, height } => {
 				self.video = Some(PublishVideo::init(self.video_id, width, height).await?);
@@ -91,14 +91,16 @@ impl Publish {
 		Ok(())
 	}
 
-	pub fn set_room(&mut self, room: Option<Room>) -> Result<()> {
+	pub fn set_room(&mut self, room: Option<Room>) {
 		self.room = room;
-		self.create_broadcast()
+		self.create_broadcast();
 	}
 
-	fn create_broadcast(&mut self) -> Result<()> {
+	fn create_broadcast(&mut self) {
+		self.broadcast = None;
+
 		if let (Some(room), Some(name)) = (self.room.as_mut(), self.name.as_ref()) {
-			let mut broadcast = room.join(name.clone())?;
+			let mut broadcast = room.join(name.clone());
 
 			if let Some(video) = self.video.as_mut() {
 				video.publish_to(&mut broadcast);
@@ -109,11 +111,7 @@ impl Publish {
 			}
 
 			self.broadcast = Some(broadcast);
-		} else {
-			self.broadcast = None;
 		}
-
-		Ok(())
 	}
 
 	pub async fn run(&mut self) -> Result<()> {

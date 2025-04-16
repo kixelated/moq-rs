@@ -29,6 +29,6 @@ pub fn start() {
 	wasm_bindgen_futures::spawn_local(async move {
 		let bridge = Bridge::new();
 		let mut room = Room::new(bridge);
-		room.run().await.unwrap();
+		room.run().await;
 	});
 }

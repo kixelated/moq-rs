@@ -43,12 +43,15 @@ just setup
 
 ```sh
 # Run the relay, a demo movie, and web server:
-just all
+just dev
 
 # Or run each individually in separate terminals:
 just relay
 just bbb
 just web
+
+# Or run a single server, hosting the demo page and a video.
+just demo
 ```
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.

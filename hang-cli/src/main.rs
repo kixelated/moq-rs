@@ -1,11 +1,9 @@
 mod client;
 mod config;
-mod fingerprint;
 mod server;
 
 use client::*;
 use config::*;
-use fingerprint::*;
 use server::*;
 
 use clap::Parser;
@@ -16,11 +14,7 @@ async fn main() -> anyhow::Result<()> {
 	config.log.init();
 
 	match config.command.clone() {
-		Command::Serve { path } => {
-			BroadcastServer::new(config, path.into())
-				.run(&mut tokio::io::stdin())
-				.await
-		}
-		Command::Publish { url } => BroadcastClient::new(config, url).run(&mut tokio::io::stdin()).await,
+		Command::Serve(server) => Server::new(config, server).await?.run(&mut tokio::io::stdin()).await,
+		Command::Publish(client) => BroadcastClient::new(config, client).run(&mut tokio::io::stdin()).await,
 	}
 }

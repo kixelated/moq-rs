@@ -77,7 +77,7 @@ impl Origins {
 
 		while let Some(broadcast) = remotes.active().await {
 			if let Some(upstream) = self.route(&broadcast) {
-				downstream.publish(upstream)?;
+				downstream.publish(upstream);
 			}
 		}
 

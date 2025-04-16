@@ -2,7 +2,6 @@ use moq_native::quic;
 use std::net;
 use url::Url;
 
-use anyhow::Context;
 use clap::Parser;
 
 mod clock;
@@ -68,10 +67,7 @@ async fn main() -> anyhow::Result<()> {
 			let track = broadcast.create(track);
 			let clock = clock::Publisher::new(track);
 
-			session
-				.publish(broadcast.consume())
-				.context("failed to announce broadcast")?;
-
+			session.publish(broadcast.consume());
 			clock.run().await
 		}
 		Command::Subscribe => {

@@ -1,4 +1,4 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::HashMap;
 
 use crate::{message, model::GroupConsumer, Announced, AnnouncedProducer, Broadcast, BroadcastConsumer, Error, Track};
 
@@ -26,18 +26,10 @@ impl Publisher {
 	}
 
 	/// Publish a broadcast.
-	///
-	// TODO support duplicates to avoid errors, using only the most recent publish?
-	#[tracing::instrument("publish", skip_all, err, fields(broadcast = ?broadcast.info))]
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
-		if !self.announced.announce(broadcast.info.clone()) {
-			return Err(Error::Duplicate);
-		}
-
-		match self.broadcasts.lock().entry(broadcast.info.clone()) {
-			hash_map::Entry::Occupied(_) => return Err(Error::Duplicate),
-			hash_map::Entry::Vacant(entry) => entry.insert(broadcast.clone()),
-		};
+	#[tracing::instrument("publish", skip_all, fields(broadcast = ?broadcast.info))]
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
+		// TODO properly handle duplicates
+		self.broadcasts.lock().insert(broadcast.info.clone(), broadcast.clone());
 
 		let mut this = self.clone();
 
@@ -49,8 +41,6 @@ impl Publisher {
 			this.broadcasts.lock().remove(&broadcast.info);
 			this.announced.unannounce(&broadcast.info);
 		});
-
-		Ok(())
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {

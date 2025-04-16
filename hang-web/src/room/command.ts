@@ -2,4 +2,4 @@
 import type { PublishCommand } from "../publish/command";
 import type { WatchCommand } from "../watch/command";
 
-export type RoomCommand = { Connect: { url: string | null } } | { Publish: PublishCommand } | { Watch: WatchCommand };
+export type RoomCommand = { "Connect": { url: string | null, } } | { "Publish": PublishCommand } | { "Watch": WatchCommand };

@@ -3,7 +3,6 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
-export RUST_LOG := "debug"
 
 # List all of the available commands.
 default:
@@ -11,13 +10,7 @@ default:
 
 # Install any required dependencies.
 setup:
-	# Make sure the WASM target is installed.
-	rustup target add wasm32-unknown-unknown
-
-	# Make sure the right components are installed.
-	rustup component add rustfmt clippy
-
-	# We use binstall to install the other tools because it's faster than from source.
+	# Install binstall so we can install the other tools faster.
 	cargo install cargo-binstall
 
 	# Install the tools
@@ -29,9 +22,14 @@ setup-tools:
 	cargo binstall -y cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run the relay, web server, and publish bbb.
-all:
+dev:
 	# Run the relay, web server, and publish bbb.
 	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+
+# Alternatively, build the demo and host it via hang-cli.
+# This avoids multiple binaries and complicating things.
+demo: build
+	just serve-bbb
 
 # Run a localhost relay server
 relay:
@@ -49,7 +47,7 @@ cluster:
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
 
 # Download and stream the Big Buck Bunny video to localhost directly
-bbb-serve: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-serve "bbb")
+serve-bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (serve "bbb")
 
 # Download and stream the inferior Tears of Steel video
 tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
@@ -87,7 +85,7 @@ pub name:
 		- | cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}"
 
 # Publish a video using ffmpeg directly from hang to the localhost
-pub-serve name:
+serve name:
 	# Pre-build the binary so we don't queue media while compiling.
 	cargo build --bin hang
 
@@ -97,7 +95,7 @@ pub-serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "demo/{{name}}"
 
 # Run the web server
 web:
@@ -159,6 +157,12 @@ fix:
 	# requires: cargo install cargo-sort
 	cargo sort --workspace
 
+	# requires: cargo install cargo-audit
+	cargo audit
+
+	# Update any patch versions
+	cargo update
+
 	# Fix the JS packages
 	pnpm -r i
 
@@ -176,8 +180,11 @@ test:
 upgrade:
 	rustup upgrade
 
+	# Update any patch versions
+	cargo update
+
 	# Requires: cargo install cargo-upgrades cargo-edit
-	cargo upgrade
+	cargo upgrade --incompatible
 
 	# Update the NPM dependencies
 	pnpm -r update

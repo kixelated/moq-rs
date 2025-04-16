@@ -1,37 +1,39 @@
-use super::{Config, FingerprintServer};
+use super::Config;
 
 use anyhow::Context;
-use hang::cmaf::Import;
-use hang::moq_lite;
-use hang::BroadcastConsumer;
-use hang::BroadcastProducer;
+use axum::handler::HandlerWithoutStateExt;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::{http::Method, routing::get, Router};
+use clap::Args;
+use hang::{cmaf, moq_lite};
+use hang::{BroadcastConsumer, BroadcastProducer};
 use moq_lite::web_transport;
 use moq_native::quic;
+use std::path::PathBuf;
 use tokio::io::AsyncRead;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 
-pub struct BroadcastServer {
-	config: Config,
-	broadcast: hang::Broadcast,
+/// Host a server, accepting connections from clients.
+#[derive(Args, Clone)]
+pub struct ServerConfig {
+	/// Optionally serve any HTML files in the given directory.
+	#[arg(long)]
+	public: Option<PathBuf>,
+
+	/// The path of the broadcast to serve.
+	path: String,
 }
 
-impl BroadcastServer {
-	pub fn new(config: Config, broadcast: hang::Broadcast) -> Self {
-		Self { config, broadcast }
-	}
+pub struct Server {
+	config: Config,
+	server_config: ServerConfig,
+	tls: moq_native::tls::Config,
+}
 
-	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		let producer = BroadcastProducer::new(self.broadcast.clone().into());
-		let consumer = producer.consume();
-
-		tokio::select! {
-			res = self.accept(consumer) => res,
-			res = self.publish(producer, input) => res,
-		}
-	}
-
-	async fn accept(&self, consumer: BroadcastConsumer) -> anyhow::Result<()> {
-		let mut config = self.config.clone();
-
+impl Server {
+	pub async fn new(mut config: Config, server_config: ServerConfig) -> anyhow::Result<Self> {
 		config.bind = tokio::net::lookup_host(config.bind)
 			.await
 			.context("invalid bind address")?
@@ -43,23 +45,37 @@ impl BroadcastServer {
 			anyhow::bail!("missing TLS certificates");
 		}
 
+		Ok(Self {
+			config,
+			server_config,
+			tls,
+		})
+	}
+
+	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
+		let broadcast: hang::Broadcast = self.server_config.path.clone().into();
+		let producer = BroadcastProducer::new(broadcast.into());
+		let consumer = producer.consume();
+
+		tokio::select! {
+			res = self.accept(consumer) => res,
+			res = self.publish(producer, input) => res,
+			res = self.web() => res,
+		}
+	}
+
+	async fn accept(&self, consumer: BroadcastConsumer) -> anyhow::Result<()> {
 		let quic = quic::Endpoint::new(quic::Config {
-			bind: config.bind,
-			tls: tls.clone(),
+			bind: self.config.bind,
+			tls: self.tls.clone(),
 		})?;
-		let mut server = quic.server.context("missing TLS certificate")?;
 
-		// Create a web server to serve the fingerprint.
-		let web = FingerprintServer::new(config.bind, tls);
-		tokio::spawn(async move {
-			web.run().await.expect("failed to run web server");
-		});
-
-		tracing::info!(addr = %config.bind, "listening");
+		let mut quic = quic.server.context("missing TLS certificate")?;
+		tracing::info!(addr = %self.config.bind, "listening");
 
 		let mut conn_id = 0;
 
-		while let Some(session) = server.accept().await {
+		while let Some(session) = quic.accept().await {
 			let id = conn_id;
 			conn_id += 1;
 
@@ -72,7 +88,7 @@ impl BroadcastServer {
 					.await
 					.expect("failed to accept session");
 
-				session.publish(consumer.inner).expect("failed to publish");
+				session.publish(consumer.inner);
 
 				tracing::info!(?id, "accepted");
 			});
@@ -82,16 +98,45 @@ impl BroadcastServer {
 	}
 
 	async fn publish<T: AsyncRead + Unpin>(&self, producer: BroadcastProducer, input: &mut T) -> anyhow::Result<()> {
-		let mut import = Import::new(producer);
+		let mut import = cmaf::Import::new(producer);
 
 		import
 			.init_from(input)
 			.await
 			.context("failed to initialize cmaf from input")?;
 
-		tracing::info!("initialized");
-
 		import.read_from(input).await?;
+
+		Ok(())
+	}
+
+	// Run a HTTP server using Axum to serve the certificate fingerprint.
+	async fn web(&self) -> anyhow::Result<()> {
+		// Get the first certificate's fingerprint.
+		// TODO serve all of them so we can support multiple signature algorithms.
+		let fingerprint = self.tls.fingerprints.first().expect("missing certificate").clone();
+
+		async fn handle_404() -> impl IntoResponse {
+			(StatusCode::NOT_FOUND, "Not found")
+		}
+
+		let mut app = Router::new()
+			.route("/certificate.sha256", get(fingerprint))
+			.layer(CorsLayer::new().allow_origin(Any).allow_methods([Method::GET]));
+
+		// If a public directory is provided, serve it.
+		// We use this for local development to serve the index.html file and friends.
+		if let Some(public) = self.server_config.public.as_ref() {
+			tracing::info!(?public, "serving directory");
+
+			let public = ServeDir::new(public).not_found_service(handle_404.into_service());
+			app = app.fallback_service(public);
+		} else {
+			app = app.fallback_service(handle_404.into_service());
+		}
+
+		let server = hyper_serve::bind(self.config.bind);
+		server.serve(app.into_make_service()).await?;
 
 		Ok(())
 	}

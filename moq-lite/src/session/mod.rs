@@ -156,7 +156,7 @@ impl Session {
 	}
 
 	/// Publish a broadcast, automatically announcing and serving it.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Result<(), Error> {
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
 		self.publisher.publish(broadcast)
 	}
 

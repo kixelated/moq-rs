@@ -86,7 +86,7 @@ impl Cluster {
 
 				// Announce ourselves as an origin to the root node.
 				if let Some(myself) = &myself {
-					root.publish(myself.consume())?;
+					root.publish(myself.consume());
 				}
 
 				// Subscribe to available origins.

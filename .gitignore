@@ -8,11 +8,10 @@
 !.vscode/extensions.json
 .idea
 
-# Build stuff
-node_modules
+# Build stuff.
 target
-dist
 pkg
+dist
 
 # Don't leak dev stuff
 *.mp4
@@ -21,9 +20,8 @@ pkg
 *.key
 *.hex
 
-# We're using npm
+# We're using pnpm
+package-lock.json
 bun.lockb
 yarn.lock
-pnpm-lock.yaml
-
-result
+node_modules
