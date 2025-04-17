@@ -107,7 +107,7 @@ See the published [crate](https://crates.io/crates/moq-transfork) and [documenta
 ## moq-clock
 
 [moq-clock](moq-clock) is a simple client that can publish or subscribe to the current time.
-It's meant to demonstate that [moq-transfork](moq-transfork) can be used for more than just media.
+It's meant to demonstrate that [moq-transfork](moq-transfork) can be used for more than just media.
 
 ## nix/nixos
 
