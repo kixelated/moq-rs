@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.12.0...moq-transfork-v0.13.0) - 2025-04-17
+
+### Other
+
+- Start work on a synchronous moq-proto crate. ([#364](https://github.com/kixelated/moq-rs/pull/364))
+
 ## [0.12.0](https://github.com/kixelated/moq-rs/compare/moq-transfork-v0.11.0...moq-transfork-v0.12.0) - 2025-03-01
 
 ### Other

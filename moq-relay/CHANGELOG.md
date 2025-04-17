@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.25](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.24...moq-relay-v0.6.25) - 2025-04-17
+
+### Other
+
+- ...minus the println! ([#363](https://github.com/kixelated/moq-rs/pull/363))
+- Also fix the /announced and /fetch endpoint. ([#362](https://github.com/kixelated/moq-rs/pull/362))
+
 ## [0.6.24](https://github.com/kixelated/moq-rs/compare/moq-relay-v0.6.23...moq-relay-v0.6.24) - 2025-03-09
 
 ### Other

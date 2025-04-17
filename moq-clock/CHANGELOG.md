@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.27](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.26...moq-clock-v0.5.27) - 2025-04-17
+
+### Other
+
+- updated the following local packages: moq-transfork
+
 ## [0.5.26](https://github.com/kixelated/moq-rs/compare/moq-clock-v0.5.25...moq-clock-v0.5.26) - 2025-03-09
 
 ### Other
