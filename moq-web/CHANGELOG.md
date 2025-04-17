@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.6...moq-web-v0.4.7) - 2025-04-17
+
+### Other
+
+- Allow providing your own <canvas>. ([#367](https://github.com/kixelated/moq-rs/pull/367))
+- Remove the leading slash in broadcast names. ([#361](https://github.com/kixelated/moq-rs/pull/361))
+- Added the ability to host a broadcast without a relay ([#355](https://github.com/kixelated/moq-rs/pull/355))
+- Fix codec string parsing when using hev1. ([#356](https://github.com/kixelated/moq-rs/pull/356))
+
 ## [0.4.6](https://github.com/kixelated/moq-rs/compare/moq-web-v0.4.5...moq-web-v0.4.6) - 2025-03-09
 
 ### Other
