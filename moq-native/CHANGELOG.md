@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.8...moq-native-v0.6.9) - 2025-04-17
+
+### Other
+
+- updated the following local packages: moq-transfork
+
 ## [0.6.8](https://github.com/kixelated/moq-rs/compare/moq-native-v0.6.7...moq-native-v0.6.8) - 2025-03-09
 
 ### Other

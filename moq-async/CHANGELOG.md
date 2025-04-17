@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kixelated/moq-rs/compare/moq-async-v0.1.3...moq-async-v0.1.4) - 2025-04-17
+
+### Other
+
+- Bump tokio from 1.44.0 to 1.44.2 ([#369](https://github.com/kixelated/moq-rs/pull/369))
+
 ## [0.1.3](https://github.com/kixelated/moq-rs/compare/moq-async-v0.1.2...moq-async-v0.1.3) - 2025-03-01
 
 ### Other
