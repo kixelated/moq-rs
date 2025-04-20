@@ -6,14 +6,13 @@ pub use audio::*;
 pub use command::*;
 pub use video::*;
 
-use hang::{BroadcastProducer, Room};
+use hang::{moq_lite::Session, BroadcastProducer};
 
-use crate::Result;
+use crate::{Connect, Result};
 
+#[derive(Default)]
 pub struct Publish {
-	room: Option<Room>,
-	name: Option<String>,
-
+	connect: Option<Connect>,
 	broadcast: Option<BroadcastProducer>,
 
 	audio: Option<PublishAudio>,
@@ -23,30 +22,15 @@ pub struct Publish {
 	video_id: usize,
 }
 
-impl Default for Publish {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl Publish {
-	pub fn new() -> Self {
-		Self {
-			room: None,
-			broadcast: None,
-			name: None,
-			audio: None,
-			audio_id: 0,
-			video: None,
-			video_id: 0,
-		}
-	}
-
-	pub async fn recv_command(&mut self, command: PublishCommand) -> Result<()> {
+	pub async fn recv(&mut self, command: PublishCommand) -> Result<()> {
 		match command {
-			PublishCommand::Name(name) => {
-				self.name = name;
-				self.create_broadcast();
+			PublishCommand::Connect(url) => {
+				self.connect = None;
+
+				if let Some(url) = url {
+					self.connect = Some(Connect::new(url)?);
+				}
 			}
 			PublishCommand::VideoInit { width, height } => {
 				self.video = Some(PublishVideo::init(self.video_id, width, height).await?);
@@ -91,34 +75,35 @@ impl Publish {
 		Ok(())
 	}
 
-	pub fn set_room(&mut self, room: Option<Room>) {
-		self.room = room;
-		self.create_broadcast();
-	}
-
-	fn create_broadcast(&mut self) {
-		self.broadcast = None;
-
-		if let (Some(room), Some(name)) = (self.room.as_mut(), self.name.as_ref()) {
-			let mut broadcast = room.join(name.clone());
-
-			if let Some(video) = self.video.as_mut() {
-				video.publish_to(&mut broadcast);
-			}
-
-			if let Some(audio) = self.audio.as_mut() {
-				audio.publish_to(&mut broadcast);
-			}
-
-			self.broadcast = Some(broadcast);
-		}
-	}
-
 	pub async fn run(&mut self) -> Result<()> {
-		tokio::select! {
-			Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => Err(err),
-			Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => Err(err),
-			else => Ok(()),
+		loop {
+			tokio::select! {
+				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
+					let connect = self.connect.take().unwrap();
+					self.connected(connect, session?)?;
+				}
+				Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => return Err(err),
+				Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => return Err(err),
+				else => return Ok(()),
+			};
 		}
+	}
+
+	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
+		tracing::info!("connected to server");
+
+		let path = connect.path.strip_prefix("/").unwrap().to_string();
+		let mut room = hang::Room::new(session, path.to_string());
+		let mut broadcast = room.join(path);
+
+		if let Some(video) = self.video.as_mut() {
+			video.publish_to(&mut broadcast);
+		}
+
+		if let Some(audio) = self.audio.as_mut() {
+			audio.publish_to(&mut broadcast);
+		}
+
+		Ok(())
 	}
 }

@@ -46,7 +46,7 @@ impl Session {
 			};
 
 			if let Err(err) = res {
-				tracing::warn!(?err, "terminated");
+				tracing::warn!(?err, "session terminated");
 				session.close(err.to_code(), &err.to_string());
 			}
 		});

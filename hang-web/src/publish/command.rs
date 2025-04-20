@@ -4,8 +4,9 @@ use web_message::Message;
 #[derive(Debug, Message, TS)]
 #[ts(export, export_to = "../src/publish/command.ts")]
 pub enum PublishCommand {
-	// Choose our broadcast name, or None to disable broadcasting.
-	Name(Option<String>),
+	// Publish a broadcast with the given URL.
+	// ex. https://relay.quic.video/demo/bbb
+	Connect(Option<String>),
 
 	// Create a new audio track.
 	AudioInit {

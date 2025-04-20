@@ -4,10 +4,13 @@ use web_message::Message;
 #[derive(Debug, Message, TS)]
 #[ts(export, export_to = "../src/watch/command.ts")]
 pub enum WatchCommand {
-	// Render the video to the given canvas if visible.
+	// Join a room at the given URL, or none to leave the current room.
+	Connect(Option<String>),
+
+	// Render the video to the given canvas, or none to disable rendering.
 	#[ts(type = "OffscreenCanvas | null")]
 	Canvas(Option<web_sys::OffscreenCanvas>),
 
-	// Use the given latency for the video.
+	// Set the latency of the video.
 	Latency(u32),
 }

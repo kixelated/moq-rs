@@ -3,6 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
+export RUST_LOG := "debug"
 
 # List all of the available commands.
 default:
@@ -22,7 +23,7 @@ setup-tools:
 	cargo binstall -y cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run the relay, web server, and publish bbb.
-dev:
+all:
 	# Run the relay, web server, and publish bbb.
 	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
@@ -95,11 +96,12 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "demo/{{name}}"
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve --dir "hang-web/public" "demo/{{name}}"
 
 # Run the web server
 web:
-	pnpm -r i && pnpm -r run dev
+	pnpm -r i
+	RUST_LOG=warn pnpm -r run dev
 
 # Publish the clock broadcast
 clock-pub:
@@ -178,6 +180,7 @@ test:
 
 # Upgrade any tooling
 upgrade:
+	# Upgrade the Rust toolchain... I guess.
 	rustup upgrade
 
 	# Update any patch versions
@@ -187,9 +190,11 @@ upgrade:
 	cargo upgrade --incompatible
 
 	# Update the NPM dependencies
+	pnpm self-update
 	pnpm -r update
 	pnpm -r outdated
 
 # Build the release NPM package
 build:
-	pnpm -r i && pnpm -r run build
+	pnpm -r i
+	RUST_LOG=warn pnpm -r run build

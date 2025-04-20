@@ -20,7 +20,7 @@ use tower_http::services::ServeDir;
 pub struct ServerConfig {
 	/// Optionally serve any HTML files in the given directory.
 	#[arg(long)]
-	public: Option<PathBuf>,
+	dir: Option<PathBuf>,
 
 	/// The path of the broadcast to serve.
 	path: String,
@@ -90,7 +90,7 @@ impl Server {
 
 				session.publish(consumer.inner);
 
-				tracing::info!(?id, "accepted");
+				tracing::info!(?id, "accepted session");
 			});
 		}
 
@@ -126,7 +126,7 @@ impl Server {
 
 		// If a public directory is provided, serve it.
 		// We use this for local development to serve the index.html file and friends.
-		if let Some(public) = self.server_config.public.as_ref() {
+		if let Some(public) = self.server_config.dir.as_ref() {
 			tracing::info!(?public, "serving directory");
 
 			let public = ServeDir::new(public).not_found_service(handle_404.into_service());

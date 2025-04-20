@@ -21,7 +21,8 @@ pub struct Connect {
 }
 
 impl Connect {
-	pub fn new(mut addr: Url) -> Self {
+	pub fn new(addr: String) -> Result<Self> {
+		let mut addr = Url::parse(&addr)?;
 		let path = addr.path().to_string();
 
 		// Connect using the base of the URL.
@@ -37,7 +38,7 @@ impl Connect {
 			entry.clone()
 		});
 
-		Self { path, pending }
+		Ok(Self { path, pending })
 	}
 
 	fn create(addr: Url) -> ConnectionPending {
@@ -87,7 +88,7 @@ impl Connect {
 				let client = client.with_system_roots()?;
 				client.connect(addr).await?
 			}
-			_ => return Err(Error::InvalidUrl(addr.to_string())),
+			_ => return Err(Error::InvalidScheme),
 		};
 
 		let session = moq_lite::Session::connect(session).await?;
@@ -96,7 +97,7 @@ impl Connect {
 
 	async fn fingerprint(url: &Url) -> Result<Vec<u8>> {
 		let mut fingerprint = url.clone();
-		fingerprint.set_path("fingerprint");
+		fingerprint.set_path("certificate.sha256");
 
 		let resp = gloo_net::http::Request::get(fingerprint.as_str()).send().await?;
 

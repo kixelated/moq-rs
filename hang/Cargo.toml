@@ -26,7 +26,7 @@ serde_with = { version = "3", features = ["hex"] }
 thiserror = "2"
 tokio = { workspace = true, features = ["macros"] }
 tracing = "0.1"
-web-async = "0.1"
+web-async = { workspace = true }
 
 [dependencies.derive_more]
 version = "2"

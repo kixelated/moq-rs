@@ -22,7 +22,10 @@ pub enum Error {
 	Karp(#[from] hang::Error),
 
 	#[error("invalid url: {0}")]
-	InvalidUrl(String),
+	InvalidUrl(#[from] url::ParseError),
+
+	#[error("invalid scheme")]
+	InvalidScheme,
 
 	#[error("invalid fingerprint")]
 	InvalidFingerprint,

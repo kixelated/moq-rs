@@ -2829,10 +2829,9 @@ dependencies = [
 [[package]]
 name = "web-async"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79a5427363c7415f6fb0334d99028746fa340bbe0ee802ce210f1fc80ac0f74a"
 dependencies = [
  "tokio",
+ "tracing",
  "wasm-bindgen-futures",
 ]
 
@@ -2855,7 +2854,6 @@ name = "web-message"
 version = "0.0.1"
 dependencies = [
  "thiserror 2.0.12",
- "url",
  "web-message-derive",
  "web-sys",
 ]

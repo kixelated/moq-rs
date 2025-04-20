@@ -36,11 +36,12 @@ impl Subscriber {
 	/// Discover any tracks matching a filter.
 	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
 		let prefix = prefix.to_string();
+
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.subscribe(prefix.clone());
 
 		let mut session = self.session.clone();
-		spawn(async move {
+		web_async::spawn(async move {
 			let mut stream = match Stream::open(&mut session, message::ControlType::Announce).await {
 				Ok(stream) => stream,
 				Err(err) => {
@@ -61,11 +62,11 @@ impl Subscriber {
 	}
 
 	async fn run_announce(stream: &mut Stream, prefix: String, mut announced: AnnouncedProducer) -> Result<(), Error> {
-		tracing::debug!(?prefix, "waiting for announcements");
+		tracing::debug!(%prefix, "receiving announcements");
 
 		stream
 			.writer
-			.encode(&message::AnnouncePlease { prefix: prefix.clone() })
+			.encode(&message::AnnounceRequest { prefix: prefix.clone() })
 			.await?;
 
 		loop {
@@ -93,8 +94,10 @@ impl Subscriber {
 			message::Announce::Active { suffix } => {
 				let broadcast = match prefix {
 					"" => Broadcast::new(suffix),
-					prefix => Broadcast::new(format!("{}/{}", prefix, suffix)),
+					prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
 				};
+
+				tracing::debug!(broadcast = %broadcast.path, "received announced");
 
 				if !announced.announce(broadcast) {
 					return Err(Error::Duplicate);
@@ -103,8 +106,10 @@ impl Subscriber {
 			message::Announce::Ended { suffix } => {
 				let broadcast = match prefix {
 					"" => Broadcast::new(suffix),
-					prefix => Broadcast::new(format!("{}/{}", prefix, suffix)),
+					prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
 				};
+
+				tracing::debug!(broadcast = %broadcast.path, "received unannounced");
 
 				if !announced.unannounce(&broadcast) {
 					return Err(Error::NotFound);
@@ -180,7 +185,6 @@ impl Subscriber {
 		self.broadcasts.lock().remove(&broadcast.info.path);
 	}
 
-	#[tracing::instrument("subscribe", skip_all, fields(?id, ?broadcast, track = ?track.info.name))]
 	async fn run_subscribe(
 		&mut self,
 		id: u64,
@@ -192,7 +196,7 @@ impl Subscriber {
 
 		let request = message::Subscribe {
 			id,
-			broadcast,
+			broadcast: broadcast.clone(),
 			track: track.info.name.clone(),
 			priority: track.info.priority,
 		};
@@ -200,9 +204,9 @@ impl Subscriber {
 		stream.writer.encode(&request).await?;
 
 		// TODO use the response correctly populate the track info
-		let info: message::SubscribeOk = stream.reader.decode().await?;
+		let _info: message::SubscribeOk = stream.reader.decode().await?;
 
-		tracing::info!(?info, "active");
+		tracing::info!(%broadcast, track = %track.info.name, id, "started subscription");
 
 		loop {
 			tokio::select! {
@@ -221,7 +225,7 @@ impl Subscriber {
 			};
 		}
 
-		tracing::info!("done");
+		tracing::info!(broadcast = %broadcast, track = %track.info.name, id, "subscription complete");
 
 		Ok(())
 	}
@@ -231,7 +235,6 @@ impl Subscriber {
 		self.recv_group_inner(stream, group).await.or_close(stream)
 	}
 
-	#[tracing::instrument("group", skip_all, err, fields(subscribe = ?group.subscribe, group = group.sequence))]
 	pub async fn recv_group_inner(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), Error> {
 		let mut group = {
 			let mut subs = self.subscribes.lock();
@@ -252,8 +255,6 @@ impl Subscriber {
 				let chunk = stream.read(remain as usize).await?.ok_or(Error::WrongSize)?;
 
 				remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
-				tracing::trace!(size = chunk.len(), remain, "chunk");
-
 				frame.write(chunk);
 			}
 		}

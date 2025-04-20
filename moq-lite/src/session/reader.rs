@@ -39,7 +39,7 @@ impl Reader {
 			};
 
 			if !self.buffer.is_empty() {
-				tracing::trace!(?self.buffer, "more data needed");
+				tracing::trace!(buffer = ?self.buffer, "more data needed");
 			}
 
 			if self.stream.read_buf(&mut self.buffer).await?.is_none() {

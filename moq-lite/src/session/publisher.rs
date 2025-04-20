@@ -26,10 +26,12 @@ impl Publisher {
 	}
 
 	/// Publish a broadcast.
-	#[tracing::instrument("publish", skip_all, fields(broadcast = ?broadcast.info))]
 	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
 		// TODO properly handle duplicates
 		self.broadcasts.lock().insert(broadcast.info.clone(), broadcast.clone());
+		self.announced.announce(broadcast.info.clone());
+
+		tracing::debug!(broadcast = %broadcast.info.path, "published");
 
 		let mut this = self.clone();
 
@@ -40,13 +42,15 @@ impl Publisher {
 			}
 			this.broadcasts.lock().remove(&broadcast.info);
 			this.announced.unannounce(&broadcast.info);
+
+			tracing::debug!(broadcast = %broadcast.info.path, "unpublished");
 		});
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let interest = stream.reader.decode::<message::AnnouncePlease>().await?;
+		let interest = stream.reader.decode::<message::AnnounceRequest>().await?;
 		let prefix = interest.prefix;
-		tracing::debug!(?prefix, "announce interest");
+		tracing::debug!(%prefix, "serving announcements");
 
 		let mut announced = self.announced.subscribe(&prefix);
 
@@ -54,7 +58,7 @@ impl Publisher {
 		while let Some(announced) = announced.next().await {
 			match announced {
 				Announced::Active(broadcast) => {
-					tracing::debug!(?broadcast, "announce active");
+					tracing::debug!(broadcast = %broadcast.path, "served announce");
 					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 
 					let msg = message::Announce::Active {
@@ -63,7 +67,7 @@ impl Publisher {
 					stream.writer.encode(&msg).await?;
 				}
 				Announced::Ended(broadcast) => {
-					tracing::debug!(?broadcast, "announce ended");
+					tracing::debug!(broadcast = %broadcast.path, "served unannounced");
 					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 					let msg = message::Announce::Ended {
 						suffix: suffix.path.to_string(),
@@ -81,7 +85,6 @@ impl Publisher {
 		self.serve_subscribe(stream, subscribe).await
 	}
 
-	#[tracing::instrument("publishing", skip_all, err, fields(broadcast = ?subscribe.broadcast, track = ?subscribe.track, id = subscribe.id))]
 	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			name: subscribe.track,
@@ -97,7 +100,7 @@ impl Publisher {
 			priority: track.info.priority,
 		};
 
-		tracing::info!(?info, "active");
+		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id = subscribe.id, "serving subscription");
 
 		stream.writer.encode(&info).await?;
 
@@ -112,7 +115,7 @@ impl Publisher {
 
 					spawn(async move {
 						if let Err(err) = Self::serve_group(session, subscribe.id, priority, &mut group).await {
-							tracing::warn!(?err, subscribe = ?subscribe.id, group = ?group.info, "dropped");
+							tracing::warn!(?err, subscribe = ?subscribe.id, group = ?group.info, "dropped group");
 						}
 					});
 				},
@@ -129,12 +132,11 @@ impl Publisher {
 			}
 		}
 
-		tracing::info!("done");
+		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id = subscribe.id, "subscription complete");
 
 		Ok(())
 	}
 
-	#[tracing::instrument("group", skip_all, fields(?subscribe, ?priority, sequence = ?group.info.sequence))]
 	pub async fn serve_group(
 		mut session: web_transport::Session,
 		subscribe: u64,
@@ -144,8 +146,6 @@ impl Publisher {
 		// TODO open streams in priority order to help with MAX_STREAMS flow control issues.
 		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
 		stream.set_priority(priority);
-
-		tracing::trace!("serving");
 
 		Self::serve_group_inner(subscribe, group, &mut stream)
 			.await
@@ -164,8 +164,6 @@ impl Publisher {
 
 		stream.encode(&msg).await?;
 
-		let mut frames = 0;
-
 		while let Some(mut frame) = group.next_frame().await? {
 			let header = message::Frame { size: frame.info.size };
 			stream.encode(&header).await?;
@@ -174,19 +172,13 @@ impl Publisher {
 
 			while let Some(chunk) = frame.read().await? {
 				remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
-				tracing::trace!(chunk = chunk.len(), remain, "chunk");
-
 				stream.write(&chunk).await?;
 			}
 
 			if remain > 0 {
 				return Err(Error::WrongSize);
 			}
-
-			frames += 1;
 		}
-
-		tracing::debug!(frames, "served");
 
 		// TODO block until all bytes have been acknowledged so we can still reset
 		// writer.finish().await?;

@@ -24,11 +24,5 @@
 		"webpack": "^5.99.5",
 		"webpack-cli": "^6.0.1",
 		"webpack-dev-server": "^5.2.1"
-	},
-	"pnpm": {
-		"overrides": {
-			"axios@>=0.8.1 <0.28.0": ">=0.28.0",
-			"axios@<0.30.0": ">=0.30.0"
-		}
 	}
 }

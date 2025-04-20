@@ -1,13 +1,17 @@
 mod bridge;
+mod command;
+mod connect;
 mod error;
 mod publish;
-mod room;
+mod status;
 mod watch;
 
 pub use bridge::*;
+pub use command::*;
+pub use connect::*;
 pub use error::*;
 pub use publish::*;
-pub use room::*;
+pub use status::*;
 pub use watch::*;
 
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -28,7 +32,6 @@ pub fn start() {
 
 	wasm_bindgen_futures::spawn_local(async move {
 		let bridge = Bridge::new();
-		let mut room = Room::new(bridge);
-		room.run().await;
+		bridge.run().await;
 	});
 }

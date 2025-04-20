@@ -2,14 +2,6 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::coding::*;
 
-/// Send by the publisher, used to determine the message that follows.
-#[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
-#[repr(u8)]
-enum AnnounceStatus {
-	Ended = 0,
-	Active = 1,
-}
-
 /// Sent by the publisher to announce the availability of a track.
 /// The payload contains the contents of the wildcard.
 #[derive(Clone, Debug)]
@@ -48,22 +40,30 @@ impl Encode for Announce {
 
 /// Sent by the subscriber to request ANNOUNCE messages.
 #[derive(Clone, Debug)]
-pub struct AnnouncePlease {
+pub struct AnnounceRequest {
 	// Request tracks with this prefix.
 	pub prefix: String,
 }
 
-impl Decode for AnnouncePlease {
+impl Decode for AnnounceRequest {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		let prefix = String::decode(r)?;
 		Ok(Self { prefix })
 	}
 }
 
-impl Encode for AnnouncePlease {
+impl Encode for AnnounceRequest {
 	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
 		self.prefix.encode(w)
 	}
+}
+
+/// Send by the publisher, used to determine the message that follows.
+#[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+enum AnnounceStatus {
+	Ended = 0,
+	Active = 1,
 }
 
 impl Decode for AnnounceStatus {

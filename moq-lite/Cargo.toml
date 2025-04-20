@@ -28,5 +28,5 @@ tokio = { workspace = true, features = [
 	"test-util",
 ] }
 tracing = "0.1"
-web-async = "0.1"
+web-async = { workspace = true }
 web-transport = { workspace = true }

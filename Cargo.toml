@@ -13,6 +13,9 @@ resolver = "2"
 [workspace.dependencies]
 #web-transport = { path = "../web-transport-rs/web-transport" }
 web-transport = "0.8"
+web-async = { path = "../web-rs/web-async", version = "0.1", features = [
+	"tracing",
+] }
 tokio = "1.44"
 serde = { version = "1", features = ["derive"] }
 

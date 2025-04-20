@@ -56,14 +56,12 @@ impl BroadcastClient {
 			tls,
 		})?;
 
-		tracing::info!(?self.url, "connecting");
+		tracing::info!(url = %self.url, "connecting");
 
 		let session = quic.client.connect(self.url.clone()).await?;
 		let mut session = Session::connect(session).await?;
 
 		session.publish(consumer.inner.clone());
-
-		tracing::info!("publishing");
 
 		Err(session.closed().await.into())
 	}
