@@ -4,6 +4,7 @@ mod video;
 
 pub use command::*;
 pub use renderer::*;
+use url::Url;
 pub use video::*;
 
 use crate::{Connect, Result};
@@ -12,7 +13,10 @@ use hang::moq_lite::Session;
 #[derive(Default)]
 pub struct Watch {
 	connect: Option<Connect>,
-	room: Option<hang::Room>,
+
+	broadcast: Option<hang::BroadcastConsumer>,
+	catalogs: Option<hang::CatalogConsumer>,
+
 	canvas: Option<web_sys::OffscreenCanvas>,
 	latency: u32,
 }
@@ -24,7 +28,8 @@ impl Watch {
 				self.connect = None;
 
 				if let Some(url) = url {
-					self.connect = Some(Connect::new(url)?);
+					let url = Url::parse(&url)?;
+					self.connect = Some(Connect::new(url));
 				}
 			}
 			WatchCommand::Canvas(canvas) => self.canvas = canvas,
@@ -37,23 +42,18 @@ impl Watch {
 	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
 		tracing::info!("connected to server");
 
-		let path = connect.path.strip_prefix("/").unwrap().to_string();
-		let room = hang::Room::new(session, path.to_string());
-		self.room = Some(room);
-
 		Ok(())
 	}
 
-	pub async fn run(&mut self) -> Result<()> {
+	async fn run(&mut self) -> Result<()> {
 		loop {
 			tokio::select! {
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let connect = self.connect.take().unwrap();
 					self.connected(connect, session?)?;
 				}
-				Some(broadcast) = async { self.room.as_mut()?.joined().await } => {
-					tracing::info!(broadcast = ?broadcast.inner.info, "joined");
-					// TODO Add broadcast
+				Some(catalogs) = async { Some(self.broadcast.as_mut()?.catalog().await) } => {
+					self.catalogs = Some(catalogs?);
 				}
 				else => return Ok(()),
 			}

@@ -21,8 +21,7 @@ pub struct Connect {
 }
 
 impl Connect {
-	pub fn new(addr: String) -> Result<Self> {
-		let mut addr = Url::parse(&addr)?;
+	pub fn new(mut addr: Url) -> Self {
 		let path = addr.path().to_string();
 
 		// Connect using the base of the URL.
@@ -38,7 +37,7 @@ impl Connect {
 			entry.clone()
 		});
 
-		Ok(Self { path, pending })
+		Self { path, pending }
 	}
 
 	fn create(addr: Url) -> ConnectionPending {

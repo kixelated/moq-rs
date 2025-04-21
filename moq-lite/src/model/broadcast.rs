@@ -15,7 +15,7 @@ pub struct Broadcast {
 }
 
 impl Broadcast {
-	pub fn new<P: ToString>(path: P) -> Self {
+	pub fn new<T: ToString>(path: T) -> Self {
 		Self { path: path.to_string() }
 	}
 
@@ -31,7 +31,7 @@ impl Broadcast {
 			Some(self)
 		} else {
 			let suffix = self.path.strip_prefix(prefix)?;
-			Some(Broadcast::new(suffix))
+			Some(suffix.into())
 		}
 	}
 }
@@ -49,6 +49,8 @@ impl<T: ToString> From<T> for Broadcast {
 #[derive(Clone)]
 pub struct BroadcastProducer {
 	pub info: Broadcast,
+
+	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
 	queue: async_channel::Receiver<BroadcastRequest>,
 	weak: async_channel::Sender<BroadcastRequest>,
 
@@ -64,6 +66,7 @@ impl BroadcastProducer {
 		Self {
 			info,
 			queue: recv,
+			lookup: Arc::new(Mutex::new(HashMap::new())),
 			weak: send.clone(),
 			closed: watch::Sender::default(),
 		}
@@ -71,80 +74,6 @@ impl BroadcastProducer {
 
 	pub async fn requested(&self) -> BroadcastRequest {
 		self.queue.recv().await.unwrap()
-	}
-
-	// Try to create a new consumer.
-	pub fn consume(&self) -> BroadcastConsumer {
-		BroadcastConsumer {
-			info: self.info.clone(),
-			queue: self.weak.clone(),
-			closed: self.closed.subscribe(),
-		}
-	}
-
-	/// Block until there are no more consumers.
-	///
-	/// A new consumer can be created by calling [Self::consume] and this will block again.
-	pub async fn unused(&self) {
-		self.closed.closed().await;
-	}
-
-	// TODO Block until there is at least one consumer.
-	//pub async fn used(&self) {
-	//}
-
-	pub fn map(self) -> BroadcastMap {
-		let map = BroadcastMap::new(self);
-		web_async::spawn(map.clone().serve());
-		map
-	}
-}
-
-impl From<Broadcast> for BroadcastProducer {
-	fn from(info: Broadcast) -> Self {
-		BroadcastProducer::new(info)
-	}
-}
-
-/// Subscribe to abitrary broadcast/tracks.
-#[derive(Clone)]
-pub struct BroadcastConsumer {
-	pub info: Broadcast,
-	queue: async_channel::Sender<BroadcastRequest>,
-
-	// Annoying, but we need to know when the above channel is closed without sending.
-	closed: watch::Receiver<()>,
-}
-
-impl BroadcastConsumer {
-	pub async fn request(&self, track: Track) -> Result<TrackConsumer, Error> {
-		let (send, recv) = oneshot::channel();
-		let request = BroadcastRequest { track, reply: send };
-
-		if self.queue.send(request).await.is_err() {
-			return Err(Error::Cancel);
-		}
-
-		recv.await.map_err(|_| Error::Cancel)?
-	}
-
-	pub async fn closed(&self) {
-		self.closed.clone().changed().await.ok();
-	}
-}
-
-#[derive(Clone)]
-pub struct BroadcastMap {
-	pub inner: BroadcastProducer,
-	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
-}
-
-impl BroadcastMap {
-	pub fn new(inner: BroadcastProducer) -> Self {
-		Self {
-			lookup: Arc::new(Mutex::new(HashMap::new())),
-			inner,
-		}
 	}
 
 	pub fn create(&self, track: Track) -> TrackProducer {
@@ -165,22 +94,60 @@ impl BroadcastMap {
 		lookup.remove(name)
 	}
 
+	// Try to create a new consumer.
 	pub fn consume(&self) -> BroadcastConsumer {
-		self.inner.consume()
+		BroadcastConsumer {
+			info: self.info.clone(),
+			queue: self.weak.clone(),
+			lookup: self.lookup.clone(),
+			closed: self.closed.subscribe(),
+		}
 	}
 
-	// Convert a push-based producer into a pull-based producer.
-	async fn serve(self) {
-		loop {
-			let request = self.inner.requested().await;
+	/// Block until there are no more consumers.
+	///
+	/// A new consumer can be created by calling [Self::consume] and this will block again.
+	pub async fn unused(&self) {
+		self.closed.closed().await;
+	}
+}
 
-			let lookup = self.lookup.lock().unwrap();
-			if let Some(consumer) = lookup.get(&request.track.name) {
-				request.serve(consumer.clone());
-			} else {
-				request.close(Error::NotFound);
-			}
+impl From<Broadcast> for BroadcastProducer {
+	fn from(info: Broadcast) -> Self {
+		BroadcastProducer::new(info)
+	}
+}
+
+/// Subscribe to abitrary broadcast/tracks.
+#[derive(Clone)]
+pub struct BroadcastConsumer {
+	pub info: Broadcast,
+
+	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
+	queue: async_channel::Sender<BroadcastRequest>,
+
+	// Annoying, but we need to know when the above channel is closed without sending.
+	closed: watch::Receiver<()>,
+}
+
+impl BroadcastConsumer {
+	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
+		if let Some(consumer) = self.lookup.lock().unwrap().get(&track.name).cloned() {
+			return Ok(consumer);
 		}
+
+		let (send, recv) = oneshot::channel();
+		let request = BroadcastRequest { track, reply: send };
+
+		if self.queue.send(request).await.is_err() {
+			return Err(Error::Cancel);
+		}
+
+		recv.await.map_err(|_| Error::Cancel)?
+	}
+
+	pub async fn closed(&self) {
+		self.closed.clone().changed().await.ok();
 	}
 }
 

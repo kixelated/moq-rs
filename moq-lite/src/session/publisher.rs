@@ -94,7 +94,7 @@ impl Publisher {
 		let broadcast = Broadcast::new(subscribe.broadcast);
 
 		let broadcast = self.broadcasts.lock().get(&broadcast).ok_or(Error::NotFound)?.clone();
-		let mut track = broadcast.request(track).await?;
+		let mut track = broadcast.subscribe(track).await?;
 
 		let info = message::SubscribeOk {
 			priority: track.info.priority,
@@ -111,7 +111,7 @@ impl Publisher {
 				Some(group) = track.next_group().transpose() => {
 					let mut group = group?;
 					let session = self.session.clone();
-					let priority = Self::stream_priority(track.info.priority, group.info.sequence);
+					let priority = Self::stream_priority(subscribe.priority, group.info.sequence);
 
 					spawn(async move {
 						if let Err(err) = Self::serve_group(session, subscribe.id, priority, &mut group).await {

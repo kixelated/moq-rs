@@ -8,40 +8,35 @@ pub use moq_lite::Broadcast;
 #[derive(Clone)]
 pub struct BroadcastProducer {
 	pub catalog: CatalogProducer,
-	pub tracks: moq_lite::BroadcastMap,
+	pub producer: moq_lite::BroadcastProducer,
 }
 
 impl BroadcastProducer {
 	pub fn new(producer: moq_lite::BroadcastProducer) -> Self {
-		let producer = producer.map();
-
 		let catalog = Catalog::default().produce();
 		producer.insert(catalog.consume().track);
 
-		Self {
-			tracks: producer,
-			catalog,
-		}
+		Self { producer, catalog }
 	}
 
 	pub fn consume(&self) -> BroadcastConsumer {
-		self.tracks.inner.consume().into()
+		self.producer.consume().into()
 	}
 
 	pub fn path(&self) -> &str {
-		&self.tracks.inner.info.path
+		&self.producer.info.path
 	}
 
 	/// Add a video track to the broadcast.
 	pub fn add_video(&mut self, track: TrackConsumer, info: Video) {
-		self.tracks.insert(track.inner.clone());
+		self.producer.insert(track.inner.clone());
 		self.catalog.add_video(info.clone());
 		self.catalog.publish();
 
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.tracks.remove(&track.inner.info.name);
+			this.producer.remove(&track.inner.info.name);
 			this.catalog.remove_video(&info);
 			this.catalog.publish();
 		});
@@ -49,14 +44,14 @@ impl BroadcastProducer {
 
 	/// Add an audio track to the broadcast.
 	pub fn add_audio(&mut self, track: TrackConsumer, info: Audio) {
-		self.tracks.insert(track.inner.clone());
+		self.producer.insert(track.inner.clone());
 		self.catalog.add_audio(info.clone());
 		self.catalog.publish();
 
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.tracks.remove(&track.inner.info.name);
+			this.producer.remove(&track.inner.info.name);
 			this.catalog.remove_audio(&info);
 			this.catalog.publish();
 		});
@@ -84,24 +79,34 @@ impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
 #[derive(Clone)]
 pub struct BroadcastConsumer {
 	pub inner: moq_lite::BroadcastConsumer,
+	catalogs: Option<CatalogConsumer>,
 }
 
 impl BroadcastConsumer {
 	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
-		Self { inner }
+		Self { inner, catalogs: None }
 	}
 
-	pub async fn catalog(&self) -> Result<CatalogConsumer> {
+	async fn catalogs(&self) -> Result<CatalogConsumer> {
 		let track = Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
 			priority: -1,
 		};
-		Ok(self.inner.request(track).await?.into())
+		Ok(self.inner.subscribe(track).await?.into())
+	}
+
+	//. Returns the next catalog from the broadcast.
+	pub async fn catalog(&mut self) -> Result<Option<Catalog>> {
+		if self.catalogs.is_none() {
+			self.catalogs = Some(self.catalogs().await?);
+		}
+
+		self.catalogs.as_mut().unwrap().next().await
 	}
 
 	/// Subscribes to a track
 	pub async fn track(&self, track: Track) -> Result<TrackConsumer> {
-		let track = self.inner.request(track).await?;
+		let track = self.inner.subscribe(track).await?;
 		Ok(TrackConsumer::new(track))
 	}
 }

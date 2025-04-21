@@ -1,5 +1,5 @@
 use std::{
-	collections::{hash_map, HashMap},
+	collections::HashMap,
 	sync::{atomic, Arc},
 };
 
@@ -135,9 +135,7 @@ impl Subscriber {
 	}
 
 	async fn run_broadcast(self, broadcast: BroadcastProducer) {
-		let tracks = Lock::new(HashMap::<String, TrackProducer>::new());
-
-		// Actually start subscriptions.
+		// Actually start serving subscriptions.
 		loop {
 			// Keep serving requests until there are no more consumers.
 			// This way we'll clean up the task when the broadcast is no longer needed.
@@ -146,29 +144,19 @@ impl Subscriber {
 				_ = broadcast.unused() => break,
 			};
 
-			// Check if we can deduplicate this subscription
-			let mut lookup = tracks.lock();
-			let entry = lookup.entry(request.track.name.clone());
-
-			if let hash_map::Entry::Occupied(entry) = &entry {
-				request.serve(entry.get().consume());
-				continue;
-			}
-
 			let producer = request.produce();
-			entry.insert_entry(producer.clone());
+			broadcast.insert(producer.consume());
 
 			let mut this = self.clone();
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-			let tracks = tracks.clone();
-			let broadcast = broadcast.info.clone();
+			let broadcast = broadcast.clone();
 
 			spawn(async move {
 				let track = producer.info.clone();
 
 				if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
 					if let Err(err) = this
-						.run_subscribe(id, broadcast.path, producer, &mut stream)
+						.run_subscribe(id, &broadcast.info, producer, &mut stream)
 						.await
 						.or_close(&mut stream)
 					{
@@ -177,7 +165,7 @@ impl Subscriber {
 				}
 
 				this.subscribes.lock().remove(&id);
-				tracks.lock().remove(&track.name);
+				broadcast.remove(&track.name);
 			});
 		}
 
@@ -188,7 +176,7 @@ impl Subscriber {
 	async fn run_subscribe(
 		&mut self,
 		id: u64,
-		broadcast: String,
+		broadcast: &Broadcast,
 		track: TrackProducer,
 		stream: &mut Stream,
 	) -> Result<(), Error> {
@@ -196,7 +184,7 @@ impl Subscriber {
 
 		let request = message::Subscribe {
 			id,
-			broadcast: broadcast.clone(),
+			broadcast: broadcast.path.clone(),
 			track: track.info.name.clone(),
 			priority: track.info.priority,
 		};
@@ -206,7 +194,7 @@ impl Subscriber {
 		// TODO use the response correctly populate the track info
 		let _info: message::SubscribeOk = stream.reader.decode().await?;
 
-		tracing::info!(%broadcast, track = %track.info.name, id, "started subscription");
+		tracing::info!(broadcast = %broadcast.path, track = %track.info.name, id, "started subscription");
 
 		loop {
 			tokio::select! {
@@ -225,7 +213,7 @@ impl Subscriber {
 			};
 		}
 
-		tracing::info!(broadcast = %broadcast, track = %track.info.name, id, "subscription complete");
+		tracing::info!(broadcast = %broadcast.path, track = %track.info.name, id, "subscription complete");
 
 		Ok(())
 	}

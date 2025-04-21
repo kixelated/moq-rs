@@ -1,1 +1,1 @@
-export { RoomElement } from "../room";
+export { WatchElement } from "../";

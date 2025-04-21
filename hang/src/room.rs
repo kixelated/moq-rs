@@ -49,7 +49,7 @@ impl Room {
 				continue;
 			}
 
-			let consumer = self.session.subscribe(broadcast);
+			let consumer = self.session.namespace(broadcast);
 			return Some(consumer.into());
 		}
 	}

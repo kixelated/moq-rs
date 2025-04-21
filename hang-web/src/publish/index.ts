@@ -1,9 +1,10 @@
 import { Bridge } from "../bridge";
+import { Watch } from "../watch";
 
 export class Publish {
 	#bridge: Bridge;
 
-	#name: string | null = null;
+	#url: URL | null = null;
 	#device: "camera" | "screen" | null = null;
 	#video = true;
 	#audio = true;
@@ -12,13 +13,13 @@ export class Publish {
 		this.#bridge = bridge;
 	}
 
-	get name(): string | null {
-		return this.#name;
+	get url(): URL | null {
+		return this.#url;
 	}
 
-	set name(name: string | null) {
-		this.#name = name;
-		this.#bridge.postMessage({ Publish: { Name: name ?? null } });
+	set url(url: URL | null) {
+		this.#url = url;
+		this.#bridge.postMessage({ Publish: { Connect: url?.toString() ?? null } });
 	}
 
 	get device(): "camera" | "screen" | null {
@@ -43,5 +44,33 @@ export class Publish {
 
 	set audio(audio: boolean) {
 		this.#audio = audio;
+	}
+}
+
+// A custom element making it easier to insert into the DOM.
+export class PublishElement extends HTMLElement {
+	static observedAttributes = ["url"];
+
+	#bridge = new Bridge();
+	#publish = new Publish(this.#bridge);
+
+	constructor() {
+		super();
+
+		this.attachShadow({ mode: "open" });
+	}
+
+	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+		if (name === "url") {
+			this.#publish.url = newValue ? new URL(newValue) : null;
+		}
+	}
+}
+
+customElements.define("hang-publish", PublishElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"hang-publish": PublishElement;
 	}
 }

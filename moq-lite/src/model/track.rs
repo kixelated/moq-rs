@@ -27,8 +27,11 @@ pub struct Track {
 }
 
 impl Track {
-	pub fn new(name: String, priority: i8) -> Self {
-		Self { name, priority }
+	pub fn new<T: ToString>(name: T, priority: i8) -> Self {
+		Self {
+			name: name.to_string(),
+			priority,
+		}
 	}
 
 	pub fn produce(self) -> TrackProducer {

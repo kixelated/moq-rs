@@ -160,10 +160,10 @@ impl Session {
 		self.publisher.publish(broadcast)
 	}
 
-	/// Subscribe to a broadcast, returning a handle that can request tracks.
+	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
 	///
-	/// No data flows over the network until [BroadcastConsumer::request] is called.
-	pub fn subscribe(&self, broadcast: Broadcast) -> BroadcastConsumer {
+	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
+	pub fn namespace(&self, broadcast: Broadcast) -> BroadcastConsumer {
 		self.subscriber.subscribe(broadcast)
 	}
 

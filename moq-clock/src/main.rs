@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
 
 	match config.role {
 		Command::Publish => {
-			let broadcast = broadcast.produce().map();
+			let broadcast = broadcast.produce();
 			let track = broadcast.create(track);
 			let clock = clock::Publisher::new(track);
 
@@ -71,8 +71,8 @@ async fn main() -> anyhow::Result<()> {
 			clock.run().await
 		}
 		Command::Subscribe => {
-			let broadcast = session.subscribe(broadcast);
-			let track = broadcast.request(track).await?;
+			let broadcast = session.namespace(broadcast);
+			let track = broadcast.subscribe(track).await?;
 			let clock = clock::Subscriber::new(track);
 
 			clock.run().await

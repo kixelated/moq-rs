@@ -1,5 +1,5 @@
-import type { RoomCommand as Command } from "./room/command";
-import type { RoomStatus as Status } from "./room/status";
+import type { Command } from "./command";
+import type { Status } from "./status";
 
 export type { Command, Status };
 

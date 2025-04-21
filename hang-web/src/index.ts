@@ -1,3 +1,2 @@
-export { Room, RoomElement } from "./room";
-export { Watch } from "./watch";
-export { Publish } from "./publish";
+export { Watch, WatchElement } from "./watch";
+export { Publish, PublishElement } from "./publish";
