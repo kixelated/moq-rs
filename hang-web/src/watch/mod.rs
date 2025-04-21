@@ -2,23 +2,25 @@ mod command;
 mod renderer;
 mod video;
 
+use std::time::Duration;
+
 pub use command::*;
 pub use renderer::*;
-use url::Url;
 pub use video::*;
 
 use crate::{Connect, Result};
-use hang::moq_lite::Session;
+use hang::moq_lite;
+use moq_lite::Session;
 
 #[derive(Default)]
 pub struct Watch {
 	connect: Option<Connect>,
 
 	broadcast: Option<hang::BroadcastConsumer>,
-	catalogs: Option<hang::CatalogConsumer>,
+	catalog: Option<hang::Catalog>,
+	video: Option<VideoTrack>,
 
-	canvas: Option<web_sys::OffscreenCanvas>,
-	latency: u32,
+	renderer: Renderer,
 }
 
 impl Watch {
@@ -28,35 +30,90 @@ impl Watch {
 				self.connect = None;
 
 				if let Some(url) = url {
-					let url = Url::parse(&url)?;
 					self.connect = Some(Connect::new(url));
 				}
 			}
-			WatchCommand::Canvas(canvas) => self.canvas = canvas,
-			WatchCommand::Latency(latency) => self.latency = latency,
+			WatchCommand::Canvas(canvas) => {
+				self.renderer.set_canvas(canvas);
+				self.video = self.init_video();
+			}
+			WatchCommand::Latency(latency) => self.renderer.set_latency(Duration::from_millis(latency.into())),
+			WatchCommand::Paused(paused) => self.renderer.set_paused(paused),
+			WatchCommand::Visible(visible) => {
+				self.renderer.set_visible(visible);
+				self.video = self.init_video();
+			}
 		};
 
 		Ok(())
 	}
 
-	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
-		tracing::info!("connected to server");
-
-		Ok(())
-	}
-
-	async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) -> Result<()> {
 		loop {
 			tokio::select! {
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let connect = self.connect.take().unwrap();
 					self.connected(connect, session?)?;
 				}
-				Some(catalogs) = async { Some(self.broadcast.as_mut()?.catalog().await) } => {
-					self.catalogs = Some(catalogs?);
+				Some(res) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
+					self.catalog = res?;
+					self.video = self.init_video();
 				}
+				Some(res) = async { Some(self.video.as_mut()?.frame().await) } => {
+					match res? {
+						Some(frame) => self.renderer.push(frame),
+						// Video track has ended.
+						None => {self.video.take();}
+					}
+				}
+				// Return Ok() when there's nothing to do.
 				else => return Ok(()),
 			}
 		}
+	}
+
+	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
+		tracing::info!("connected to server");
+
+		let broadcast = connect.path.strip_prefix("/").unwrap();
+		let broadcast = session.namespace(broadcast.into());
+		self.broadcast = Some(broadcast.into());
+
+		Ok(())
+	}
+
+	fn init_video(&mut self) -> Option<VideoTrack> {
+		let broadcast = self.broadcast.as_ref()?;
+		let catalog = self.catalog.as_ref()?;
+
+		if !self.renderer.should_download() {
+			tracing::debug!("canvas not visible, disabling video");
+			return None;
+		}
+
+		// TODO select the video track based on
+		let video = catalog.video.first()?;
+
+		if let Some(existing) = self.video.take() {
+			if existing.info.track == video.track {
+				return Some(existing);
+			}
+		}
+
+		let track = broadcast.track(video.track.clone());
+
+		let video = match VideoTrack::new(track, video.clone()) {
+			Ok(video) => video,
+			Err(err) => {
+				tracing::error!(?err, "failed to initialize video track");
+				return None;
+			}
+		};
+
+		if let Some(resolution) = video.info.resolution {
+			self.renderer.set_resolution(resolution);
+		}
+
+		Some(video)
 	}
 }

@@ -32,6 +32,8 @@ pub fn start() {
 
 	wasm_bindgen_futures::spawn_local(async move {
 		let bridge = Bridge::new();
-		bridge.run().await;
+		if let Err(err) = bridge.run().await {
+			tracing::error!(?err, "bridge terminated");
+		}
 	});
 }

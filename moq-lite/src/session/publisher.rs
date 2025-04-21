@@ -94,7 +94,9 @@ impl Publisher {
 		let broadcast = Broadcast::new(subscribe.broadcast);
 
 		let broadcast = self.broadcasts.lock().get(&broadcast).ok_or(Error::NotFound)?.clone();
-		let mut track = broadcast.subscribe(track).await?;
+		let mut track = broadcast.subscribe(track);
+
+		// TODO wait until track.info() to get the *real* priority
 
 		let info = message::SubscribeOk {
 			priority: track.info.priority,

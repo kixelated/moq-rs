@@ -5,6 +5,8 @@ export class Watch {
 
 	#url: URL | null = null;
 	#latency = 0;
+	#canvas: HTMLCanvasElement | null = null;
+	#visible = true;
 
 	constructor(bridge: Bridge) {
 		this.#bridge = bridge;
@@ -28,9 +30,22 @@ export class Watch {
 		this.#latency = latency;
 	}
 
+	get canvas(): HTMLCanvasElement | null {
+		return this.#canvas;
+	}
+
 	set canvas(canvas: HTMLCanvasElement | null) {
-		const offscreen = canvas ? canvas.transferControlToOffscreen() : null;
-		this.#bridge.postMessage({ Watch: { Canvas: offscreen } });
+		this.#canvas = canvas;
+		this.#bridge.postMessage({ Watch: { Canvas: canvas?.transferControlToOffscreen() ?? null } });
+	}
+
+	get visible(): boolean {
+		return this.#visible;
+	}
+
+	set visible(visible: boolean) {
+		this.#visible = visible;
+		this.#bridge.postMessage({ Watch: { Visible: visible } });
 	}
 }
 
@@ -41,27 +56,53 @@ export class WatchElement extends HTMLElement {
 	#bridge = new Bridge();
 	#watch = new Watch(this.#bridge);
 
+	// Detect if the canvas is hidden.
+	#intersection: IntersectionObserver;
+
 	constructor() {
 		super();
 
+		this.#intersection = new IntersectionObserver((entries) => {
+			for (const entry of entries) {
+				this.#watch.visible = entry.isIntersecting;
+			}
+		});
+
 		const canvas = document.createElement("canvas");
+		this.#setCanvas(canvas);
 
 		const slot = document.createElement("slot");
-		slot.addEventListener("slotchange", () => this.#updateCanvas(slot));
+		slot.addEventListener("slotchange", () => {
+			for (const el of slot.assignedElements({ flatten: true })) {
+				if (el instanceof HTMLCanvasElement) {
+					this.#setCanvas(el);
+					return;
+				}
+			}
+
+			this.#setCanvas(null);
+		});
 		slot.appendChild(canvas);
+
+		// TODO Implement this properly so it doesn't fight with the intersection observer.
+		document.addEventListener("visibilitychange", () => {
+			this.#watch.visible = document.visibilityState === "visible";
+		});
 
 		this.attachShadow({ mode: "open" }).appendChild(slot);
 	}
 
-	#updateCanvas(slot: HTMLSlotElement) {
-		for (const el of slot.assignedElements({ flatten: true })) {
-			if (el instanceof HTMLCanvasElement) {
-				this.#watch.canvas = el;
-				return;
-			}
+	#setCanvas(canvas: HTMLCanvasElement | null) {
+		if (this.#watch.canvas) {
+			this.#intersection.unobserve(this.#watch.canvas);
 		}
 
-		this.#watch.canvas = null;
+		if (canvas) {
+			this.#watch.canvas = canvas;
+			this.#intersection.observe(canvas);
+		} else {
+			this.#watch.canvas = null;
+		}
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {

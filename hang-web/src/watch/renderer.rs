@@ -23,6 +23,9 @@ struct Render {
 	latency: Duration,
 	latency_ref: Option<(Instant, Timestamp)>,
 
+	// Disable rendering when the video is not visible.
+	visible: bool,
+
 	canvas: Option<OffscreenCanvas>,
 	context: Option<OffscreenCanvasRenderingContext2d>,
 	queue: VecDeque<VideoFrame>,
@@ -45,6 +48,7 @@ impl Render {
 			latency_ref: None,
 			queue: Default::default(),
 			draw: None,
+			visible: true,
 			timeout: None,
 			timeout_handle: None,
 		}
@@ -135,6 +139,10 @@ impl Render {
 			_ => return,
 		}
 
+		if !self.visible {
+			return;
+		}
+
 		if self.queue.is_empty() {
 			return;
 		}
@@ -208,6 +216,11 @@ impl Render {
 		self.set_state(RendererStatus::Buffering);
 	}
 
+	pub fn set_visible(&mut self, visible: bool) {
+		self.visible = visible;
+		self.schedule();
+	}
+
 	fn set_state(&mut self, state: RendererStatus) {
 		self.state = state;
 	}
@@ -265,6 +278,28 @@ impl Renderer {
 
 	pub fn set_resolution(&self, resolution: Dimensions) {
 		self.state.borrow_mut().set_resolution(resolution);
+	}
+
+	pub fn set_canvas(&self, canvas: Option<OffscreenCanvas>) {
+		self.state.borrow_mut().set_canvas(canvas);
+	}
+
+	pub fn set_paused(&self, paused: bool) {
+		self.state.borrow_mut().set_paused(paused);
+	}
+
+	pub fn set_visible(&self, visible: bool) {
+		self.state.borrow_mut().set_visible(visible);
+	}
+
+	pub fn set_latency(&self, duration: Duration) {
+		self.state.borrow_mut().set_latency(duration);
+	}
+
+	// Whether we should download frames or not.
+	pub fn should_download(&self) -> bool {
+		let state = self.state.borrow();
+		state.canvas.is_some() && state.visible
 	}
 
 	pub fn push(&mut self, frame: VideoFrame) {

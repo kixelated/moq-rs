@@ -164,7 +164,7 @@ impl Session {
 	///
 	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
 	pub fn namespace(&self, broadcast: Broadcast) -> BroadcastConsumer {
-		self.subscriber.subscribe(broadcast)
+		self.subscriber.namespace(broadcast)
 	}
 
 	/// Discover any broadcasts published by the remote matching a prefix.

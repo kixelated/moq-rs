@@ -1,5 +1,5 @@
 use crate::track::TrackConsumer;
-use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, Result, TrackProducer, Video};
+use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, Video};
 use moq_lite::Track;
 use web_async::spawn;
 
@@ -79,35 +79,23 @@ impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
 #[derive(Clone)]
 pub struct BroadcastConsumer {
 	pub inner: moq_lite::BroadcastConsumer,
-	catalogs: Option<CatalogConsumer>,
+	pub catalog: CatalogConsumer,
 }
 
 impl BroadcastConsumer {
 	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
-		Self { inner, catalogs: None }
-	}
-
-	async fn catalogs(&self) -> Result<CatalogConsumer> {
 		let track = Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
 			priority: -1,
 		};
-		Ok(self.inner.subscribe(track).await?.into())
-	}
 
-	//. Returns the next catalog from the broadcast.
-	pub async fn catalog(&mut self) -> Result<Option<Catalog>> {
-		if self.catalogs.is_none() {
-			self.catalogs = Some(self.catalogs().await?);
-		}
-
-		self.catalogs.as_mut().unwrap().next().await
+		let catalog = inner.subscribe(track).into();
+		Self { inner, catalog }
 	}
 
 	/// Subscribes to a track
-	pub async fn track(&self, track: Track) -> Result<TrackConsumer> {
-		let track = self.inner.subscribe(track).await?;
-		Ok(TrackConsumer::new(track))
+	pub fn track(&self, track: Track) -> TrackConsumer {
+		self.inner.subscribe(track).into()
 	}
 }
 

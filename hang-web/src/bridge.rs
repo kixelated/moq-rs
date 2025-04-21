@@ -47,22 +47,28 @@ impl Bridge {
 		Ok(())
 	}
 
-	pub async fn run(mut self) {
+	pub async fn run(mut self) -> Result<()> {
 		loop {
-			let cmd = self.commands.recv().await.expect("somehow our callback was dropped?");
-			tracing::debug!(?cmd, "received command");
+			tokio::select! {
+				cmd = self.commands.recv() => {
+					let cmd = cmd.unwrap();
+					tracing::debug!(?cmd, "received command");
 
-			match cmd {
-				Command::Publish(command) => {
-					if let Err(err) = self.publish.recv(command).await {
-						tracing::error!(?err, "failed to process publish command");
+					match cmd {
+						Command::Publish(command) => {
+							if let Err(err) = self.publish.recv(command).await {
+								tracing::error!(?err, "failed to process publish command");
+							}
+						}
+						Command::Watch(command) => {
+							if let Err(err) = self.watch.recv(command) {
+								tracing::error!(?err, "failed to process watch command");
+							}
+						}
 					}
 				}
-				Command::Watch(command) => {
-					if let Err(err) = self.watch.recv(command) {
-						tracing::error!(?err, "failed to process watch command");
-					}
-				}
+				Err(err) = self.watch.run() => return Err(err),
+				Err(err) = self.publish.run() => return Err(err),
 			}
 		}
 	}

@@ -120,7 +120,7 @@ impl Subscriber {
 	}
 
 	/// Subscribe to a given broadcast.
-	pub fn subscribe(&self, broadcast: Broadcast) -> BroadcastConsumer {
+	pub fn namespace(&self, broadcast: Broadcast) -> BroadcastConsumer {
 		if let Some(producer) = self.broadcasts.lock().get(&broadcast.path) {
 			return producer.consume();
 		}
@@ -139,12 +139,13 @@ impl Subscriber {
 		loop {
 			// Keep serving requests until there are no more consumers.
 			// This way we'll clean up the task when the broadcast is no longer needed.
-			let request = tokio::select! {
-				request = broadcast.requested() => request,
+			let producer = tokio::select! {
+				producer = broadcast.requested() => producer,
 				_ = broadcast.unused() => break,
 			};
 
-			let producer = request.produce();
+			// Insert the request into the lookup.
+			// TODO This seems useful as part of BroadcastProducer in general?
 			broadcast.insert(producer.consume());
 
 			let mut this = self.clone();

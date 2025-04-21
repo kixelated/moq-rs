@@ -2854,6 +2854,7 @@ name = "web-message"
 version = "0.0.1"
 dependencies = [
  "thiserror 2.0.12",
+ "url",
  "web-message-derive",
  "web-sys",
 ]

@@ -1,4 +1,5 @@
 use ts_rs::TS;
+use url::Url;
 use web_message::Message;
 
 #[derive(Debug, Message, TS)]
@@ -6,7 +7,7 @@ use web_message::Message;
 pub enum PublishCommand {
 	// Publish a broadcast with the given URL.
 	// ex. https://relay.quic.video/demo/bbb
-	Connect(Option<String>),
+	Connect(Option<Url>),
 
 	// Create a new audio track.
 	AudioInit {

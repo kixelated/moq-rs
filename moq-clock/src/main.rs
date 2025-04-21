@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 		}
 		Command::Subscribe => {
 			let broadcast = session.namespace(broadcast);
-			let track = broadcast.subscribe(track).await?;
+			let track = broadcast.subscribe(track);
 			let clock = clock::Subscriber::new(track);
 
 			clock.run().await

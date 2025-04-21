@@ -2,14 +2,15 @@ use web_async::FuturesExt;
 
 use crate::Result;
 
-pub struct Video {
+pub struct VideoTrack {
 	pub track: hang::TrackConsumer,
+	pub info: hang::Video,
 
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
 }
 
-impl Video {
+impl VideoTrack {
 	pub fn new(track: hang::TrackConsumer, info: hang::Video) -> Result<Self> {
 		// Construct the video decoder
 		let (decoder, decoded) = web_codecs::VideoDecoderConfig {
@@ -26,6 +27,7 @@ impl Video {
 
 		Ok(Self {
 			track,
+			info,
 			decoder,
 			decoded,
 		})

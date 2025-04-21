@@ -29,7 +29,7 @@ impl Publish {
 				self.connect = None;
 
 				if let Some(url) = url {
-					self.connect = Some(Connect::new(url)?);
+					self.connect = Some(Connect::new(url));
 				}
 			}
 			PublishCommand::VideoInit { width, height } => {
@@ -84,6 +84,7 @@ impl Publish {
 				}
 				Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => return Err(err),
 				Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => return Err(err),
+				// Return Ok() when there's nothing to do.
 				else => return Ok(()),
 			};
 		}

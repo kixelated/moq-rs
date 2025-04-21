@@ -3,8 +3,8 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use crate::{Error, TrackConsumer, TrackProducer};
-use tokio::sync::{oneshot, watch};
+use crate::{TrackConsumer, TrackProducer};
+use tokio::sync::watch;
 
 use super::Track;
 
@@ -51,8 +51,8 @@ pub struct BroadcastProducer {
 	pub info: Broadcast,
 
 	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
-	queue: async_channel::Receiver<BroadcastRequest>,
-	weak: async_channel::Sender<BroadcastRequest>,
+	queue: async_channel::Receiver<TrackProducer>,
+	weak: async_channel::Sender<TrackProducer>,
 
 	// Dropped when all senders or all receivers are dropped.
 	// TODO Make a better way of doing this.
@@ -72,7 +72,7 @@ impl BroadcastProducer {
 		}
 	}
 
-	pub async fn requested(&self) -> BroadcastRequest {
+	pub async fn requested(&self) -> TrackProducer {
 		self.queue.recv().await.unwrap()
 	}
 
@@ -124,51 +124,30 @@ pub struct BroadcastConsumer {
 	pub info: Broadcast,
 
 	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
-	queue: async_channel::Sender<BroadcastRequest>,
+	queue: async_channel::Sender<TrackProducer>,
 
 	// Annoying, but we need to know when the above channel is closed without sending.
 	closed: watch::Receiver<()>,
 }
 
 impl BroadcastConsumer {
-	pub async fn subscribe(&self, track: Track) -> Result<TrackConsumer, Error> {
+	pub fn subscribe(&self, track: Track) -> TrackConsumer {
 		if let Some(consumer) = self.lookup.lock().unwrap().get(&track.name).cloned() {
-			return Ok(consumer);
+			return consumer;
 		}
 
-		let (send, recv) = oneshot::channel();
-		let request = BroadcastRequest { track, reply: send };
+		let producer = track.produce();
+		let consumer = producer.consume();
 
-		if self.queue.send(request).await.is_err() {
-			return Err(Error::Cancel);
-		}
+		let queue = self.queue.clone();
+		web_async::spawn(async move {
+			let _ = queue.send(producer).await;
+		});
 
-		recv.await.map_err(|_| Error::Cancel)?
+		consumer
 	}
 
 	pub async fn closed(&self) {
 		self.closed.clone().changed().await.ok();
-	}
-}
-
-/// An outstanding request for a path.
-pub struct BroadcastRequest {
-	pub track: Track,
-	reply: oneshot::Sender<Result<TrackConsumer, Error>>,
-}
-
-impl BroadcastRequest {
-	pub fn serve(self, reader: TrackConsumer) {
-		self.reply.send(Ok(reader)).ok();
-	}
-
-	pub fn produce(self) -> TrackProducer {
-		let track = self.track.produce();
-		self.reply.send(Ok(track.consume())).ok();
-		track
-	}
-
-	pub fn close(self, error: Error) {
-		self.reply.send(Err(error)).ok();
 	}
 }

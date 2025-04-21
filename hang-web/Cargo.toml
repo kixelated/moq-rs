@@ -27,6 +27,7 @@ wasm-tracing = "2.0"
 web-async = { workspace = true }
 web-codecs = { path = "../../web-rs/web-codecs" }
 web-message = { path = "../../web-rs/web-message", features = [
+	"Url",
 	"OffscreenCanvas",
 	"AudioData",
 	"VideoFrame",
