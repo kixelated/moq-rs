@@ -25,6 +25,10 @@ importers:
         version: 5.8.3
 
   hang-web:
+    dependencies:
+      '@types/audioworklet':
+        specifier: ^0.0.74
+        version: 0.0.74
     devDependencies:
       '@wasm-tool/wasm-pack-plugin':
         specifier: ^1.7.0
@@ -160,6 +164,9 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@types/audioworklet@0.0.74':
+    resolution: {integrity: sha512-NkdOi5hcUV/QLv10uNxFn41zhTxVGWfW/qAhA8QrvrfuPmoxG+Odi2tm0vD1cD+4TuXamUGH/S4AuD8+xc0Oew==}
 
   '@types/body-parser@1.19.5':
     resolution: {integrity: sha512-fB3Zu92ucau0iQ0JMCFQE7b/dv8Ot07NI3KaZIkIUNXq82k4eBAqUaneXfleGY9JWskeS9y+u0nXMyspcuQrCg==}
@@ -1785,6 +1792,8 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.19.1
+
+  '@types/audioworklet@0.0.74': {}
 
   '@types/body-parser@1.19.5':
     dependencies:

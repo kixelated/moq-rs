@@ -809,6 +809,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "hang-web"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "gloo-net",
+ "hang",
+ "hex",
+ "js-sys",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-tracing",
+ "web-async",
+ "web-codecs",
+ "web-message",
+ "web-streams",
+ "web-sys",
+ "web-time",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1411,31 +1436,6 @@ dependencies = [
  "tracing",
  "url",
  "web-transport",
-]
-
-[[package]]
-name = "moq-wasm"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "gloo-net",
- "hang",
- "hex",
- "js-sys",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "ts-rs",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-tracing",
- "web-async",
- "web-codecs",
- "web-message",
- "web-streams",
- "web-sys",
- "web-time",
 ]
 
 [[package]]

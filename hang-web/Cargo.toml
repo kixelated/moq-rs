@@ -1,5 +1,5 @@
 [package]
-name = "moq-wasm"
+name = "hang-web"
 authors = ["Luke Curley <kixelated@gmail.com>"]
 edition = "2021"
 version = "0.1.0"
@@ -30,6 +30,7 @@ web-message = { path = "../../web-rs/web-message", features = [
 	"Url",
 	"OffscreenCanvas",
 	"AudioData",
+	"MessagePort",
 	"VideoFrame",
 ] }
 web-streams = "0.1.1"
@@ -69,4 +70,6 @@ features = [
 	"MediaStreamTrackProcessor",
 	"MediaStreamTrackProcessorInit",
 	"ReadableStreamDefaultReader",
+
+	"MessagePort",
 ]

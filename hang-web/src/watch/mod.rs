@@ -1,12 +1,16 @@
-mod command;
+mod audio;
+mod message;
 mod renderer;
 mod video;
+mod worklet;
 
 use std::time::Duration;
 
-pub use command::*;
+pub use audio::*;
+pub use message::*;
 pub use renderer::*;
 pub use video::*;
+pub use worklet::*;
 
 use crate::{Connect, Result};
 use hang::moq_lite;
@@ -18,8 +22,11 @@ pub struct Watch {
 
 	broadcast: Option<hang::BroadcastConsumer>,
 	catalog: Option<hang::Catalog>,
+
+	audio: Option<AudioTrack>,
 	video: Option<VideoTrack>,
 
+	worklet: Option<web_sys::MessagePort>,
 	renderer: Renderer,
 }
 
@@ -36,6 +43,9 @@ impl Watch {
 			WatchCommand::Canvas(canvas) => {
 				self.renderer.set_canvas(canvas);
 				self.video = self.init_video();
+			}
+			WatchCommand::Worklet(port) => {
+				self.worklet = port;
 			}
 			WatchCommand::Latency(latency) => self.renderer.set_latency(Duration::from_millis(latency.into())),
 			WatchCommand::Paused(paused) => self.renderer.set_paused(paused),
@@ -58,6 +68,12 @@ impl Watch {
 				Some(res) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
 					self.catalog = res?;
 					self.video = self.init_video();
+				}
+				Some(res) = async { Some(self.audio.as_mut()?.frame().await) } => {
+					match res? {
+						Some(frame) => {},//self.emitter.push(frame),
+						None => {self.audio.take();}
+					}
 				}
 				Some(res) = async { Some(self.video.as_mut()?.frame().await) } => {
 					match res? {
@@ -115,5 +131,30 @@ impl Watch {
 		}
 
 		Some(video)
+	}
+
+	fn init_audio(&mut self) -> Option<AudioTrack> {
+		let broadcast = self.broadcast.as_ref()?;
+		let catalog = self.catalog.as_ref()?;
+
+		let audio = catalog.audio.first()?;
+
+		if let Some(existing) = self.audio.take() {
+			if existing.info.track == audio.track {
+				return Some(existing);
+			}
+		}
+
+		let track = broadcast.track(audio.track.clone());
+
+		let audio = match AudioTrack::new(track, audio.clone()) {
+			Ok(audio) => audio,
+			Err(err) => {
+				tracing::error!(?err, "failed to initialize audio track");
+				return None;
+			}
+		};
+
+		Some(audio)
 	}
 }

@@ -1,6 +1,4 @@
-import type { Command } from "./command";
-import type { Status } from "./status";
-
+import type { Command, Status } from "./message";
 export type { Command, Status };
 
 export class Bridge {

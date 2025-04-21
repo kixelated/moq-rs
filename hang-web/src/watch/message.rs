@@ -3,7 +3,7 @@ use url::Url;
 use web_message::Message;
 
 #[derive(Debug, Message, TS)]
-#[ts(export, export_to = "../src/watch/command.ts")]
+#[ts(export, export_to = "../src/watch/message.ts")]
 pub enum WatchCommand {
 	// Join a room at the given URL, or none to leave the current room.
 	Connect(Option<Url>),
@@ -12,6 +12,10 @@ pub enum WatchCommand {
 	// NOTE: You can only transfer a canvas once; use Visible to show/hide the video.
 	#[ts(type = "OffscreenCanvas | null")]
 	Canvas(Option<web_sys::OffscreenCanvas>),
+
+	// Set the worklet port so we can send audio data to it.
+	#[ts(type = "MessagePort | null")]
+	Worklet(Option<web_sys::MessagePort>),
 
 	// Set the latency of the video.
 	// Default: 0

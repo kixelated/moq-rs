@@ -8,8 +8,22 @@ export class Watch {
 	#canvas: HTMLCanvasElement | null = null;
 	#visible = true;
 
+	#context: AudioContext;
+	#volume: GainNode;
+
 	constructor(bridge: Bridge) {
 		this.#bridge = bridge;
+		this.#context = new AudioContext();
+		this.#volume = this.#context.createGain();
+		this.#volume.connect(this.#context.destination);
+
+		this.#context.audioWorklet.addModule(new URL("./worklet", import.meta.url)).then(() => {
+			const worklet = new AudioWorkletNode(this.#context, "renderer");
+			worklet.connect(this.#volume);
+
+			// Give Rust the port so it can send audio data to the worklet.
+			this.#bridge.postMessage({ Watch: { Worklet: worklet.port } });
+		});
 	}
 
 	get url(): URL | null {

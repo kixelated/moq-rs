@@ -1,9 +1,9 @@
 mod audio;
-mod command;
+mod message;
 mod video;
 
 pub use audio::*;
-pub use command::*;
+pub use message::*;
 pub use video::*;
 
 use hang::{moq_lite::Session, BroadcastProducer};

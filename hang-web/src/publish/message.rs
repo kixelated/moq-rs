@@ -3,7 +3,7 @@ use url::Url;
 use web_message::Message;
 
 #[derive(Debug, Message, TS)]
-#[ts(export, export_to = "../src/publish/command.ts")]
+#[ts(export, export_to = "../src/publish/message.ts")]
 pub enum PublishCommand {
 	// Publish a broadcast with the given URL.
 	// ex. https://relay.quic.video/demo/bbb

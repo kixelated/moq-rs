@@ -1,17 +1,15 @@
 mod bridge;
-mod command;
 mod connect;
 mod error;
+mod message;
 mod publish;
-mod status;
 mod watch;
 
 pub use bridge::*;
-pub use command::*;
 pub use connect::*;
 pub use error::*;
+pub use message::*;
 pub use publish::*;
-pub use status::*;
 pub use watch::*;
 
 use wasm_bindgen::prelude::wasm_bindgen;

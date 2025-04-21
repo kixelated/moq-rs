@@ -4,11 +4,17 @@ use web_message::Message;
 use crate::{PublishCommand, WatchCommand};
 
 #[derive(Message, Debug, TS)]
-#[ts(export, export_to = "../src/command.ts")]
+#[ts(export, export_to = "../src/message.ts")]
 pub enum Command {
 	// Responsible for rendering a broadcast.
 	Watch(WatchCommand),
 
 	// Responsible for publishing a broadcast.
 	Publish(PublishCommand),
+}
+
+#[derive(Debug, Message, TS)]
+#[ts(export, export_to = "../src/message.ts")]
+pub enum Status {
+	Init,
 }
