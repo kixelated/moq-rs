@@ -1,16 +1,12 @@
 mod audio;
 mod message;
-mod renderer;
 mod video;
-mod worklet;
 
 use std::time::Duration;
 
 pub use audio::*;
 pub use message::*;
-pub use renderer::*;
 pub use video::*;
-pub use worklet::*;
 
 use crate::{Connect, Result};
 use hang::moq_lite;
@@ -23,11 +19,8 @@ pub struct Watch {
 	broadcast: Option<hang::BroadcastConsumer>,
 	catalog: Option<hang::Catalog>,
 
-	audio: Option<AudioTrack>,
-	video: Option<VideoTrack>,
-
-	worklet: Option<web_sys::MessagePort>,
-	renderer: Renderer,
+	audio: Audio,
+	video: Video,
 }
 
 impl Watch {
@@ -41,17 +34,19 @@ impl Watch {
 				}
 			}
 			WatchCommand::Canvas(canvas) => {
-				self.renderer.set_canvas(canvas);
-				self.video = self.init_video();
+				self.video.set_canvas(canvas);
+				self.init_video();
 			}
-			WatchCommand::Worklet(port) => {
-				self.worklet = port;
+			WatchCommand::Worklet { port, sample_rate } => {
+				self.audio.set_worklet(port);
+				self.audio.set_sample_rate(sample_rate);
+				self.init_audio();
 			}
-			WatchCommand::Latency(latency) => self.renderer.set_latency(Duration::from_millis(latency.into())),
-			WatchCommand::Paused(paused) => self.renderer.set_paused(paused),
+			WatchCommand::Latency(latency) => self.video.set_latency(Duration::from_millis(latency.into())),
+			WatchCommand::Paused(paused) => self.video.set_paused(paused),
 			WatchCommand::Visible(visible) => {
-				self.renderer.set_visible(visible);
-				self.video = self.init_video();
+				self.video.set_visible(visible);
+				self.init_video();
 			}
 		};
 
@@ -67,21 +62,12 @@ impl Watch {
 				}
 				Some(res) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
 					self.catalog = res?;
-					self.video = self.init_video();
+					tracing::info!(catalog = ?self.catalog, "catalog updated");
+					self.init_audio();
+					self.init_video();
 				}
-				Some(res) = async { Some(self.audio.as_mut()?.frame().await) } => {
-					match res? {
-						Some(frame) => {},//self.emitter.push(frame),
-						None => {self.audio.take();}
-					}
-				}
-				Some(res) = async { Some(self.video.as_mut()?.frame().await) } => {
-					match res? {
-						Some(frame) => self.renderer.push(frame),
-						// Video track has ended.
-						None => {self.video.take();}
-					}
-				}
+				Err(err) = self.audio.run() => return Err(err),
+				Err(err) = self.video.run() => return Err(err),
 				// Return Ok() when there's nothing to do.
 				else => return Ok(()),
 			}
@@ -98,63 +84,17 @@ impl Watch {
 		Ok(())
 	}
 
-	fn init_video(&mut self) -> Option<VideoTrack> {
-		let broadcast = self.broadcast.as_ref()?;
-		let catalog = self.catalog.as_ref()?;
-
-		if !self.renderer.should_download() {
-			tracing::debug!("canvas not visible, disabling video");
-			return None;
+	fn init_audio(&mut self) {
+		match self.audio.init(self.broadcast.as_ref(), self.catalog.as_ref()) {
+			Ok(_) => tracing::info!("audio initialized"),
+			Err(err) => tracing::warn!(?err, "failed to initialize audio"),
 		}
-
-		// TODO select the video track based on
-		let video = catalog.video.first()?;
-
-		if let Some(existing) = self.video.take() {
-			if existing.info.track == video.track {
-				return Some(existing);
-			}
-		}
-
-		let track = broadcast.track(video.track.clone());
-
-		let video = match VideoTrack::new(track, video.clone()) {
-			Ok(video) => video,
-			Err(err) => {
-				tracing::error!(?err, "failed to initialize video track");
-				return None;
-			}
-		};
-
-		if let Some(resolution) = video.info.resolution {
-			self.renderer.set_resolution(resolution);
-		}
-
-		Some(video)
 	}
 
-	fn init_audio(&mut self) -> Option<AudioTrack> {
-		let broadcast = self.broadcast.as_ref()?;
-		let catalog = self.catalog.as_ref()?;
-
-		let audio = catalog.audio.first()?;
-
-		if let Some(existing) = self.audio.take() {
-			if existing.info.track == audio.track {
-				return Some(existing);
-			}
+	fn init_video(&mut self) {
+		match self.video.init(self.broadcast.as_ref(), self.catalog.as_ref()) {
+			Ok(_) => tracing::info!("video initialized"),
+			Err(err) => tracing::warn!(?err, "failed to initialize video"),
 		}
-
-		let track = broadcast.track(audio.track.clone());
-
-		let audio = match AudioTrack::new(track, audio.clone()) {
-			Ok(audio) => audio,
-			Err(err) => {
-				tracing::error!(?err, "failed to initialize audio track");
-				return None;
-			}
-		};
-
-		Some(audio)
 	}
 }

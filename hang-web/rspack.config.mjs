@@ -34,10 +34,15 @@ const config = {
 		rules: [
 			{
 				test: /\.ts(x)?$/,
-				loader: "ts-loader",
+				loader: "builtin:swc-loader",
 				exclude: /node_modules/,
 			},
 		],
+		parser: {
+			javascript: {
+				worker: ["*context.audioWorklet.addModule()", "..."],
+			},
+		},
 	},
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],

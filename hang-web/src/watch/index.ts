@@ -5,25 +5,47 @@ export class Watch {
 
 	#url: URL | null = null;
 	#latency = 0;
-	#canvas: HTMLCanvasElement | null = null;
 	#visible = true;
 
-	#context: AudioContext;
-	#volume: GainNode;
+	#volume: GainNode | null = null;
 
 	constructor(bridge: Bridge) {
 		this.#bridge = bridge;
-		this.#context = new AudioContext();
-		this.#volume = this.#context.createGain();
-		this.#volume.connect(this.#context.destination);
+	}
 
-		this.#context.audioWorklet.addModule(new URL("./worklet", import.meta.url)).then(() => {
-			const worklet = new AudioWorkletNode(this.#context, "renderer");
-			worklet.connect(this.#volume);
+	// If a null canvas is provided, video rendering will be disabled.
+	initVideo(canvas: HTMLCanvasElement | null) {
+		this.#bridge.postMessage({ Watch: { Canvas: canvas?.transferControlToOffscreen() ?? null } });
+	}
+
+	// Initialize audio rendering.
+	//
+	// Must be called on the main thread.
+	// Must be called after the user interacts with the page.
+	initAudio() {
+		const context = new AudioContext({ latencyHint: "interactive" });
+		const volume = context.createGain();
+
+		volume.connect(context.destination);
+
+		// NOTE: rspack works by matching against the `context` variable name, so we can't change it.
+		context.audioWorklet.addModule(new URL("../worklet", import.meta.url)).then(() => {
+			const worklet = new AudioWorkletNode(context, "renderer");
+			worklet.connect(volume);
 
 			// Give Rust the port so it can send audio data to the worklet.
-			this.#bridge.postMessage({ Watch: { Worklet: worklet.port } });
+			// Rust is also responsible for resampling the audio to the correct sample rate.
+			this.#bridge.postMessage({
+				Watch: {
+					Worklet: {
+						port: worklet.port,
+						sample_rate: context.sampleRate,
+					},
+				},
+			});
 		});
+
+		this.#volume = volume;
 	}
 
 	get url(): URL | null {
@@ -42,15 +64,6 @@ export class Watch {
 	set latency(latency: number) {
 		this.#bridge.postMessage({ Watch: { Latency: latency } });
 		this.#latency = latency;
-	}
-
-	get canvas(): HTMLCanvasElement | null {
-		return this.#canvas;
-	}
-
-	set canvas(canvas: HTMLCanvasElement | null) {
-		this.#canvas = canvas;
-		this.#bridge.postMessage({ Watch: { Canvas: canvas?.transferControlToOffscreen() ?? null } });
 	}
 
 	get visible(): boolean {
@@ -72,6 +85,7 @@ export class WatchElement extends HTMLElement {
 
 	// Detect if the canvas is hidden.
 	#intersection: IntersectionObserver;
+	#canvas: HTMLCanvasElement | null = null;
 
 	constructor() {
 		super();
@@ -104,19 +118,21 @@ export class WatchElement extends HTMLElement {
 		});
 
 		this.attachShadow({ mode: "open" }).appendChild(slot);
+
+		this.addEventListener("click", () => this.#watch.initAudio(), { once: true });
 	}
 
 	#setCanvas(canvas: HTMLCanvasElement | null) {
-		if (this.#watch.canvas) {
-			this.#intersection.unobserve(this.#watch.canvas);
+		if (this.#canvas) {
+			this.#intersection.unobserve(this.#canvas);
 		}
 
 		if (canvas) {
-			this.#watch.canvas = canvas;
 			this.#intersection.observe(canvas);
-		} else {
-			this.#watch.canvas = null;
 		}
+
+		this.#canvas = canvas;
+		this.#watch.initVideo(this.#canvas);
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {

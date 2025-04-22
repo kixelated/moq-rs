@@ -4,6 +4,7 @@ mod error;
 mod message;
 mod publish;
 mod watch;
+mod worklet;
 
 pub use bridge::*;
 pub use connect::*;
@@ -11,6 +12,7 @@ pub use error::*;
 pub use message::*;
 pub use publish::*;
 pub use watch::*;
+pub use worklet::*;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 

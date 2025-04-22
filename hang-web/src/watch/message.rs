@@ -14,8 +14,11 @@ pub enum WatchCommand {
 	Canvas(Option<web_sys::OffscreenCanvas>),
 
 	// Set the worklet port so we can send audio data to it.
-	#[ts(type = "MessagePort | null")]
-	Worklet(Option<web_sys::MessagePort>),
+	Worklet {
+		#[ts(type = "MessagePort | null")]
+		port: Option<web_sys::MessagePort>,
+		sample_rate: u32,
+	},
 
 	// Set the latency of the video.
 	// Default: 0
@@ -29,3 +32,5 @@ pub enum WatchCommand {
 	// Default: true
 	Visible(bool),
 }
+
+pub enum WatchEvent {}

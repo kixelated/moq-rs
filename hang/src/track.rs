@@ -93,7 +93,10 @@ impl TrackConsumer {
 
 					match res? {
 						// Got the next frame.
-						Some(frame) => return Ok(Some(frame)),
+						Some(frame) => {
+							self.max_timestamp = frame.timestamp;
+							return Ok(Some(frame));
+						}
 						None => {
 							// Group ended cleanly, instantly move to the next group.
 							self.current = self.pending.pop_front();
@@ -119,7 +122,10 @@ impl TrackConsumer {
 					};
 				},
 				Some((index, timestamp)) = buffering.next() => {
-					tracing::debug!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
+					if self.current.is_some() {
+						tracing::debug!(old = ?self.max_timestamp, new = ?timestamp, buffer = ?self.latency, "skipping slow group");
+					}
+
 					drop(buffering);
 
 					if index > 0 {

@@ -23,6 +23,6 @@ hang = { version = "0.1", path = "hang" }
 moq-lite = { version = "0.1", path = "moq-lite" }
 moq-native = { version = "0.6", path = "moq-native" }
 
-[profile.release.package.moq-wasm]
+[profile.release.package.hang-web]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"

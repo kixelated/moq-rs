@@ -18,11 +18,12 @@ class Renderer extends AudioWorkletProcessor {
 		}
 	}
 
-	onFrame(frame: AudioData) {}
+	onFrame(frame: AudioData) {
+		console.log("onFrame", frame.numberOfChannels, frame.sampleRate, frame.timestamp);
+	}
 
 	// Inputs and outputs in groups of 128 samples.
 	process(_inputs: Float32Array[][], outputs: Float32Array[][], _parameters: Record<string, Float32Array>): boolean {
-		console.log("process", _inputs, outputs, _parameters);
 		return true;
 	}
 }

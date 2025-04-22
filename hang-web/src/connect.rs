@@ -1,17 +1,42 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use hang::moq_lite::{self, web_transport};
 use tokio::sync::watch;
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::{Error, Result};
-
-type ConnectionPending = watch::Receiver<Option<Result<moq_lite::Session>>>;
+type ConnectionPending = watch::Receiver<Option<Result<moq_lite::Session, ConnectError>>>;
 
 // Can't use LazyLock in WASM because nothing is Sync
 thread_local! {
 	static POOL: RefCell<HashMap<Url, ConnectionPending>> = RefCell::new(HashMap::new());
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum ConnectError {
+	#[error("invalid url: {0}")]
+	InvalidUrl(#[from] url::ParseError),
+
+	#[error("invalid scheme")]
+	InvalidScheme,
+
+	#[error("moq error: {0}")]
+	Moq(#[from] moq_lite::Error),
+
+	#[error("webtransport error: {0}")]
+	WebTransport(#[from] web_transport::Error),
+
+	#[error("invalid fingerprint")]
+	InvalidFingerprint,
+
+	#[error("http error: {0}")]
+	Http(Arc<gloo_net::Error>),
+}
+
+impl From<gloo_net::Error> for ConnectError {
+	fn from(err: gloo_net::Error) -> Self {
+		Self::Http(Arc::new(err))
+	}
 }
 
 #[derive(Clone)]
@@ -67,7 +92,7 @@ impl Connect {
 		rx
 	}
 
-	async fn run(addr: &Url) -> Result<moq_lite::Session> {
+	async fn run(addr: &Url) -> Result<moq_lite::Session, ConnectError> {
 		let client =
 			web_transport::ClientBuilder::new().with_congestion_control(web_transport::CongestionControl::LowLatency);
 
@@ -87,26 +112,26 @@ impl Connect {
 				let client = client.with_system_roots()?;
 				client.connect(addr).await?
 			}
-			_ => return Err(Error::InvalidScheme),
+			_ => return Err(ConnectError::InvalidScheme),
 		};
 
 		let session = moq_lite::Session::connect(session).await?;
 		Ok(session)
 	}
 
-	async fn fingerprint(url: &Url) -> Result<Vec<u8>> {
+	async fn fingerprint(url: &Url) -> Result<Vec<u8>, ConnectError> {
 		let mut fingerprint = url.clone();
 		fingerprint.set_path("certificate.sha256");
 
 		let resp = gloo_net::http::Request::get(fingerprint.as_str()).send().await?;
 
 		let body = resp.text().await?;
-		let fingerprint = hex::decode(body.trim()).map_err(|_| Error::InvalidFingerprint)?;
+		let fingerprint = hex::decode(body.trim()).map_err(|_| ConnectError::InvalidFingerprint)?;
 
 		Ok(fingerprint)
 	}
 
-	pub async fn established(&mut self) -> Result<moq_lite::Session> {
+	pub async fn established(&mut self) -> Result<moq_lite::Session, ConnectError> {
 		self.pending
 			.wait_for(Option::is_some)
 			.await

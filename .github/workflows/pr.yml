@@ -24,7 +24,7 @@ jobs:
       # Install Just to run CI scripts
       - uses: extractions/setup-just@v3
 
-      # Install Node for moq-wasm
+      # Install Node for hang-web
       - uses: actions/setup-node@v4
 
       # Cargo binstall is used to install tools faster than compiling them from source.

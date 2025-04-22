@@ -114,9 +114,9 @@ clock-sub:
 # Run the CI checks
 check:
 	cargo check --all-targets --all-features
-	cargo check -p moq-wasm --target wasm32-unknown-unknown
+	cargo check -p hang-web --target wasm32-unknown-unknown
 	cargo clippy --all-targets --all-features -- -D warnings
-	cargo clippy -p moq-wasm --target wasm32-unknown-unknown
+	cargo clippy -p hang-web --target wasm32-unknown-unknown
 	cargo fmt -- --check
 
 	# requires: cargo install cargo-shear
@@ -150,7 +150,7 @@ check:
 fix:
 	cargo fix --allow-staged --all-targets --all-features
 	cargo clippy --fix --allow-staged --all-targets --all-features
-	cargo clippy -p moq-wasm --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
+	cargo clippy -p hang-web --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
 	cargo fmt --all
 
 	# requires: cargo install cargo-shear
