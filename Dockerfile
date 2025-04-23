@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM rust:slim AS build-wasm
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs npm
+RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs pnpm
 
 # Install Rustup
 RUN rustup target add wasm32-unknown-unknown

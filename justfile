@@ -25,7 +25,7 @@ setup-tools:
 # Run the relay, web server, and publish bbb.
 all:
 	# Run the relay, web server, and publish bbb.
-	pnpm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	pnpm i && pnpm exec concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
 
 # Alternatively, build the demo and host it via hang-cli.
 # This avoids multiple binaries and complicating things.
@@ -42,7 +42,7 @@ leaf:
 
 # Run a cluster of relay servers
 cluster:
-	pnpm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
+	pnpm i && pnpm exec concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
 # Download and stream the Big Buck Bunny video to the localhost relay server
 bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
