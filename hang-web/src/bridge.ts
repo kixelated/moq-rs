@@ -1,5 +1,5 @@
-import type { Command, Status } from "./message";
-export type { Command, Status };
+import type { Command, Event } from "./message";
+export type { Command, Event };
 
 export class Bridge {
 	#worker: Promise<Worker>;
@@ -14,7 +14,7 @@ export class Bridge {
 
 			worker.addEventListener(
 				"message",
-				(event: MessageEvent<Status>) => {
+				(event: MessageEvent<Event>) => {
 					if (event.data === "Init") {
 						resolve(worker);
 					} else {
@@ -26,9 +26,9 @@ export class Bridge {
 		});
 	}
 
-	addEventListener(callback: (event: Status) => void) {
+	addEventListener(callback: (event: Event) => void) {
 		this.#worker.then((worker) => {
-			worker.addEventListener("message", (event: MessageEvent<Status>) => {
+			worker.addEventListener("message", (event: MessageEvent<Event>) => {
 				callback(event.data);
 			});
 		});

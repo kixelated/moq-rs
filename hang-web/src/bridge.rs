@@ -1,4 +1,4 @@
-use crate::{Command, Publish, Result, Status, Watch};
+use crate::{Command, Event, Publish, Result, Watch};
 
 use tokio::sync::mpsc;
 use wasm_bindgen::{prelude::Closure, JsCast};
@@ -29,7 +29,7 @@ impl Bridge {
 		global.set_onmessage(Some(closure.as_ref().unchecked_ref()));
 		closure.forget();
 
-		Self::send(Status::Init).unwrap();
+		Self::send(Event::Init).unwrap();
 
 		Self {
 			commands: rx,
@@ -38,11 +38,11 @@ impl Bridge {
 		}
 	}
 
-	pub fn send(status: Status) -> Result<()> {
+	pub fn send(event: Event) -> Result<()> {
 		let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
 		let mut transfer = js_sys::Array::new();
-		let msg = status.into_message(&mut transfer);
-		tracing::info!(?msg, "sending status");
+		let msg = event.into_message(&mut transfer);
+		tracing::info!(?msg, "sending event");
 		global.post_message_with_transfer(&msg, &transfer)?;
 		Ok(())
 	}

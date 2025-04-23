@@ -15,6 +15,17 @@ pub enum Command {
 
 #[derive(Debug, Message, TS)]
 #[ts(export, export_to = "../src/message.ts")]
-pub enum Status {
+pub enum Event {
 	Init,
+	Connection(ConnectionStatus),
+}
+
+#[derive(Debug, Message, TS)]
+#[ts(export, export_to = "../src/message.ts")]
+pub enum ConnectionStatus {
+	Disconnected,
+	Connecting,
+	Connected,
+	Live,
+	Offline,
 }

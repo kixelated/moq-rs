@@ -38,5 +38,3 @@ pub enum WatchCommand {
 	// Default: false
 	Muted(bool),
 }
-
-pub enum WatchEvent {}

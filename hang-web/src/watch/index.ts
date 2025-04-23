@@ -1,4 +1,9 @@
 import { Bridge } from "../bridge";
+import { ConnectionStatus, Event } from "../message";
+
+export interface WatchEvents {
+	connection: ConnectionStatus;
+}
 
 export class Watch {
 	#bridge: Bridge;
@@ -10,8 +15,28 @@ export class Watch {
 	#volume = 1;
 	#gain: GainNode | null = null;
 
+	#events = new EventTarget();
+
 	constructor(bridge: Bridge) {
 		this.#bridge = bridge;
+
+		this.#bridge.addEventListener((event: Event) => {
+			if (typeof event === "object" && event.Connection) {
+				this.#dispatchEvent("connection", event.Connection);
+			}
+		});
+	}
+
+	addEventListener<K extends keyof WatchEvents>(type: K, listener: (event: CustomEvent<WatchEvents[K]>) => void) {
+		this.#events.addEventListener(type, listener as EventListener);
+	}
+
+	removeEventListener<K extends keyof WatchEvents>(type: K, listener: (event: CustomEvent<WatchEvents[K]>) => void) {
+		this.#events.removeEventListener(type, listener as EventListener);
+	}
+
+	#dispatchEvent<K extends keyof WatchEvents>(type: K, detail: WatchEvents[K]) {
+		this.#events.dispatchEvent(new CustomEvent(type, { detail }));
 	}
 
 	// If a null canvas is provided, video rendering will be disabled.
@@ -98,7 +123,7 @@ export class Watch {
 
 // A custom element making it easier to insert into the DOM.
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url", "volume"];
+	static observedAttributes = ["url", "volume", "latency"];
 
 	#bridge = new Bridge();
 	#watch = new Watch(this.#bridge);
@@ -140,6 +165,11 @@ export class WatchElement extends HTMLElement {
 		this.attachShadow({ mode: "open" }).appendChild(slot);
 
 		this.addEventListener("click", () => this.#watch.initAudio(), { once: true });
+
+		// Proxy the watch events to the element.
+		this.#watch.addEventListener("connection", (event) => {
+			this.dispatchEvent(new CustomEvent("hang-connection", { detail: event.detail }));
+		});
 	}
 
 	#setCanvas(canvas: HTMLCanvasElement | null) {
@@ -160,6 +190,8 @@ export class WatchElement extends HTMLElement {
 			this.#watch.url = newValue ? new URL(newValue) : null;
 		} else if (name === "volume") {
 			this.#watch.volume = Number.parseFloat(newValue ?? "1");
+		} else if (name === "latency") {
+			this.#watch.latency = Number.parseInt(newValue ?? "0");
 		}
 	}
 }
@@ -169,5 +201,11 @@ customElements.define("hang-watch", WatchElement);
 declare global {
 	interface HTMLElementTagNameMap {
 		"hang-watch": WatchElement;
+	}
+}
+
+declare global {
+	interface HTMLElementEventMap {
+		"hang-connection": CustomEvent<ConnectionStatus>;
 	}
 }
