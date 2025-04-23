@@ -4,6 +4,6 @@ import type { WatchCommand } from "./watch/message";
 
 export type Command = { "Watch": WatchCommand } | { "Publish": PublishCommand };
 
-export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected" | "Live" | "Offline";
+export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected" | "Live" | "Offline" | { "Error": string };
 
 export type Event = "Init" | { "Connection": ConnectionStatus };

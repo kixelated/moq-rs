@@ -6,20 +6,19 @@ export interface WatchEvents {
 }
 
 export class Watch {
-	#bridge: Bridge;
+	#bridge: Bridge = new Bridge();
 
 	#url: URL | null = null;
 	#latency = 0;
 	#visible = true;
+	#paused = false;
 
 	#volume = 1;
 	#gain: GainNode | null = null;
 
 	#events = new EventTarget();
 
-	constructor(bridge: Bridge) {
-		this.#bridge = bridge;
-
+	constructor() {
 		this.#bridge.addEventListener((event: Event) => {
 			if (typeof event === "object" && event.Connection) {
 				this.#dispatchEvent("connection", event.Connection);
@@ -119,14 +118,23 @@ export class Watch {
 			this.#bridge.postMessage({ Watch: { Muted: false } });
 		}
 	}
+
+	get paused(): boolean {
+		return this.#paused;
+	}
+
+	set paused(paused: boolean) {
+		this.#paused = paused;
+		this.#bridge.postMessage({ Watch: { Paused: paused } });
+	}
 }
 
 // A custom element making it easier to insert into the DOM.
 export class WatchElement extends HTMLElement {
 	static observedAttributes = ["url", "volume", "latency"];
 
-	#bridge = new Bridge();
-	#watch = new Watch(this.#bridge);
+	// Expose the library so we don't have to duplicate everything.
+	readonly lib = new Watch();
 
 	// Detect if the canvas is hidden.
 	#intersection: IntersectionObserver;
@@ -137,7 +145,7 @@ export class WatchElement extends HTMLElement {
 
 		this.#intersection = new IntersectionObserver((entries) => {
 			for (const entry of entries) {
-				this.#watch.visible = entry.isIntersecting;
+				this.lib.visible = entry.isIntersecting;
 			}
 		});
 
@@ -159,15 +167,15 @@ export class WatchElement extends HTMLElement {
 
 		// TODO Implement this properly so it doesn't fight with the intersection observer.
 		document.addEventListener("visibilitychange", () => {
-			this.#watch.visible = document.visibilityState === "visible";
+			this.lib.visible = document.visibilityState === "visible";
 		});
 
 		this.attachShadow({ mode: "open" }).appendChild(slot);
 
-		this.addEventListener("click", () => this.#watch.initAudio(), { once: true });
+		this.addEventListener("click", () => this.lib.initAudio(), { once: true });
 
 		// Proxy the watch events to the element.
-		this.#watch.addEventListener("connection", (event) => {
+		this.lib.addEventListener("connection", (event) => {
 			this.dispatchEvent(new CustomEvent("hang-connection", { detail: event.detail }));
 		});
 	}
@@ -182,16 +190,16 @@ export class WatchElement extends HTMLElement {
 		}
 
 		this.#canvas = canvas;
-		this.#watch.initVideo(this.#canvas);
+		this.lib.initVideo(this.#canvas);
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
-			this.#watch.url = newValue ? new URL(newValue) : null;
+			this.lib.url = newValue ? new URL(newValue) : null;
 		} else if (name === "volume") {
-			this.#watch.volume = Number.parseFloat(newValue ?? "1");
+			this.lib.volume = Number.parseFloat(newValue ?? "1");
 		} else if (name === "latency") {
-			this.#watch.latency = Number.parseInt(newValue ?? "0");
+			this.lib.latency = Number.parseInt(newValue ?? "0");
 		}
 	}
 }

@@ -78,23 +78,30 @@ impl Video {
 		Some(())
 	}
 
-	pub async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) {
+		if let Err(err) = self.run_inner().await {
+			tracing::error!(?err, "error running video; disabling");
+		}
+
+		// Prevent infinite loops by disabling the track.
+		self.track.take();
+
+		// Block indefinitely so we don't break out of the parent select! loop.
+		// This is a hack as we're abusing select! to run tasks in parallel but ignore the results.
+		std::future::pending::<()>().await;
+	}
+
+	async fn run_inner(&mut self) -> Result<()> {
 		let track = match self.track.as_mut() {
 			Some(track) => track,
 			None => return Ok(()),
 		};
 
-		loop {
-			let frame = match track.frame().await? {
-				Some(frame) => frame,
-				None => {
-					self.track.take();
-					return Ok(());
-				}
-			};
-
+		while let Some(frame) = track.frame().await? {
 			self.render.borrow_mut().push(frame);
 		}
+
+		Ok(())
 	}
 
 	pub fn set_catalog(&mut self, broadcast: Option<hang::BroadcastConsumer>, catalog: Option<hang::Catalog>) {

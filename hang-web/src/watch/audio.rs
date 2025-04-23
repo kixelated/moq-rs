@@ -26,7 +26,7 @@ impl Audio {
 	fn reinit(&mut self) -> Option<()> {
 		let existing = self.track.take();
 
-		if self.muted {
+		if self.muted || self.worklet.is_none() {
 			return Some(());
 		}
 
@@ -76,15 +76,24 @@ impl Audio {
 		self.reinit();
 	}
 
-	pub async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) {
+		if let Err(err) = self.run_inner().await {
+			tracing::error!(?err, "error running audio; disabling");
+		}
+
+		// Prevent infinite loops by disabling the track.
+		self.track.take();
+
+		// Block indefinitely so we don't break out of the parent select! loop.
+		// This is a hack as we're abusing select! to run tasks in parallel but ignore the results.
+		std::future::pending::<()>().await;
+	}
+
+	async fn run_inner(&mut self) -> Result<()> {
 		while let Some(track) = self.track.as_mut() {
 			let frame = match track.frame().await? {
 				Some(frame) => frame,
-				None => {
-					// Close the track.
-					self.track.take();
-					return Ok(());
-				}
+				None => return Ok(()),
 			};
 
 			// Resample the audio frame if needed.

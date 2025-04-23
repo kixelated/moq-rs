@@ -21,7 +21,8 @@ const config = {
 			outName: "index",
 		}),
 		new HtmlWebpackPlugin({
-			template: "src/demo/index.html",
+			template: "src/demo/watch.html",
+			filename: "index.html",
 		}),
 	],
 	mode: "development",

@@ -29,7 +29,7 @@ impl Bridge {
 		global.set_onmessage(Some(closure.as_ref().unchecked_ref()));
 		closure.forget();
 
-		Self::send(Event::Init).unwrap();
+		Self::send(Event::Init);
 
 		Self {
 			commands: rx,
@@ -38,13 +38,12 @@ impl Bridge {
 		}
 	}
 
-	pub fn send(event: Event) -> Result<()> {
+	pub fn send(event: Event) {
 		let global = js_sys::global().unchecked_into::<web_sys::DedicatedWorkerGlobalScope>();
 		let mut transfer = js_sys::Array::new();
 		let msg = event.into_message(&mut transfer);
 		tracing::info!(?msg, "sending event");
-		global.post_message_with_transfer(&msg, &transfer)?;
-		Ok(())
+		global.post_message_with_transfer(&msg, &transfer).unwrap();
 	}
 
 	pub async fn run(mut self) -> Result<()> {
@@ -67,8 +66,9 @@ impl Bridge {
 						}
 					}
 				}
-				Err(err) = self.watch.run() => return Err(err),
-				Err(err) = self.publish.run() => return Err(err),
+				// Run these in parallel but they'll never return.
+				_ = self.watch.run() => {},
+				_ = self.publish.run() => {},
 			}
 		}
 	}

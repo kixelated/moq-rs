@@ -84,15 +84,13 @@ impl Publish {
 				}
 				Some(Err(err)) = async { Some(self.audio.as_mut()?.run().await) } => return Err(err),
 				Some(Err(err)) = async { Some(self.video.as_mut()?.run().await) } => return Err(err),
-				// Return Ok() when there's nothing to do.
-				else => return Ok(()),
+				// Block forever if there's nothing to do.
+				else => std::future::pending::<()>().await,
 			};
 		}
 	}
 
 	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
-		tracing::info!("connected to server");
-
 		let path = connect.path.strip_prefix("/").unwrap().to_string();
 		let mut room = hang::Room::new(session, path.to_string());
 		let mut broadcast = room.join(path);

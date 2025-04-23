@@ -28,4 +28,11 @@ pub enum ConnectionStatus {
 	Connected,
 	Live,
 	Offline,
+	Error(String),
+}
+
+impl From<ConnectionStatus> for Event {
+	fn from(status: ConnectionStatus) -> Self {
+		Event::Connection(status)
+	}
 }

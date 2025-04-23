@@ -8,8 +8,8 @@ pub use audio::*;
 pub use message::*;
 pub use video::*;
 
-use crate::{Connect, Result};
-use hang::moq_lite;
+use crate::{Bridge, Connect, ConnectionStatus, Result};
+use hang::{moq_lite, Catalog};
 use moq_lite::Session;
 
 #[derive(Default)]
@@ -28,6 +28,9 @@ impl Watch {
 
 				if let Some(url) = url {
 					self.connect = Some(Connect::new(url));
+					Bridge::send(ConnectionStatus::Connecting.into());
+				} else {
+					Bridge::send(ConnectionStatus::Disconnected.into());
 				}
 			}
 			WatchCommand::Canvas(canvas) => self.video.set_canvas(canvas),
@@ -41,41 +44,59 @@ impl Watch {
 		Ok(())
 	}
 
-	pub async fn run(&mut self) -> Result<()> {
+	pub async fn run(&mut self) {
 		loop {
 			tokio::select! {
 				Some(session) = async { Some(self.connect.as_mut()?.established().await) } => {
 					let connect = self.connect.take().unwrap();
-					self.connected(connect, session?)?;
+					let path = connect.path.strip_prefix("/").unwrap();
+					self.set_session(path, session.map_err(Into::into))
+				},
+				Some(catalog) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
+					let broadcast = self.broadcast.take().unwrap(); // unset just in case
+					self.set_catalog(broadcast, catalog.map_err(Into::into));
 				}
-				Some(res) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
-					let catalog = res?;
-					self.audio.set_catalog(self.broadcast.clone(), catalog.clone());
-					self.video.set_catalog(self.broadcast.clone(), catalog.clone());
-
-					match catalog {
-						Some(catalog) => tracing::info!(?catalog, "catalog updated"),
-						None => {
-							tracing::info!("broadcast ended");
-							self.broadcast.take();
-						}
-					}
-				}
-				Err(err) = self.audio.run() => return Err(err),
-				Err(err) = self.video.run() => return Err(err),
-				// Return Ok() when there's nothing to do.
-				else => return Ok(()),
+				// Run these in parallel but they'll never return.
+				_ = self.audio.run() => {},
+				_ = self.video.run() => {},
 			}
 		}
 	}
 
-	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
-		tracing::info!("connected to server");
+	fn set_session(&mut self, broadcast: &str, session: Result<Session>) {
+		let session = match session {
+			Ok(session) => session,
+			Err(err) => {
+				Bridge::send(ConnectionStatus::Error(err.to_string()).into());
+				return;
+			}
+		};
 
-		let broadcast = connect.path.strip_prefix("/").unwrap();
 		let broadcast = session.namespace(broadcast.into());
 		self.broadcast = Some(broadcast.into());
 
-		Ok(())
+		Bridge::send(ConnectionStatus::Connected.into());
+	}
+
+	fn set_catalog(&mut self, broadcast: hang::BroadcastConsumer, catalog: Result<Option<Catalog>>) {
+		let catalog = match catalog {
+			Ok(catalog) => catalog,
+			Err(err) => {
+				Bridge::send(ConnectionStatus::Error(err.to_string()).into());
+				return;
+			}
+		};
+
+		if catalog.is_some() {
+			// TODO don't send duplicate events
+			Bridge::send(ConnectionStatus::Live.into());
+			self.broadcast = Some(broadcast.clone());
+		} else {
+			Bridge::send(ConnectionStatus::Offline.into());
+			self.broadcast.take();
+		}
+
+		self.audio.set_catalog(Some(broadcast.clone()), catalog.clone());
+		self.video.set_catalog(Some(broadcast), catalog);
 	}
 }
