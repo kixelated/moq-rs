@@ -2,16 +2,13 @@ import { Bridge } from "../bridge";
 import { Watch } from "../watch";
 
 export class Publish {
-	#bridge: Bridge;
+	#bridge = new Bridge();
 
 	#url: URL | null = null;
 	#device: "camera" | "screen" | null = null;
 	#video = true;
 	#audio = true;
-
-	constructor(bridge: Bridge) {
-		this.#bridge = bridge;
-	}
+	#preview: HTMLVideoElement | null = null;
 
 	get url(): URL | null {
 		return this.#url;
@@ -45,24 +42,55 @@ export class Publish {
 	set audio(audio: boolean) {
 		this.#audio = audio;
 	}
+
+	get preview(): HTMLVideoElement | null {
+		return this.#preview;
+	}
+
+	set preview(preview: HTMLVideoElement | null) {
+		this.#preview = preview;
+	}
 }
 
 // A custom element making it easier to insert into the DOM.
 export class PublishElement extends HTMLElement {
-	static observedAttributes = ["url"];
+	static observedAttributes = ["url", "device", "no-video", "no-audio"];
 
-	#bridge = new Bridge();
-	#publish = new Publish(this.#bridge);
+	// Expose the library instance for easy access.
+	readonly lib = new Publish();
 
 	constructor() {
 		super();
 
-		this.attachShadow({ mode: "open" });
+		// Attach a <video> element to the root used for previewing the video.
+		const video = document.createElement("video");
+		this.lib.preview = video;
+
+		const slot = document.createElement("slot");
+		slot.addEventListener("slotchange", () => {
+			for (const el of slot.assignedElements({ flatten: true })) {
+				if (el instanceof HTMLVideoElement) {
+					this.lib.preview = el;
+					return;
+				}
+			}
+
+			this.lib.preview = null;
+		});
+		slot.appendChild(video);
+
+		this.attachShadow({ mode: "open" }).appendChild(slot);
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
-			this.#publish.url = newValue ? new URL(newValue) : null;
+			this.lib.url = newValue ? new URL(newValue) : null;
+		} else if (name === "device") {
+			this.lib.device = newValue as "camera" | "screen" | null;
+		} else if (name === "no-video") {
+			this.lib.video = !newValue;
+		} else if (name === "no-audio") {
+			this.lib.audio = !newValue;
 		}
 	}
 }

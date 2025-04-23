@@ -106,16 +106,17 @@ export class Watch {
 	}
 
 	set volume(volume: number) {
-		this.#volume = volume;
+		// Prevent duplicate messages.
+		const newMuted = volume === 0;
+		const oldMuted = this.#volume === 0;
 
-		if (this.#gain) {
-			this.#gain.gain.value = volume;
+		if (newMuted !== oldMuted) {
+			this.#bridge.postMessage({ Watch: { Muted: newMuted } });
 		}
 
-		if (this.#volume === 0) {
-			this.#bridge.postMessage({ Watch: { Muted: true } });
-		} else {
-			this.#bridge.postMessage({ Watch: { Muted: false } });
+		this.#volume = volume;
+		if (this.#gain) {
+			this.#gain.gain.value = volume;
 		}
 	}
 
@@ -172,7 +173,12 @@ export class WatchElement extends HTMLElement {
 
 		this.attachShadow({ mode: "open" }).appendChild(slot);
 
-		this.addEventListener("click", () => this.lib.initAudio(), { once: true });
+		// Try to initialize audio, otherwise wait for the user to click the canvas.
+		try {
+			this.lib.initAudio();
+		} catch (error) {
+			this.addEventListener("click", () => this.lib.initAudio(), { once: true });
+		}
 
 		// Proxy the watch events to the element.
 		this.lib.addEventListener("connection", (event) => {

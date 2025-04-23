@@ -26,10 +26,12 @@ class Renderer extends AudioWorkletProcessor {
 		} else if (this.#queued.length < 4) {
 			this.#queued.push(frame);
 		} else {
+			/* TODO make a metric for this
 			console.debug(
 				"frame buffer overflow, samples lost:",
 				this.#queued.reduce((acc, f) => acc + f.channels[0].length, 0),
 			);
+			*/
 
 			// Start the queue over to reset latency.
 			this.#queued = [frame];
