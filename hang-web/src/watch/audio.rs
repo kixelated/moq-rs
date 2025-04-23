@@ -3,7 +3,7 @@ use web_message::Message;
 
 use rubato::{FastFixedIn, Resampler};
 
-use crate::{Error, Result, WorkletCommand};
+use crate::{Result, WorkletCommand};
 
 #[derive(Default)]
 pub struct Audio {
@@ -14,47 +14,66 @@ pub struct Audio {
 	resampler: Option<FastFixedIn<f32>>,
 	resampler_in: Vec<Vec<f32>>,
 	resampler_out: Vec<Vec<f32>>,
+
+	muted: bool,
+
+	broadcast: Option<hang::BroadcastConsumer>,
+	catalog: Option<hang::Catalog>,
 }
 
 impl Audio {
-	pub fn set_worklet(&mut self, worklet: Option<web_sys::MessagePort>) {
-		self.worklet = worklet;
-
-		if let Some(worklet) = self.worklet.as_ref() {
-			// TODO addEventLister
-			worklet.start();
-		}
-	}
-
-	// Resample audio to the given sample rate.
-	pub fn set_sample_rate(&mut self, sample_rate: u32) {
-		self.sample_rate = sample_rate;
-	}
-
-	// Returns an error indicating why audio was disabled.
-	pub fn init(&mut self, broadcast: Option<&hang::BroadcastConsumer>, catalog: Option<&hang::Catalog>) -> Result<()> {
+	// Returns a useless Option so we can short-circuit if audio is disabled.
+	fn reinit(&mut self) -> Option<()> {
 		let existing = self.track.take();
 
-		let broadcast = broadcast.ok_or(Error::NoBroadcast)?;
-		let catalog = catalog.ok_or(Error::NoCatalog)?;
-		let audio = catalog.audio.first().ok_or(Error::NoTrack)?;
+		if self.muted {
+			return Some(());
+		}
+
+		let broadcast = self.broadcast.as_ref()?;
+		let catalog = self.catalog.as_ref()?;
+		let audio = catalog.audio.first()?;
 
 		if let Some(existing) = existing {
 			if existing.info.track == audio.track {
 				// Reuse the existing subscription (avoid skipping).
 				self.track = Some(existing);
-				return Ok(());
+				return Some(());
 			}
 		}
 
 		let track = broadcast.track(audio.track.clone());
 
-		let track = AudioTrack::new(track, audio.clone())?;
+		// TODO handle the error instead of ignoring it.
+		let track = AudioTrack::new(track, audio.clone()).ok()?;
 
 		tracing::info!(info = ?track.info, "loaded audio track");
 		self.track = Some(track);
 
-		Ok(())
+		Some(())
+	}
+
+	pub fn set_catalog(&mut self, broadcast: Option<hang::BroadcastConsumer>, catalog: Option<hang::Catalog>) {
+		self.broadcast = broadcast;
+		self.catalog = catalog;
+		self.reinit();
+	}
+
+	pub fn set_worklet(&mut self, worklet: Option<web_sys::MessagePort>, sample_rate: u32) {
+		self.worklet = worklet;
+		self.sample_rate = sample_rate;
+
+		if let Some(worklet) = self.worklet.as_ref() {
+			// TODO addEventLister
+			worklet.start();
+		}
+
+		self.reinit();
+	}
+
+	pub fn set_muted(&mut self, muted: bool) {
+		self.muted = muted;
+		self.reinit();
 	}
 
 	pub async fn run(&mut self) -> Result<()> {

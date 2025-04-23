@@ -26,7 +26,7 @@ class Renderer extends AudioWorkletProcessor {
 		} else if (this.#queued.length < 4) {
 			this.#queued.push(frame);
 		} else {
-			console.warn(
+			console.debug(
 				"frame buffer overflow, samples lost:",
 				this.#queued.reduce((acc, f) => acc + f.channels[0].length, 0),
 			);
@@ -81,9 +81,11 @@ class Renderer extends AudioWorkletProcessor {
 			}
 		}
 
+		/* TODO make this into a metric
 		if (offset < outputs[0].length) {
 			console.warn("output buffer underrun, samples missing:", outputs[0].length - offset);
 		}
+		*/
 
 		return true;
 	}

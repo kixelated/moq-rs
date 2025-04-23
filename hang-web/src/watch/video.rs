@@ -1,6 +1,6 @@
 use web_async::FuturesExt;
 
-use crate::{Error, Result};
+use crate::Result;
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
 
@@ -13,6 +13,9 @@ use web_time::Instant;
 pub struct Video {
 	render: Rc<RefCell<Render>>,
 	track: Option<VideoTrack>,
+
+	broadcast: Option<hang::BroadcastConsumer>,
+	catalog: Option<hang::Catalog>,
 }
 
 impl Video {
@@ -31,34 +34,40 @@ impl Video {
 		}) as Box<dyn FnMut()>)
 		.into();
 
-		Self { render, track: None }
+		Self {
+			render,
+			track: None,
+			broadcast: None,
+			catalog: None,
+		}
 	}
 
-	// Returns an error indicating why video was disabled.
-	pub fn init(&mut self, broadcast: Option<&hang::BroadcastConsumer>, catalog: Option<&hang::Catalog>) -> Result<()> {
+	// Returns a useless Option so we can short-circuit if video is disabled.
+	fn reinit(&mut self) -> Option<()> {
 		let existing = self.track.take();
 
-		let broadcast = broadcast.ok_or(Error::NoBroadcast)?;
-		let catalog = catalog.ok_or(Error::NoCatalog)?;
+		let broadcast = self.broadcast.as_ref()?;
+		let catalog = self.catalog.as_ref()?;
 
 		let mut render = self.render.borrow_mut();
 		if render.canvas.is_none() || !render.visible {
-			return Err(Error::NotVisible);
+			return Some(());
 		}
 
 		// TODO select the video track based on
-		let video = catalog.video.first().ok_or(Error::NoTrack)?;
+		let video = catalog.video.first()?;
 
 		if let Some(existing) = existing {
 			if existing.info.track == video.track {
 				self.track = Some(existing);
-				return Ok(());
+				return Some(());
 			}
 		}
 
 		let track = broadcast.track(video.track.clone());
 
-		let video = VideoTrack::new(track, video.clone())?;
+		// TODO handle the error instead of ignoring it.
+		let video = VideoTrack::new(track, video.clone()).ok()?;
 		if let Some(resolution) = video.info.resolution {
 			render.set_resolution(resolution);
 		}
@@ -66,7 +75,7 @@ impl Video {
 		tracing::info!(info = ?video.info, "loaded video track");
 		self.track = Some(video);
 
-		Ok(())
+		Some(())
 	}
 
 	pub async fn run(&mut self) -> Result<()> {
@@ -88,20 +97,27 @@ impl Video {
 		}
 	}
 
-	pub fn set_canvas(&mut self, canvas: Option<OffscreenCanvas>) {
-		self.render.borrow_mut().set_canvas(canvas);
-		// Call init now
+	pub fn set_catalog(&mut self, broadcast: Option<hang::BroadcastConsumer>, catalog: Option<hang::Catalog>) {
+		self.broadcast = broadcast;
+		self.catalog = catalog;
+		self.reinit();
 	}
 
-	pub fn set_paused(&self, paused: bool) {
+	pub fn set_canvas(&mut self, canvas: Option<OffscreenCanvas>) {
+		self.render.borrow_mut().set_canvas(canvas);
+		self.reinit();
+	}
+
+	pub fn set_paused(&mut self, paused: bool) {
 		self.render.borrow_mut().set_paused(paused);
 	}
 
-	pub fn set_visible(&self, visible: bool) {
+	pub fn set_visible(&mut self, visible: bool) {
 		self.render.borrow_mut().set_visible(visible);
+		self.reinit();
 	}
 
-	pub fn set_latency(&self, duration: Duration) {
+	pub fn set_latency(&mut self, duration: Duration) {
 		self.render.borrow_mut().set_latency(duration);
 	}
 }

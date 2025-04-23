@@ -7,7 +7,8 @@ export class Watch {
 	#latency = 0;
 	#visible = true;
 
-	#volume: GainNode | null = null;
+	#volume = 1;
+	#gain: GainNode | null = null;
 
 	constructor(bridge: Bridge) {
 		this.#bridge = bridge;
@@ -24,14 +25,15 @@ export class Watch {
 	// Must be called after the user interacts with the page.
 	initAudio() {
 		const context = new AudioContext({ latencyHint: "interactive" });
-		const volume = context.createGain();
+		const gain = context.createGain();
+		gain.gain.value = this.#volume;
 
-		volume.connect(context.destination);
+		gain.connect(context.destination);
 
 		// NOTE: rspack works by matching against the `context` variable name, so we can't change it.
 		context.audioWorklet.addModule(new URL("../worklet", import.meta.url)).then(() => {
 			const worklet = new AudioWorkletNode(context, "renderer");
-			worklet.connect(volume);
+			worklet.connect(gain);
 
 			// Give Rust the port so it can send audio data to the worklet.
 			// Rust is also responsible for resampling the audio to the correct sample rate.
@@ -45,7 +47,7 @@ export class Watch {
 			});
 		});
 
-		this.#volume = volume;
+		this.#gain = gain;
 	}
 
 	get url(): URL | null {
@@ -74,11 +76,29 @@ export class Watch {
 		this.#visible = visible;
 		this.#bridge.postMessage({ Watch: { Visible: visible } });
 	}
+
+	get volume(): number {
+		return this.#volume;
+	}
+
+	set volume(volume: number) {
+		this.#volume = volume;
+
+		if (this.#gain) {
+			this.#gain.gain.value = volume;
+		}
+
+		if (this.#volume === 0) {
+			this.#bridge.postMessage({ Watch: { Muted: true } });
+		} else {
+			this.#bridge.postMessage({ Watch: { Muted: false } });
+		}
+	}
 }
 
 // A custom element making it easier to insert into the DOM.
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url"];
+	static observedAttributes = ["url", "volume"];
 
 	#bridge = new Bridge();
 	#watch = new Watch(this.#bridge);
@@ -138,6 +158,8 @@ export class WatchElement extends HTMLElement {
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
 			this.#watch.url = newValue ? new URL(newValue) : null;
+		} else if (name === "volume") {
+			this.#watch.volume = Number.parseFloat(newValue ?? "1");
 		}
 	}
 }

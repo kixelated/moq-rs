@@ -31,6 +31,12 @@ pub enum WatchCommand {
 	// Set the visibility of the video.
 	// Default: true
 	Visible(bool),
+
+	// Set the muted state of the audio.
+	// If true, then no audio will be downloaded or played.
+	//
+	// Default: false
+	Muted(bool),
 }
 
 pub enum WatchEvent {}
