@@ -1,7 +1,7 @@
 use web_async::FuturesExt;
 use web_message::Message;
 
-use rubato::{FftFixedIn, Resampler};
+use rubato::{FastFixedIn, Resampler};
 
 use crate::{Error, Result, WorkletCommand};
 
@@ -11,7 +11,7 @@ pub struct Audio {
 	track: Option<AudioTrack>,
 
 	sample_rate: u32,
-	resampler: Option<FftFixedIn<f32>>,
+	resampler: Option<FastFixedIn<f32>>,
 	resampler_in: Vec<Vec<f32>>,
 	resampler_out: Vec<Vec<f32>>,
 }
@@ -24,8 +24,6 @@ impl Audio {
 			// TODO addEventLister
 			worklet.start();
 		}
-
-		// Call init now
 	}
 
 	// Resample audio to the given sample rate.
@@ -60,18 +58,8 @@ impl Audio {
 	}
 
 	pub async fn run(&mut self) -> Result<()> {
-		let track = match self.track.as_mut() {
-			Some(track) => track,
-			None => return Ok(()),
-		};
-
-		let worklet = match self.worklet.as_ref() {
-			Some(worklet) => worklet,
-			None => return Ok(()),
-		};
-
-		loop {
-			let mut frame = match track.frame().await? {
+		while let Some(track) = self.track.as_mut() {
+			let frame = match track.frame().await? {
 				Some(frame) => frame,
 				None => {
 					// Close the track.
@@ -82,62 +70,124 @@ impl Audio {
 
 			// Resample the audio frame if needed.
 			if frame.sample_rate() != self.sample_rate {
-				tracing::trace!(
-					channels = ?frame.number_of_channels(),
-					sample_rate = ?frame.sample_rate(),
-					new_sample_rate = self.sample_rate,
-					timestamp = ?frame.timestamp(),
-					"resampling audio frame"
-				);
+				self.resample(frame)?;
+			} else {
+				self.proxy(frame)?;
+			}
+		}
 
-				if self.resampler.is_none() {
-					let resampler = FftFixedIn::new(
-						frame.sample_rate() as _,
-						self.sample_rate as _,
-						frame.number_of_frames() as _,
-						1,
-						frame.number_of_channels() as _,
-					)?;
+		Ok(())
+	}
 
-					self.resampler_in = resampler.input_buffer_allocate(true);
-					self.resampler_out = resampler.output_buffer_allocate(true);
-					self.resampler = Some(resampler);
-				}
+	fn resample(&mut self, frame: web_codecs::AudioData) -> Result<()> {
+		let worklet = match self.worklet.as_ref() {
+			Some(worklet) => worklet,
+			None => return Ok(()),
+		};
 
-				// Copy the audio data to the resampler input buffer.
-				for (i, dst) in self.resampler_in.iter_mut().enumerate() {
-					frame.copy_to(dst.as_mut_slice(), i, Default::default())?;
-				}
+		tracing::trace!(
+			channels = ?frame.number_of_channels(),
+			sample_rate = ?frame.sample_rate(),
+			new_sample_rate = self.sample_rate,
+			timestamp = ?frame.timestamp(),
+			"resampling audio frame"
+		);
 
-				// Process the audio data into the output buffer.
-				let resampler = self.resampler.as_mut().unwrap();
-				let (input, output) =
-					resampler.process_into_buffer(&self.resampler_in, &mut self.resampler_out, None)?;
+		if self.resampler.is_none() {
+			let ratio = self.sample_rate as f64 / frame.sample_rate() as f64;
+			let resampler = FastFixedIn::new(
+				ratio,
+				1.0,
+				rubato::PolynomialDegree::Cubic, // TODO benchmark?
+				frame.number_of_frames() as _,
+				frame.number_of_channels() as _,
+			)?;
 
-				// Sanity check to make sure we processed every sample.
-				assert_eq!(input, frame.number_of_frames() as usize);
+			self.resampler_in = resampler.input_buffer_allocate(false);
+			self.resampler_out = resampler.output_buffer_allocate(true);
+			self.resampler = Some(resampler);
+		}
 
-				if output == 0 {
-					continue;
-				}
+		// Copy the audio data to the resampler input buffer.
+		for (i, dst) in self.resampler_in.iter_mut().enumerate() {
+			frame.append_to(dst, i, Default::default())?;
+		}
 
-				// Create a new audio frame with the resampled data.
-				let output = self.resampler_out.iter().map(|v| &v[..output]);
-				frame = web_codecs::AudioData::new(output, self.sample_rate, frame.timestamp())?;
+		loop {
+			// Process the audio data into the output buffer.
+			let resampler = self.resampler.as_mut().unwrap();
+
+			if self.resampler_in[0].len() < resampler.input_frames_next() {
+				// Not enough space in the input buffer, wait for more data.
+				break;
 			}
 
-			tracing::trace!(
-				channels = ?frame.number_of_channels(),
-				sample_rate = ?frame.sample_rate(),
-				timestamp = ?frame.timestamp(),
-				"transferring audio frame"
-			);
+			let (input_samples, output_samples) =
+				resampler.process_into_buffer(&self.resampler_in, &mut self.resampler_out, None)?;
 
-			let command = WorkletCommand::Frame(frame.into());
+			for channel in self.resampler_in.iter_mut() {
+				// Reclaim space in the input buffer.
+				channel.drain(..input_samples);
+			}
+
+			if output_samples == 0 {
+				continue;
+			}
+
+			let channels = self
+				.resampler_out
+				.iter()
+				.map(|channel| {
+					let array = js_sys::Float32Array::new_with_length(output_samples as _);
+					array.copy_from(&channel[..output_samples]);
+					array
+				})
+				.collect();
+
+			let command = WorkletCommand::Frame {
+				channels,
+				timestamp: frame.timestamp().as_micros() as u64,
+			};
+
 			let mut transfer = js_sys::Array::new();
 			let msg = command.into_message(&mut transfer);
 			worklet.post_message_with_transferable(&msg, &transfer)?;
 		}
+
+		Ok(())
+	}
+
+	// Send the audio frame to the worklet directly if the sample rate is the same.
+	fn proxy(&mut self, frame: web_codecs::AudioData) -> Result<()> {
+		let worklet = match self.worklet.as_ref() {
+			Some(worklet) => worklet,
+			None => return Ok(()),
+		};
+
+		tracing::trace!(
+			channels = ?frame.number_of_channels(),
+			sample_rate = ?frame.sample_rate(),
+			timestamp = ?frame.timestamp(),
+			"transferring audio frame"
+		);
+
+		let channels = (0..frame.number_of_channels() as usize)
+			.map(|i| {
+				let mut array = js_sys::Float32Array::new_with_length(frame.number_of_frames() as _);
+				frame.copy_to(&mut array, i, Default::default())?;
+				Ok(array)
+			})
+			.collect::<Result<Vec<_>>>()?;
+
+		let command = WorkletCommand::Frame {
+			channels,
+			timestamp: frame.timestamp().as_micros() as u64,
+		};
+		let mut transfer = js_sys::Array::new();
+		let msg = command.into_message(&mut transfer);
+		worklet.post_message_with_transferable(&msg, &transfer)?;
+
+		Ok(())
 	}
 }
 

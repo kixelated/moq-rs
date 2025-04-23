@@ -61,10 +61,19 @@ impl Watch {
 					self.connected(connect, session?)?;
 				}
 				Some(res) = async { Some(self.broadcast.as_mut()?.catalog.next().await) } => {
-					self.catalog = res?;
-					tracing::info!(catalog = ?self.catalog, "catalog updated");
-					self.init_audio();
-					self.init_video();
+					match res? {
+						Some(catalog) => {
+							tracing::info!(?catalog, "catalog updated");
+							self.catalog = Some(catalog);
+							self.init_audio();
+							self.init_video();
+						}
+						None => {
+							tracing::info!("broadcast ended");
+							self.broadcast.take();
+						}
+					};
+
 				}
 				Err(err) = self.audio.run() => return Err(err),
 				Err(err) = self.video.run() => return Err(err),
