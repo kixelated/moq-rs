@@ -1,23 +1,26 @@
-import { Queue, QueueReader, QueueWriter } from "./util/queue";
-
 export class Group {
 	readonly id: number;
 	readonly writer: GroupWriter;
 	readonly reader: GroupReader;
 
-	constructor(id: number) {
+	constructor(id: number, buffer: number) {
 		this.id = id;
-		const frames = new Queue<Uint8Array>();
-		this.writer = new GroupWriter(id, frames.writer);
-		this.reader = new GroupReader(id, frames.reader);
+
+		const strategy = new ByteLengthQueuingStrategy({ highWaterMark: buffer });
+		const transform = new TransformStream<Uint8Array, Uint8Array>(undefined, strategy, strategy);
+
+		this.writer = new GroupWriter(id, transform.writable);
+		this.reader = new GroupReader(id, transform.readable);
 	}
 }
 
 export class GroupWriter {
 	readonly id: number;
-	readonly frames: Watch<Uint8Array>;
 
-	constructor(id: number, frames: QueueWriter<Uint8Array>) {
+	// A stream of frames.
+	frames: WritableStream<Uint8Array>;
+
+	constructor(id: number, frames: WritableStream<Uint8Array>) {
 		this.id = id;
 		this.frames = frames;
 	}
@@ -25,15 +28,16 @@ export class GroupWriter {
 
 export class GroupReader {
 	readonly id: number;
-	readonly frames: QueueReader<Uint8Array>;
+	frames: ReadableStream<Uint8Array>;
 
-	constructor(id: number, frames: QueueReader<Uint8Array>) {
+	constructor(id: number, frames: ReadableStream<Uint8Array>) {
 		this.id = id;
 		this.frames = frames;
 	}
 
-	tee(): [GroupReader, GroupReader] {
+	tee(): GroupReader {
 		const [one, two] = this.frames.tee();
-		return [new GroupReader(this.id, one), new GroupReader(this.id, two)];
+		this.frames = one;
+		return new GroupReader(this.id, two);
 	}
 }

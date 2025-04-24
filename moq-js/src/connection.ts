@@ -1,7 +1,7 @@
+import { AnnouncedReader } from "./announced";
 import { Publisher } from "./publisher";
-import { type Announced, Subscriber } from "./subscriber";
+import { Subscriber } from "./subscriber";
 import { TrackReader, TrackWriter } from "./track";
-import { QueueReader } from "./util/fanout";
 import * as Hex from "./util/hex";
 import * as Wire from "./wire";
 
@@ -116,16 +116,16 @@ export class Connection {
 		await Promise.all([session, bidis, unis]);
 	}
 
-	publish(track: TrackReader) {
-		this.#publisher.publish(track);
+	publish(broadcast: string, track: TrackReader) {
+		this.#publisher.publish(broadcast, track);
 	}
 
-	async announced(prefix = ""): Promise<QueueReader<Announced>> {
+	announced(prefix = ""): AnnouncedReader {
 		return this.#subscriber.announced(prefix);
 	}
 
-	async subscribe(track: TrackWriter): Promise<TrackReader> {
-		return await this.#subscriber.subscribe(track);
+	subscribe(broadcast: string, track: string, priority = 0): TrackReader {
+		return this.#subscriber.subscribe(broadcast, track, priority);
 	}
 
 	async #runSession() {
@@ -199,7 +199,7 @@ export class Connection {
 				throw new Error("not a subscriber");
 			}
 
-			return this.#subscriber.runGroup(msg, stream);
+			await this.#subscriber.runGroup(msg, stream);
 		}
 	}
 

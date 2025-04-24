@@ -1,4 +1,4 @@
 export { Connection } from "./connection";
-export { TrackWriter, TrackReader } from "./track";
-export { GroupWriter as Group, GroupReader } from "./group";
-export { Announced } from "./subscriber";
+export { Track, TrackWriter, TrackReader } from "./track";
+export { Group, GroupWriter, GroupReader } from "./group";
+export { Announced, AnnouncedReader, AnnouncedWriter } from "./announced";

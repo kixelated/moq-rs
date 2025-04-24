@@ -69,13 +69,13 @@ export class Stream {
 		return stream;
 	}
 
-	async close(reason?: unknown) {
-		if (reason === undefined) {
-			await this.writer.close();
-		} else {
-			await this.writer.reset(reason);
-			await this.reader.stop(reason);
-		}
+	async close() {
+		await this.writer.close();
+	}
+
+	async abort(reason?: unknown) {
+		await this.writer.reset(reason);
+		await this.reader.stop(reason);
 	}
 }
 
@@ -197,6 +197,7 @@ export class Reader {
 		return view.getBigUint64(0) & 0x3fffffffffffffffn;
 	}
 
+	// Returns false if there is more data to read, blocking if it hasn't been received yet.
 	async done(): Promise<boolean> {
 		if (this.#buffer.byteLength > 0) return false;
 		return !(await this.#fill());

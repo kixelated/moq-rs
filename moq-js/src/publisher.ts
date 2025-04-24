@@ -1,148 +1,115 @@
+import { Announced } from "./announced";
 import type { GroupReader } from "./group";
 import type { TrackReader, TrackWriter } from "./track";
 import { Watch } from "./util/async";
-import { Fanout } from "./util/fanout";
 import * as Wire from "./wire";
 
 export class Publisher {
 	#quic: WebTransport;
 
-	// Our published tracks.
-	#tracks = new Watch(new Map<string, TrackReader>());
+	// TODO this will store every announce/unannounce message, which will grow unbounded.
+	// We should remove any cached announcements on unannounce, etc.
+	#announced = new Announced("");
 
-	// Their subscribed tracks.
-	#subscribe = new Map<bigint, Subscribed>();
+	// Our published tracks.
+	#tracks = new Map<string, TrackReader>();
 
 	constructor(quic: WebTransport) {
 		this.#quic = quic;
 	}
 
 	// Publish a track
-	publish(track: TrackReader) {
-		this.#tracks.update((current) => {
-			current.set(track.path, track);
-			return current;
-		});
+	publish(broadcast: string, track: TrackReader) {
+		this.#tracks.set(track.name, track);
 
-		track.closed().finally(() =>
-			this.#tracks.update((current) => {
-				current.delete(track.path);
-				return current;
-			}),
-		);
+		(async () => {
+			try {
+				await this.#announced.writer.write({ broadcast, active: true });
+
+				// Consume the track until it's closed, then remove it from the lookup.
+				// This avoids backpressure on the TrackWriter.
+				for (;;) {
+					const group = await track.next();
+					if (!group) break;
+				}
+			} finally {
+				this.#tracks.delete(track.name);
+				await this.#announced.writer.write({ broadcast, active: false });
+			}
+		})();
 	}
 
-	#get(path: string): TrackReader | undefined {
-		return this.#tracks.latest()[0].get(path);
-	}
-
-	// TODO: This is very inefficient for many tracks.
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		let current = this.#tracks.latest();
-		let seen = new Set<string>();
+		const reader = await this.#announced.reader.tee();
 
-		while (current) {
-			const newSeen = new Set<string>();
+		for (;;) {
+			const announcement = await reader.read();
+			if (!announcement) break;
 
-			for (const [key, announce] of current[0]) {
-				if (announce.path.length < msg.prefix.length) {
-					continue;
-				}
-
-				const prefix = announce.path.slice(0, msg.prefix.length);
-				if (prefix !== msg.prefix) {
-					continue;
-				}
-
-				newSeen.add(key);
-
-				if (seen.delete(key)) {
-					// Already exists
-					continue;
-				}
-
-				// Add a new track
-				const suffix = announce.path.slice(msg.prefix.length);
-				const active = new Wire.Announce(suffix, "active");
-				await active.encode(stream.writer);
+			if (announcement.broadcast.startsWith(msg.prefix)) {
+				const wire = new Wire.Announce(announcement.broadcast.slice(msg.prefix.length), announcement.active);
+				await wire.encode(stream.writer);
 			}
-
-			// Remove any closed tracks
-			for (const announce of seen) {
-				const suffix = announce.slice(msg.prefix.length);
-				const ended = new Wire.Announce(suffix, "closed");
-				await ended.encode(stream.writer);
-			}
-
-			seen = newSeen;
-
-			const next = await current[1];
-			if (!next) return;
-			current = next;
 		}
 	}
 
 	async runSubscribe(msg: Wire.Subscribe, stream: Wire.Stream) {
-		if (this.#subscribe.has(msg.id)) {
-			throw new Error(`duplicate subscribe for id: ${msg.id}`);
-		}
-
-		const track = this.#get(msg.path);
+		const track = this.#tracks.get(msg.track);
 		if (!track) {
 			await stream.writer.reset(404);
 			return;
 		}
 
-		const subscribe = new Subscribed(msg, track, this.#quic);
-
-		// TODO close the stream when done
-		subscribe.run().catch((err) => console.warn("failed to run subscribe: ", err));
-
-		const info = new Wire.SubscribeOk(track.priority, track.latest);
+		const info = new Wire.SubscribeOk(track.priority);
 		await info.encode(stream.writer);
 
+		const serving = this.#runTrack(msg.id, track.tee());
+
 		for (;;) {
-			// TODO try_decode
-			const update = await Wire.SubscribeUpdate.decode_maybe(stream.reader);
-			if (!update) break;
+			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);
 
-			// TODO use the update
-		}
-	}
-}
+			const result = await Promise.any([serving, decode]);
+			if (!result) break;
 
-class Subscribed {
-	#id: bigint;
-	#track: TrackReader;
-	#quic: WebTransport;
-
-	constructor(msg: Wire.Subscribe, track: TrackReader, quic: WebTransport) {
-		this.#id = msg.id;
-		this.#track = track;
-		this.#quic = quic;
-	}
-
-	async run() {
-		for (;;) {
-			const group = await this.#track.read();
-			if (!group) break;
-
-			this.#runGroup(group).catch((err) => console.warn("failed to run group: ", err));
+			if (result instanceof Wire.SubscribeUpdate) {
+				// TODO use the update
+				console.warn("subscribe update not supported", result);
+			}
 		}
 	}
 
-	async #runGroup(group: GroupReader) {
-		const msg = new Wire.Group(this.#id, group.id);
-		const stream = await Wire.Writer.open(this.#quic, msg);
+	async #runTrack(sub: bigint, track: TrackReader) {
+		try {
+			for (;;) {
+				const group = await track.next();
+				if (!group) break;
 
-		for (;;) {
-			const frame = await group.nextFrame();
-			if (!frame) break;
-
-			await stream.u53(frame.byteLength);
-			await stream.write(frame);
+				this.#runGroup(sub, group.tee());
+			}
+		} finally {
+			await track.close();
 		}
+	}
 
-		await stream.close();
+	async #runGroup(sub: bigint, group: GroupReader) {
+		const frames = group.frames.getReader();
+
+		const gmsg = new Wire.Group(sub, group.id);
+		const stream = await Wire.Writer.open(this.#quic, gmsg);
+		try {
+			for (;;) {
+				const { done, value } = await frames.read();
+				if (done) break;
+
+				await stream.u53(value.byteLength);
+				await stream.write(value);
+			}
+
+			await stream.close();
+		} catch (err) {
+			await stream.reset(err);
+		} finally {
+			await frames.cancel();
+		}
 	}
 }

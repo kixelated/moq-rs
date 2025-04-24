@@ -1,25 +1,23 @@
 import type { Reader, Writer } from "./stream";
 
-export type AnnounceStatus = "active" | "closed";
-
 export class Announce {
 	suffix: string;
-	status: AnnounceStatus;
+	active: boolean;
 
-	constructor(suffix: string, status: AnnounceStatus) {
+	constructor(suffix: string, active: boolean) {
 		this.suffix = suffix;
-		this.status = status;
+		this.active = active;
 	}
 
 	async encode(w: Writer) {
-		await w.u53(this.status === "active" ? 1 : 0);
+		await w.u53(this.active ? 1 : 0);
 		await w.string(this.suffix);
 	}
 
 	static async decode(r: Reader): Promise<Announce> {
-		const status = (await r.u53()) === 1 ? "active" : "closed";
+		const active = (await r.u53()) === 1;
 		const suffix = await r.string();
-		return new Announce(suffix, status);
+		return new Announce(suffix, active);
 	}
 
 	static async decode_maybe(r: Reader): Promise<Announce | undefined> {

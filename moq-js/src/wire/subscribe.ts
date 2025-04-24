@@ -24,27 +24,31 @@ export class SubscribeUpdate {
 
 export class Subscribe extends SubscribeUpdate {
 	id: bigint;
-	path: string;
+	broadcast: string;
+	track: string;
 
 	static StreamID = 0x2;
 
-	constructor(id: bigint, path: string, priority: number) {
+	constructor(id: bigint, broadcast: string, track: string, priority: number) {
 		super(priority);
 		this.id = id;
-		this.path = path;
+		this.broadcast = broadcast;
+		this.track = track;
 	}
 
 	override async encode(w: Writer) {
 		await w.u62(this.id);
-		await w.string(this.path);
+		await w.string(this.broadcast);
+		await w.string(this.track);
 		await super.encode(w);
 	}
 
 	static override async decode(r: Reader): Promise<Subscribe> {
 		const id = await r.u62();
-		const path = await r.string();
+		const broadcast = await r.string();
+		const track = await r.string();
 		const update = await SubscribeUpdate.decode(r);
-		return new Subscribe(id, path, update.priority);
+		return new Subscribe(id, broadcast, track, update.priority);
 	}
 }
 

@@ -1,66 +1,98 @@
 import { Group, GroupReader, GroupWriter } from "./group";
 import { Watch, WatchNext } from "./util/async";
-import { Queue, QueueReader, QueueWriter } from "./util/queue";
 
-export class TrackWriter {
-	readonly path: string;
+export class Track {
+	readonly name: string;
 	readonly priority: number;
 
-	#group = new Watch<GroupReader | undefined>(undefined);
+	readonly writer: TrackWriter;
+	readonly reader: TrackReader;
 
-	constructor(path: string, priority: number) {
-		this.path = path;
+	constructor(name: string, priority: number) {
+		this.name = name;
 		this.priority = priority;
+
+		// We don't really want backpressure, so put something that should never be hit.
+		const backpressure = { highWaterMark: 32 };
+		const group = new TransformStream<GroupReader, GroupReader>(undefined, backpressure, backpressure);
+		this.writer = new TrackWriter(name, priority, group.writable);
+		this.reader = new TrackReader(name, priority, group.readable);
+	}
+}
+
+export class TrackWriter {
+	readonly name: string;
+	readonly priority: number;
+
+	#group: WritableStream<GroupReader>;
+	#latest: number | undefined;
+
+	constructor(name: string, priority: number, group: WritableStream<GroupReader>) {
+		this.name = name;
+		this.priority = priority;
+		this.#group = group;
 	}
 
-	async append(): Promise<GroupWriter> {
-		const [latest, _] = this.#group.value();
+	async append(buffer: number): Promise<GroupWriter> {
+		const group = new Group(this.#latest ? this.#latest + 1 : 0, buffer);
+		this.#latest = group.id;
 
-		const group = new Group(latest ? latest.id + 1 : 0);
-		this.#group.update(group.reader);
+		// TODO avoid this backpressure; we only care about the latest group.
+		const writer = this.#group.getWriter();
+		await writer.write(group.reader);
+		writer.releaseLock();
+
 		return group.writer;
 	}
 
 	async insert(group: GroupReader) {
-		const [current, _] = this.#group.value();
-		if (current && group.id < current.id) {
-			throw new Error("old group");
+		if (this.#latest && group.id < this.#latest) {
+			return;
 		}
 
-		this.#group.update(group);
+		this.#latest = group.id;
+
+		// TODO avoid this backpressure; we only care about the latest group.
+		const writer = this.#group.getWriter();
+		await writer.write(group);
+		writer.releaseLock();
 	}
 
 	async close() {
-		this.#group.close();
+		await this.#group.close();
 	}
 
 	async abort(reason?: unknown) {
-		this.#group.abort(reason);
+		await this.#group.abort(reason);
 	}
 }
 
 export class TrackReader {
-	readonly path: string;
+	readonly name: string;
 	readonly priority: number;
 
-	#groups?: Promise<WatchNext<GroupReader | undefined>>;
-	#closed?: Promise<void>;
+	#group: ReadableStream<GroupReader>;
 
-	constructor(path: string, priority: number, groups: Watch<GroupReader | undefined>) {
-		this.path = path;
+	constructor(name: string, priority: number, group: ReadableStream<GroupReader>) {
+		this.name = name;
 		this.priority = priority;
-		this.#groups = Promise.resolve(groups.value());
-		this.#closed = groups.closed();
+		this.#group = group;
 	}
 
 	async next(): Promise<GroupReader | undefined> {
-		if (!this.#groups) return;
-		const [current, next] = await this.#groups;
-		this.#groups = next;
-		return current;
+		const reader = this.#group.getReader();
+		const result = await reader.read();
+		reader.releaseLock();
+		return result.done ? undefined : result.value;
 	}
 
-	async closed() {
-		return this.#closed;
+	tee(): TrackReader {
+		const [one, two] = this.#group.tee();
+		this.#group = one;
+		return new TrackReader(this.name, this.priority, two);
+	}
+
+	async close() {
+		await this.#group.cancel();
 	}
 }
