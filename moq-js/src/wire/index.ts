@@ -1,4 +1,4 @@
-export { Announce, AnnounceInterest, type AnnounceStatus } from "./announce";
+export { Announce, AnnounceInterest } from "./announce";
 export { Group } from "./group";
 export { SessionInfo, SessionClient, SessionServer, Version } from "./session";
 export { Subscribe, SubscribeOk, SubscribeUpdate } from "./subscribe";

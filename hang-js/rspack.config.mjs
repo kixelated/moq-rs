@@ -9,12 +9,13 @@ const __dirname = path.dirname(__filename);
 const config = {
 	entry: "./src/demo/index.ts",
 	output: {
-		path: path.resolve(__dirname, "dist"),
+		path: path.resolve(__dirname, "public"),
 		filename: "index.js",
 	},
 	plugins: [
 		new HtmlWebpackPlugin({
-			template: "src/demo/index.html",
+			template: "src/demo/watch.html",
+			filename: "index.html",
 		}),
 	],
 	mode: "development",
@@ -27,10 +28,15 @@ const config = {
 		rules: [
 			{
 				test: /\.ts(x)?$/,
-				loader: "ts-loader",
+				loader: "builtin:swc-loader",
 				exclude: /node_modules/,
 			},
 		],
+		parser: {
+			javascript: {
+				worker: ["*context.audioWorklet.addModule()", "..."],
+			},
+		},
 	},
 	resolve: {
 		extensions: [".ts", ".tsx", ".js"],
@@ -39,6 +45,9 @@ const config = {
 		open: true,
 		hot: false,
 		liveReload: false,
+	},
+	optimization: {
+		sideEffects: true,
 	},
 };
 

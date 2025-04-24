@@ -67,14 +67,18 @@ export class Watch {
 		const connection = await context.race(Moq.Connection.connect(base));
 
 		try {
-			const announced = await context.race(connection.announced(path));
+			const announced = connection.announced(path);
+			console.log("Announced", announced);
 
 			for (;;) {
-				const announce = await context.race(announced.next());
-				if (!announce) break;
-				if (!announce.path.endsWith("catalog.json")) continue;
+				const announce = await context.race(announced.read());
+				console.log("Announce", announce);
 
-				Catalog.Broadcast.fetch(connection, path).then((catalog) => {
+				if (!announce) break;
+				if (!announce.active) continue;
+
+				const sub = connection.subscribe(announce.broadcast, "catalog.json");
+				Catalog.Broadcast.fetch(sub).then((catalog) => {
 					this.#video.load(connection, path, catalog.video);
 				});
 			}

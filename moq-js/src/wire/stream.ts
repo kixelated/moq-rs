@@ -5,7 +5,9 @@ const MAX_U14 = 2 ** 14 - 1;
 const MAX_U30 = 2 ** 30 - 1;
 const MAX_U31 = 2 ** 31 - 1;
 const MAX_U53 = Number.MAX_SAFE_INTEGER;
-const MAX_U62: bigint = 2n ** 62n - 1n;
+
+// TODO: Figure out why webpack is converting this to Math.pow
+//const MAX_U62: bigint = 2n ** 62n - 1n;
 
 export type StreamBi = Wire.SessionClient | Wire.AnnounceInterest | Wire.Subscribe;
 export type StreamUni = Wire.Group;
@@ -69,7 +71,7 @@ export class Stream {
 		return stream;
 	}
 
-	async close() {
+	async close(reason?: unknown) {
 		await this.writer.close();
 	}
 
@@ -278,9 +280,11 @@ export class Writer {
 		if (v < 0) {
 			throw new Error(`underflow, value is negative: ${v}`);
 		}
+		/*
 		if (v >= MAX_U62) {
 			throw new Error(`overflow, value larger than 62-bits: ${v}`);
 		}
+		*/
 
 		await this.write(setVint62(this.#scratch, v));
 	}
@@ -379,10 +383,10 @@ export function setVint62(dst: Uint8Array, v: bigint): Uint8Array {
 	if (v <= MAX_U30) {
 		return setUint32(dst, Number(v) | 0x80000000);
 	}
-	if (v <= MAX_U62) {
-		return setUint64(dst, BigInt(v) | 0xc000000000000000n);
-	}
-	throw new Error(`overflow, value larger than 62-bits: ${v}`);
+	//if (v <= MAX_U62) {
+	return setUint64(dst, BigInt(v) | 0xc000000000000000n);
+	//}
+	//throw new Error(`overflow, value larger than 62-bits: ${v}`);
 }
 
 export function setUint64(dst: Uint8Array, v: bigint): Uint8Array {

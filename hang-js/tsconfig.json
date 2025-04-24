@@ -3,20 +3,15 @@
 	"include": ["src"],
 	"exclude": ["node_modules", "dist"],
 	"compilerOptions": {
-		"lib": ["es2022", "esnext.decorators", "dom"],
-		"target": "es2022",
+		"lib": ["esnext", "dom"],
+		"target": "esnext",
 		"module": "esnext",
 		"moduleResolution": "bundler",
 
 		"outDir": "dist",
 		"declaration": true,
 		"sourceMap": true,
-		"isolatedModules": true,
-
-		// JSX
-		"jsx": "react",
-		"jsxFactory": "jsx",
-		"jsxFragmentFactory": "jsxFragment"
+		"isolatedModules": true
 	},
 	"paths": {
 		"@/*": ["*"]

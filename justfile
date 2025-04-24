@@ -96,7 +96,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve --dir "hang-web/public" "demo/{{name}}"
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve --dir "hang-js/public" "demo/{{name}}"
 
 # Run the web server
 web:

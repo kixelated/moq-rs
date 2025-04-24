@@ -85,10 +85,10 @@ export class Publish {
 	async #run(context: Context, connection?: Moq.Connection, media?: MediaStream) {
 		if (!connection || !media) return;
 
-		const broadcast = new Catalog.Broadcast();
+		const catalog = new Catalog.Broadcast();
 
 		// Remove the leading slash
-		const path = connection.url.pathname.slice(1);
+		const broadcast = connection.url.pathname.slice(1);
 
 		for (const track of media.getTracks()) {
 			const settings = track.getSettings();
@@ -98,9 +98,9 @@ export class Publish {
 				priority: track.kind === "video" ? 1 : 2,
 			};
 
-			const trackPath = `${path}/${info.name}`;
-			const trackProducer = new Moq.TrackWriter(trackPath, info.priority);
-			context.done.then(() => trackProducer.close());
+			const moqTrack = new Moq.Track(info.name, info.priority);
+			const writer = moqTrack.writer;
+			const reader = moqTrack.reader;
 
 			if (isVideoTrackSettings(settings)) {
 				const videoTrack = track as MediaStreamVideoTrack;
@@ -112,11 +112,11 @@ export class Publish {
 					latencyMode: "realtime",
 				};
 
-				const encoder = new Video.Encoder(config, trackProducer);
+				const encoder = new Video.Encoder(config, writer);
 				encoder
 					.run(context, videoTrack)
-					.catch(console.error)
-					.finally(() => trackProducer.close());
+					.catch((err) => writer.abort(err))
+					.finally(() => writer.close());
 
 				const decoder = await encoder.decoder();
 				const description = decoder.description ? new Uint8Array(decoder.description as ArrayBuffer) : undefined;
@@ -128,7 +128,7 @@ export class Publish {
 					resolution: { width: settings.width, height: settings.height },
 				};
 
-				broadcast.video.push(video);
+				catalog.video.push(video);
 			} else if (isAudioTrackSettings(settings)) {
 				const audioTrack = track as MediaStreamAudioTrack;
 				const config: Audio.EncoderConfig = {
@@ -137,11 +137,11 @@ export class Publish {
 					numberOfChannels: settings.channelCount,
 				};
 
-				const encoder = new Audio.Encoder(config, trackProducer);
+				const encoder = new Audio.Encoder(config, writer);
 				encoder
 					.run(context, audioTrack)
-					.catch(console.error)
-					.finally(() => trackProducer.close());
+					.catch((err) => writer.abort(err))
+					.finally(() => writer.close());
 
 				const audio: Catalog.Audio = {
 					track: info,
@@ -150,23 +150,24 @@ export class Publish {
 					channel_count: config.numberOfChannels,
 				};
 
-				broadcast.audio.push(audio);
+				catalog.audio.push(audio);
 			} else {
 				throw new Error(`unknown track type: ${track.kind}`);
 			}
 
-			connection.publish(trackProducer.reader());
+			connection.publish(broadcast, reader);
 		}
 
-		const catalogPath = `${path}/catalog.json`;
-		const catalogProducer = new Moq.TrackWriter(catalogPath, 0);
-		context.done.then(() => catalogProducer.close());
+		const catalogTrack = new Moq.Track("catalog", 0);
+		context.done.then(() => catalogTrack.writer.close());
 
 		const encoder = new TextEncoder();
-		const encoded = encoder.encode(broadcast.encode());
-		catalogProducer.appendGroup().writeFrames(encoded);
+		const encoded = encoder.encode(catalog.encode());
+		const catalogGroup = catalogTrack.writer.appendGroup();
+		catalogGroup.writeFrame(encoded);
+		context.done.then(() => catalogGroup.close());
 
-		connection.publish(catalogProducer.reader());
+		connection.publish(broadcast, catalogTrack.reader);
 	}
 
 	close() {

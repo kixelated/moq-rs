@@ -17,7 +17,7 @@ export type EncoderConfig = VideoEncoderConfig;
 
 export class Encoder {
 	#outputTrack: Moq.TrackWriter;
-	#outputGroup?: Moq.Group;
+	#outputGroup?: Moq.GroupWriter;
 
 	#encoder: VideoEncoder;
 	#encoderConfig: VideoEncoderConfig;

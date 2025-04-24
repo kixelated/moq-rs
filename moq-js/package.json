@@ -9,7 +9,7 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
+		"build": "tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
 		"check": "tsc --noEmit"
 	},
 	"devDependencies": {

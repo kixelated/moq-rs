@@ -1,8 +1,6 @@
 import { AnnouncedReader, Announced } from "./announced";
-import { FrameReader } from "./frame";
 import { Group } from "./group";
 import { Track, type TrackReader, type TrackWriter } from "./track";
-import { Queue, Watch } from "./util/async";
 import * as Wire from "./wire";
 
 export class Subscriber {
@@ -25,7 +23,7 @@ export class Subscriber {
 
 		const msg = new Wire.AnnounceInterest(prefix);
 
-		async () => {
+		(async () => {
 			try {
 				const stream = await Wire.Stream.open(this.#quic, msg);
 
@@ -43,7 +41,7 @@ export class Subscriber {
 			} catch (err) {
 				await writer.abort(err);
 			}
-		};
+		})();
 
 		return pair.reader;
 	}
@@ -71,13 +69,16 @@ export class Subscriber {
 		// Run the subscription in a background promise.
 		(async () => {
 			const stream = await Wire.Stream.open(this.#quic, msg);
+			console.log("opened stream", stream);
 			try {
 				const info = await Wire.SubscribeOk.decode(stream.reader);
 				console.log("subscribe ok", info);
 
 				await stream.reader.closed();
+				console.log("waiting for close");
 				pair.writer.close();
 			} catch (err) {
+				console.log("aborting", err);
 				pair.writer.abort(err);
 			} finally {
 				this.#subscribe.delete(id);
@@ -85,19 +86,16 @@ export class Subscriber {
 			}
 		})();
 
-		return pair.reader;
+		return reader;
 	}
 
 	async runGroup(group: Wire.Group, stream: Wire.Reader) {
 		const subscribe = this.#subscribe.get(group.subscribe);
 		if (!subscribe) return;
 
-		// We use a relatively small buffer here because it's reading over the network.
-		// If the consumer is slow to read, we'll apply backpressure automatically.
-		const pair = new Group(group.sequence, 2048);
-		await subscribe.insert(pair.reader);
+		const pair = new Group(group.sequence);
+		subscribe.insertGroup(pair.reader);
 
-		const writer = pair.writer.frames.getWriter();
 		try {
 			for (;;) {
 				const done = await stream.done();
@@ -107,12 +105,12 @@ export class Subscriber {
 				const payload = await stream.read(size);
 				if (!payload) break;
 
-				await writer.write(payload);
+				await pair.writer.writeFrame(payload);
 			}
 
-			await writer.close();
+			pair.writer.close();
 		} catch (err) {
-			await writer.abort(err);
+			pair.writer.abort(err);
 		}
 	}
 }

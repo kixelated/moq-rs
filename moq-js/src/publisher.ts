@@ -1,7 +1,6 @@
 import { Announced } from "./announced";
 import type { GroupReader } from "./group";
 import type { TrackReader, TrackWriter } from "./track";
-import { Watch } from "./util/async";
 import * as Wire from "./wire";
 
 export class Publisher {
@@ -29,7 +28,7 @@ export class Publisher {
 				// Consume the track until it's closed, then remove it from the lookup.
 				// This avoids backpressure on the TrackWriter.
 				for (;;) {
-					const group = await track.next();
+					const group = await track.nextGroup();
 					if (!group) break;
 				}
 			} finally {
@@ -81,7 +80,7 @@ export class Publisher {
 	async #runTrack(sub: bigint, track: TrackReader) {
 		try {
 			for (;;) {
-				const group = await track.next();
+				const group = await track.nextGroup();
 				if (!group) break;
 
 				this.#runGroup(sub, group.tee());
@@ -92,24 +91,22 @@ export class Publisher {
 	}
 
 	async #runGroup(sub: bigint, group: GroupReader) {
-		const frames = group.frames.getReader();
-
-		const gmsg = new Wire.Group(sub, group.id);
-		const stream = await Wire.Writer.open(this.#quic, gmsg);
+		const msg = new Wire.Group(sub, group.id);
+		const stream = await Wire.Writer.open(this.#quic, msg);
 		try {
 			for (;;) {
-				const { done, value } = await frames.read();
-				if (done) break;
+				const frame = await group.readFrame();
+				if (!frame) break;
 
-				await stream.u53(value.byteLength);
-				await stream.write(value);
+				await stream.u53(frame.byteLength);
+				await stream.write(frame);
 			}
 
 			await stream.close();
 		} catch (err) {
 			await stream.reset(err);
 		} finally {
-			await frames.cancel();
+			group.close();
 		}
 	}
 }

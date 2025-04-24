@@ -11,7 +11,7 @@ export class Video {
 	#visible = true;
 
 	#connection?: Moq.Connection;
-	#prefix?: string;
+	#broadcast?: string;
 	#tracks?: Catalog.Video[];
 
 	#latency = 0;
@@ -54,9 +54,9 @@ export class Video {
 		this.#latency = latency;
 	}
 
-	async load(connection: Moq.Connection, path: string, tracks: Catalog.Video[]) {
+	async load(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
 		this.#connection = connection;
-		this.#prefix = path;
+		this.#broadcast = broadcast;
 		this.#tracks = tracks;
 
 		await this.#reload();
@@ -64,7 +64,7 @@ export class Video {
 
 	async abort() {
 		this.#connection = undefined;
-		this.#prefix = undefined;
+		this.#broadcast = undefined;
 		this.#tracks = undefined;
 
 		await this.#running.abort();
@@ -76,17 +76,17 @@ export class Video {
 
 		if (!this.#canvas) return;
 		if (!this.#visible) return;
-		if (!this.#tracks || !this.#connection || !this.#prefix) return;
+		if (!this.#tracks || !this.#connection || !this.#broadcast) return;
 
 		const info = this.#tracks.at(0);
 		if (!info) throw new Error("no video track");
 
 		console.log("video track:", info);
 
-		this.#running.start(this.#connection, this.#prefix, info);
+		this.#running.start(this.#connection, this.#broadcast, info);
 	}
 
-	async #run(context: Context, connection: Moq.Connection, prefix: string, info: Catalog.Video) {
+	async #run(context: Context, connection: Moq.Connection, broadcast: string, info: Catalog.Video) {
 		this.#decoder.configure({
 			codec: info.codec,
 			codedHeight: info.resolution.height,
@@ -95,13 +95,12 @@ export class Video {
 			optimizeForLatency: true,
 		});
 
-		const writer = new Moq.TrackWriter(`${this.#prefix}/${info.track.name}`, info.track.priority);
-		const reader = await connection.subscribe(writer);
-		const container = new Container.Reader(reader);
+		const track = connection.subscribe(broadcast, info.track.name, info.track.priority);
+		const container = new Container.Reader(track);
 
 		try {
 			for (;;) {
-				const frame = await context.race(container.next());
+				const frame = await context.race(container.readFrame());
 				if (!frame) throw new Error("no frame");
 
 				const chunk = new EncodedVideoChunk({

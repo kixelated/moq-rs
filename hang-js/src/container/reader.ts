@@ -13,7 +13,7 @@ export class Reader {
 		this.#nextGroup = track.nextGroup();
 	}
 
-	async next(): Promise<Frame | undefined> {
+	async readFrame(): Promise<Frame | undefined> {
 		for (;;) {
 			if (this.#nextGroup && this.#nextFrame) {
 				// Figure out if nextFrame or nextGroup wins the race.
@@ -34,7 +34,8 @@ export class Reader {
 
 					// We got a frame; return it.
 					// But first start fetching the next frame (note: group cannot be undefined).
-					this.#nextFrame = this.#group ? Frame.decode(this.#group) : undefined;
+					this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
+
 					return frame;
 				}
 
@@ -58,15 +59,17 @@ export class Reader {
 				// Skip the rest of the current group.
 				this.#group?.close();
 				this.#group = next.group;
+				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
 			} else if (this.#nextGroup) {
 				// Wait for the next group.
 				this.#group?.close(); // just a precaution
 				this.#group = await this.#nextGroup;
 				this.#nextGroup = this.#track.nextGroup();
+				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
 			} else if (this.#nextFrame) {
 				// We got the next frame, or potentially the end of the track.
 				const frame = await this.#nextFrame;
-				this.#nextFrame = this.#group ? Frame.decode(this.#group) : undefined;
+				this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
 				return frame;
 			} else {
 				return undefined;

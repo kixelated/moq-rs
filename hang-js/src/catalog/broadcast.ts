@@ -31,26 +31,22 @@ export class Broadcast {
 		return broadcast;
 	}
 
-	static async fetch(connection: Moq.Connection, path: string): Promise<Broadcast> {
-		const track = new Moq.TrackWriter(path, 0);
-		console.debug("fetching catalog:", path);
-
-		const sub = await connection.subscribe(track);
+	static async fetch(track: Moq.TrackReader): Promise<Broadcast> {
 		try {
-			const segment = await sub.nextGroup();
+			const segment = await track.nextGroup();
 			if (!segment) throw new Error("no catalog data");
 
-			const frame = await segment.nextFrame();
+			const frame = await segment.readFrame();
 			if (!frame) throw new Error("no catalog frame");
 
-			segment.close();
+			await segment.close();
 
 			const broadcast = Broadcast.decode(frame);
 
 			console.debug("decoded catalog:", broadcast);
 			return broadcast;
 		} finally {
-			sub.close();
+			track.close();
 		}
 	}
 }

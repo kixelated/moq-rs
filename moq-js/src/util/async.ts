@@ -18,119 +18,88 @@ export class Deferred<T> {
 	}
 }
 
-export type WatchNext<T> = [T, Promise<WatchNext<T>> | undefined];
+export class WatchProducer<T> {
+	#current?: T;
+	#next = new Deferred<T>();
+	#closed = new Deferred<undefined>();
 
-export class Watch<T> {
-	#current: WatchNext<T>;
-	#next = new Deferred<WatchNext<T>>();
-	#closed = new Deferred<void>();
+	#consumers = 0;
 
-	constructor(init: T) {
-		this.#next = new Deferred<WatchNext<T>>();
-		this.#current = [init, this.#next.promise];
-	}
-
-	value(): WatchNext<T> {
+	latest(): T | undefined {
 		return this.#current;
 	}
 
-	update(v: T | ((v: T) => T)) {
-		if (!this.#next.pending) {
+	async next(): Promise<T | undefined> {
+		return Promise.race([this.#next.promise, this.#closed.promise]);
+	}
+
+	update(v: T | ((v: T | undefined) => T)) {
+		if (!this.#closed.pending) {
 			throw new Error("closed");
 		}
 
-		// If we're given a function, call it with the current value
 		let value: T;
 		if (v instanceof Function) {
-			value = v(this.#current[0]);
+			value = v(this.#current);
 		} else {
 			value = v;
 		}
 
-		const next = new Deferred<WatchNext<T>>();
-		this.#current = [value, next.promise];
+		const next = new Deferred<T>();
+		this.#current = value;
 		this.#next.resolve(this.#current);
 		this.#next = next;
 	}
 
 	close() {
-		this.#current[1] = undefined;
-		this.#next.resolve(this.#current);
-		this.#closed.resolve();
+		this.#closed.resolve(undefined);
 	}
 
 	abort(reason?: unknown) {
-		this.#current[1] = undefined;
-		this.#next.reject(reason);
 		this.#closed.reject(reason);
 	}
 
 	async closed(): Promise<void> {
-		return this.#closed.promise;
-	}
-}
-
-// Wakes up a multiple consumers.
-export class Notify {
-	#next = new Deferred<void>();
-
-	async wait() {
-		return this.#next.promise;
+		await this.#closed.promise;
 	}
 
-	wake() {
-		if (!this.#next.pending) {
-			throw new Error("closed");
+	subscribe(): WatchConsumer<T> {
+		this.#consumers++;
+		return new WatchConsumer(this);
+	}
+
+	unsubscribe() {
+		this.#consumers--;
+
+		if (this.#consumers === 0) {
+			this.close();
 		}
-
-		this.#next.resolve();
-		this.#next = new Deferred<void>();
 	}
 
-	close() {
-		this.#next.resolve();
+	static pair<T>(): [WatchProducer<T>, WatchConsumer<T>] {
+		const producer = new WatchProducer<T>();
+		const consumer = producer.subscribe();
+		return [producer, consumer];
 	}
 }
 
-// Allows queuing N values, like a Channel.
-export class Queue<T> {
-	#stream: TransformStream<T, T>;
-	#closed = false;
+export class WatchConsumer<T> {
+	#watch: WatchProducer<T>;
 
-	constructor(capacity = 1) {
-		const queue = new CountQueuingStrategy({ highWaterMark: capacity });
-		this.#stream = new TransformStream({}, undefined, queue);
-	}
-
-	async push(v: T) {
-		if (this.#closed) throw new Error("closed");
-		const w = this.#stream.writable.getWriter();
-		await w.write(v);
-		w.releaseLock();
+	constructor(watch: WatchProducer<T>) {
+		this.#watch = watch;
 	}
 
 	async next(): Promise<T | undefined> {
-		const r = this.#stream.readable.getReader();
-		const { value, done } = await r.read();
-		r.releaseLock();
-
-		if (done) return;
-		return value;
+		// Return the next value
+		return this.#watch.next();
 	}
 
-	async abort(err: Error) {
-		if (this.#closed) return;
-		await this.#stream.writable.abort(err);
-		this.#closed = true;
+	clone(): WatchConsumer<T> {
+		return this.#watch.subscribe();
 	}
 
-	async close() {
-		if (this.#closed) return;
-		await this.#stream.writable.close();
-		this.#closed = true;
-	}
-
-	closed() {
-		return this.#closed;
+	close() {
+		this.#watch.unsubscribe();
 	}
 }
