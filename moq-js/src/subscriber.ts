@@ -1,4 +1,4 @@
-import { AnnouncedReader, Announced } from "./announced";
+import { Announced, AnnouncedReader } from "./announced";
 import { Group } from "./group";
 import { Track, type TrackReader, type TrackWriter } from "./track";
 import * as Wire from "./wire";

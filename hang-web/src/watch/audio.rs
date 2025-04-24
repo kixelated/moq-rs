@@ -235,7 +235,6 @@ impl AudioTrack {
 			description: info.description.clone(),
 			channel_count: info.channel_count,
 			sample_rate: info.sample_rate,
-			..Default::default()
 		}
 		.build()?;
 

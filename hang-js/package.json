@@ -13,8 +13,9 @@
 	},
 	"scripts": {
 		"build": "rspack build && tsc -b && cp ../LICENSE* ./dist",
-		"check": "tsc --noEmit",
-		"dev": "rspack serve"
+		"dev": "rspack serve",
+		"check": "tsc --noEmit && biome check",
+		"fix": "biome check --fix --unsafe"
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:../moq-js",

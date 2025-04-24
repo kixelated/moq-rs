@@ -12,6 +12,7 @@ pub struct Origins {
 	unique: AnnouncedProducer,
 
 	// Active routes based on path.
+	#[allow(clippy::type_complexity)]
 	routes: Arc<Mutex<HashMap<Broadcast, (BroadcastConsumer, JoinHandle<()>)>>>,
 }
 

@@ -6,7 +6,8 @@ import { Context, Task } from "../util/context";
 import * as Hex from "../util/hex";
 
 export class Video {
-	#canvas?: HTMLCanvasElement;
+	#render?: CanvasRenderingContext2D;
+
 	#decoder: VideoDecoder;
 	#visible = true;
 
@@ -15,9 +16,8 @@ export class Video {
 	#tracks?: Catalog.Video[];
 
 	#latency = 0;
-	#running = new Task(this.#run);
-
-	#observer: IntersectionObserver;
+	#running = new Task(this.#run.bind(this));
+	#active?: Catalog.Video;
 
 	constructor() {
 		this.#decoder = new VideoDecoder({
@@ -25,29 +25,19 @@ export class Video {
 			error: (error) => console.error(error),
 		});
 
-		// TODO use MutationObserver to detect `display: none`?
-		this.#observer = new IntersectionObserver(
-			([canvas]) => {
-				this.#visible = canvas.isIntersecting;
-				this.#reload();
-			},
-			{ threshold: 0 },
-		);
+		// TODO Implement IntersectionObserver too
+		document.addEventListener("visibilitychange", () => {
+			this.#visible = document.visibilityState === "visible";
+			this.#reload();
+		});
 	}
 
 	get canvas(): HTMLCanvasElement | undefined {
-		return this.#canvas;
+		return this.#render?.canvas;
 	}
 
 	set canvas(canvas: HTMLCanvasElement | undefined) {
-		if (this.#canvas) {
-			this.#observer.unobserve(this.#canvas);
-		}
-
-		this.#canvas = canvas;
-		if (canvas) {
-			this.#observer.observe(canvas);
-		}
+		this.#render = canvas?.getContext("2d") ?? undefined;
 	}
 
 	set latency(latency: number) {
@@ -71,18 +61,21 @@ export class Video {
 	}
 
 	async #reload() {
-		await this.#running.abort();
-		console.log(this);
-
-		if (!this.#canvas) return;
-		if (!this.#visible) return;
-		if (!this.#tracks || !this.#connection || !this.#broadcast) return;
+		if (!this.#render || !this.#visible || !this.#tracks || !this.#connection || !this.#broadcast) {
+			return await this.#running.abort();
+		}
 
 		const info = this.#tracks.at(0);
-		if (!info) throw new Error("no video track");
+		if (!info) {
+			return await this.#running.abort();
+		}
 
-		console.log("video track:", info);
+		if (info === this.#active) {
+			// No change; continue the current run.
+			return;
+		}
 
+		this.#active = info;
 		this.#running.start(this.#connection, this.#broadcast, info);
 	}
 
@@ -118,15 +111,15 @@ export class Video {
 
 	#decoded(frame: VideoFrame) {
 		self.requestAnimationFrame(() => {
-			if (!this.#canvas) return;
+			if (!this.#render) return;
 
-			this.#canvas.width = frame.displayWidth;
-			this.#canvas.height = frame.displayHeight;
+			const width = frame.displayWidth ?? frame.codedWidth;
+			const height = frame.displayHeight ?? frame.codedHeight;
 
-			const ctx = this.#canvas.getContext("2d");
-			if (!ctx) throw new Error("failed to get canvas context");
+			this.#render.canvas.width = width;
+			this.#render.canvas.height = height;
 
-			ctx.drawImage(frame, 0, 0, frame.displayWidth, frame.displayHeight); // TODO respect aspect ratio
+			this.#render.drawImage(frame, 0, 0, width, height); // TODO respect aspect ratio
 			frame.close();
 		});
 	}

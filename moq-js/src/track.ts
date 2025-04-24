@@ -1,5 +1,5 @@
 import { Group, GroupReader, GroupWriter } from "./group";
-import { WatchProducer, WatchConsumer } from "./util/async";
+import { WatchConsumer, WatchProducer } from "./util/async";
 
 export class Track {
 	readonly name: string;
@@ -50,9 +50,7 @@ export class TrackWriter {
 			latest.close();
 		}
 
-		console.log("calling update", group);
 		this.#group.update(group);
-		console.log("updated");
 	}
 
 	close() {

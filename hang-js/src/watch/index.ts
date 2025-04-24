@@ -68,11 +68,9 @@ export class Watch {
 
 		try {
 			const announced = connection.announced(path);
-			console.log("Announced", announced);
 
 			for (;;) {
 				const announce = await context.race(announced.read());
-				console.log("Announce", announce);
 
 				if (!announce) break;
 				if (!announce.active) continue;
@@ -98,13 +96,24 @@ export class WatchElement extends HTMLElement {
 		super();
 
 		const canvas = document.createElement("canvas");
+		canvas.style.width = "100%";
+		canvas.style.height = "auto";
 
 		const slot = document.createElement("slot");
-		for (const el of slot.assignedElements({ flatten: true })) {
-			this.#watch.canvas = el as HTMLCanvasElement;
-		}
+		slot.addEventListener("slotchange", () => {
+			for (const el of slot.assignedElements({ flatten: true })) {
+				if (el instanceof HTMLCanvasElement) {
+					this.#watch.canvas = el;
+					return;
+				}
+			}
+
+			this.#watch.canvas = undefined;
+		});
 
 		slot.appendChild(canvas);
+		this.#watch.canvas = canvas;
+
 		this.attachShadow({ mode: "open" }).appendChild(slot);
 	}
 

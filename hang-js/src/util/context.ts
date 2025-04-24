@@ -103,6 +103,7 @@ export class Run<T, Args extends unknown[] = unknown[]> {
 		return this.#result;
 	}
 
+	/*
 	// Helper methods to avoid using the promise directly.
 
 	// biome-ignore lint/suspicious/noThenProperty: This is a wrapper around the promise.
@@ -119,7 +120,8 @@ export class Run<T, Args extends unknown[] = unknown[]> {
 		return this.promise.catch(onrejected);
 	}
 
-	finally(fn: () => void) {
-		this.promise.finally(fn);
+	finally(fn: () => void): Promise<T> {
+		return this.promise.finally(fn);
 	}
+		*/
 }

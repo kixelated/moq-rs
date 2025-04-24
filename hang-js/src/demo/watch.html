@@ -25,7 +25,7 @@
 	<!-- Include the custom element to make setup super easy! -->
 	<hang-watch url="http://localhost:4443/demo/bbb" id="watch">
 		<!-- Optionally provide a custom canvas element that we can style as needed -->
-		<canvas style="width: 100%; height: auto; border-radius: 4px;"></canvas>
+		<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 	</hang-watch>
 
 	<!-- Make some simple controls to demonstate the API. -->
@@ -88,7 +88,7 @@
 		</li>
 		<li>You can use CSS to change the size of the canvas:
 			<ul>
-				<li>ex. `max-width: 100%` instead of `width: 100%`.</li>
+				<li>ex. `width: 100%` instead of `max-width: 100%`.</li>
 				<li>The HTML width/height is set automatically and cannot be adjusted due to OffscreenCanvas
 					limitations.</li>
 			</ul>
