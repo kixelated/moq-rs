@@ -50,6 +50,10 @@ impl Origins {
 		if let Some(existing) = routes.insert(broadcast.info.clone(), (broadcast.clone(), cleanup)) {
 			tracing::info!(broadcast = ?broadcast.info, "re-announced origin");
 			existing.1.abort();
+
+			// Reannounce as a signal that the origin changed.
+			self.unique.unannounce(&broadcast.info);
+			self.unique.announce(broadcast.info);
 		} else {
 			tracing::info!(broadcast = ?broadcast.info, "announced origin");
 			self.unique.announce(broadcast.info);

@@ -12,6 +12,15 @@ pub enum Announced {
 	Ended(Broadcast),
 }
 
+impl Announced {
+	pub fn path(&self) -> &str {
+		match self {
+			Announced::Active(broadcast) => &broadcast.path,
+			Announced::Ended(broadcast) => &broadcast.path,
+		}
+	}
+}
+
 #[cfg(test)]
 impl Announced {
 	pub fn assert_active(&self, expected: &Broadcast) {
@@ -45,7 +54,7 @@ impl ProducerState {
 
 		while let Some((consumer, notify)) = self.consumers.get(i) {
 			if !notify.is_closed() {
-				consumer.lock().insert(&broadcast);
+				consumer.lock().push(Announced::Active(broadcast.clone()));
 				notify.try_send(()).ok();
 				i += 1;
 			} else {
@@ -65,7 +74,7 @@ impl ProducerState {
 
 		while let Some((consumer, notify)) = self.consumers.get(i) {
 			if !notify.is_closed() {
-				consumer.lock().remove(broadcast);
+				consumer.lock().push(Announced::Ended(broadcast.clone()));
 				notify.try_send(()).ok();
 				i += 1;
 			} else {
@@ -78,19 +87,15 @@ impl ProducerState {
 
 	fn consume<T: ToString>(&mut self, prefix: T) -> ConsumerState {
 		let prefix = prefix.to_string();
-		let mut added = VecDeque::new();
+		let mut init = VecDeque::new();
 
 		for active in &self.active {
 			if active.path.starts_with(&prefix) {
-				added.push_back(active.clone());
+				init.push_back(Announced::Active(active.clone()));
 			}
 		}
 
-		ConsumerState {
-			prefix,
-			added,
-			removed: VecDeque::new(),
-		}
+		ConsumerState { prefix, updates: init }
 	}
 
 	fn subscribe(&mut self, consumer: Lock<ConsumerState>) -> mpsc::Receiver<()> {
@@ -105,7 +110,7 @@ impl Drop for ProducerState {
 		for (consumer, notify) in &self.consumers {
 			let mut consumer = consumer.lock();
 			for broadcast in &self.active {
-				consumer.remove(broadcast);
+				consumer.push(Announced::Ended(broadcast.clone()));
 			}
 
 			notify.try_send(()).ok();
@@ -116,36 +121,18 @@ impl Drop for ProducerState {
 #[derive(Clone)]
 struct ConsumerState {
 	prefix: String,
-	added: VecDeque<Broadcast>,
-	removed: VecDeque<Broadcast>,
+	updates: VecDeque<Announced>,
 }
 
 impl ConsumerState {
-	pub fn insert(&mut self, broadcast: &Broadcast) {
-		if broadcast.path.starts_with(&self.prefix) {
-			// Remove any matches that haven't been consumed yet.
-			if let Some(index) = self.removed.iter().position(|removed| removed == broadcast) {
-				self.removed.remove(index);
-			} else {
-				self.added.push_back(broadcast.clone());
-			}
-		}
-	}
-
-	pub fn remove(&mut self, broadcast: &Broadcast) {
-		if broadcast.path.starts_with(&self.prefix) {
-			// Remove any matches that haven't been consumed yet.
-			if let Some(index) = self.added.iter().position(|added| added == broadcast) {
-				self.added.remove(index);
-			} else {
-				self.removed.push_back(broadcast.clone());
-			}
+	pub fn push(&mut self, update: Announced) {
+		if update.path().starts_with(&self.prefix) {
+			self.updates.push_back(update);
 		}
 	}
 
 	pub fn reset(&mut self) {
-		self.added.clear();
-		self.removed.clear();
+		self.updates.clear();
 	}
 }
 
@@ -253,12 +240,8 @@ impl AnnouncedConsumer {
 			{
 				let mut state = self.state.lock();
 
-				if let Some(removed) = state.removed.pop_front() {
-					return Some(Announced::Ended(removed));
-				}
-
-				if let Some(added) = state.added.pop_front() {
-					return Some(Announced::Active(added));
+				if let Some(update) = state.updates.pop_front() {
+					return Some(update);
 				}
 			}
 
