@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const config = {
 	entry: "./src/demo/index.ts",
 	output: {
-		path: path.resolve(__dirname, "public"),
+		path: path.resolve(__dirname, "out"),
 		filename: "index.js",
 	},
 	plugins: [

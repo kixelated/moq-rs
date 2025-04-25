@@ -1,5 +1,5 @@
-import type * as Catalog from "../catalog";
 import * as Moq from "@kixelated/moq";
+import type * as Catalog from "../catalog";
 import * as Container from "../container";
 
 export class Audio {

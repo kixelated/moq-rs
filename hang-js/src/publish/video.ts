@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import { Frame } from "../container/frame";
 import * as Catalog from "../catalog";
+import { Frame } from "../container/frame";
 import { VideoTrackSettings } from "../util/settings";
 
 const SUPPORTED = [

@@ -4,7 +4,7 @@ import { Audio } from "./audio";
 import { Video } from "./video";
 
 import * as Hex from "../util/hex";
-import { VideoTrackSettings, AudioTrackSettings } from "../util/settings";
+import { AudioTrackSettings, VideoTrackSettings } from "../util/settings";
 import { Broadcast } from "./broadcast";
 
 export type Device = "screen" | "camera";

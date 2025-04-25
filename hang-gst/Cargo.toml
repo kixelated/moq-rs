@@ -10,21 +10,20 @@ edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-native = { workspace = true }
-hang = { workspace = true }
+anyhow = { version = "1", features = ["backtrace"] }
+env_logger = "0.9"
 
 gst = { package = "gstreamer", version = "0.23" }
 gst-base = { package = "gstreamer-base", version = "0.23" }
+hang = { workspace = true }
+moq-native = { workspace = true }
 #gst-app = { package = "gstreamer-app", version = "0.23", features = ["v1_20"] }
 
 once_cell = "1"
 tokio = { version = "1", features = ["full"] }
-env_logger = "0.9"
-anyhow = { version = "1", features = ["backtrace"] }
 url = "2"
 
 [build-dependencies]

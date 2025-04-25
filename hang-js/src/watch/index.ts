@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
-import { Video } from "./video";
 import { Audio } from "./audio";
+import { Video } from "./video";
 
 export interface WatchEvents {
 	status: WatchStatus;

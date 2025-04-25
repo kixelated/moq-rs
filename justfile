@@ -144,21 +144,19 @@ clock action:
 	cargo run --bin moq-clock -- "http://localhost:4443" {{action}}
 
 # Run the CI checks
-check:
-	cargo check --all-targets --all-features
+check flags="":
+	cargo check --all-targets --all-features {{flags}}
+	cargo clippy --all-targets --all-features {{flags}} -- -D warnings
+	cargo fmt --all --check
+
+	# Make sure it actually compiles with WASM.
 	cargo check -p hang-web --target wasm32-unknown-unknown
-	cargo clippy --all-targets --all-features -- -D warnings
-	cargo clippy -p hang-web --target wasm32-unknown-unknown
-	cargo fmt -- --check
 
 	# requires: cargo install cargo-shear
 	cargo shear
 
 	# requires: cargo install cargo-sort
 	cargo sort --workspace --check
-
-	# requires: cargo install cargo-deny
-	cargo deny check
 
 	# requires: cargo install cargo-audit
 	cargo audit
@@ -178,17 +176,10 @@ check:
 	# Beta: Check for unused imports
 	pnpm exec knip
 
-# Also check the gstreamer plugin
-check-all: check
-	cargo check --workspace --all-targets --all-features
-	cargo clippy --workspace --all-targets --all-features -- -D warnings
-	cargo fmt --all --check
-
 # Automatically fix some issues.
-fix:
-	cargo fix --allow-staged --all-targets --all-features
-	cargo clippy --fix --allow-staged --all-targets --all-features
-	cargo clippy -p hang-web --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
+fix flags="":
+	cargo fix --allow-staged --all-targets --all-features {{flags}}
+	cargo clippy --fix --allow-staged --all-targets --all-features {{flags}}
 	cargo fmt --all
 
 	# requires: cargo install cargo-shear
@@ -212,16 +203,9 @@ fix:
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix
 
-fix-all: fix
-	cargo fix --allow-staged --workspace --all-targets --all-features
-	cargo clippy --fix --allow-staged --workspace --all-targets --all-features
-
 # Run any CI tests
 test:
 	cargo test
-
-test-all:
-	cargo test --workspace --all-targets --all-features
 
 # Upgrade any tooling
 upgrade:

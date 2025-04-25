@@ -16,12 +16,12 @@ gloo-net = "0.6"
 hang = { workspace = true }
 hex = "0.4"
 js-sys = "0.3.77"
+rubato = "0.16"
 thiserror = "2"
 tokio = { workspace = true, features = ["sync"] }
 tracing = "0.1"
 ts-rs = { version = "10.1", features = ["url-impl"] }
 url = "2"
-rubato = "0.16"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 wasm-tracing = "2.0"

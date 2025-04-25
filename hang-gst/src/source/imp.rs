@@ -256,7 +256,7 @@ impl HangSrc {
 			});
 		}
 
-		for audio in catalog.audio {}
+		for _audio in catalog.audio {}
 
 		// We downloaded the catalog and created all the pads.
 		self.obj().no_more_pads();
