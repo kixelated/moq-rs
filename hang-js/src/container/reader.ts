@@ -27,7 +27,6 @@ export class Reader {
 					const frame = next.frame;
 					if (!frame) {
 						// The group is done, wait for the next one.
-						this.#group?.close(); // just a precaution
 						this.#nextFrame = undefined;
 						continue;
 					}
@@ -35,7 +34,6 @@ export class Reader {
 					// We got a frame; return it.
 					// But first start fetching the next frame (note: group cannot be undefined).
 					this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
-
 					return frame;
 				}
 
@@ -62,10 +60,16 @@ export class Reader {
 				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
 			} else if (this.#nextGroup) {
 				// Wait for the next group.
-				this.#group?.close(); // just a precaution
 				this.#group = await this.#nextGroup;
-				this.#nextGroup = this.#track.nextGroup();
-				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
+
+				if (this.#group) {
+					this.#nextGroup = this.#track.nextGroup();
+					this.#nextFrame = Frame.decode(this.#group, true);
+				} else {
+					this.#nextGroup = undefined;
+					this.#nextFrame = undefined;
+					return undefined;
+				}
 			} else if (this.#nextFrame) {
 				// We got the next frame, or potentially the end of the track.
 				const frame = await this.#nextFrame;
@@ -78,7 +82,12 @@ export class Reader {
 	}
 
 	close() {
+		this.#nextFrame = undefined;
+		this.#nextGroup = undefined;
+
 		this.#group?.close();
+		this.#group = undefined;
+
 		this.#track.close();
 	}
 }

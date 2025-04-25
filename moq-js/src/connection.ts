@@ -92,7 +92,6 @@ export class Connection {
 			throw new Error(`unsupported server version: ${server.version}`);
 		}
 
-		console.log(`established connection: version=${server.version}`);
 		return new Connection(url, quic, stream);
 	}
 
@@ -152,8 +151,6 @@ export class Connection {
 	}
 
 	async #runBidi(msg: Wire.StreamBi, stream: Wire.Stream) {
-		console.debug("received bi stream: ", msg);
-
 		if (msg instanceof Wire.SessionClient) {
 			throw new Error("duplicate session stream");
 		}
@@ -192,8 +189,6 @@ export class Connection {
 	}
 
 	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
-		console.debug("received uni stream: ", msg);
-
 		if (msg instanceof Wire.Group) {
 			if (!this.#subscriber) {
 				throw new Error("not a subscriber");

@@ -81,11 +81,8 @@ impl Publisher {
 	}
 
 	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
-		let subscribe = stream.reader.decode().await?;
-		self.serve_subscribe(stream, subscribe).await
-	}
+		let subscribe = stream.reader.decode::<message::Subscribe>().await?;
 
-	async fn serve_subscribe(&mut self, stream: &mut Stream, subscribe: message::Subscribe) -> Result<(), Error> {
 		let track = Track {
 			name: subscribe.track,
 			priority: subscribe.priority,
@@ -106,8 +103,6 @@ impl Publisher {
 
 		stream.writer.encode(&info).await?;
 
-		let mut complete = false;
-
 		loop {
 			tokio::select! {
 				Some(group) = track.next_group().transpose() => {
@@ -121,16 +116,13 @@ impl Publisher {
 						}
 					});
 				},
-				res = stream.reader.decode_maybe::<message::SubscribeUpdate>(), if !complete => match res? {
+				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => match res? {
 					Some(_update) => {
 						// TODO use it
 					},
 					// Subscribe has completed
-					None => {
-						complete = true;
-					}
+					None => break,
 				},
-				else => break,
 			}
 		}
 

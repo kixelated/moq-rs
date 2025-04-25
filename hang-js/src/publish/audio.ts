@@ -1,8 +1,8 @@
 import { Frame } from "../container/frame";
-import { Deferred } from "../util/async";
 
 import * as Moq from "@kixelated/moq";
-import { Context } from "../util/context";
+import * as Catalog from "../catalog";
+import { AudioTrackSettings } from "../util/settings";
 
 const SUPPORTED = [
 	// TODO support AAC
@@ -10,55 +10,58 @@ const SUPPORTED = [
 	"Opus",
 ];
 
-export type EncoderConfig = AudioEncoderConfig;
-
-export class Encoder {
-	#output: Moq.TrackWriter;
+export class Audio {
+	readonly media: MediaStreamAudioTrack;
+	readonly catalog: Catalog.Audio;
+	readonly settings: AudioTrackSettings;
+	readonly track: Moq.Track;
 
 	#encoder: AudioEncoder;
-	#encoderConfig: AudioEncoderConfig;
-	#decoder: AudioDecoderConfig;
 
-	constructor(config: AudioEncoderConfig, output: Moq.TrackWriter) {
-		this.#output = output;
+	constructor(media: MediaStreamAudioTrack) {
+		this.media = media;
+		this.track = new Moq.Track("audio", 1);
+		this.settings = media.getSettings() as AudioTrackSettings;
 
-		this.#encoderConfig = config;
-		this.#decoder = {
-			codec: config.codec,
-			numberOfChannels: config.numberOfChannels,
-			sampleRate: config.sampleRate,
+		this.catalog = {
+			track: {
+				name: "audio",
+				priority: 1,
+			},
+			codec: "Opus",
+			sample_rate: this.settings.sampleRate,
+			channel_count: this.settings.channelCount,
 		};
 
 		this.#encoder = new AudioEncoder({
 			output: (frame, metadata) => this.#encoded(frame, metadata),
-			error: (err) => {
-				throw err;
-			},
+			error: (err) => this.track.writer.abort(err),
 		});
 
-		this.#encoder.configure(this.#encoderConfig);
+		this.#encoder.configure({
+			codec: this.catalog.codec,
+			numberOfChannels: this.catalog.channel_count,
+			sampleRate: this.catalog.sample_rate,
+		});
+
+		this.#run()
+			.catch((err) => this.track.writer.abort(err))
+			.finally(() => this.track.writer.close());
 	}
 
-	get config() {
-		return this.#encoderConfig;
-	}
-
-	decoder(): AudioDecoderConfig {
-		return this.#decoder;
-	}
-
-	async run(context: Context, media: MediaStreamAudioTrack) {
-		const input = new MediaStreamTrackProcessor({ track: media });
+	async #run() {
+		const input = new MediaStreamTrackProcessor({ track: this.media });
 		const reader = input.readable.getReader();
 
 		for (;;) {
-			const result = await context.race(reader.read());
+			const result = await reader.read();
 			if (!result || result.done) {
 				break;
 			}
 
 			const frame = result.value;
 			this.#encoder.encode(frame);
+
 			frame.close();
 		}
 	}
@@ -68,7 +71,8 @@ export class Encoder {
 			throw new Error("only key frames are supported");
 		}
 
-		const group = this.#output.appendGroup();
+		// TODO align with video
+		const group = this.track.writer.appendGroup();
 
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
@@ -86,5 +90,10 @@ export class Encoder {
 
 		const res = await AudioEncoder.isConfigSupported(config);
 		return !!res.supported;
+	}
+
+	close() {
+		this.track.writer.close();
+		this.#encoder.close();
 	}
 }

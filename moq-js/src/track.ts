@@ -57,6 +57,10 @@ export class TrackWriter {
 		this.#group.close();
 	}
 
+	async closed(): Promise<void> {
+		await this.#group.closed();
+	}
+
 	abort(reason?: unknown) {
 		this.#group.abort(reason);
 	}

@@ -2,29 +2,21 @@ import * as Moq from "@kixelated/moq";
 import type * as Catalog from "../catalog";
 import * as Container from "../container";
 import type { Frame } from "../container/frame";
-import { Context, Task } from "../util/context";
 import * as Hex from "../util/hex";
 
 export class Video {
 	#render?: CanvasRenderingContext2D;
+	#track?: VideoTrack;
 
-	#decoder: VideoDecoder;
+	#paused = false;
 	#visible = true;
 
+	// Save these variables so we can reload the video if `visible` or `canvas` changes.
 	#connection?: Moq.Connection;
 	#broadcast?: string;
 	#tracks?: Catalog.Video[];
 
-	#latency = 0;
-	#running = new Task(this.#run.bind(this));
-	#active?: Catalog.Video;
-
 	constructor() {
-		this.#decoder = new VideoDecoder({
-			output: (frame) => this.#decoded(frame),
-			error: (error) => console.error(error),
-		});
-
 		// TODO Implement IntersectionObserver too
 		document.addEventListener("visibilitychange", () => {
 			this.#visible = document.visibilityState === "visible";
@@ -40,46 +32,80 @@ export class Video {
 		this.#render = canvas?.getContext("2d") ?? undefined;
 	}
 
-	set latency(latency: number) {
-		this.#latency = latency;
+	get paused(): boolean {
+		return this.#paused;
 	}
 
-	async load(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
+	set paused(paused: boolean) {
+		this.#paused = paused;
+		this.#reload();
+	}
+
+	async catalog(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
 		this.#connection = connection;
 		this.#broadcast = broadcast;
 		this.#tracks = tracks;
 
-		await this.#reload();
+		this.#reload();
 	}
 
-	async abort() {
+	close() {
 		this.#connection = undefined;
 		this.#broadcast = undefined;
 		this.#tracks = undefined;
-
-		await this.#running.abort();
+		this.#track?.close();
 	}
 
-	async #reload() {
-		if (!this.#render || !this.#visible || !this.#tracks || !this.#connection || !this.#broadcast) {
-			return await this.#running.abort();
-		}
+	#reload() {
+		const existing = this.#track;
+		this.#track = undefined;
 
-		const info = this.#tracks.at(0);
-		if (!info) {
-			return await this.#running.abort();
-		}
+		const info = this.#tracks?.at(0);
 
-		if (info === this.#active) {
-			// No change; continue the current run.
+		if (
+			!this.#render ||
+			!this.#visible ||
+			!this.#tracks ||
+			!this.#connection ||
+			!this.#broadcast ||
+			!info ||
+			this.#paused
+		) {
+			// Nothing to render, unsubscribe.
+			existing?.close();
 			return;
 		}
 
-		this.#active = info;
-		this.#running.start(this.#connection, this.#broadcast, info);
-	}
+		if (existing && info === existing.info) {
+			// No change; continue the current run.
+			this.#track = existing;
+			return;
+		}
 
-	async #run(context: Context, connection: Moq.Connection, broadcast: string, info: Catalog.Video) {
+		const track = this.#connection.subscribe(this.#broadcast, info.track.name, info.track.priority);
+		this.#track = new VideoTrack(info, track, this.#render);
+	}
+}
+
+export class VideoTrack {
+	info: Catalog.Video;
+	render: CanvasRenderingContext2D;
+
+	#container: Container.Reader;
+	#decoder: VideoDecoder;
+	#queued?: VideoFrame;
+	#animating?: number;
+
+	constructor(info: Catalog.Video, track: Moq.TrackReader, render: CanvasRenderingContext2D) {
+		this.info = info;
+		this.render = render;
+
+		this.#decoder = new VideoDecoder({
+			output: (frame) => this.#decoded(frame),
+			// TODO bubble up error
+			error: (error) => this.#container.close(),
+		});
+
 		this.#decoder.configure({
 			codec: info.codec,
 			codedHeight: info.resolution.height,
@@ -88,39 +114,64 @@ export class Video {
 			optimizeForLatency: true,
 		});
 
-		const track = connection.subscribe(broadcast, info.track.name, info.track.priority);
-		const container = new Container.Reader(track);
+		this.#container = new Container.Reader(track);
 
-		try {
-			for (;;) {
-				const frame = await context.race(container.readFrame());
-				if (!frame) throw new Error("no frame");
-
-				const chunk = new EncodedVideoChunk({
-					type: frame.keyframe ? "key" : "delta",
-					data: frame.data,
-					timestamp: frame.timestamp,
-				});
-
-				this.#decoder.decode(chunk);
-			}
-		} finally {
-			container.close();
-		}
+		this.#run();
 	}
 
 	#decoded(frame: VideoFrame) {
-		self.requestAnimationFrame(() => {
-			if (!this.#render) return;
+		if (this.#animating) {
+			this.#queued?.close();
+			this.#queued = frame;
+		} else {
+			this.#animating = self.requestAnimationFrame(() => this.#draw(frame));
+		}
+	}
 
-			const width = frame.displayWidth ?? frame.codedWidth;
-			const height = frame.displayHeight ?? frame.codedHeight;
+	#draw(frame: VideoFrame) {
+		const width = frame.displayWidth ?? frame.codedWidth;
+		const height = frame.displayHeight ?? frame.codedHeight;
 
-			this.#render.canvas.width = width;
-			this.#render.canvas.height = height;
+		this.render.canvas.width = width;
+		this.render.canvas.height = height;
 
-			this.#render.drawImage(frame, 0, 0, width, height); // TODO respect aspect ratio
-			frame.close();
-		});
+		this.render.drawImage(frame, 0, 0, width, height); // TODO respect aspect ratio
+		frame.close();
+
+		if (this.#queued) {
+			const frame = this.#queued;
+			this.#queued = undefined;
+			this.#animating = self.requestAnimationFrame(() => this.#draw(frame));
+		} else {
+			this.#animating = undefined;
+		}
+	}
+
+	async #run() {
+		for (;;) {
+			const frame = await this.#container.readFrame();
+			if (!frame) break;
+
+			const chunk = new EncodedVideoChunk({
+				type: frame.keyframe ? "key" : "delta",
+				data: frame.data,
+				timestamp: frame.timestamp,
+			});
+
+			this.#decoder.decode(chunk);
+		}
+
+		this.#decoder.close();
+	}
+
+	close() {
+		this.#container.close();
+
+		if (this.#animating) {
+			self.cancelAnimationFrame(this.#animating);
+			this.#animating = undefined;
+		}
+
+		this.#queued?.close();
 	}
 }

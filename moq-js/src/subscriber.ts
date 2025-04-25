@@ -69,20 +69,22 @@ export class Subscriber {
 		// Run the subscription in a background promise.
 		(async () => {
 			const stream = await Wire.Stream.open(this.#quic, msg);
-			console.log("opened stream", stream);
 			try {
-				const info = await Wire.SubscribeOk.decode(stream.reader);
-				console.log("subscribe ok", info);
+				const _info = await Wire.SubscribeOk.decode(stream.reader);
+				console.debug(`subscribe ok: broadcast=${broadcast} track=${track}`);
 
-				await stream.reader.closed();
-				console.log("waiting for close");
+				await Promise.race([stream.reader.closed(), pair.writer.closed()]);
+
 				pair.writer.close();
 			} catch (err) {
-				console.log("aborting", err);
 				pair.writer.abort(err);
 			} finally {
+				console.debug(`subscribe close: broadcast=${broadcast} track=${track}`);
+
 				this.#subscribe.delete(id);
 				this.#dedupe.delete([broadcast, track]);
+
+				stream.close();
 			}
 		})();
 

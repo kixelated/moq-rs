@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import { Frame } from "../container/frame";
-import { Deferred } from "../util/async";
-import { Context } from "../util/context";
+import * as Catalog from "../catalog";
+import { VideoTrackSettings } from "../util/settings";
 
 const SUPPORTED = [
 	"avc1", // H.264
@@ -9,20 +9,15 @@ const SUPPORTED = [
 	// "av01", // TDOO support AV1
 ];
 
-export interface EncoderSupported {
-	codecs: string[];
-}
+export class Video {
+	#group?: Moq.GroupWriter;
 
-export type EncoderConfig = VideoEncoderConfig;
-
-export class Encoder {
-	#outputTrack: Moq.TrackWriter;
-	#outputGroup?: Moq.GroupWriter;
+	readonly track: Moq.Track;
+	readonly media: MediaStreamVideoTrack;
+	readonly catalog: Catalog.Video;
+	readonly settings: VideoTrackSettings;
 
 	#encoder: VideoEncoder;
-	#encoderConfig: VideoEncoderConfig;
-
-	#decoder = new Deferred<VideoDecoderConfig>();
 
 	// true if we should insert a keyframe, undefined when the encoder should decide
 	#keyframeNext: true | undefined = true;
@@ -30,25 +25,38 @@ export class Encoder {
 	// Count the number of frames without a keyframe.
 	#keyframeCounter = 0;
 
-	constructor(config: VideoEncoderConfig, output: Moq.TrackWriter) {
-		this.#outputTrack = output;
+	constructor(media: MediaStreamVideoTrack) {
+		this.media = media;
+		this.settings = media.getSettings() as VideoTrackSettings;
+		this.track = new Moq.Track("video", 2);
 
-		config.bitrateMode ??= "constant";
-		config.latencyMode ??= "realtime";
-
-		this.#encoderConfig = config;
+		this.catalog = {
+			track: {
+				name: "video",
+				priority: 2,
+			},
+			codec: "vp8",
+			resolution: {
+				width: this.settings.width,
+				height: this.settings.height,
+			},
+		};
 
 		this.#encoder = new VideoEncoder({
-			output: (frame, metadata) => {
-				this.#encoded(frame, metadata);
-			},
-			error: (err) => {
-				this.#decoder.reject(err);
-				throw err;
-			},
+			output: (frame, metadata) => this.#encoded(frame, metadata),
+			error: (err) => this.track.writer.abort(err),
 		});
 
-		this.#encoder.configure(this.#encoderConfig);
+		this.#encoder.configure({
+			codec: this.catalog.codec,
+			width: this.catalog.resolution.width,
+			height: this.catalog.resolution.height,
+			latencyMode: "realtime",
+		});
+
+		this.#run()
+			.catch((err) => this.track.writer.abort(err))
+			.finally(() => this.track.writer.close());
 	}
 
 	static async isSupported(config: VideoEncoderConfig) {
@@ -69,20 +77,12 @@ export class Encoder {
 		return !!res.supported;
 	}
 
-	get config() {
-		return this.#encoderConfig;
-	}
-
-	async decoder(): Promise<VideoDecoderConfig> {
-		return await this.#decoder.promise;
-	}
-
-	async run(context: Context, media: MediaStreamVideoTrack) {
-		const input = new MediaStreamTrackProcessor({ track: media });
+	async #run() {
+		const input = new MediaStreamTrackProcessor({ track: this.media });
 		const reader = input.readable.getReader();
 
 		for (;;) {
-			const result = await context.race(reader.read());
+			const result = await reader.read();
 			if (!result || result.done) {
 				break;
 			}
@@ -97,30 +97,29 @@ export class Encoder {
 	}
 
 	async #encoded(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
-		if (this.#decoder.pending) {
-			const config = metadata?.decoderConfig;
-			if (!config) throw new Error("missing decoder config");
-			this.#decoder.resolve(config);
-		}
-
 		if (frame.type === "key") {
 			this.#keyframeCounter = 0;
-			this.#outputGroup?.close();
-			this.#outputGroup = this.#outputTrack.appendGroup();
+			this.#group?.close();
+			this.#group = this.track.writer.appendGroup();
 		} else {
 			this.#keyframeCounter += 1;
-			const framesPerGop = this.#encoderConfig.framerate ? 2 * this.#encoderConfig.framerate : 60;
+			const framesPerGop = this.settings.frameRate ? 2 * this.settings.frameRate : 60;
 			if (this.#keyframeCounter + this.#encoder.encodeQueueSize >= framesPerGop) {
 				this.#keyframeNext = true;
 			}
 		}
 
-		if (!this.#outputGroup) throw new Error("missing keyframe");
+		if (!this.#group) throw new Error("missing keyframe");
 
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
 		const karp = new Frame(frame.type === "key", frame.timestamp, buffer);
-		karp.encode(this.#outputGroup);
+		karp.encode(this.#group);
+	}
+
+	close() {
+		this.track.writer.close();
+		this.#encoder.close();
 	}
 }

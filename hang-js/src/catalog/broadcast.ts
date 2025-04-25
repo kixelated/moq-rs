@@ -22,7 +22,6 @@ export class Broadcast {
 		const decoder = new TextDecoder();
 		const str = decoder.decode(raw);
 		const json = JSON.parse(str);
-		console.log("decoding catalog:", json);
 		const parsed = BroadcastSchema.parse(json);
 
 		const broadcast = new Broadcast();
@@ -31,22 +30,16 @@ export class Broadcast {
 		return broadcast;
 	}
 
-	static async fetch(track: Moq.TrackReader): Promise<Broadcast> {
+	static async fetch(track: Moq.TrackReader): Promise<Broadcast | undefined> {
+		const group = await track.nextGroup();
+		if (!group) return undefined; // track is done
+
 		try {
-			const segment = await track.nextGroup();
-			if (!segment) throw new Error("no catalog data");
-
-			const frame = await segment.readFrame();
-			if (!frame) throw new Error("no catalog frame");
-
-			await segment.close();
-
-			const broadcast = Broadcast.decode(frame);
-
-			console.debug("decoded catalog:", broadcast);
-			return broadcast;
+			const frame = await group.readFrame();
+			if (!frame) throw new Error("empty group");
+			return Broadcast.decode(frame);
 		} finally {
-			track.close();
+			group.close();
 		}
 	}
 }
