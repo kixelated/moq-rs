@@ -41,7 +41,7 @@ export class Video {
 		this.#reload();
 	}
 
-	async catalog(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
+	load(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
 		this.#connection = connection;
 		this.#broadcast = broadcast;
 		this.#tracks = tracks;
@@ -96,6 +96,8 @@ export class VideoTrack {
 	#queued?: VideoFrame;
 	#animating?: number;
 
+	#ref?: number;
+
 	constructor(info: Catalog.Video, track: Moq.TrackReader, render: CanvasRenderingContext2D) {
 		this.info = info;
 		this.render = render;
@@ -103,7 +105,10 @@ export class VideoTrack {
 		this.#decoder = new VideoDecoder({
 			output: (frame) => this.#decoded(frame),
 			// TODO bubble up error
-			error: (error) => this.#container.close(),
+			error: (error) => {
+				console.error(error);
+				this.close();
+			},
 		});
 
 		this.#decoder.configure({
@@ -120,6 +125,13 @@ export class VideoTrack {
 	}
 
 	#decoded(frame: VideoFrame) {
+		const diff = frame.timestamp / 1000 - performance.now();
+		if (!this.#ref) {
+			this.#ref = diff;
+		} else {
+			//console.log(diff - this.#ref);
+		}
+
 		if (this.#animating) {
 			this.#queued?.close();
 			this.#queued = frame;

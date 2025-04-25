@@ -72,7 +72,7 @@ impl Watch {
 			}
 		};
 
-		let broadcast = session.namespace(broadcast.into());
+		let broadcast = session.consume(broadcast.into());
 		self.broadcast = Some(broadcast.into());
 
 		Bridge::send(ConnectionStatus::Connected.into());

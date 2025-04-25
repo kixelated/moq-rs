@@ -163,8 +163,8 @@ impl Session {
 	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
 	///
 	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
-	pub fn namespace(&self, broadcast: Broadcast) -> BroadcastConsumer {
-		self.subscriber.namespace(broadcast)
+	pub fn consume(&self, broadcast: Broadcast) -> BroadcastConsumer {
+		self.subscriber.consume(broadcast)
 	}
 
 	/// Discover any broadcasts published by the remote matching a prefix.

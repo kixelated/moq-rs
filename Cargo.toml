@@ -2,6 +2,17 @@
 members = [
 	"hang",
 	"hang-cli",
+	"hang-gst",
+	"hang-web",
+	"moq-clock",
+	"moq-lite",
+	"moq-native",
+	"moq-relay",
+]
+default-members = [
+	"hang",
+	"hang-cli",
+	# without hang-gst because it requires gstreamer to be installed
 	"hang-web",
 	"moq-clock",
 	"moq-lite",

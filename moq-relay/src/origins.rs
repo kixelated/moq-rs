@@ -67,7 +67,7 @@ impl Origins {
 		let mut announced = upstream.announced("");
 
 		while let Some(broadcast) = announced.active().await {
-			let broadcast = upstream.namespace(broadcast);
+			let broadcast = upstream.consume(broadcast);
 			self.announce(broadcast);
 		}
 	}

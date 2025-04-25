@@ -4,6 +4,7 @@
 
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "debug"
+#export GST_DEBUG:="*:4"
 
 # List all of the available commands.
 default:
@@ -44,25 +45,14 @@ leaf:
 cluster:
 	pnpm i && pnpm exec concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
 
-# Download and stream the Big Buck Bunny video to the localhost relay server
-bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
-
-# Download and stream the Big Buck Bunny video to localhost directly
-serve-bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (serve "bbb")
-
-# Download and stream the inferior Tears of Steel video
-tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
-
-# Download and stream AV1 content:
-av1: (download "av1" "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4") (pub "av1")
-
-# Download and stream HEVC content:
-hevc: (download "hevc" "https://test-videos.co.uk/vids/jellyfish/mp4/h265/1080/Jellyfish_1080_10s_30MB.mp4") (pub "hevc")
 
 # Download the video and convert it to a fragmented MP4 that we can stream
-download name url:
+download name:
+	@url=$(just download-url {{name}})
+	mkdir -p dev
+
 	if [ ! -f dev/{{name}}.mp4 ]; then \
-		wget {{url}} -O dev/{{name}}.mp4; \
+		wget "$url" -O dev/{{name}}.mp4; \
 	fi
 
 	if [ ! -f dev/{{name}}.fmp4 ]; then \
@@ -72,8 +62,21 @@ download name url:
 			dev/{{name}}.fmp4; \
 	fi
 
+# Returns the URL for a test video.
+download-url name:
+	@case {{name}} in \
+		bbb) echo "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" ;; \
+		tos) echo "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" ;; \
+		av1) echo "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4" ;; \
+		hevc) echo "https://test-videos.co.uk/vids/jellyfish/mp4/h265/1080/Jellyfish_1080_10s_30MB.mp4" ;; \
+		*) echo "unknown" && exit 1 ;; \
+	esac
+
 # Publish a video using ffmpeg to the localhost relay server
 pub name:
+	# Download the sample media.
+	just download {{name}}
+
 	# Pre-build the binary so we don't queue media while compiling.
 	cargo build --bin hang
 
@@ -85,8 +88,35 @@ pub name:
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 		- | cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}"
 
+# Publish a video using gstreamer to the localhost relay server
+pub-gst name:
+	# Download the sample media.
+	just download {{name}}
+
+	# Build the plugins
+	cargo build
+
+	# Run gstreamer and pipe the output to our plugin
+	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
+	gst-launch-1.0 -v -e multifilesrc location="dev/{{name}}.fmp4" loop=true ! qtdemux name=demux \
+		demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! hangsink url="http://localhost:4443/demo/{{name}}" tls-disable-verify=true \
+		demux.audio_0 ! aacparse ! queue ! mux.
+
+# Subscribe to a video using gstreamer
+sub name:
+	# Build the plugins
+	cargo build
+
+	# Run gstreamer and pipe the output to our plugin
+	# This will render the video to the screen
+	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
+	gst-launch-1.0 -v -e hangsrc url="http://localhost:4443/demo/{{name}}" tls-disable-verify=true ! decodebin ! videoconvert ! autovideosink
+
 # Publish a video using ffmpeg directly from hang to the localhost
 serve name:
+	# Download the sample media.
+	just download {{name}}
+
 	# Pre-build the binary so we don't queue media while compiling.
 	cargo build --bin hang
 
@@ -96,7 +126,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve --dir "hang-js/public" "demo/{{name}}"
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "demo/{{name}}"
 
 # Run the web server
 web:
@@ -104,12 +134,14 @@ web:
 	RUST_LOG=warn pnpm -r run dev
 
 # Publish the clock broadcast
-clock-pub:
-	cargo run --bin moq-clock -- "http://localhost:4443" publish
+# `action` is either `publish` or `subscribe`
+clock action:
+	if [ "{{action}}" != "publish" ] && [ "{{action}}" != "subscribe" ]; then \
+		echo "Error: action must be 'publish' or 'subscribe', got '{{action}}'" >&2; \
+		exit 1; \
+	fi
 
-# Subscribe to the clock broadcast
-clock-sub:
-	cargo run --bin moq-clock -- "http://localhost:4443" subscribe
+	cargo run --bin moq-clock -- "http://localhost:4443" {{action}}
 
 # Run the CI checks
 check:
@@ -146,6 +178,12 @@ check:
 	# Beta: Check for unused imports
 	pnpm exec knip
 
+# Also check the gstreamer plugin
+check-all: check
+	cargo check --workspace --all-targets --all-features
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo fmt --all --check
+
 # Automatically fix some issues.
 fix:
 	cargo fix --allow-staged --all-targets --all-features
@@ -174,9 +212,16 @@ fix:
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix
 
+fix-all: fix
+	cargo fix --allow-staged --workspace --all-targets --all-features
+	cargo clippy --fix --allow-staged --workspace --all-targets --all-features
+
 # Run any CI tests
 test:
 	cargo test
+
+test-all:
+	cargo test --workspace --all-targets --all-features
 
 # Upgrade any tooling
 upgrade:
@@ -194,7 +239,9 @@ upgrade:
 	pnpm -r update
 	pnpm -r outdated
 
-# Build the release NPM package
+# Build the packages
 build:
+	cargo build
+
 	pnpm -r i
 	RUST_LOG=warn pnpm -r run build

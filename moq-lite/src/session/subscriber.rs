@@ -120,7 +120,7 @@ impl Subscriber {
 	}
 
 	/// Subscribe to a given broadcast.
-	pub fn namespace(&self, broadcast: Broadcast) -> BroadcastConsumer {
+	pub fn consume(&self, broadcast: Broadcast) -> BroadcastConsumer {
 		if let Some(producer) = self.broadcasts.lock().get(&broadcast.path) {
 			return producer.consume();
 		}

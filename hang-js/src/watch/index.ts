@@ -1,6 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import { Video } from "./video";
+import { Audio } from "./audio";
 
 export interface WatchEvents {
 	status: WatchStatus;
@@ -13,7 +14,9 @@ export class Watch {
 
 	#connection?: Promise<Moq.Connection>;
 	#catalog?: Moq.TrackReader;
-	#video = new Video();
+
+	audio = new Audio();
+	video = new Video();
 
 	#events = new EventTarget();
 
@@ -34,22 +37,6 @@ export class Watch {
 			this.#dispatchEvent("status", "disconnected");
 			this.#connection = undefined;
 		}
-	}
-
-	get paused(): boolean {
-		return this.#video.paused;
-	}
-
-	set paused(paused: boolean) {
-		this.#video.paused = paused;
-	}
-
-	get canvas(): HTMLCanvasElement | undefined {
-		return this.#video.canvas;
-	}
-
-	set canvas(canvas: HTMLCanvasElement | undefined) {
-		this.#video.canvas = canvas;
 	}
 
 	async #connect(url: URL) {
@@ -78,11 +65,14 @@ export class Watch {
 				if (!catalog) break;
 
 				this.#dispatchEvent("status", "live");
-				this.#video.catalog(connection, broadcast, catalog.video);
+
+				this.video.load(connection, broadcast, catalog.video);
+				this.audio.load(connection, broadcast, catalog.audio);
 			}
 		} finally {
 			this.#dispatchEvent("status", "offline");
-			this.#video.close();
+			this.audio.close();
+			this.video.close();
 		}
 	}
 
@@ -92,7 +82,8 @@ export class Watch {
 		this.#catalog?.close();
 		this.#catalog = undefined;
 
-		this.#video.close();
+		this.audio.close();
+		this.video.close();
 
 		this.#dispatchEvent("status", "disconnected");
 	}
@@ -133,25 +124,28 @@ export class WatchElement extends HTMLElement {
 		slot.addEventListener("slotchange", () => {
 			for (const el of slot.assignedElements({ flatten: true })) {
 				if (el instanceof HTMLCanvasElement) {
-					this.lib.canvas = el;
+					this.lib.video.canvas = el;
 					return;
 				}
 			}
 
-			this.lib.canvas = undefined;
+			this.lib.video.canvas = undefined;
 		});
 
 		slot.appendChild(canvas);
-		this.lib.canvas = canvas;
+		this.lib.video.canvas = canvas;
 
 		this.attachShadow({ mode: "open" }).appendChild(slot);
+
+		this.addEventListener("click", () => this.lib.audio.reload(), { once: true });
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
 			this.lib.url = newValue ? new URL(newValue) : undefined;
 		} else if (name === "paused") {
-			this.lib.paused = newValue !== undefined;
+			this.lib.video.paused = newValue !== undefined;
+			this.lib.audio.paused = newValue !== undefined;
 		}
 	}
 }
