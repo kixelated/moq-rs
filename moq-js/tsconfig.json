@@ -1,6 +1,6 @@
 {
 	"extends": "../tsconfig.json",
-	"include": ["src", "../hang-web2/src/util/context.ts"],
+	"include": ["src"],
 	"exclude": ["node_modules", "dist"],
 	"compilerOptions": {
 		"outDir": "dist",

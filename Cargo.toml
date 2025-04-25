@@ -3,7 +3,7 @@ members = [
 	"hang",
 	"hang-cli",
 	"hang-gst",
-	"hang-web",
+	"hang-wasm",
 	"moq-clock",
 	"moq-lite",
 	"moq-native",
@@ -13,7 +13,7 @@ default-members = [
 	"hang",
 	"hang-cli",
 	# without hang-gst because it requires gstreamer to be installed
-	"hang-web",
+	"hang-wasm",
 	"moq-clock",
 	"moq-lite",
 	"moq-native",
@@ -34,6 +34,6 @@ hang = { version = "0.1", path = "hang" }
 moq-lite = { version = "0.1", path = "moq-lite" }
 moq-native = { version = "0.6", path = "moq-native" }
 
-[profile.release.package.hang-web]
+[profile.release.package.hang-wasm]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"

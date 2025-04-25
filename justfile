@@ -150,7 +150,7 @@ check flags="":
 	cargo fmt --all --check
 
 	# Make sure it actually compiles with WASM.
-	cargo check -p hang-web --target wasm32-unknown-unknown
+	cargo check -p hang-wasm --target wasm32-unknown-unknown
 
 	# requires: cargo install cargo-shear
 	cargo shear

@@ -1,5 +1,5 @@
 [package]
-name = "hang-web"
+name = "hang-wasm"
 authors = ["Luke Curley <kixelated@gmail.com>"]
 edition = "2021"
 version = "0.1.0"
