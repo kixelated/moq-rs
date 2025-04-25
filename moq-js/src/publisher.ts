@@ -1,4 +1,5 @@
 import { Announced } from "./announced";
+import { BroadcastReader } from "./broadcast";
 import type { GroupReader } from "./group";
 import type { TrackReader, TrackWriter } from "./track";
 import * as Wire from "./wire";
@@ -10,36 +11,34 @@ export class Publisher {
 	// We should remove any cached announcements on unannounce, etc.
 	#announced = new Announced("");
 
-	// Our published tracks.
-	#tracks = new Map<string, TrackReader>();
+	// Our published broadcasts.
+	#broadcasts = new Map<string, BroadcastReader>();
 
 	constructor(quic: WebTransport) {
 		this.#quic = quic;
 	}
 
-	// Publish a track
-	publish(broadcast: string, track: TrackReader) {
-		this.#tracks.set(track.name, track);
+	// Publish a broadcast with any associated tracks.
+	publish(broadcast: BroadcastReader) {
+		this.#broadcasts.set(broadcast.path, broadcast);
 
 		(async () => {
 			try {
-				await this.#announced.writer.write({ broadcast, active: true });
+				await this.#announced.writer.write({ broadcast: broadcast.path, active: true });
+				console.debug(`announce: broadcast=${broadcast.path} active=true`);
 
-				// Consume the track until it's closed, then remove it from the lookup.
-				// This avoids backpressure on the TrackWriter.
-				for (;;) {
-					const group = await track.nextGroup();
-					if (!group) break;
-				}
+				// TODO wait until the broadcast is closed, then remove it from the lookup.
+				await broadcast.closed();
 			} finally {
-				this.#tracks.delete(track.name);
-				await this.#announced.writer.write({ broadcast, active: false });
+				console.debug(`announce: broadcast=${broadcast.path} active=false`);
+				this.#broadcasts.delete(broadcast.path);
+				await this.#announced.writer.write({ broadcast: broadcast.path, active: false });
 			}
 		})();
 	}
 
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		const reader = await this.#announced.reader.tee();
+		const reader = await this.#announced.reader.clone();
 
 		for (;;) {
 			const announcement = await reader.read();
@@ -53,16 +52,15 @@ export class Publisher {
 	}
 
 	async runSubscribe(msg: Wire.Subscribe, stream: Wire.Stream) {
-		const track = this.#tracks.get(msg.track);
-		if (!track) {
-			await stream.writer.reset(404);
+		const broadcast = this.#broadcasts.get(msg.broadcast);
+		if (!broadcast) {
+			console.debug(`publish unknown: broadcast=${msg.broadcast}`);
+			stream.writer.reset(404);
 			return;
 		}
 
-		const info = new Wire.SubscribeOk(track.priority);
-		await info.encode(stream.writer);
-
-		const serving = this.#runTrack(msg.id, track.tee());
+		const track = broadcast.subscribe(msg.track, msg.priority);
+		const serving = this.#runTrack(msg.id, broadcast.path, track.clone(), stream.writer);
 
 		for (;;) {
 			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);
@@ -77,16 +75,33 @@ export class Publisher {
 		}
 	}
 
-	async #runTrack(sub: bigint, track: TrackReader) {
+	async #runTrack(sub: bigint, broadcast: string, track: TrackReader, stream: Wire.Writer) {
+		let ok = false;
+
 		try {
 			for (;;) {
 				const group = await track.nextGroup();
 				if (!group) break;
 
-				this.#runGroup(sub, group.tee());
+				if (!ok) {
+					console.debug(`publish ok: broadcast=${broadcast} track=${track.name}`);
+
+					// Write the SUBSCRIBE_OK message on the first group.
+					const info = new Wire.SubscribeOk(track.priority);
+					await info.encode(stream);
+					ok = true;
+				}
+
+				this.#runGroup(sub, group.clone());
 			}
+
+			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
+			stream.close();
+		} catch (err) {
+			console.debug(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
+			stream.reset(err);
 		} finally {
-			await track.close();
+			track.close();
 		}
 	}
 

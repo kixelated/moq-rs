@@ -22,17 +22,15 @@ export class Announced {
 
 export class AnnouncedWriter {
 	readonly broadcast: string;
-	#queue: WritableStream<Announcement>;
+	#queue: WritableStreamDefaultWriter<Announcement>;
 
 	constructor(broadcast: string, queue: WritableStream<Announcement>) {
 		this.broadcast = broadcast;
-		this.#queue = queue;
+		this.#queue = queue.getWriter();
 	}
 
 	async write(announcement: Announcement) {
-		const writer = this.#queue.getWriter();
-		await writer.write(announcement);
-		writer.releaseLock();
+		await this.#queue.write(announcement);
 	}
 
 	async abort(reason?: unknown) {
@@ -41,6 +39,7 @@ export class AnnouncedWriter {
 
 	async close() {
 		await this.#queue.close();
+		this.#queue.releaseLock();
 	}
 }
 
@@ -64,7 +63,7 @@ export class AnnouncedReader {
 		await this.#queue.cancel();
 	}
 
-	tee(): AnnouncedReader {
+	clone(): AnnouncedReader {
 		const [one, two] = this.#queue.tee();
 		this.#queue = one;
 		return new AnnouncedReader(this.broadcast, two);

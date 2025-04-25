@@ -19,17 +19,15 @@ export class GroupWriter {
 	readonly id: number;
 
 	// A stream of frames.
-	#frames: WritableStream<Uint8Array>;
+	#frames: WritableStreamDefaultWriter<Uint8Array>;
 
 	constructor(id: number, frames: WritableStream<Uint8Array>) {
 		this.id = id;
-		this.#frames = frames;
+		this.#frames = frames.getWriter();
 	}
 
 	async writeFrame(frame: Uint8Array) {
-		const writer = this.#frames.getWriter();
-		await writer.write(frame);
-		writer.releaseLock();
+		await this.#frames.write(frame);
 	}
 
 	close() {
@@ -61,7 +59,7 @@ export class GroupReader {
 		this.#frames.cancel().catch(() => {});
 	}
 
-	tee(): GroupReader {
+	clone(): GroupReader {
 		const [one, two] = this.#frames.tee();
 		this.#frames = one;
 		return new GroupReader(this.id, two);

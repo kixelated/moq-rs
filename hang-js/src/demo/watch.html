@@ -29,10 +29,10 @@
 
 <body>
 	<div id="container">
-		<!-- Include the custom element to make setup super easy! -->
+		<!-- Include the custom element to set up the canvas. -->
 		<hang-watch url="http://localhost:4443/demo/bbb" id="watch">
 			<!-- Optionally provide a custom canvas element that we can style as needed -->
-			<canvas style="width: 100%; height: auto; border-radius: 4px;"></canvas>
+			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
 
 		<!-- Make some simple controls to demonstate the API. -->
@@ -86,16 +86,17 @@
 		</li>
 		<li>You can use CSS to change the size of the canvas:
 			<ul>
-				<li>ex. <code>max-width: 100%</code> instead of <code>width: 100%</code>.</li>
+				<li>ex. <code>width: 100%</code> instead of <code>max-width: 100%</code>.</li>
 				<li>You can't use the HTML width/height attributes because of <a
 						href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
 					limitations.</li>
 			</ul>
 		</li>
 		<li>
-			Change the URL to watch a different broadcast. Or use the `?path=` query parameter.
+			Change the URL to watch a different broadcast. Or use query params to redirect this demo.
 			<ul>
-				<li>ex. <code>just tos</code> then <a href="?path=demo/tos">?path=demo/tos</a></li>
+				<li>ex. <code>just pub tos</code> then <a href="?broadcast=demo/tos">watch another video</a></li>
+				<li>ex. <a href="?scheme=https&host=relay.quic.video">watch over the internet</a></li>
 			</ul>
 		</li>
 
@@ -124,33 +125,12 @@
 	const volume = document.getElementById("volume");
 	const container = document.getElementById("container");
 
-	// Listen for connection status changes.
-	watch.addEventListener("hang-watch-status", (event) => {
-		if (event.detail === "connected") {
-			status.textContent = "Connected";
-			spinner.style.display = "none";
-		} else if (event.detail === "connecting") {
-			status.textContent = "Connecting...";
-			spinner.style.display = "block";
-		} else if (event.detail === "disconnected") {
-			status.textContent = "Disconnected";
-			spinner.style.display = "none";
-		} else if (event.detail === "live") {
-			status.textContent = "Live";
-			spinner.style.display = "none";
-		} else if (event.detail === "offline") {
-			status.textContent = "Offline";
-			spinner.style.display = "none";
-		} else {
-			throw new Error(`Unknown connection status: ${event.detail}`);
-		}
-	});
-
-	// If the ?path query param is provided, use it as the broadcast URL instead of the default (demo/bbb).
+	// If query params are provided, use them as the broadcast URL instead of the default.
 	const urlParams = new URLSearchParams(window.location.search);
-	if (urlParams.has("path")) {
-		watch.lib.url = new URL(`http://localhost:4443/${urlParams.get("path")}`);
-	}
+	const broadcast = urlParams.get("broadcast") ?? "demo/bbb";
+	const host = urlParams.get("host") ?? "localhost:4443";
+	const scheme = urlParams.get("scheme") ?? "http";
+	watch.setAttribute("url", `${scheme}://${host}/${broadcast}`);
 
 	// Listen for clicks on the pause button.
 	pause.addEventListener("click", () => {
@@ -175,6 +155,28 @@
 	// Listen for changes to the volume input.
 	volume.addEventListener("sl-input", () => {
 		watch.lib.volume = Number.parseFloat(volume.value);
+	});
+
+	// Listen for connection status changes.
+	watch.addEventListener("hang-watch-status", (event) => {
+		if (event.detail === "connected") {
+			status.textContent = "Connected";
+			spinner.style.display = "none";
+		} else if (event.detail === "connecting") {
+			status.textContent = "Connecting...";
+			spinner.style.display = "block";
+		} else if (event.detail === "disconnected") {
+			status.textContent = "Disconnected";
+			spinner.style.display = "none";
+		} else if (event.detail === "live") {
+			status.textContent = "Live";
+			spinner.style.display = "none";
+		} else if (event.detail === "offline") {
+			status.textContent = "Offline";
+			spinner.style.display = "none";
+		} else {
+			throw new Error(`Unknown connection status: ${event.detail}`);
+		}
 	});
 </script>
 

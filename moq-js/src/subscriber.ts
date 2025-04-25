@@ -1,4 +1,5 @@
 import { Announced, AnnouncedReader } from "./announced";
+import { Broadcast, BroadcastReader } from "./broadcast";
 import { Group } from "./group";
 import { Track, type TrackReader, type TrackWriter } from "./track";
 import * as Wire from "./wire";
@@ -7,11 +8,11 @@ export class Subscriber {
 	#quic: WebTransport;
 
 	// Our subscribed tracks.
-	#subscribe = new Map<bigint, TrackWriter>();
+	#subscribes = new Map<bigint, TrackWriter>();
 	#subscribeNext = 0n;
 
 	// A cache of active subscriptions that can be tee'd.
-	#dedupe = new Map<[string, string], TrackReader>();
+	#broadcasts = new Map<string, BroadcastReader>();
 
 	constructor(quic: WebTransport) {
 		this.#quic = quic;
@@ -24,6 +25,8 @@ export class Subscriber {
 		const msg = new Wire.AnnounceInterest(prefix);
 
 		(async () => {
+			const active = new Set<string>();
+
 			try {
 				const stream = await Wire.Stream.open(this.#quic, msg);
 
@@ -34,65 +37,86 @@ export class Subscriber {
 					}
 
 					const broadcast = prefix.concat(announce.suffix);
+
+					console.debug(`announced: broadcast=${broadcast} active=${announce.active}`);
 					await writer.write({ broadcast, active: announce.active });
+
+					// Just for logging
+					if (announce.active) {
+						active.add(broadcast);
+					} else {
+						active.delete(broadcast);
+					}
 				}
 
 				await writer.close();
 			} catch (err) {
 				await writer.abort(err);
+			} finally {
+				for (const broadcast of active) {
+					console.debug(`announced: broadcast=${broadcast} active=dropped`);
+				}
 			}
 		})();
 
 		return pair.reader;
 	}
 
-	subscribe(broadcast: string, track: string, priority: number): TrackReader {
-		const existing = this.#dedupe.get([broadcast, track]);
+	consume(broadcast: string): BroadcastReader {
+		const existing = this.#broadcasts.get(broadcast);
 		if (existing) {
-			// Important that we tee here, so there can be multiple subscribers.
-			return existing.tee();
+			return existing.clone();
 		}
 
-		const id = this.#subscribeNext++;
-		const msg = new Wire.Subscribe(id, broadcast, track, priority);
+		const pair = new Broadcast(broadcast);
+		pair.writer.unknown((track) => {
+			// Save the track in the cache to deduplicate.
+			// NOTE: We don't clone it (yet) so it doesn't count as an active consumer.
+			pair.writer.insert(track.reader);
 
-		const pair = new Track(track, priority);
-		const reader = pair.reader;
-		const writer = pair.writer;
+			// Perform the subscription in the background.
+			this.#runSubscribe(broadcast, track.writer).finally(() => {
+				pair.writer.remove(track.name);
+			});
+		});
+
+		this.#broadcasts.set(broadcast, pair.reader);
+
+		// Delete when there are no more consumers.
+		pair.writer.closed().finally(() => {
+			this.#broadcasts.delete(broadcast);
+		});
+
+		return pair.reader;
+	}
+
+	async #runSubscribe(broadcast: string, track: TrackWriter) {
+		const id = this.#subscribeNext++;
 
 		// Save the writer so we can append groups to it.
-		this.#subscribe.set(id, writer);
+		this.#subscribes.set(id, track);
 
-		// NOTE: We store the non-tee'd reader here so it doesn't count againt the active subscriptions.
-		this.#dedupe.set([broadcast, track], pair.reader);
+		const msg = new Wire.Subscribe(id, broadcast, track.name, track.priority);
 
-		// Run the subscription in a background promise.
-		(async () => {
-			const stream = await Wire.Stream.open(this.#quic, msg);
-			try {
-				const _info = await Wire.SubscribeOk.decode(stream.reader);
-				console.debug(`subscribe ok: broadcast=${broadcast} track=${track}`);
+		const stream = await Wire.Stream.open(this.#quic, msg);
+		try {
+			const _info = await Wire.SubscribeOk.decode(stream.reader);
+			console.debug(`subscribe ok: broadcast=${broadcast} track=${track.name}`);
 
-				await Promise.race([stream.reader.closed(), pair.writer.closed()]);
+			await Promise.race([stream.reader.closed(), track.closed()]);
 
-				pair.writer.close();
-			} catch (err) {
-				pair.writer.abort(err);
-			} finally {
-				console.debug(`subscribe close: broadcast=${broadcast} track=${track}`);
-
-				this.#subscribe.delete(id);
-				this.#dedupe.delete([broadcast, track]);
-
-				stream.close();
-			}
-		})();
-
-		return reader;
+			track.close();
+		} catch (err) {
+			track.abort(err);
+		} finally {
+			console.debug(`subscribe close: broadcast=${broadcast} track=${track.name}`);
+			this.#subscribes.delete(id);
+			stream.close();
+		}
 	}
 
 	async runGroup(group: Wire.Group, stream: Wire.Reader) {
-		const subscribe = this.#subscribe.get(group.subscribe);
+		const subscribe = this.#subscribes.get(group.subscribe);
 		if (!subscribe) return;
 
 		const pair = new Group(group.sequence);

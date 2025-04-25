@@ -26,7 +26,7 @@ setup-tools:
 # Run the relay, web server, and publish bbb.
 all:
 	# Run the relay, web server, and publish bbb.
-	pnpm i && pnpm exec concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+	pnpm i && pnpm exec concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 2 && just web"
 
 # Alternatively, build the demo and host it via hang-cli.
 # This avoids multiple binaries and complicating things.
@@ -43,7 +43,7 @@ leaf:
 
 # Run a cluster of relay servers
 cluster:
-	pnpm i && pnpm exec concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
+	pnpm i && pnpm exec concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just pub bbb" "sleep 3 && just web"
 
 
 # Download the video and convert it to a fragmented MP4 that we can stream
@@ -57,7 +57,7 @@ download name:
 
 	if [ ! -f dev/{{name}}.fmp4 ]; then \
 		ffmpeg -i dev/{{name}}.mp4 \
-			-c copy \
+			-c:v copy \
 			-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 			dev/{{name}}.fmp4; \
 	fi
@@ -93,8 +93,8 @@ pub-gst name:
 	# Download the sample media.
 	just download {{name}}
 
-	# Build the plugins
-	cargo build
+	# Build the plugin
+	cargo build -p hang-gst
 
 	# Run gstreamer and pipe the output to our plugin
 	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
@@ -105,7 +105,7 @@ pub-gst name:
 # Subscribe to a video using gstreamer
 sub name:
 	# Build the plugins
-	cargo build
+	cargo build -p hang-gst
 
 	# Run gstreamer and pipe the output to our plugin
 	# This will render the video to the screen

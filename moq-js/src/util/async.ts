@@ -18,14 +18,28 @@ export class Deferred<T> {
 	}
 }
 
+export class Watch<T> {
+	readonly producer: WatchProducer<T>;
+	readonly consumer: WatchConsumer<T>;
+
+	constructor(init: T) {
+		this.producer = new WatchProducer<T>(init);
+		this.consumer = this.producer.subscribe();
+	}
+}
+
 export class WatchProducer<T> {
-	#current?: T;
+	#current: T;
 	#next = new Deferred<T>();
 	#closed = new Deferred<undefined>();
 
 	#consumers = 0;
 
-	latest(): T | undefined {
+	constructor(init: T) {
+		this.#current = init;
+	}
+
+	latest(): T {
 		return this.#current;
 	}
 
@@ -33,7 +47,7 @@ export class WatchProducer<T> {
 		return Promise.race([this.#next.promise, this.#closed.promise]);
 	}
 
-	update(v: T | ((v: T | undefined) => T)) {
+	update(v: T | ((v: T) => T)) {
 		if (!this.#closed.pending) {
 			throw new Error("closed");
 		}
@@ -70,27 +84,31 @@ export class WatchProducer<T> {
 
 	unsubscribe() {
 		this.#consumers--;
-
 		if (this.#consumers === 0) {
 			this.close();
 		}
-	}
-
-	static pair<T>(): [WatchProducer<T>, WatchConsumer<T>] {
-		const producer = new WatchProducer<T>();
-		const consumer = producer.subscribe();
-		return [producer, consumer];
 	}
 }
 
 export class WatchConsumer<T> {
 	#watch: WatchProducer<T>;
+	#init = true;
 
 	constructor(watch: WatchProducer<T>) {
 		this.#watch = watch;
 	}
 
+	latest(): T {
+		return this.#watch.latest();
+	}
+
 	async next(): Promise<T | undefined> {
+		// Return the latest value if this is our first call.
+		if (this.#init) {
+			this.#init = false;
+			return this.#watch.latest();
+		}
+
 		// Return the next value
 		return this.#watch.next();
 	}
@@ -101,5 +119,9 @@ export class WatchConsumer<T> {
 
 	close() {
 		this.#watch.unsubscribe();
+	}
+
+	async closed(): Promise<void> {
+		return this.#watch.closed();
 	}
 }

@@ -1,2 +1,4 @@
 import { WatchElement } from "../watch";
-export { WatchElement };
+import { PublishElement } from "../publish";
+
+export { WatchElement, PublishElement };

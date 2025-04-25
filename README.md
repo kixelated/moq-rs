@@ -47,7 +47,7 @@ just all
 
 # Or run each individually in separate terminals:
 just relay
-just bbb
+just pub bbb
 just web
 ```
 

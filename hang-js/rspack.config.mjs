@@ -17,6 +17,10 @@ const config = {
 			template: "src/demo/watch.html",
 			filename: "index.html",
 		}),
+		new HtmlWebpackPlugin({
+			template: "src/demo/publish.html",
+			filename: "publish.html",
+		}),
 	],
 	mode: "development",
 	experiments: {

@@ -13,6 +13,7 @@ export class Watch {
 	#url?: URL;
 
 	#connection?: Promise<Moq.Connection>;
+	#broadcast?: Moq.BroadcastReader;
 	#catalog?: Moq.TrackReader;
 
 	audio = new Audio();
@@ -40,7 +41,7 @@ export class Watch {
 	}
 
 	async #connect(url: URL) {
-		const broadcast = url.pathname.slice(1);
+		const path = url.pathname.slice(1);
 
 		// Connect to the URL without the path
 		const base = new URL(url);
@@ -49,27 +50,33 @@ export class Watch {
 		const connection = await Moq.Connection.connect(base);
 		this.#dispatchEvent("status", "connected");
 
-		this.#catalog?.close();
-		this.#catalog = connection.subscribe(broadcast, "catalog.json");
+		this.#broadcast?.close();
+		this.#broadcast = connection.consume(path);
 
-		this.#runCatalog(connection, broadcast, this.#catalog);
+		this.#catalog?.close();
+		this.#catalog = this.#broadcast.subscribe("catalog.json", 0);
+
+		this.#runCatalog(this.#broadcast, this.#catalog);
 
 		// Return the connection so we can close it if needed.
 		return connection;
 	}
 
-	async #runCatalog(connection: Moq.Connection, broadcast: string, track: Moq.TrackReader) {
+	async #runCatalog(broadcast: Moq.BroadcastReader, track: Moq.TrackReader) {
 		try {
 			for (;;) {
 				const catalog = await Catalog.Broadcast.fetch(track);
 				if (!catalog) break;
 
+				console.debug("updated catalog", catalog);
+
 				this.#dispatchEvent("status", "live");
 
-				this.video.load(connection, broadcast, catalog.video);
-				this.audio.load(connection, broadcast, catalog.audio);
+				this.video.load(broadcast, catalog.video);
+				this.audio.load(broadcast, catalog.audio);
 			}
 		} finally {
+			track.close();
 			this.#dispatchEvent("status", "offline");
 			this.audio.close();
 			this.video.close();
@@ -79,6 +86,10 @@ export class Watch {
 	close() {
 		this.#connection?.then((connection) => connection.close()).catch(() => {});
 		this.#connection = undefined;
+
+		this.#broadcast?.close();
+		this.#broadcast = undefined;
+
 		this.#catalog?.close();
 		this.#catalog = undefined;
 
@@ -135,9 +146,18 @@ export class WatchElement extends HTMLElement {
 		slot.appendChild(canvas);
 		this.lib.video.canvas = canvas;
 
-		this.attachShadow({ mode: "open" }).appendChild(slot);
+		const style = document.createElement("style");
+		style.textContent = `
+			:host {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+		`;
 
-		this.addEventListener("click", () => this.lib.audio.reload(), { once: true });
+		this.addEventListener("click", () => this.lib.audio.resume(), { once: true });
+
+		this.attachShadow({ mode: "open" }).append(style, slot);
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
@@ -163,5 +183,3 @@ declare global {
 		"hang-watch-status": CustomEvent<WatchStatus>;
 	}
 }
-
-export default WatchElement;

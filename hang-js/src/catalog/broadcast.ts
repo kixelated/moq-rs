@@ -6,8 +6,8 @@ import { type Audio, AudioSchema } from "./audio";
 import { type Video, VideoSchema } from "./video";
 
 export const BroadcastSchema = z.object({
-	video: z.array(VideoSchema),
-	audio: z.array(AudioSchema),
+	video: z.array(VideoSchema).optional(),
+	audio: z.array(AudioSchema).optional(),
 });
 
 export class Broadcast {
@@ -25,8 +25,8 @@ export class Broadcast {
 		const parsed = BroadcastSchema.parse(json);
 
 		const broadcast = new Broadcast();
-		broadcast.video = parsed.video;
-		broadcast.audio = parsed.audio;
+		broadcast.video = parsed.video ?? [];
+		broadcast.audio = parsed.audio ?? [];
 		return broadcast;
 	}
 

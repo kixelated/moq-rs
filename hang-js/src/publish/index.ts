@@ -3,18 +3,20 @@ import * as Catalog from "../catalog";
 import { Audio } from "./audio";
 import { Video } from "./video";
 
-import * as Hex from "../util/hex";
-import { AudioTrackSettings, VideoTrackSettings } from "../util/settings";
-import { Broadcast } from "./broadcast";
+export interface PublishEvents {
+	status: PublishStatus;
+}
 
 export type Device = "screen" | "camera";
+export type PublishStatus = "connecting" | "connected" | "disconnected" | "live";
 
 export class Publish {
 	#url?: URL;
 	#device?: Device;
 	#preview?: HTMLVideoElement;
 
-	#broadcast?: Promise<Broadcast>;
+	#connection?: Promise<Moq.Connection>;
+	#broadcast?: Moq.BroadcastWriter;
 	#media?: Promise<MediaStream>;
 
 	#audio?: Audio;
@@ -22,7 +24,9 @@ export class Publish {
 	#video?: Video;
 	#videoEnabled = true;
 
-	#catalog = new Moq.Track("catalog", 0);
+	#catalog = new Moq.Track("catalog.json", 0);
+
+	#events = new EventTarget();
 
 	get audio() {
 		return this.#audioEnabled;
@@ -50,17 +54,21 @@ export class Publish {
 		this.#url = url;
 
 		// Close the old connection.
-		this.#broadcast?.then((broadcast) => broadcast.close()).catch(() => {});
+		this.#connection?.then((connection) => connection.close()).catch(() => {});
 
 		if (url) {
-			this.#broadcast = this.#connect(url);
+			this.#dispatchEvent("status", "connecting");
+			this.#connection = this.#connect(url);
+			this.#connection.catch(() => this.#dispatchEvent("status", "disconnected"));
 		} else {
-			this.#broadcast = undefined;
+			this.#dispatchEvent("status", "disconnected");
+			this.#connection = undefined;
 		}
 	}
 
-	async #connect(url: URL): Promise<Broadcast> {
-		const name = url.pathname.slice(1);
+	async #connect(url: URL): Promise<Moq.Connection> {
+		// TODO separate this from the URL.
+		const broadcast = new Moq.Broadcast(url.pathname.slice(1));
 
 		// Connect to the URL without the path
 		const base = new URL(url);
@@ -68,19 +76,26 @@ export class Publish {
 
 		const connection = await Moq.Connection.connect(base);
 
-		const broadcast = new Broadcast(connection, name);
+		this.#broadcast = broadcast.writer;
+		connection.publish(broadcast.reader);
 
-		broadcast.publish(this.#catalog.reader.tee());
+		this.#broadcast.insert(this.#catalog.reader.clone());
 
 		if (this.#audio) {
-			broadcast.publish(this.#audio.track.reader.tee());
+			this.#broadcast.insert(this.#audio.track.reader.clone());
 		}
 
 		if (this.#video) {
-			broadcast.publish(this.#video.track.reader.tee());
+			this.#broadcast.insert(this.#video.track.reader.clone());
 		}
 
-		return broadcast;
+		if (this.#audio || this.#video) {
+			this.#dispatchEvent("status", "live");
+		} else {
+			this.#dispatchEvent("status", "connected");
+		}
+
+		return connection;
 	}
 
 	get device(): Device | undefined {
@@ -96,8 +111,19 @@ export class Publish {
 		return this.#preview;
 	}
 
-	set preview(render: HTMLVideoElement | undefined) {
-		this.#preview = render;
+	set preview(preview: HTMLVideoElement | undefined) {
+		if (this.#preview) {
+			this.#preview.srcObject = null;
+		}
+
+		this.#preview = preview;
+
+		if (preview) {
+			this.#media?.then((media) => {
+				preview.srcObject = media;
+				preview.play();
+			});
+		}
 	}
 
 	async #init() {
@@ -127,16 +153,23 @@ export class Publish {
 
 		// Finish the media request.
 		const media = await this.#media;
+		if (this.#preview) {
+			this.#preview.srcObject = media;
+			this.#preview.play();
+		}
 
 		// Create the new catalog.
 		const catalog = new Catalog.Broadcast();
 
 		const audio = media.getAudioTracks().at(0);
-		if (!audio || this.#audio?.media !== audio) {
+		if (this.#audio?.media !== audio) {
 			this.#audio?.close();
 			this.#audio = undefined;
-		} else if (audio) {
-			this.#audio = new Audio(audio);
+
+			if (audio) {
+				this.#audio = new Audio(audio);
+				this.#broadcast?.insert(this.#audio.track.reader.clone());
+			}
 		}
 
 		if (this.#audio) {
@@ -144,16 +177,29 @@ export class Publish {
 		}
 
 		const video = media.getVideoTracks().at(0);
-		if (!video || this.#video?.media !== video) {
+		if (this.#video?.media !== video) {
 			this.#video?.close();
 			this.#video = undefined;
-		} else if (video) {
-			this.#video = new Video(video);
+
+			if (video) {
+				this.#video = new Video(video);
+				this.#broadcast?.insert(this.#video.track.reader.clone());
+			}
 		}
 
 		if (this.#video) {
 			catalog.video.push(this.#video.catalog);
 		}
+
+		if (this.#broadcast) {
+			if (this.#audio || this.#video) {
+				this.#dispatchEvent("status", "live");
+			} else {
+				this.#dispatchEvent("status", "connected");
+			}
+		}
+
+		console.debug("updated catalog", catalog);
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
@@ -169,7 +215,90 @@ export class Publish {
 			}
 		});
 
-		this.#broadcast?.then((broadcast) => broadcast.close());
+		this.#connection?.then((connection) => connection.close());
+	}
+
+	addEventListener<K extends keyof PublishEvents>(type: K, listener: (event: CustomEvent<PublishEvents[K]>) => void) {
+		this.#events.addEventListener(type, listener as EventListener);
+	}
+
+	removeEventListener<K extends keyof PublishEvents>(
+		type: K,
+		listener: (event: CustomEvent<PublishEvents[K]>) => void,
+	) {
+		this.#events.removeEventListener(type, listener as EventListener);
+	}
+
+	#dispatchEvent<K extends keyof PublishEvents>(type: K, detail: PublishEvents[K]) {
+		this.#events.dispatchEvent(new CustomEvent(type, { detail }));
+	}
+}
+
+export class PublishElement extends HTMLElement {
+	static observedAttributes = ["url"];
+
+	// Expose the library so we don't have to duplicate everything.
+	readonly lib: Publish = new Publish();
+
+	constructor() {
+		super();
+
+		// Proxy events from the library to the element.
+		this.lib.addEventListener("status", (event) => {
+			this.dispatchEvent(new CustomEvent("hang-publish-status", { detail: event.detail }));
+		});
+
+		const preview = document.createElement("video");
+		preview.style.width = "100%";
+		preview.style.height = "auto";
+		preview.setAttribute("muted", "true");
+		preview.setAttribute("autoplay", "true");
+
+		const slot = document.createElement("slot");
+		slot.addEventListener("slotchange", () => {
+			for (const el of slot.assignedElements({ flatten: true })) {
+				if (el instanceof HTMLVideoElement) {
+					this.lib.preview = el;
+					return;
+				}
+			}
+
+			this.lib.preview = undefined;
+		});
+
+		slot.appendChild(preview);
+		this.lib.preview = preview;
+
+		const style = document.createElement("style");
+		style.textContent = `
+			:host {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+		`;
+
+		this.attachShadow({ mode: "open" }).append(style, slot);
+	}
+
+	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+		if (name === "url") {
+			this.lib.url = newValue ? new URL(newValue) : undefined;
+		}
+	}
+}
+
+customElements.define("hang-publish", PublishElement);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"hang-publish": PublishElement;
+	}
+}
+
+declare global {
+	interface HTMLElementEventMap {
+		"hang-publish-status": CustomEvent<PublishStatus>;
 	}
 }
 

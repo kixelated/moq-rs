@@ -67,13 +67,14 @@ export class Stream {
 		return stream;
 	}
 
-	async close(reason?: unknown) {
-		await this.writer.close();
+	close() {
+		this.writer.close();
+		this.reader.stop();
 	}
 
-	async abort(reason?: unknown) {
-		await this.writer.reset(reason);
-		await this.reader.stop(reason);
+	abort(reason?: unknown) {
+		this.writer.reset(reason);
+		this.reader.stop(reason);
 	}
 }
 
@@ -201,9 +202,9 @@ export class Reader {
 		return !(await this.#fill());
 	}
 
-	async stop(reason?: unknown) {
+	stop(reason?: unknown) {
+		this.#reader.cancel(reason).catch(() => {});
 		this.#reader.releaseLock();
-		await this.#stream.cancel(reason);
 	}
 
 	async closed() {
@@ -295,14 +296,14 @@ export class Writer {
 		await this.write(data);
 	}
 
-	async close() {
+	close() {
+		this.#writer.close().catch(() => {});
 		this.#writer.releaseLock();
-		await this.#stream.close();
 	}
 
-	async reset(reason?: unknown) {
+	reset(reason?: unknown) {
+		this.#writer.abort(reason).catch(() => {});
 		this.#writer.releaseLock();
-		await this.#stream.abort(reason);
 	}
 
 	release(): WritableStream<Uint8Array> {

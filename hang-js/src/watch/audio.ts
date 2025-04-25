@@ -9,8 +9,7 @@ export class Audio {
 	#track?: AudioTrack;
 
 	// Save these variables so we can reload the video if `visible` or `canvas` changes.
-	#connection?: Moq.Connection;
-	#broadcast?: string;
+	#broadcast?: Moq.BroadcastReader;
 	#tracks?: Catalog.Audio[];
 
 	get volume(): number {
@@ -27,47 +26,45 @@ export class Audio {
 
 	set paused(paused: boolean) {
 		this.#paused = paused;
-		this.#maybeReload();
+		this.#reload();
 	}
 
-	load(connection: Moq.Connection, broadcast: string, tracks: Catalog.Audio[]) {
-		this.#connection = connection;
+	load(broadcast: Moq.BroadcastReader, tracks: Catalog.Audio[]) {
+		this.#broadcast?.close();
 		this.#broadcast = broadcast;
 		this.#tracks = tracks;
 
-		this.#maybeReload();
+		this.#reload();
 	}
 
 	close() {
-		this.#connection = undefined;
+		this.#broadcast?.close();
 		this.#broadcast = undefined;
 		this.#tracks = undefined;
 		this.#track?.close();
 	}
 
-	reload() {
+	resume() {
+		this.#track?.resume();
+	}
+
+	#reload() {
+		const info = this.#tracks?.at(0);
+		if (info && this.#track?.info === info) {
+			// No change; continue the current subscription.
+			return;
+		}
+
 		this.#track?.close();
 		this.#track = undefined;
 
-		const info = this.#tracks?.at(0);
-
-		if (!this.#tracks || !this.#connection || !this.#broadcast || !info || this.#paused) {
+		if (!this.#tracks || !this.#broadcast || !info || this.#paused) {
 			// Nothing to render, unsubscribe.
 			return;
 		}
 
-		const track = this.#connection.subscribe(this.#broadcast, info.track.name, info.track.priority);
+		const track = this.#broadcast.subscribe(info.track.name, info.track.priority);
 		this.#track = new AudioTrack(info, track);
-	}
-
-	#maybeReload() {
-		const info = this.#tracks?.at(0);
-		if (this.#track && info && this.#track.info === info) {
-			// No change; continue the current run.
-			return;
-		}
-
-		this.reload();
 	}
 }
 
@@ -116,18 +113,18 @@ export class AudioTrack {
 			return;
 		}
 
-		const diff = data.timestamp / 1000_000 - this.#context.currentTime;
+		const diff = data.timestamp / 1_000_000 - this.#context.currentTime;
 		if (!this.#ref) {
 			this.#ref = diff;
 		} else {
-			console.log(diff - this.#ref);
+			//console.log(Math.round((diff - this.#ref) * 1000));
 		}
 
 		const buffer = this.#context.createBuffer(data.numberOfChannels, data.numberOfFrames, data.sampleRate);
 
 		for (let channel = 0; channel < data.numberOfChannels; channel++) {
 			const channelData = new Float32Array(data.numberOfFrames);
-			data.copyTo(channelData, { planeIndex: channel });
+			data.copyTo(channelData, { format: "f32-planar", planeIndex: channel });
 			buffer.copyToChannel(channelData, channel);
 		}
 		data.close();
@@ -149,6 +146,10 @@ export class AudioTrack {
 	#advance() {
 		this.#active = this.#queued;
 		this.#queued = undefined;
+	}
+
+	resume() {
+		this.#context.resume();
 	}
 
 	async #run() {

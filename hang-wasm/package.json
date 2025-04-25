@@ -14,7 +14,7 @@
 	"scripts": {
 		"build": "cargo test export_bindings && rspack build && tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist",
 		"check": "cargo test && tsc --noEmit",
-		"dev": "rspack serve"
+		"serve": "rspack serve"
 	},
 	"devDependencies": {
 		"@rspack/cli": "^1.3.5",

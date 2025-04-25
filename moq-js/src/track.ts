@@ -1,5 +1,5 @@
 import { Group, GroupReader, GroupWriter } from "./group";
-import { WatchConsumer, WatchProducer } from "./util/async";
+import { Watch, WatchConsumer, WatchProducer } from "./util/async";
 
 export class Track {
 	readonly name: string;
@@ -12,9 +12,9 @@ export class Track {
 		this.name = name;
 		this.priority = priority;
 
-		const [producer, consumer] = WatchProducer.pair<GroupReader>();
-		this.writer = new TrackWriter(name, priority, producer);
-		this.reader = new TrackReader(name, priority, consumer);
+		const watch = new Watch<GroupReader | null>(null);
+		this.writer = new TrackWriter(name, priority, watch.producer);
+		this.reader = new TrackReader(name, priority, watch.consumer);
 	}
 }
 
@@ -22,9 +22,9 @@ export class TrackWriter {
 	readonly name: string;
 	readonly priority: number;
 
-	#group: WatchProducer<GroupReader>;
+	#group: WatchProducer<GroupReader | null>;
 
-	constructor(name: string, priority: number, group: WatchProducer<GroupReader>) {
+	constructor(name: string, priority: number, group: WatchProducer<GroupReader | null>) {
 		this.name = name;
 		this.priority = priority;
 		this.#group = group;
@@ -70,19 +70,23 @@ export class TrackReader {
 	readonly name: string;
 	readonly priority: number;
 
-	#group: WatchConsumer<GroupReader>;
+	#group: WatchConsumer<GroupReader | null>;
 
-	constructor(name: string, priority: number, group: WatchConsumer<GroupReader>) {
+	constructor(name: string, priority: number, group: WatchConsumer<GroupReader | null>) {
 		this.name = name;
 		this.priority = priority;
 		this.#group = group;
 	}
 
 	async nextGroup(): Promise<GroupReader | undefined> {
-		return await this.#group.next();
+		for (;;) {
+			const group = await this.#group.next();
+			if (group === null) continue; // skip the first null
+			return group;
+		}
 	}
 
-	tee(): TrackReader {
+	clone(): TrackReader {
 		return new TrackReader(this.name, this.priority, this.#group.clone());
 	}
 

@@ -256,7 +256,94 @@ impl HangSrc {
 			});
 		}
 
-		for _audio in catalog.audio {}
+		for audio in catalog.audio {
+			let mut track = broadcast.track(audio.track.clone());
+
+			let caps = match &audio.codec {
+				hang::AudioCodec::AAC(_aac) => {
+					let builder = gst::Caps::builder("audio/mpeg")
+						.field("mpegversion", 4)
+						.field("channels", audio.channel_count)
+						.field("rate", audio.sample_rate);
+
+					if let Some(description) = audio.description {
+						builder
+							.field("codec_data", gst::Buffer::from_slice(description.clone()))
+							.field("stream-format", "aac")
+							.build()
+					} else {
+						builder.field("stream-format", "adts").build()
+					}
+				}
+				hang::AudioCodec::Opus => {
+					let builder = gst::Caps::builder("audio/x-opus")
+						.field("rate", audio.sample_rate)
+						.field("channels", audio.channel_count);
+
+					if let Some(description) = audio.description {
+						builder
+							.field("codec_data", gst::Buffer::from_slice(description.clone()))
+							.field("stream-format", "ogg")
+							.build()
+					} else {
+						builder.field("stream-format", "opus").build()
+					}
+				}
+				_ => unimplemented!(),
+			};
+
+			gst::info!(CAT, "caps: {:?}", caps);
+
+			let templ = self.obj().element_class().pad_template("audio_%u").unwrap();
+
+			let srcpad = gst::Pad::builder_from_template(&templ).name(&audio.track.name).build();
+			srcpad.set_active(true).unwrap();
+
+			let stream_start = gst::event::StreamStart::builder(&audio.track.name)
+				.group_id(gst::GroupId::next())
+				.build();
+			srcpad.push_event(stream_start);
+
+			let caps_evt = gst::event::Caps::new(&caps);
+			srcpad.push_event(caps_evt);
+
+			let segment = gst::event::Segment::new(&gst::FormattedSegment::<gst::ClockTime>::new());
+			srcpad.push_event(segment);
+
+			self.obj().add_pad(&srcpad).expect("Failed to add pad");
+
+			let mut reference = None;
+
+			// Push to the srcpad in a background task.
+			tokio::spawn(async move {
+				// TODO don't panic on error
+				while let Some(frame) = track.read().await.expect("failed to read frame") {
+					let mut buffer = gst::Buffer::from_slice(frame.payload);
+					let buffer_mut = buffer.get_mut().unwrap();
+
+					// Make the timestamps relative to the first frame
+					let timestamp = if let Some(reference) = reference {
+						frame.timestamp - reference
+					} else {
+						reference = Some(frame.timestamp);
+						frame.timestamp
+					};
+
+					let pts = gst::ClockTime::from_nseconds(timestamp.as_nanos() as _);
+					buffer_mut.set_pts(Some(pts));
+
+					let mut flags = buffer_mut.flags();
+					flags.remove(gst::BufferFlags::DELTA_UNIT);
+					buffer_mut.set_flags(flags);
+
+					gst::info!(CAT, "pushing sample: {:?}", buffer);
+
+					if let Err(err) = srcpad.push(buffer) {
+						gst::warning!(CAT, "Failed to push sample: {:?}", err);
+					}
+				}
+			});
+		}
 
 		// We downloaded the catalog and created all the pads.
 		self.obj().no_more_pads();

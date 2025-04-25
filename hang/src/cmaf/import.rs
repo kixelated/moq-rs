@@ -1,10 +1,10 @@
 use super::{Error, Result};
 use crate::{
-	Audio, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC, AV1, H264,
-	H265, VP9,
+	Audio, AudioCodec, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC,
+	AV1, H264, H265, VP9,
 };
 use bytes::{Bytes, BytesMut};
-use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Esds, Mdat, Moof, Moov, Tfdt, Trak, Trun};
+use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
@@ -248,6 +248,8 @@ impl Import {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
+		let track = Track { name, priority: 1 };
+
 		let codec = match stsd.codecs.len() {
 			0 => return Err(Error::MissingCodec),
 			1 => &stsd.codecs[0],
@@ -256,12 +258,7 @@ impl Import {
 
 		let track = match codec {
 			mp4_atom::Codec::Mp4a(mp4a) => {
-				let desc = &mp4a
-					.esds
-					.as_ref()
-					.ok_or(Error::MissingBox(Esds::KIND))?
-					.es_desc
-					.dec_config;
+				let desc = &mp4a.esds.es_desc.dec_config;
 
 				// TODO Also support mp4a.67
 				if desc.object_type_indication != 0x40 {
@@ -269,7 +266,6 @@ impl Import {
 				}
 
 				let bitrate = desc.avg_bitrate.max(desc.max_bitrate) as u64;
-				let track = Track { name, priority: 1 };
 
 				Audio {
 					track,
@@ -277,9 +273,19 @@ impl Import {
 						profile: desc.dec_specific.profile,
 					}
 					.into(),
-					sample_rate: mp4a.samplerate.integer() as _,
-					channel_count: mp4a.channelcount as _,
+					sample_rate: mp4a.audio.sample_rate.integer() as _,
+					channel_count: mp4a.audio.channel_count as _,
 					bitrate: Some(bitrate),
+					description: None, // TODO?
+				}
+			}
+			mp4_atom::Codec::Opus(opus) => {
+				Audio {
+					track,
+					codec: AudioCodec::Opus,
+					sample_rate: opus.audio.sample_rate.integer() as _,
+					channel_count: opus.audio.channel_count as _,
+					bitrate: None,
 					description: None, // TODO?
 				}
 			}

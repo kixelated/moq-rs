@@ -1,4 +1,5 @@
 import { AnnouncedReader } from "./announced";
+import { BroadcastReader } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
 import { TrackReader, TrackWriter } from "./track";
@@ -115,16 +116,16 @@ export class Connection {
 		await Promise.all([session, bidis, unis]);
 	}
 
-	publish(broadcast: string, track: TrackReader) {
-		this.#publisher.publish(broadcast, track);
+	publish(broadcast: BroadcastReader) {
+		this.#publisher.publish(broadcast);
 	}
 
 	announced(prefix = ""): AnnouncedReader {
 		return this.#subscriber.announced(prefix);
 	}
 
-	subscribe(broadcast: string, track: string, priority = 0): TrackReader {
-		return this.#subscriber.subscribe(broadcast, track, priority);
+	consume(broadcast: string): BroadcastReader {
+		return this.#subscriber.consume(broadcast);
 	}
 
 	async #runSession() {

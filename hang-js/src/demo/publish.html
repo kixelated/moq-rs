@@ -22,11 +22,19 @@
 </head>
 
 <body>
-	<!-- Include the custom element to make setup super easy! -->
-	<hang-publish url="http://localhost:4443/demo/me" id="publish"></hang-publish>
+	<!-- Use the included custom element to render a preview. -->
+	<hang-publish url="http://localhost:4443/demo/me" id="publish">
+		<!-- Optionally provide a custom video element that we can style as needed -->
+		<video style="max-width: 100%; height: auto; border-radius: 4px;" muted></video>
+	</hang-publish>
 
 	<!-- Make some simple controls to demonstate the API. -->
-	<div style="display: flex; justify-content: center; gap: 8px;">
+	<div style="display: flex; justify-content: center; gap: 16px; margin: 8px 0;">
+		<div style="display: flex; align-items: center; gap: 8px;">
+			<sl-spinner id="spinner"></sl-spinner>
+			<span id="status">Initializing...</span>
+		</div>
+
 		<sl-radio-group>
 			<sl-tooltip content="Publish your webcam." placement="bottom">
 				<sl-radio-button id="camera">
@@ -46,9 +54,21 @@
 				</sl-radio-button>
 			</sl-tooltip>
 		</sl-radio-group>
+
+		<div style="display: flex; align-items: center; gap: 8px;">
+			<a target="_blank" id="watch" style="visibility: hidden;">Watch</a>
+		</div>
 	</div>
 
 	<h3>Tips:</h3>
+	<ul>
+		<li>Change the URL to watch a different broadcast. Or use query params to redirect this demo.
+			<ul>
+				<li>ex. <a href="?scheme=https&host=relay.quic.video">publish</a> and <a
+						href="index.html?scheme=https&host=relay.quic.video">watch</a> over the internet.</li>
+			</ul>
+		</li>
+	</ul>
 
 	<h3>Other demos:</h3>
 	<ul>
@@ -63,10 +83,44 @@
 	const camera = document.getElementById("camera");
 	const screen = document.getElementById("screen");
 	const none = document.getElementById("none");
+	const status = document.getElementById("status");
+	const watch = document.getElementById("watch");
 
 	camera.addEventListener("click", () => publish.lib.device = "camera");
 	screen.addEventListener("click", () => publish.lib.device = "screen");
 	none.addEventListener("click", () => publish.lib.device = null);
+
+	// If query params are provided, use them instead of the default.
+	const urlParams = new URLSearchParams(window.location.search);
+	const broadcast = urlParams.get("broadcast") ?? "demo/me";
+	const host = urlParams.get("host") ?? "localhost:4443";
+	const scheme = urlParams.get("scheme") ?? "http";
+
+	publish.setAttribute("url", `${scheme}://${host}/${broadcast}`);
+	watch.setAttribute("href", `index.html?broadcast=${broadcast}&host=${host}&scheme=${scheme}`);
+
+	// Listen for connection status changes.
+	publish.addEventListener("hang-publish-status", (event) => {
+		if (event.detail === "connected") {
+			status.textContent = "Connected";
+			spinner.style.display = "none";
+			watch.style.visibility = "visible";
+		} else if (event.detail === "connecting") {
+			status.textContent = "Connecting...";
+			spinner.style.display = "block";
+			watch.style.visibility = "hidden";
+		} else if (event.detail === "disconnected") {
+			status.textContent = "Disconnected";
+			spinner.style.display = "none";
+			watch.style.visibility = "hidden";
+		} else if (event.detail === "live") {
+			status.textContent = "Live";
+			spinner.style.display = "none";
+			watch.style.visibility = "visible";
+		} else {
+			throw new Error(`Unknown connection status: ${event.detail}`);
+		}
+	});
 </script>
 
 </html>

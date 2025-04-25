@@ -12,8 +12,7 @@ export class Video {
 	#visible = true;
 
 	// Save these variables so we can reload the video if `visible` or `canvas` changes.
-	#connection?: Moq.Connection;
-	#broadcast?: string;
+	#broadcast?: Moq.BroadcastReader;
 	#tracks?: Catalog.Video[];
 
 	constructor() {
@@ -41,8 +40,8 @@ export class Video {
 		this.#reload();
 	}
 
-	load(connection: Moq.Connection, broadcast: string, tracks: Catalog.Video[]) {
-		this.#connection = connection;
+	load(broadcast: Moq.BroadcastReader, tracks: Catalog.Video[]) {
+		this.#broadcast?.close();
 		this.#broadcast = broadcast;
 		this.#tracks = tracks;
 
@@ -50,7 +49,7 @@ export class Video {
 	}
 
 	close() {
-		this.#connection = undefined;
+		this.#broadcast?.close();
 		this.#broadcast = undefined;
 		this.#tracks = undefined;
 		this.#track?.close();
@@ -62,15 +61,7 @@ export class Video {
 
 		const info = this.#tracks?.at(0);
 
-		if (
-			!this.#render ||
-			!this.#visible ||
-			!this.#tracks ||
-			!this.#connection ||
-			!this.#broadcast ||
-			!info ||
-			this.#paused
-		) {
+		if (!this.#render || !this.#visible || !this.#tracks || !this.#broadcast || !info || this.#paused) {
 			// Nothing to render, unsubscribe.
 			existing?.close();
 			return;
@@ -82,7 +73,7 @@ export class Video {
 			return;
 		}
 
-		const track = this.#connection.subscribe(this.#broadcast, info.track.name, info.track.priority);
+		const track = this.#broadcast.subscribe(info.track.name, info.track.priority);
 		this.#track = new VideoTrack(info, track, this.#render);
 	}
 }
