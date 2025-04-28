@@ -88,7 +88,7 @@ export class BroadcastReader {
 
 		const existing = state.tracks.get(track);
 		if (existing) {
-			return existing;
+			return existing.clone();
 		}
 
 		const pair = new Track(track, priority);

@@ -118,7 +118,7 @@ just pub bbb
 
 	<h3>Other demos:</h3>
 	<ul>
-		<li><a href="publish.html">Publish a webcam or screen.</a></li>
+		<li><a href="publish.html">Publish a webcam or window.</a></li>
 	</ul>
 </body>
 
@@ -135,14 +135,16 @@ just pub bbb
 
 	// If query params are provided, use them as the broadcast URL instead of the default.
 	const urlParams = new URLSearchParams(window.location.search);
-	const broadcast = urlParams.get("broadcast") ?? "demo/bbb";
-	const host = urlParams.get("host") ?? "localhost:4443";
-	const scheme = urlParams.get("scheme") ?? "http";
-	watch.setAttribute("url", `${scheme}://${host}/${broadcast}`);
+	if (urlParams.size > 0) {
+		const broadcast = urlParams.get("broadcast") ?? "demo/bbb";
+		const host = urlParams.get("host") ?? "localhost:4443";
+		const scheme = urlParams.get("scheme") ?? "http";
+		watch.setAttribute("url", `${scheme}://${host}/${broadcast}`);
+	}
 
 	// Listen for clicks on the pause button.
 	pause.addEventListener("click", () => {
-		watch.lib.paused = !watch.lib.paused;
+		watch.lib.video.paused = !watch.lib.video.paused;
 	});
 
 	// Listen for clicks on the fullscreen button.

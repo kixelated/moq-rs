@@ -1,8 +1,10 @@
 import * as Moq from "@kixelated/moq";
 import type * as Catalog from "../catalog";
 import * as Container from "../container";
-import type { Frame } from "../container/frame";
 import * as Hex from "../util/hex";
+
+// 50ms in microseconds.
+const MAX_LATENCY = 50000;
 
 export class Video {
 	#render?: CanvasRenderingContext2D;
@@ -84,17 +86,15 @@ export class VideoTrack {
 
 	#container: Container.Reader;
 	#decoder: VideoDecoder;
-	#queued?: VideoFrame;
+	#queued: VideoFrame[] = [];
 	#animating?: number;
-
-	#ref?: number;
 
 	constructor(info: Catalog.Video, track: Moq.TrackReader, render: CanvasRenderingContext2D) {
 		this.info = info;
 		this.render = render;
 
 		this.#decoder = new VideoDecoder({
-			output: (frame) => this.#decoded(frame),
+			output: (frame) => this.#decoded(frame as VideoFrame),
 			// TODO bubble up error
 			error: (error) => {
 				console.error(error);
@@ -116,22 +116,18 @@ export class VideoTrack {
 	}
 
 	#decoded(frame: VideoFrame) {
-		const diff = frame.timestamp / 1000 - performance.now();
-		if (!this.#ref) {
-			this.#ref = diff;
-		} else {
-			//console.log(diff - this.#ref);
-		}
+		this.#queued.push(frame);
+		this.#purge();
 
-		if (this.#animating) {
-			this.#queued?.close();
-			this.#queued = frame;
-		} else {
-			this.#animating = self.requestAnimationFrame(() => this.#draw(frame));
+		if (!this.#animating) {
+			this.#animating = self.requestAnimationFrame(() => this.#draw());
 		}
 	}
 
-	#draw(frame: VideoFrame) {
+	#draw() {
+		const frame = this.#queued.shift();
+		if (!frame) return;
+
 		const width = frame.displayWidth ?? frame.codedWidth;
 		const height = frame.displayHeight ?? frame.codedHeight;
 
@@ -141,10 +137,8 @@ export class VideoTrack {
 		this.render.drawImage(frame, 0, 0, width, height); // TODO respect aspect ratio
 		frame.close();
 
-		if (this.#queued) {
-			const frame = this.#queued;
-			this.#queued = undefined;
-			this.#animating = self.requestAnimationFrame(() => this.#draw(frame));
+		if (this.#queued.length > 0) {
+			this.#animating = self.requestAnimationFrame(() => this.#draw());
 		} else {
 			this.#animating = undefined;
 		}
@@ -175,6 +169,25 @@ export class VideoTrack {
 			this.#animating = undefined;
 		}
 
-		this.#queued?.close();
+		for (const frame of this.#queued) {
+			frame.close();
+		}
+
+		this.#queued = [];
+	}
+
+	// Drop frames in the queue that are too old.
+	#purge() {
+		while (this.#queued.length > 1) {
+			const first = this.#queued[0];
+			const last = this.#queued[this.#queued.length - 1];
+
+			if (first.timestamp + MAX_LATENCY > last.timestamp) {
+				break;
+			}
+
+			this.#queued.shift();
+			first.close();
+		}
 	}
 }

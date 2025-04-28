@@ -100,7 +100,7 @@ export class Video {
 		if (frame.type === "key") {
 			this.#keyframeCounter = 0;
 			this.#group?.close();
-			this.#group = this.track.writer.appendGroup();
+			this.#group = await this.track.writer.appendGroup();
 		} else {
 			this.#keyframeCounter += 1;
 			const framesPerGop = this.settings.frameRate ? 2 * this.settings.frameRate : 60;

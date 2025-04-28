@@ -23,12 +23,8 @@ impl Origin {
 
 		let existing = routes.insert(broadcast.info.clone(), broadcast.clone());
 		if existing.is_some() {
-			tracing::debug!(broadcast = ?broadcast.info, "re-announced origin");
-
 			// Reannounce as a signal that the origin changed.
 			self.unique.remove(&broadcast.info);
-		} else {
-			tracing::debug!(broadcast = ?broadcast.info, "announced origin");
 		}
 
 		self.unique.insert(broadcast.info.clone());
@@ -44,10 +40,8 @@ impl Origin {
 
 			let existing = routes.remove(&broadcast.info).unwrap();
 			if existing == broadcast {
-				tracing::debug!(broadcast = ?broadcast.info, "unannounced origin");
 				this.unique.remove(&broadcast.info);
 			} else {
-				tracing::debug!(broadcast = ?broadcast.info, "duplicate broadcast ended");
 				// Oops, put it back (we were a duplicate).
 				routes.insert(broadcast.info, existing);
 			}

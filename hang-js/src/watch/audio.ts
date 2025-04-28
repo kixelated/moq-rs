@@ -2,6 +2,11 @@ import * as Moq from "@kixelated/moq";
 import type * as Catalog from "../catalog";
 import * as Container from "../container";
 
+// A map of sample rate to AudioContext.
+// This super weird, but means we get automatic audio sample rate conversion.
+// TODO add a way to close these.
+const contexts = new Map<number, AudioContext>();
+
 export class Audio {
 	#volume = 0.5;
 	#paused = false;
@@ -44,8 +49,12 @@ export class Audio {
 		this.#track?.close();
 	}
 
-	init() {
-		this.#track?.resume();
+	async init() {
+		for (const context of contexts.values()) {
+			await context.resume();
+		}
+
+		this.#reload();
 	}
 
 	#reload() {
@@ -63,17 +72,26 @@ export class Audio {
 			return;
 		}
 
+		let context = contexts.get(info.sample_rate);
+		if (!context) {
+			context = new AudioContext({ latencyHint: "interactive", sampleRate: info.sample_rate });
+			contexts.set(info.sample_rate, context);
+		}
+
+		if (context.state !== "running") {
+			// Audio is disabled because we haven't clicked yet.
+			return;
+		}
+
 		const track = this.#broadcast.subscribe(info.track.name, info.track.priority);
-		this.#track = new AudioTrack(info, track);
+		this.#track = new AudioTrack(info, track, context);
 	}
 }
 
 export class AudioTrack {
 	info: Catalog.Audio;
 
-	// TODO reuse AudioContext based on sample rate
 	#context: AudioContext;
-
 	#container: Container.Reader;
 	#decoder: AudioDecoder;
 
@@ -82,12 +100,9 @@ export class AudioTrack {
 
 	#ref?: number;
 
-	constructor(info: Catalog.Audio, track: Moq.TrackReader) {
+	constructor(info: Catalog.Audio, track: Moq.TrackReader, context: AudioContext) {
 		this.info = info;
-
-		// TODO reuse AudioContext based on sample rate
-		this.#context = new AudioContext({ latencyHint: "interactive", sampleRate: info.sample_rate });
-
+		this.#context = context;
 		this.#decoder = new AudioDecoder({
 			output: (data) => this.#decoded(data),
 			error: (error) => {
@@ -148,10 +163,6 @@ export class AudioTrack {
 		this.#queued = undefined;
 	}
 
-	resume() {
-		this.#context.resume();
-	}
-
 	async #run() {
 		for (;;) {
 			const frame = await this.#container.readFrame();
@@ -170,7 +181,6 @@ export class AudioTrack {
 	}
 
 	close() {
-		this.#context.close();
 		this.#container.close();
 	}
 }

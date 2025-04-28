@@ -34,7 +34,6 @@ impl Publisher {
 		while let Some(announced) = announced.next().await {
 			match announced {
 				Announced::Start(broadcast) => {
-					tracing::debug!(broadcast = %broadcast.path, "served announce");
 					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 
 					let msg = message::Announce::Active {
@@ -43,7 +42,6 @@ impl Publisher {
 					stream.writer.encode(&msg).await?;
 				}
 				Announced::End(broadcast) => {
-					tracing::debug!(broadcast = %broadcast.path, "served unannounced");
 					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 					let msg = message::Announce::Ended {
 						suffix: suffix.to_string(),

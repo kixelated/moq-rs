@@ -144,7 +144,7 @@ export class Watch {
 
 // A custom element making it easier to insert a Watch into the DOM.
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url", "paused"];
+	static observedAttributes = ["url", "paused", "maxLatency"];
 
 	// Expose the library so we don't have to duplicate everything.
 	readonly lib: Watch = new Watch();
@@ -196,6 +196,9 @@ export class WatchElement extends HTMLElement {
 		} else if (name === "paused") {
 			this.lib.video.paused = newValue !== undefined;
 			this.lib.audio.paused = newValue !== undefined;
+		} else if (name === "maxLatency") {
+			// Latency in seconds.
+			this.lib.video.maxLatency = Number.parseFloat(newValue ?? "0");
 		}
 	}
 }

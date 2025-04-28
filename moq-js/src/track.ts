@@ -61,25 +61,30 @@ export class TrackReader {
 	readonly priority: number;
 
 	#groups: ReadableStream<GroupReader>;
+	#reader: ReadableStreamDefaultReader<GroupReader>;
 	#latest?: GroupReader;
 
 	constructor(name: string, priority: number, groups: ReadableStream<GroupReader>) {
 		this.name = name;
 		this.priority = priority;
 		this.#groups = groups;
+		this.#reader = groups.getReader();
 	}
 
 	async nextGroup(): Promise<GroupReader | undefined> {
-		const reader = this.#groups.getReader();
-		const group = await reader.read();
-		reader.releaseLock();
+		const group = await this.#reader.read();
 		this.#latest = group.value;
-		return this.#latest;
+		return group.value;
 	}
 
+	// NOTE: can't be called while `nextGroup` is running.
 	clone(): TrackReader {
+		this.#reader.releaseLock();
+
 		const [one, two] = this.#groups.tee();
 		this.#groups = one;
+		this.#reader = one.getReader();
+
 		const latest = this.#latest?.clone();
 
 		// Create a new reader that starts with `this.#latest` and clones each group.
@@ -98,6 +103,6 @@ export class TrackReader {
 	}
 
 	close() {
-		this.#groups.cancel().catch(() => {});
+		this.#reader.cancel().catch(() => {});
 	}
 }
