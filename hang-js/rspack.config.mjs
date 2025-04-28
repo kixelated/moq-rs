@@ -26,6 +26,7 @@ const config = {
 	experiments: {
 		asyncWebAssembly: true,
 		topLevelAwait: true,
+		css: true,
 	},
 	// Typescript support
 	module: {
@@ -34,6 +35,11 @@ const config = {
 				test: /\.ts(x)?$/,
 				loader: "builtin:swc-loader",
 				exclude: /node_modules/,
+			},
+			{
+				test: /\.css$/,
+				use: ["postcss-loader"],
+				type: "css",
 			},
 		],
 		parser: {

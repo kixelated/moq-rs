@@ -44,7 +44,7 @@ export class Audio {
 		this.#track?.close();
 	}
 
-	resume() {
+	init() {
 		this.#track?.resume();
 	}
 

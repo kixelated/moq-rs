@@ -1,5 +1,5 @@
 {
-	"name": "@kixelated/hang",
+	"name": "@kixelated/hang-wasm",
 	"type": "module",
 	"collaborators": ["Luke Curley <kixelated@gmail.com>"],
 	"description": "Web implementation for MoQ utilizing WebAssembly+Typescript",
@@ -13,8 +13,8 @@
 	"sideEffects": ["./pkg/index.js", "./pkg/snippets/*"],
 	"scripts": {
 		"build": "cargo test export_bindings && rspack build && tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist",
-		"check": "cargo test && tsc --noEmit",
-		"serve": "rspack serve"
+		"check": "cargo check && tsc --noEmit",
+		"dev": "rspack dev"
 	},
 	"devDependencies": {
 		"@rspack/cli": "^1.3.5",

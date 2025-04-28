@@ -1,33 +1,18 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark">
+<html lang="en" class="sl-theme-dark dark">
 
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
-	<style>
-		body {
-			margin: 0;
-			padding: 16px;
 
-			background-color: black;
-			font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-		}
-
-		code {
-			padding: 2px 6px;
-			background-color: #222;
-			border-radius: 4px;
-		}
-	</style>
-
-	<!-- Use shoelace for some basic styling. -->
+	<!-- Use shoelace for some basic UI elements. -->
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css" />
 	<script type="module"
 		src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
 </head>
 
-<body>
+<body class="prose dark:prose-invert lg:prose-xl max-w-none p-8">
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
 		<hang-watch url="http://localhost:4443/demo/bbb" id="watch">
@@ -69,44 +54,67 @@
 	</div>
 
 	<h3>Tips:</h3>
-	<ul>
-		<li>Click the video to enable audio.
-			<ul>
-				<li>This is not always necessary, but sometimes browsers require user interaction before autoplaying
-					audio.</li>
-				<li>If using the library directly, call <code>Watch.initAudio()</code> to try to reinitialize audio.
-				</li>
-			</ul>
-		</li>
-		<li>Data only flows over the network when needed.
-			<ul>
-				<li>Video won't be downloaded when minimized or paused.</li>
-				<li>Audio won't be downloaded when muted or disabled.</li>
-			</ul>
-		</li>
-		<li>You can use CSS to change the size of the canvas:
-			<ul>
-				<li>ex. <code>width: 100%</code> instead of <code>max-width: 100%</code>.</li>
-				<li>You can't use the HTML width/height attributes because of <a
-						href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
-					limitations.</li>
-			</ul>
-		</li>
-		<li>
-			Change the URL to watch a different broadcast. Or use query params to redirect this demo.
-			<ul>
-				<li>ex. <code>just pub tos</code> then <a href="?broadcast=demo/tos">watch another video</a></li>
-				<li>ex. <a href="?scheme=https&host=relay.quic.video">watch over the internet</a></li>
-			</ul>
-		</li>
+	<p>
+		Click the video to enable audio.
+		This is not always necessary, but sometimes browsers require user interaction before autoplaying
+		audio. If using the library directly, call <code class="language-typescript">watch.audio.init()</code> to try
+		to reinitialize audio.
+	</p>
+	<p>
+		You can use CSS to change the size of the canvas.
+		Unfortunately, you can't use the HTML width/height attributes because of <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
+		limitation.
 
-		<li>
-			You can modify the <code>&lt;moq-watch&gt;</code> attributes instead of using the JavaScript API.
-			<ul>
-				<li>ex. <code>&lt;moq-watch paused&gt;</code></li>
-			</ul>
-		</li>
-	</ul>
+		For example:
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/demo/bbb&quot;&gt;
+	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
+	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
+&lt;/hang-watch&gt;</code></pre>
+	</p>
+	<p>
+		Media only flows over the network when needed!
+		Video won't be downloaded when minimized/paused and audio won't be downloaded when muted or disabled.
+		This extends to publishing as well, the client won't push media until at least 1 viewer wants it.
+	</p>
+	<p>
+		You can instanciate the player via the provided <code class="language-html">&lt;hang-watch&gt;</code> <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
+		Either modify HTML attributes like <code class="language-html">&lt;moq-watch paused&gt;</code>
+		or access the element's Javascript API:
+	<pre><code class="language-typescript">const watch = document.getElementById("watch");
+watch.lib.paused = true;
+</code></pre>
+	And of course you can use the Javascript API directly instead of the Web Component.
+	<pre><code class="language-typescript">import { Watch } from "@kixelated/moq";
+
+// Create a new player instance.
+const watch = new Watch();
+
+// Have to provide your own canvas element.
+watch.canvas = document.querySelector("canvas")[0];
+
+// And of course set the URL to start loading.
+watch.url = "http://localhost:4443/demo/bbb";</code></pre>
+	</p>
+	<p>
+		This demo supports query parameters to change the broadcast.
+		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
+			href="?broadcast=demo/tos" target="_blank">watch the
+			inferior test video</a>. The player also support automatically reloading broadcasts.
+		Try running multiple terminals and kill the broadcast to see what happens.
+
+	<pre><code class="language-bash"># Run the relay and web server in another terminal or the background.
+just relay &
+just web &
+
+just pub bbb
+# Kill it with ctrl+C
+
+# Republish the same broadcast, the player will reconnect.
+just pub bbb
+		</code></pre>
+	</p>
 
 	<h3>Other demos:</h3>
 	<ul>

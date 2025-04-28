@@ -25,8 +25,13 @@ setup-tools:
 
 # Run the relay, web server, and publish bbb.
 all:
-	# Run the relay, web server, and publish bbb.
-	pnpm i && pnpm exec concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 2 && just web"
+	# Running stuff in parallel is surprisingly tricky.
+	# We want the relay to run first so we prebuild the binary.
+	cargo build --bin moq-relay
+
+	# Then run the relay with a slight head start.
+	# It doesn't matter if the web beats BBB because we support automatic reloading.
+	pnpm i && pnpm exec concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 1 && just web"
 
 # Alternatively, build the demo and host it via hang-cli.
 # This avoids multiple binaries and complicating things.
@@ -131,7 +136,7 @@ serve name:
 # Run the web server
 web:
 	pnpm -r i
-	RUST_LOG=warn pnpm -r run dev
+	pnpm --filter @kixelated/hang run dev
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
@@ -231,4 +236,4 @@ build:
 	cargo build
 
 	pnpm -r i
-	RUST_LOG=warn pnpm -r run build
+	pnpm -r run build

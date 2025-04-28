@@ -15,15 +15,6 @@ export class Watch {
 	// The connection to the server.
 	#connection?: Promise<Moq.Connection>;
 
-	// Discovers when the broadcast comes online.
-	//#announcement?: Moq.AnnouncedReader;
-
-	// A specific broadcast, broken into tracks.
-	//#broadcast?: Moq.BroadcastReader;
-
-	// The catalog.json track that describes the other tracks.
-	//#catalog?: Moq.TrackReader;
-
 	// Handlers for audio and video components.
 	audio = new Audio();
 	video = new Video();
@@ -64,16 +55,6 @@ export class Watch {
 		const announcement = connection.announced(path);
 
 		this.#runAnnouncement(connection, announcement);
-		/*
-
-		this.#broadcast?.close();
-		this.#broadcast = connection.consume(path);
-
-		this.#catalog?.close();
-		this.#catalog = this.#broadcast.subscribe("catalog.json", 0);
-
-		this.#runCatalog(this.#broadcast, this.#catalog);
-		*/
 
 		// Return the connection so we can close it if needed.
 		return connection;
@@ -82,6 +63,8 @@ export class Watch {
 	async #runAnnouncement(connection: Moq.Connection, announcement: Moq.AnnouncedReader) {
 		let broadcast: Moq.BroadcastReader | undefined;
 		let catalog: Moq.TrackReader | undefined;
+
+		this.#dispatchEvent("status", "offline");
 
 		try {
 			for (;;) {
@@ -94,11 +77,16 @@ export class Watch {
 				if (update.broadcast !== announcement.prefix) continue;
 
 				if (update.active) {
+					console.debug("broadcast is live", update);
+					this.#dispatchEvent("status", "live");
+
 					broadcast = connection.consume(update.broadcast);
 					catalog = broadcast.subscribe("catalog.json", 0);
 
 					this.#runCatalog(broadcast, catalog);
 				} else {
+					this.#dispatchEvent("status", "offline");
+
 					broadcast?.close();
 					catalog?.close();
 				}
@@ -117,8 +105,6 @@ export class Watch {
 				if (!catalog) break;
 
 				console.debug("updated catalog", catalog);
-
-				this.#dispatchEvent("status", "live");
 
 				this.video.load(broadcast, catalog.video);
 				this.audio.load(broadcast, catalog.audio);
@@ -199,7 +185,7 @@ export class WatchElement extends HTMLElement {
 			}
 		`;
 
-		this.addEventListener("click", () => this.lib.audio.resume(), { once: true });
+		this.addEventListener("click", () => this.lib.audio.init(), { once: true });
 
 		this.attachShadow({ mode: "open" }).append(style, slot);
 	}

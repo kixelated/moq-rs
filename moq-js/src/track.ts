@@ -44,7 +44,7 @@ export class TrackWriter {
 	}
 
 	close() {
-		this.#groups.close();
+		this.#groups.close().catch(() => {});
 	}
 
 	async closed(): Promise<void> {
@@ -52,7 +52,7 @@ export class TrackWriter {
 	}
 
 	abort(reason?: unknown) {
-		this.#groups.abort(reason);
+		this.#groups.abort(reason).catch(() => {});
 	}
 }
 
@@ -98,6 +98,6 @@ export class TrackReader {
 	}
 
 	close() {
-		this.#groups.cancel();
+		this.#groups.cancel().catch(() => {});
 	}
 }

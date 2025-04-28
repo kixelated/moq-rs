@@ -23,12 +23,12 @@ impl Origin {
 
 		let existing = routes.insert(broadcast.info.clone(), broadcast.clone());
 		if existing.is_some() {
-			tracing::info!(broadcast = ?broadcast.info, "re-announced origin");
+			tracing::debug!(broadcast = ?broadcast.info, "re-announced origin");
 
 			// Reannounce as a signal that the origin changed.
 			self.unique.remove(&broadcast.info);
 		} else {
-			tracing::info!(broadcast = ?broadcast.info, "announced origin");
+			tracing::debug!(broadcast = ?broadcast.info, "announced origin");
 		}
 
 		self.unique.insert(broadcast.info.clone());
@@ -39,11 +39,15 @@ impl Origin {
 			broadcast.closed().await;
 			let mut routes = this.routes.lock();
 
+			// NOTE: Because we don't have an abort handle (in WASM), we can't cancel the task.
+			// That's why we have to check if our broadcast is still active and not a duplicate.
+
 			let existing = routes.remove(&broadcast.info).unwrap();
 			if existing == broadcast {
-				tracing::info!(broadcast = ?broadcast.info, "unannounced origin");
+				tracing::debug!(broadcast = ?broadcast.info, "unannounced origin");
 				this.unique.remove(&broadcast.info);
 			} else {
+				tracing::debug!(broadcast = ?broadcast.info, "duplicate broadcast ended");
 				// Oops, put it back (we were a duplicate).
 				routes.insert(broadcast.info, existing);
 			}
