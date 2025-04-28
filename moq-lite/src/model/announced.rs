@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use tokio::sync::mpsc;
 use web_async::{Lock, LockWeak};
 
@@ -6,17 +6,17 @@ use web_async::{Lock, LockWeak};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Announced {
 	// The broadcast was announced.
-	Active(Broadcast),
+	Start(Broadcast),
 
 	// The broadcast is no longer active.
-	Ended(Broadcast),
+	End(Broadcast),
 }
 
 impl Announced {
 	pub fn path(&self) -> &str {
 		match self {
-			Announced::Active(broadcast) => &broadcast.path,
-			Announced::Ended(broadcast) => &broadcast.path,
+			Announced::Start(broadcast) => &broadcast.path,
+			Announced::End(broadcast) => &broadcast.path,
 		}
 	}
 }
@@ -25,14 +25,14 @@ impl Announced {
 impl Announced {
 	pub fn assert_active(&self, expected: &Broadcast) {
 		match self {
-			Announced::Active(broadcast) => assert_eq!(broadcast, expected),
+			Announced::Start(broadcast) => assert_eq!(broadcast, expected),
 			_ => panic!("expected active announce"),
 		}
 	}
 
 	pub fn assert_ended(&self, expected: &Broadcast) {
 		match self {
-			Announced::Ended(broadcast) => assert_eq!(broadcast, expected),
+			Announced::End(broadcast) => assert_eq!(broadcast, expected),
 			_ => panic!("expected ended announce"),
 		}
 	}
@@ -40,58 +40,51 @@ impl Announced {
 
 #[derive(Default)]
 struct ProducerState {
-	active: BTreeSet<Broadcast>,
+	active: HashSet<Broadcast>,
 	consumers: Vec<(Lock<ConsumerState>, mpsc::Sender<()>)>,
 }
 
 impl ProducerState {
 	fn insert(&mut self, broadcast: Broadcast) -> bool {
-		if !self.active.insert(broadcast.clone()) {
-			return false;
+		let existing = self.active.insert(broadcast.clone());
+		if existing {
+			self.update(Announced::End(broadcast.clone()));
 		}
 
-		let mut i = 0;
-
-		while let Some((consumer, notify)) = self.consumers.get(i) {
-			if !notify.is_closed() {
-				consumer.lock().push(Announced::Active(broadcast.clone()));
-				notify.try_send(()).ok();
-				i += 1;
-			} else {
-				self.consumers.swap_remove(i);
-			}
-		}
-
-		true
+		self.update(Announced::Start(broadcast.clone()));
+		existing
 	}
 
 	fn remove(&mut self, broadcast: &Broadcast) -> bool {
-		if !self.active.remove(broadcast) {
-			return false;
+		let existing = self.active.remove(broadcast);
+		if existing {
+			self.update(Announced::End(broadcast.clone()));
 		}
 
+		existing
+	}
+
+	fn update(&mut self, update: Announced) {
 		let mut i = 0;
 
 		while let Some((consumer, notify)) = self.consumers.get(i) {
 			if !notify.is_closed() {
-				consumer.lock().push(Announced::Ended(broadcast.clone()));
+				consumer.lock().push(update.clone());
 				notify.try_send(()).ok();
 				i += 1;
 			} else {
 				self.consumers.swap_remove(i);
 			}
 		}
-
-		true
 	}
 
 	fn consume<T: ToString>(&mut self, prefix: T) -> ConsumerState {
 		let prefix = prefix.to_string();
 		let mut init = VecDeque::new();
 
-		for active in &self.active {
+		for active in self.active.iter() {
 			if active.path.starts_with(&prefix) {
-				init.push_back(Announced::Active(active.clone()));
+				init.push_back(Announced::Start(active.clone()));
 			}
 		}
 
@@ -107,13 +100,10 @@ impl ProducerState {
 
 impl Drop for ProducerState {
 	fn drop(&mut self) {
-		for (consumer, notify) in &self.consumers {
-			let mut consumer = consumer.lock();
-			for broadcast in &self.active {
-				consumer.push(Announced::Ended(broadcast.clone()));
-			}
-
-			notify.try_send(()).ok();
+		// Collect because I'm lazy and don't want to deal with the borrow checker.
+		let broadcasts = self.active.drain().collect::<Vec<_>>();
+		for broadcast in broadcasts {
+			self.update(Announced::End(broadcast));
 		}
 	}
 }
@@ -130,10 +120,6 @@ impl ConsumerState {
 			self.updates.push_back(update);
 		}
 	}
-
-	pub fn reset(&mut self) {
-		self.updates.clear();
-	}
 }
 
 /// Announces broadcasts to consumers over the network.
@@ -147,14 +133,17 @@ impl AnnouncedProducer {
 		Self::default()
 	}
 
-	/// Announce a broadcast, returning true if it's new.
-	pub fn announce(&mut self, broadcast: Broadcast) -> bool {
-		let mut state = self.state.lock();
-		state.insert(broadcast)
+	/// Announce a broadcast.
+	pub fn insert(&mut self, broadcast: Broadcast) -> bool {
+		self.state.lock().insert(broadcast.clone())
+	}
+
+	pub fn remove(&mut self, broadcast: &Broadcast) -> bool {
+		self.state.lock().remove(broadcast)
 	}
 
 	/// Check if a broadcast is active.
-	pub fn is_active(&self, broadcast: &Broadcast) -> bool {
+	pub fn contains(&self, broadcast: &Broadcast) -> bool {
 		self.state.lock().active.contains(broadcast)
 	}
 
@@ -163,33 +152,12 @@ impl AnnouncedProducer {
 		self.state.lock().active.is_empty()
 	}
 
-	/// Stop announcing a broadcast, returning true if it was active.
-	pub fn unannounce(&mut self, broadcast: &Broadcast) -> bool {
-		let mut state = self.state.lock();
-		state.remove(broadcast)
-	}
-
 	/// Subscribe to all announced tracks matching the prefix.
-	pub fn subscribe<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
+	pub fn consume<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
 		let mut state = self.state.lock();
 		let consumer = Lock::new(state.consume(prefix));
 		let notify = state.subscribe(consumer.clone());
 		AnnouncedConsumer::new(self.state.downgrade(), consumer, notify)
-	}
-
-	/// Clear all announced tracks.
-	pub fn reset(&mut self) {
-		let mut state = self.state.lock();
-
-		let mut i = 0;
-		while let Some((consumer, notify)) = state.consumers.get(i) {
-			if !notify.is_closed() {
-				consumer.lock().reset();
-				i += 1;
-			} else {
-				state.consumers.swap_remove(i);
-			}
-		}
 	}
 
 	/// Wait until all consumers have been dropped.
@@ -249,10 +217,12 @@ impl AnnouncedConsumer {
 		}
 	}
 
-	// A helper to only get active broadcasts.
+	/// A helper to only get active broadcasts.
+	///
+	/// You can learn if a track has ended via its `closed` method.
 	pub async fn active(&mut self) -> Option<Broadcast> {
 		loop {
-			if let Some(Announced::Active(added)) = self.next().await {
+			if let Some(Announced::Start(added)) = self.next().await {
 				return Some(added);
 			}
 		}
@@ -320,17 +290,17 @@ mod test {
 	#[test]
 	fn simple() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 		let ab = Broadcast::new("a/b");
 
-		assert!(!producer.is_active(&ab));
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.is_active(&ab));
+		assert!(!producer.contains(&ab));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.contains(&ab));
 
 		consumer.assert_active(&ab);
 
-		assert!(producer.unannounce(&ab));
-		assert!(!producer.is_active(&ab));
+		assert!(producer.remove(&ab));
+		assert!(!producer.contains(&ab));
 
 		consumer.assert_ended(&ab);
 		consumer.assert_wait();
@@ -339,24 +309,24 @@ mod test {
 	#[test]
 	fn duplicate() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 
 		let ab = Broadcast::new("a/b");
 		let ab2 = Broadcast::new("a/b");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.is_active(&ab));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.contains(&ab));
 
 		// Doesn't matter if you use broadcast1 or broadcast2; they have the same path.
-		assert!(producer.is_active(&ab2));
+		assert!(producer.contains(&ab2));
 		consumer.assert_active(&ab2);
 
 		// Duplicate announcement.
-		assert!(!producer.announce(ab2.clone()));
+		assert!(!producer.insert(ab2.clone()));
 
-		assert!(producer.unannounce(&ab));
-		assert!(!producer.is_active(&ab));
-		assert!(!producer.is_active(&ab2));
+		assert!(producer.remove(&ab));
+		assert!(!producer.contains(&ab));
+		assert!(!producer.contains(&ab2));
 
 		consumer.assert_ended(&ab);
 		consumer.assert_wait();
@@ -365,15 +335,15 @@ mod test {
 	#[test]
 	fn multi() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 
 		let ab = Broadcast::new("a/b");
 		let ac = Broadcast::new("a/c");
 		let de = Broadcast::new("d/e");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.announce(ac.clone()));
-		assert!(producer.announce(de.clone()));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.insert(ac.clone()));
+		assert!(producer.insert(de.clone()));
 
 		// Make sure we get all of the paths in order.
 		consumer.assert_active(&ab);
@@ -390,14 +360,14 @@ mod test {
 		let de = Broadcast::new("d/e");
 		let dd = Broadcast::new("d/d");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.announce(ac.clone()));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.insert(ac.clone()));
 
 		// Subscribe after announcing.
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 
-		assert!(producer.announce(de.clone()));
-		assert!(producer.announce(dd.clone()));
+		assert!(producer.insert(de.clone()));
+		assert!(producer.insert(dd.clone()));
 
 		// Make sure we get all of the paths in order.
 		consumer.assert_active(&ab);
@@ -410,15 +380,15 @@ mod test {
 	#[test]
 	fn prefix() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("a/");
+		let mut consumer = producer.consume("a/");
 
 		let ab = Broadcast::new("a/b");
 		let ac = Broadcast::new("a/c");
 		let de = Broadcast::new("d/e");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.announce(ac.clone()));
-		assert!(producer.announce(de.clone()));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.insert(ac.clone()));
+		assert!(producer.insert(de.clone()));
 
 		consumer.assert_active(&ab);
 		consumer.assert_active(&ac);
@@ -428,23 +398,23 @@ mod test {
 	#[test]
 	fn prefix_unannounce() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("a/");
+		let mut consumer = producer.consume("a/");
 
 		let ab = Broadcast::new("a/b");
 		let ac = Broadcast::new("a/c");
 		let de = Broadcast::new("d/e");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.announce(ac.clone()));
-		assert!(producer.announce(de.clone()));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.insert(ac.clone()));
+		assert!(producer.insert(de.clone()));
 
 		consumer.assert_active(&ab);
 		consumer.assert_active(&ac);
 		consumer.assert_wait();
 
-		assert!(producer.unannounce(&de));
-		assert!(producer.unannounce(&ac));
-		assert!(producer.unannounce(&ab));
+		assert!(producer.remove(&de));
+		assert!(producer.remove(&ac));
+		assert!(producer.remove(&ab));
 
 		consumer.assert_ended(&ac);
 		consumer.assert_ended(&ab);
@@ -454,14 +424,14 @@ mod test {
 	#[test]
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 		let ab = Broadcast::new("a/b");
 
-		assert!(!producer.is_active(&ab));
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.is_active(&ab));
-		assert!(producer.unannounce(&ab));
-		assert!(!producer.is_active(&ab));
+		assert!(!producer.contains(&ab));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.contains(&ab));
+		assert!(producer.remove(&ab));
+		assert!(!producer.contains(&ab));
 
 		// We missed it.
 		consumer.assert_wait();
@@ -470,22 +440,22 @@ mod test {
 	#[test]
 	fn dropped() {
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 
 		let ab = Broadcast::new("a/b");
 		let ac = Broadcast::new("a/c");
 		let de = Broadcast::new("d/e");
 
-		assert!(producer.announce(ab.clone()));
-		assert!(producer.announce(ac.clone()));
+		assert!(producer.insert(ab.clone()));
+		assert!(producer.insert(ac.clone()));
 
-		producer.announce(ab.clone());
+		producer.insert(ab.clone());
 		consumer.assert_active(&ab);
-		producer.announce(ac.clone());
+		producer.insert(ac.clone());
 		consumer.assert_active(&ac);
 
 		// Don't consume "d/e" before dropping.
-		producer.announce(de.clone());
+		producer.insert(de.clone());
 		drop(producer);
 
 		consumer.assert_ended(&ab);
@@ -498,18 +468,18 @@ mod test {
 		tokio::time::pause();
 
 		let mut producer = AnnouncedProducer::new();
-		let mut consumer = producer.subscribe("");
+		let mut consumer = producer.consume("");
 
 		tokio::spawn(async move {
 			let ab = Broadcast::new("a/b");
 			let ac = Broadcast::new("a/c");
 
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(ab.clone());
+			producer.insert(ab.clone());
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.announce(ac.clone());
+			producer.insert(ac.clone());
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			producer.unannounce(&ab);
+			producer.remove(&ab);
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 			// Don't actually unannounce a/c, just drop.
 			drop(producer);

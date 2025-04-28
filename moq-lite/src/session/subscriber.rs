@@ -38,7 +38,7 @@ impl Subscriber {
 		let prefix = prefix.to_string();
 
 		let producer = AnnouncedProducer::default();
-		let consumer = producer.subscribe(prefix.clone());
+		let consumer = producer.consume(prefix.clone());
 
 		let mut session = self.session.clone();
 		web_async::spawn(async move {
@@ -99,7 +99,7 @@ impl Subscriber {
 
 				tracing::debug!(broadcast = %broadcast.path, "received announced");
 
-				if !announced.announce(broadcast) {
+				if !announced.insert(broadcast) {
 					return Err(Error::Duplicate);
 				}
 			}
@@ -111,7 +111,7 @@ impl Subscriber {
 
 				tracing::debug!(broadcast = %broadcast.path, "received unannounced");
 
-				if !announced.unannounce(&broadcast) {
+				if !announced.remove(&broadcast) {
 					return Err(Error::NotFound);
 				}
 			}
@@ -194,8 +194,6 @@ impl Subscriber {
 
 		// TODO use the response correctly populate the track info
 		let _info: message::SubscribeOk = stream.reader.decode().await?;
-
-		tracing::info!(broadcast = %broadcast.path, track = %track.info.name, id, "started subscription");
 
 		loop {
 			tokio::select! {

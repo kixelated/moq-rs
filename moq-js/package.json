@@ -11,9 +11,11 @@
 	"scripts": {
 		"build": "tsc -b && cp ../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
 		"check": "tsc --noEmit && biome check",
-		"fix": "biome check --fix --unsafe"
+		"fix": "biome check --fix --unsafe",
+		"test": "tsx --test"
 	},
 	"devDependencies": {
-		"@typescript/lib-dom": "npm:@types/web@^0.0.214"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
+		"tsx": "^4.19.3"
 	}
 }

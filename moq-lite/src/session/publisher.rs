@@ -1,50 +1,26 @@
-use std::collections::HashMap;
+use crate::{message, model::GroupConsumer, Announced, Broadcast, BroadcastConsumer, Error, Origin, Track};
 
-use crate::{message, model::GroupConsumer, Announced, AnnouncedProducer, Broadcast, BroadcastConsumer, Error, Track};
-
-use web_async::{spawn, FuturesExt, Lock};
+use web_async::{spawn, FuturesExt};
 
 use super::{OrClose, Stream, Writer};
 
 #[derive(Clone)]
 pub(super) struct Publisher {
 	session: web_transport::Session,
-	announced: AnnouncedProducer,
-	broadcasts: Lock<HashMap<Broadcast, BroadcastConsumer>>,
+	broadcasts: Origin,
 }
 
 impl Publisher {
 	pub fn new(session: web_transport::Session) -> Self {
-		// We start the publisher in live mode because we're producing content.
-		let announced = AnnouncedProducer::new();
-
 		Self {
 			session,
-			announced,
 			broadcasts: Default::default(),
 		}
 	}
 
-	/// Publish a broadcast.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
-		// TODO properly handle duplicates
-		self.broadcasts.lock().insert(broadcast.info.clone(), broadcast.clone());
-		self.announced.announce(broadcast.info.clone());
-
-		tracing::debug!(broadcast = %broadcast.info.path, "published");
-
-		let mut this = self.clone();
-
-		spawn(async move {
-			tokio::select! {
-				_ = broadcast.closed() => (),
-				_ = this.session.closed() => (),
-			}
-			this.broadcasts.lock().remove(&broadcast.info);
-			this.announced.unannounce(&broadcast.info);
-
-			tracing::debug!(broadcast = %broadcast.info.path, "unpublished");
-		});
+	/// Publish a broadcast, returning the previous instance if it already exists.
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
+		self.broadcasts.publish(broadcast)
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -52,25 +28,25 @@ impl Publisher {
 		let prefix = interest.prefix;
 		tracing::debug!(%prefix, "serving announcements");
 
-		let mut announced = self.announced.subscribe(&prefix);
+		let mut announced = self.broadcasts.announced(&prefix);
 
 		// Flush any synchronously announced paths
 		while let Some(announced) = announced.next().await {
 			match announced {
-				Announced::Active(broadcast) => {
+				Announced::Start(broadcast) => {
 					tracing::debug!(broadcast = %broadcast.path, "served announce");
-					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 
 					let msg = message::Announce::Active {
-						suffix: suffix.path.to_string(),
+						suffix: suffix.to_string(),
 					};
 					stream.writer.encode(&msg).await?;
 				}
-				Announced::Ended(broadcast) => {
+				Announced::End(broadcast) => {
 					tracing::debug!(broadcast = %broadcast.path, "served unannounced");
-					let suffix = broadcast.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 					let msg = message::Announce::Ended {
-						suffix: suffix.path.to_string(),
+						suffix: suffix.to_string(),
 					};
 					stream.writer.encode(&msg).await?;
 				}
@@ -90,7 +66,7 @@ impl Publisher {
 
 		let broadcast = Broadcast::new(subscribe.broadcast);
 
-		let broadcast = self.broadcasts.lock().get(&broadcast).ok_or(Error::NotFound)?.clone();
+		let broadcast = self.broadcasts.consume(&broadcast).ok_or(Error::NotFound)?;
 		let mut track = broadcast.subscribe(track);
 
 		// TODO wait until track.info() to get the *real* priority

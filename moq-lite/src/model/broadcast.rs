@@ -23,6 +23,7 @@ impl Broadcast {
 		BroadcastProducer::new(self)
 	}
 
+	/*
 	/// Return a new broadcast with the given prefix removed from the path.
 	///
 	/// If the prefix is not a prefix of the path, return None.
@@ -34,6 +35,7 @@ impl Broadcast {
 			Some(suffix.into())
 		}
 	}
+	*/
 }
 
 impl<T: ToString> From<T> for Broadcast {
@@ -149,5 +151,14 @@ impl BroadcastConsumer {
 
 	pub async fn closed(&self) {
 		self.closed.clone().changed().await.ok();
+	}
+}
+
+/// Returns true if both consumers are for the same *instance* of a broadcast.
+///
+/// Two broadcasts with the same name may NOT be equal if they are different instances.
+impl PartialEq for BroadcastConsumer {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.lookup, &other.lookup)
 	}
 }

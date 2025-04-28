@@ -1,4 +1,4 @@
-use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error};
+use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Origin};
 
 use web_async::spawn;
 
@@ -156,7 +156,11 @@ impl Session {
 	}
 
 	/// Publish a broadcast, automatically announcing and serving it.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
+	///
+	/// If this is a duplicate, then the previous instance is returned.
+	/// Existing subscriptions will continue but new [Self::consume] calls will return the new instance.
+	/// To signal consumers to resubscribe, there will be an [crate::Announced::End] event followed immediately by a [crate::Announced::Start] event.
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
 		self.publisher.publish(broadcast)
 	}
 
@@ -180,5 +184,26 @@ impl Session {
 	/// Block until the WebTransport session is closed.
 	pub async fn closed(&self) -> Error {
 		self.webtransport.closed().await.into()
+	}
+
+	/// Publish all of our broadcasts to the given origin.
+	pub async fn publish_to(&mut self, mut origin: Origin, prefix: &str) {
+		let mut announced = self.announced(prefix);
+
+		while let Some(broadcast) = announced.active().await {
+			let broadcast = self.consume(broadcast);
+			origin.publish(broadcast);
+		}
+	}
+
+	/// Serve all broadcasts from the given origin.
+	pub async fn consume_from(&mut self, origin: Origin, prefix: &str) {
+		let mut remotes = origin.announced(prefix);
+
+		while let Some(broadcast) = remotes.active().await {
+			if let Some(upstream) = origin.consume(&broadcast) {
+				self.publish(upstream);
+			}
+		}
 	}
 }

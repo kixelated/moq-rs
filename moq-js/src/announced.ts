@@ -33,39 +33,39 @@ export class AnnouncedWriter {
 		await this.#queue.write(announcement);
 	}
 
-	async abort(reason?: unknown) {
-		await this.#queue.abort(reason);
+	abort(reason?: unknown) {
+		this.#queue.abort(reason).catch(() => {});
 	}
 
-	async close() {
-		await this.#queue.close();
+	close() {
+		this.#queue.close().catch(() => {});
 		this.#queue.releaseLock();
 	}
 }
 
 export class AnnouncedReader {
-	readonly broadcast: string;
+	readonly prefix: string;
 	#queue: ReadableStream<Announcement>;
 
 	constructor(broadcast: string, queue: ReadableStream<Announcement>) {
-		this.broadcast = broadcast;
+		this.prefix = broadcast;
 		this.#queue = queue;
 	}
 
-	async read(): Promise<Announcement | undefined> {
+	async next(): Promise<Announcement | undefined> {
 		const reader = this.#queue.getReader();
 		const result = await reader.read();
 		reader.releaseLock();
 		return result.done ? undefined : result.value;
 	}
 
-	async close() {
-		await this.#queue.cancel();
+	close() {
+		this.#queue.cancel().catch(() => {});
 	}
 
 	clone(): AnnouncedReader {
 		const [one, two] = this.#queue.tee();
 		this.#queue = one;
-		return new AnnouncedReader(this.broadcast, two);
+		return new AnnouncedReader(this.prefix, two);
 	}
 }

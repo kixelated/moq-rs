@@ -2,12 +2,10 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use clap::Parser;
-use moq_lite::{Announced, Broadcast, BroadcastConsumer};
+use moq_lite::{Announced, Broadcast, BroadcastConsumer, Origin};
 use moq_native::quic;
 use tracing::Instrument;
 use url::Url;
-
-use crate::Origins;
 
 #[derive(Clone, Parser)]
 pub struct ClusterConfig {
@@ -32,10 +30,10 @@ pub struct Cluster {
 	client: quic::Client,
 
 	// Tracks announced by local clients (users).
-	pub locals: Origins,
+	pub locals: Origin,
 
 	// Tracks announced by remote servers (cluster).
-	pub remotes: Origins,
+	pub remotes: Origin,
 }
 
 impl Cluster {
@@ -45,13 +43,15 @@ impl Cluster {
 		Cluster {
 			config,
 			client,
-			locals: Origins::new(),
-			remotes: Origins::new(),
+			locals: Origin::new(),
+			remotes: Origin::new(),
 		}
 	}
 
-	pub fn route(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
-		self.locals.route(broadcast).or_else(|| self.remotes.route(broadcast))
+	pub fn consume(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+		self.locals
+			.consume(broadcast)
+			.or_else(|| self.remotes.consume(broadcast))
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
@@ -98,7 +98,7 @@ impl Cluster {
 				// Technically, we should only announce to cluster clients (not end users), but who cares.
 				let mut locals = self.locals.clone();
 				if let Some(myself) = &myself {
-					locals.announce(myself.consume());
+					locals.publish(myself.consume());
 				}
 
 				// Subscribe to the available origins.
@@ -114,8 +114,8 @@ impl Cluster {
 		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
 		while let Some(announce) = announced.next().await {
 			match announce {
-				Announced::Active(broadcast) => {
-					let host = broadcast.strip_prefix(Self::ORIGINS).unwrap().path;
+				Announced::Start(broadcast) => {
+					let host = broadcast.path.strip_prefix(Self::ORIGINS).unwrap().to_string();
 
 					if Some(&host) == node.as_ref() {
 						// Skip ourselves.
@@ -143,10 +143,10 @@ impl Cluster {
 
 					remotes.insert(host, handle);
 				}
-				Announced::Ended(broadcast) => {
-					let host = broadcast.strip_prefix(Self::ORIGINS).unwrap().path;
+				Announced::End(broadcast) => {
+					let host = broadcast.path.strip_prefix(Self::ORIGINS).unwrap();
 
-					if let Some(handle) = remotes.remove(&host) {
+					if let Some(handle) = remotes.remove(host) {
 						tracing::warn!(?host, "terminating remote");
 						handle.abort();
 					}
@@ -168,12 +168,15 @@ impl Cluster {
 			.await
 			.context("failed to establish session")?;
 
+		let mut session1 = session.clone();
+		let mut session2 = session.clone();
+
 		tokio::select! {
 			// NOTE: We only announce local tracks to remote nodes.
 			// Otherwise there would be conflicts and we wouldn't know which node is the origin.
-			res = self.locals.publish_to(session.clone()) => res,
-			// Fetch any remote broadcasts.
-			_ = self.remotes.subscribe_from(session.clone()) => Ok(()),
+			_ = session1.consume_from(self.locals.clone(), "") => Ok(()),
+			// We take any of their remote broadcasts and announce them ourselves.
+			_ = session2.publish_to(self.remotes.clone(), "") => Ok(()),
 			err = session.closed() => Err(err.into()),
 		}
 	}

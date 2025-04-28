@@ -12,16 +12,24 @@ impl Connection {
 	}
 
 	#[tracing::instrument("session", skip_all, err, fields(id = self.id))]
-	pub async fn run(mut self) -> anyhow::Result<()> {
+	pub async fn run(self) -> anyhow::Result<()> {
 		let session = moq_lite::Session::accept(self.session).await?;
+		let mut session1 = session.clone();
+		let mut session2 = session.clone();
+		let mut session3 = session.clone();
 
-		let locals = self.cluster.locals.clone();
-
-		// TODO There will be errors if locals and remotes announce the same path.
 		tokio::select! {
-			res = locals.publish_to(session.clone()) => res,
-			res = self.cluster.remotes.publish_to(session.clone()) => res,
-			_ = self.cluster.locals.subscribe_from(session.clone()) => Ok(()),
+			// Publish any of our broadcasts to the "locals" origin.
+			// These are advertised to other nodes in the cluster.
+			_ = session1.publish_to(self.cluster.locals.clone(), "") => Ok(()),
+
+			// Consume broadcasts from other clients connected locally.
+			_ = session2.consume_from(self.cluster.locals.clone(), "") => Ok(()),
+
+			// Consume broadcasts from other nodes in the cluster.
+			_ = session3.consume_from(self.cluster.remotes.clone(), "") => Ok(()),
+
+			// Wait until the session is closed.
 			err = session.closed() => Err(err.into()),
 		}
 	}

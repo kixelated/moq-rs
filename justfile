@@ -207,6 +207,9 @@ fix flags="":
 test:
 	cargo test
 
+	# Run the JS tests via node.
+	pnpm -r test
+
 # Upgrade any tooling
 upgrade:
 	# Upgrade the Rust toolchain... I guess.

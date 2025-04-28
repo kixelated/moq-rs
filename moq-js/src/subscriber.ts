@@ -72,6 +72,7 @@ export class Subscriber {
 		pair.writer.unknown((track) => {
 			// Save the track in the cache to deduplicate.
 			// NOTE: We don't clone it (yet) so it doesn't count as an active consumer.
+			// When we do clone it, we'll only get the most recent (consumed) group.
 			pair.writer.insert(track.reader);
 
 			// Perform the subscription in the background.
@@ -120,7 +121,10 @@ export class Subscriber {
 		if (!subscribe) return;
 
 		const pair = new Group(group.sequence);
-		subscribe.insertGroup(pair.reader);
+
+		// NOTE: To make sure new consumers get all frames, we clone here.
+		// We don't read from our clone so
+		await subscribe.insertGroup(pair.reader);
 
 		try {
 			for (;;) {

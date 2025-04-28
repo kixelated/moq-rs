@@ -12,13 +12,23 @@ export type WatchStatus = "connecting" | "connected" | "disconnected" | "live" |
 export class Watch {
 	#url?: URL;
 
+	// The connection to the server.
 	#connection?: Promise<Moq.Connection>;
-	#broadcast?: Moq.BroadcastReader;
-	#catalog?: Moq.TrackReader;
 
+	// Discovers when the broadcast comes online.
+	//#announcement?: Moq.AnnouncedReader;
+
+	// A specific broadcast, broken into tracks.
+	//#broadcast?: Moq.BroadcastReader;
+
+	// The catalog.json track that describes the other tracks.
+	//#catalog?: Moq.TrackReader;
+
+	// Handlers for audio and video components.
 	audio = new Audio();
 	video = new Video();
 
+	// Fires events.
 	#events = new EventTarget();
 
 	get url(): URL | undefined {
@@ -50,6 +60,12 @@ export class Watch {
 		const connection = await Moq.Connection.connect(base);
 		this.#dispatchEvent("status", "connected");
 
+		//this.#announcement?.close();
+		const announcement = connection.announced(path);
+
+		this.#runAnnouncement(connection, announcement);
+		/*
+
 		this.#broadcast?.close();
 		this.#broadcast = connection.consume(path);
 
@@ -57,9 +73,41 @@ export class Watch {
 		this.#catalog = this.#broadcast.subscribe("catalog.json", 0);
 
 		this.#runCatalog(this.#broadcast, this.#catalog);
+		*/
 
 		// Return the connection so we can close it if needed.
 		return connection;
+	}
+
+	async #runAnnouncement(connection: Moq.Connection, announcement: Moq.AnnouncedReader) {
+		let broadcast: Moq.BroadcastReader | undefined;
+		let catalog: Moq.TrackReader | undefined;
+
+		try {
+			for (;;) {
+				const update = await announcement.next();
+
+				// We're donezo.
+				if (!update) break;
+
+				// Require full equality.
+				if (update.broadcast !== announcement.prefix) continue;
+
+				if (update.active) {
+					broadcast = connection.consume(update.broadcast);
+					catalog = broadcast.subscribe("catalog.json", 0);
+
+					this.#runCatalog(broadcast, catalog);
+				} else {
+					broadcast?.close();
+					catalog?.close();
+				}
+			}
+		} finally {
+			announcement.close();
+			broadcast?.close();
+			catalog?.close();
+		}
 	}
 
 	async #runCatalog(broadcast: Moq.BroadcastReader, track: Moq.TrackReader) {
@@ -77,21 +125,17 @@ export class Watch {
 			}
 		} finally {
 			track.close();
-			this.#dispatchEvent("status", "offline");
-			this.audio.close();
+			broadcast.close();
 			this.video.close();
+			this.audio.close();
+
+			this.#dispatchEvent("status", "offline");
 		}
 	}
 
 	close() {
 		this.#connection?.then((connection) => connection.close()).catch(() => {});
 		this.#connection = undefined;
-
-		this.#broadcast?.close();
-		this.#broadcast = undefined;
-
-		this.#catalog?.close();
-		this.#catalog = undefined;
 
 		this.audio.close();
 		this.video.close();

@@ -83,13 +83,13 @@ async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl I
 	let mut tracks = Vec::new();
 
 	while let Some(Some(local)) = local.next().now_or_never() {
-		if let moq_lite::Announced::Active(broadcast) = local {
+		if let moq_lite::Announced::Start(broadcast) = local {
 			tracks.push(broadcast.path);
 		}
 	}
 
 	while let Some(Some(remote)) = remote.next().now_or_never() {
-		if let moq_lite::Announced::Active(broadcast) = remote {
+		if let moq_lite::Announced::Start(broadcast) = remote {
 			tracks.push(broadcast.path);
 		}
 	}
@@ -115,7 +115,7 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 
 	tracing::info!(?broadcast, ?track, "subscribing to track");
 
-	let broadcast = cluster.route(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
+	let broadcast = cluster.consume(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
 	let mut track = broadcast.subscribe(track);
 
 	let group = match track.next_group().await {

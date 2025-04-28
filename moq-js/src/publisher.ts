@@ -41,7 +41,7 @@ export class Publisher {
 		const reader = await this.#announced.reader.clone();
 
 		for (;;) {
-			const announcement = await reader.read();
+			const announcement = await reader.next();
 			if (!announcement) break;
 
 			if (announcement.broadcast.startsWith(msg.prefix)) {
