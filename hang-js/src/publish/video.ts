@@ -1,9 +1,9 @@
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 import { Frame } from "../media/frame";
-import { VideoTrackSettings } from "../util/settings";
 import { Deferred } from "../util/async";
 import * as Hex from "../util/hex";
+import { VideoTrackSettings } from "../util/settings";
 
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;

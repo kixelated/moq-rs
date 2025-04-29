@@ -22,9 +22,7 @@
 		"@wasm-tool/wasm-pack-plugin": "^1.7.0",
 		"html-webpack-plugin": "^5.6.3",
 		"ts-loader": "^9.5.2",
-		"wasm-pack": "^0.13.1"
-	},
-	"dependencies": {
+		"wasm-pack": "^0.13.1",
 		"@types/audioworklet": "^0.0.74"
 	}
 }

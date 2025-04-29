@@ -69,5 +69,3 @@ function isTransferable(value: unknown): value is Transferable {
 		false
 	);
 }
-
-export default Bridge;

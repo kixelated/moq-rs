@@ -341,5 +341,3 @@ declare global {
 		"hang-publish-status": CustomEvent<PublishStatus>;
 	}
 }
-
-export default Publish;

@@ -1,16 +1,16 @@
 import type { Reader, Writer } from "./stream";
 
-export enum Version {
-	DRAFT_00 = 0xff000000,
-	DRAFT_01 = 0xff000001,
-	DRAFT_02 = 0xff000002,
-	DRAFT_03 = 0xff000003,
-	FORK_00 = 0xff0bad00,
-	FORK_01 = 0xff0bad01,
-	FORK_02 = 0xff0bad02,
-	FORK_03 = 0xff0bad03,
-	FORK_04 = 0xff0bad04,
-}
+export const Version = {
+	DRAFT_00: 0xff000000,
+	DRAFT_01: 0xff000001,
+	DRAFT_02: 0xff000002,
+	DRAFT_03: 0xff000003,
+	FORK_00: 0xff0bad00,
+	FORK_01: 0xff0bad01,
+	FORK_02: 0xff0bad02,
+	FORK_03: 0xff0bad03,
+	FORK_04: 0xff0bad04,
+} as const;
 
 export class Extensions {
 	entries: Map<bigint, Uint8Array>;
@@ -63,12 +63,12 @@ export class Extensions {
 }
 
 export class SessionClient {
-	versions: Version[];
+	versions: number[];
 	extensions: Extensions;
 
 	static StreamID = 0x0;
 
-	constructor(versions: Version[], extensions = new Extensions()) {
+	constructor(versions: number[], extensions = new Extensions()) {
 		this.versions = versions;
 		this.extensions = extensions;
 	}
@@ -83,7 +83,7 @@ export class SessionClient {
 	}
 
 	static async decode(r: Reader): Promise<SessionClient> {
-		const versions = [];
+		const versions: number[] = [];
 		const count = await r.u53();
 		for (let i = 0; i < count; i++) {
 			versions.push(await r.u53());
@@ -95,10 +95,10 @@ export class SessionClient {
 }
 
 export class SessionServer {
-	version: Version;
+	version: number;
 	extensions: Extensions;
 
-	constructor(version: Version, extensions = new Extensions()) {
+	constructor(version: number, extensions = new Extensions()) {
 		this.version = version;
 		this.extensions = extensions;
 	}

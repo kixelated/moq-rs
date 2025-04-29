@@ -1,5 +1,4 @@
 import { Bridge } from "../bridge";
-import { Watch } from "../watch";
 
 export class Publish {
 	#bridge = new Bridge();

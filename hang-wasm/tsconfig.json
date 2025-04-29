@@ -11,6 +11,7 @@
 		"outDir": "dist",
 		"declaration": true,
 		"sourceMap": true,
-		"isolatedModules": true
+		"isolatedModules": true,
+		"skipLibCheck": true // Avoids a bug with the audioworklet types.
 	}
 }

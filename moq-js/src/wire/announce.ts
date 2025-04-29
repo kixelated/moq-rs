@@ -28,8 +28,11 @@ export class Announce {
 
 export class AnnounceInterest {
 	static StreamID = 0x1;
+	prefix: string;
 
-	constructor(public prefix: string) {}
+	constructor(prefix: string) {
+		this.prefix = prefix;
+	}
 
 	async encode(w: Writer) {
 		await w.string(this.prefix);

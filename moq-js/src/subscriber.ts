@@ -1,7 +1,7 @@
 import { Announced, AnnouncedReader } from "./announced";
 import { Broadcast, BroadcastReader } from "./broadcast";
 import { Group } from "./group";
-import { Track, type TrackReader, type TrackWriter } from "./track";
+import { type TrackWriter } from "./track";
 import * as Wire from "./wire";
 
 export class Subscriber {
@@ -105,7 +105,7 @@ export class Subscriber {
 
 		const stream = await Wire.Stream.open(this.#quic, msg);
 		try {
-			const _info = await Wire.SubscribeOk.decode(stream.reader);
+			await Wire.SubscribeOk.decode(stream.reader);
 			console.debug(`subscribe ok: broadcast=${broadcast} track=${track.name}`);
 
 			await Promise.race([stream.reader.closed(), track.closed()]);

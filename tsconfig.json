@@ -1,25 +1,36 @@
 {
-	"include": ["**/*.ts", "**/*.tsx", "hang-wasm/rspack.config.mjs"],
-	"exclude": ["node_modules"],
+	"files": [],
 	"compilerOptions": {
 		"lib": ["es2022", "esnext.decorators", "dom"],
 		"target": "es2022",
 		"module": "esnext",
 		"moduleResolution": "bundler",
 
-		"strict": true,
 		"isolatedModules": true,
 
 		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
 		"allowUnreachableCode": false,
 		"allowUnusedLabels": false,
-		// "exactOptionalPropertyTypes": true,
+		"alwaysStrict": true,
+		"exactOptionalPropertyTypes": false, // makes ? less usable
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitAny": true,
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
+		"noImplicitThis": true,
 		"noPropertyAccessFromIndexSignature": true,
-		// "noUncheckedIndexedAccess": true,
-		// "noUnusedLocals": true,
-		// "noUnusedParameters": true,
-		"skipLibCheck": true
+		"noUncheckedIndexedAccess": false, // Allows [0] access to arrays
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"strict": true,
+		"strictBindCallApply": true,
+		"strictBuiltinIteratorReturn": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+		"useUnknownInCatchVariables": true,
+
+		// Disable enums and weird Typescript features.
+		"erasableSyntaxOnly": true
 	}
 }

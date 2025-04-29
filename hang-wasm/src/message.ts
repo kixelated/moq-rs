@@ -2,8 +2,8 @@
 import type { PublishCommand } from "./publish/message";
 import type { WatchCommand } from "./watch/message";
 
-export type Command = { "Watch": WatchCommand } | { "Publish": PublishCommand };
+export type Command = { Watch: WatchCommand } | { Publish: PublishCommand };
 
-export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected" | "Live" | "Offline" | { "Error": string };
+export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected" | "Live" | "Offline" | { Error: string };
 
-export type Event = "Init" | { "Connection": ConnectionStatus };
+export type Event = "Init" | { Connection: ConnectionStatus };

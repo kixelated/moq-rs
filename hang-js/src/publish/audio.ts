@@ -36,7 +36,7 @@ export class Audio {
 		};
 
 		this.#encoder = new AudioEncoder({
-			output: async (frame, metadata) => this.#encoded(frame, metadata),
+			output: async (frame) => this.#encoded(frame),
 			error: (err) => this.track.writer.abort(err),
 		});
 
@@ -69,7 +69,7 @@ export class Audio {
 		}
 	}
 
-	async #encoded(frame: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) {
+	async #encoded(frame: EncodedAudioChunk) {
 		if (frame.type !== "key") {
 			throw new Error("only key frames are supported");
 		}
@@ -85,21 +85,6 @@ export class Audio {
 
 		const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
 		hang.encode(this.#group);
-	}
-
-	static async #isSupported(config: AudioEncoderConfig) {
-		const SUPPORTED = [
-			// TODO support AAC
-			// "mp4a"
-			"Opus",
-		];
-
-		// Check if we support a specific codec family
-		const short = config.codec.substring(0, 4);
-		if (!SUPPORTED.includes(short)) return false;
-
-		const res = await AudioEncoder.isConfigSupported(config);
-		return !!res.supported;
 	}
 
 	close() {

@@ -6,5 +6,5 @@
 /* Stop Prism/Tailwind from changing the font size. */
 code[class*="language-"],
 pre[class*="language-"] {
-  font-size: 1rem !important;
+	font-size: 1rem !important;
 }

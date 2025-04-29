@@ -1,7 +1,7 @@
 import { Announced } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import type { GroupReader } from "./group";
-import type { TrackReader, TrackWriter } from "./track";
+import type { TrackReader } from "./track";
 import * as Wire from "./wire";
 
 export class Publisher {

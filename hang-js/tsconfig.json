@@ -11,7 +11,10 @@
 		"outDir": "dist",
 		"declaration": true,
 		"sourceMap": true,
-		"isolatedModules": true
+		"isolatedModules": true,
+
+		// Avoids a bug with the dom-mediacapture-transform types.
+		"skipLibCheck": true
 	},
 	"paths": {
 		"@/*": ["*"]

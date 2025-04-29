@@ -3,7 +3,7 @@
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
 export RUST_BACKTRACE := "1"
-export RUST_LOG := "debug"
+#export RUST_LOG := "debug"
 #export GST_DEBUG:="*:4"
 
 # List all of the available commands.
@@ -40,16 +40,15 @@ demo: build
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
+	RUST_LOG=debug cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
 
 # Run a localhost leaf server, connecting to the relay server
 leaf:
-	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
+	RUST_LOG=debug cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
 
 # Run a cluster of relay servers
 cluster:
 	pnpm i && pnpm exec concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just pub bbb" "sleep 3 && just web"
-
 
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name:
@@ -91,7 +90,7 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}"
+		- | RUST_LOG=debug cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}"
 
 # Publish a video using gstreamer to the localhost relay server
 pub-gst name:
@@ -146,7 +145,7 @@ clock action:
 		exit 1; \
 	fi
 
-	cargo run --bin moq-clock -- "http://localhost:4443" {{action}}
+	RUST_LOG=debug cargo run --bin moq-clock -- "http://localhost:4443" {{action}}
 
 # Run the CI checks
 check flags="":
@@ -179,7 +178,7 @@ check flags="":
 	pnpm -r exec pnpm audit
 
 	# Beta: Check for unused imports
-	pnpm exec knip
+	pnpm exec knip --no-exit-code
 
 # Automatically fix some issues.
 fix flags="":
