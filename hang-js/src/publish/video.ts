@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import * as Catalog from "../catalog";
-import { Frame } from "../container/frame";
+import * as Media from "../media";
+import { Frame } from "../media/frame";
 import { VideoTrackSettings } from "../util/settings";
 import { Deferred } from "../util/async";
 import * as Hex from "../util/hex";
@@ -16,13 +16,19 @@ export class Video {
 
 	#encoder: VideoEncoder;
 	#reader: ReadableStreamDefaultReader<VideoFrame>;
+	#media: MediaStreamVideoTrack;
 
 	// The current group and the timestamp of the first frame in it.
 	#group?: Moq.GroupWriter;
 	#groupTimestamp = 0;
 
-	constructor(id: string, reader: ReadableStreamDefaultReader<VideoFrame>, config: VideoEncoderConfig) {
-		this.id = id;
+	constructor(
+		media: MediaStreamVideoTrack,
+		reader: ReadableStreamDefaultReader<VideoFrame>,
+		config: VideoEncoderConfig,
+	) {
+		this.id = media.id;
+		this.#media = media;
 		this.#reader = reader;
 		this.track = new Moq.Track("video", 2);
 		this.encoderConfig = config;
@@ -58,7 +64,7 @@ export class Video {
 		const config = await Video.config(settings, frame);
 		frame.close();
 
-		return new Video(media.id, reader, config);
+		return new Video(media, reader, config);
 	}
 
 	// Try to determine the best config for the given settings.
@@ -66,7 +72,7 @@ export class Video {
 		const width = frame.codedWidth;
 		const height = frame.codedHeight;
 
-		// TARGET BITRATE CALCULATION
+		// TARGET BITRATE CALCULATION (h264)
 		// 480p@30 = 1.0mbps
 		// 480p@60 = 1.5mbps
 		// 720p@30 = 2.5mbps
@@ -81,13 +87,64 @@ export class Video {
 		const framerateFactor = 30.0 + (settings.frameRate - 30) / 2;
 		const bitrate = Math.round(pixels * 0.07 * framerateFactor);
 
-		// ACTUAL BITRATE CALCULATION (h264)
+		// ACTUAL BITRATE CALCULATION
 		// 480p@30 = 409920 * 30 * 0.07 = 0.9 Mb/s
 		// 480p@60 = 409920 * 45 * 0.07 = 1.3 Mb/s
 		// 720p@30 = 921600 * 30 * 0.07 = 1.9 Mb/s
 		// 720p@60 = 921600 * 45 * 0.07 = 2.9 Mb/s
 		// 1080p@30 = 2073600 * 30 * 0.07 = 4.4 Mb/s
 		// 1080p@60 = 2073600 * 45 * 0.07 = 6.5 Mb/s
+
+		// A list of codecs to try, in order of preference.
+		const HARDWARE_CODECS = [
+			// AV1
+			"av01.0.08M.08",
+			"av01",
+
+			// HEVC (aka h.265)
+			"hev1.1.6.L93.B0",
+			"hev1", // Browser's choice
+
+			// VP9
+			"vp09.00.10.08",
+			"vp09", // Browser's choice
+
+			// H.264
+			"avc1.640028",
+			"avc1.4D401F",
+			"avc1.42E01E",
+			"avc1",
+
+			// VP8
+			"vp8",
+		];
+
+		const SOFTWARE_CODECS = [
+			// Now try software encoding for simple enough codecs.
+			// H.264
+			"avc1.640028", // High
+			"avc1.4D401F", // Main
+			"avc1.42E01E", // Baseline
+			"avc1",
+
+			// VP8
+			"vp8",
+
+			// VP9
+			// It's a bit more expensive to encode so we shy away from it.
+			"vp09.00.10.08",
+			"vp09",
+
+			// HEVC (aka h.265)
+			// This likely won't work because of licensing issues.
+			"hev1.1.6.L93.B0",
+			"hev1", // Browser's choice
+
+			// AV1
+			// Super expensive to encode so it's our last choice.
+			"av01.0.08M.08",
+			"av01",
+		];
 
 		const baseConfig: VideoEncoderConfig = {
 			codec: "none",
@@ -98,65 +155,16 @@ export class Video {
 			framerate: settings.frameRate,
 		};
 
-		// A list of codecs to try, in order of preference.
-		const CODECS: { codec: string; scale: number; hardware: boolean }[] = [
-			// We try hardware encoding first
-			// AV1
-			{ codec: "av01.0.08M.08", scale: 0.6, hardware: true },
-			{ codec: "av01", scale: 0.6, hardware: true }, // Browser's choice
-
-			// HEVC (aka h.265)
-			{ codec: "hev1.1.6.L93.B0", scale: 0.8, hardware: true },
-			{ codec: "hev1", scale: 0.8, hardware: true }, // Browser's choice
-
-			// VP9
-			{ codec: "vp09.00.10.08", scale: 0.8, hardware: true },
-			{ codec: "vp9", scale: 0.8, hardware: true }, // Browser's choice
-
-			// H.264
-			{ codec: "avc1.640028", scale: 1.0, hardware: true }, // High
-			{ codec: "avc1.4D401F", scale: 1.0, hardware: true }, // Main
-			{ codec: "avc1.42E01E", scale: 1.0, hardware: true }, // Baseline
-			{ codec: "avc1", scale: 1.0, hardware: true }, // Browser's choice
-
-			// VP8
-			{ codec: "vp8", scale: 1.1, hardware: true },
-
-			// Now try software encoding for simple enough codecs.
-			// H.264
-			{ codec: "avc1.640028", scale: 1.0, hardware: false }, // High
-			{ codec: "avc1.4D401F", scale: 1.0, hardware: false }, // Main
-			{ codec: "avc1.42E01E", scale: 1.0, hardware: false }, // Baseline
-			{ codec: "avc1", scale: 1.0, hardware: false },
-
-			// VP8
-			{ codec: "vp8", scale: 1.1, hardware: false },
-
-			// VP9
-			// It's a bit more expensive to encode so we shy away from it.
-			{ codec: "vp09.00.10.08", scale: 0.8, hardware: false },
-			{ codec: "vp9", scale: 0.8, hardware: false },
-
-			// HEVC (aka h.265)
-			// This likely won't work because of licensing issues.
-			{ codec: "hev1.1.6.L93.B0", scale: 0.8, hardware: false },
-			{ codec: "hev1", scale: 0.8, hardware: false }, // Browser's choice
-
-			// AV1
-			// Super expensive to encode so it's our last choice.
-			{ codec: "av01.0.08M.08", scale: 0.6, hardware: false },
-			{ codec: "av01", scale: 0.6, hardware: false },
-		];
-
 		// Try hardware encoding first.
-		for (const codec of CODECS) {
-			const config: VideoEncoderConfig = {
-				...baseConfig,
-				codec: codec.codec,
-				bitrate: Math.round(bitrate * codec.scale),
-				hardwareAcceleration: codec.hardware ? "prefer-hardware" : "prefer-software",
-			};
+		for (const codec of HARDWARE_CODECS) {
+			const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
+			const { supported } = await VideoEncoder.isConfigSupported(config);
+			if (supported) return config;
+		}
 
+		// Try software encoding.
+		for (const codec of SOFTWARE_CODECS) {
+			const config = Video.#codecSpecific(baseConfig, codec, bitrate, false);
 			const { supported } = await VideoEncoder.isConfigSupported(config);
 			if (supported) return config;
 		}
@@ -164,8 +172,42 @@ export class Video {
 		throw new Error("no supported codec");
 	}
 
+	// Modify the config for codec specific settings.
+	static #codecSpecific(
+		base: VideoEncoderConfig,
+		codec: string,
+		bitrate: number,
+		hardware: boolean,
+	): VideoEncoderConfig {
+		const config: VideoEncoderConfig = {
+			...base,
+			codec,
+			hardwareAcceleration: hardware ? "prefer-hardware" : "prefer-software",
+		};
+
+		// We scale the bitrate for more efficient codecs.
+		// TODO This shouldn't be linear, as the efficiency is very similar at low bitrates.
+		if (config.codec.startsWith("avc1")) {
+			// Annex-B allows changing the resolution without nessisarily updating the catalog (description).
+			config.avc = { format: "annexb" };
+		} else if (config.codec.startsWith("hev1")) {
+			// Annex-B allows changing the resolution without nessisarily updating the catalog (description).
+			// @ts-ignore Typescript needs to be updated.
+			config.hevc = { format: "annexb" };
+		} else if (config.codec.startsWith("vp09")) {
+			config.bitrate = bitrate * 0.8;
+		} else if (config.codec.startsWith("av01")) {
+			config.bitrate = bitrate * 0.6;
+		} else if (config.codec === "vp8") {
+			// Worse than H.264 but it's a backup plan.
+			config.bitrate = bitrate * 1.1;
+		}
+
+		return config;
+	}
+
 	// Returns the catalog for the configured settings.
-	async catalog(): Promise<Catalog.Video> {
+	async catalog(): Promise<Media.Video> {
 		const encoderConfig = this.encoderConfig;
 		const decoderConfig = await this.decoderConfig.promise;
 
@@ -189,12 +231,16 @@ export class Video {
 
 	async #run() {
 		for (;;) {
-			const result = await this.#reader.read();
-			if (!result || result.done) {
-				break;
-			}
+			const { done, value: frame } = await this.#reader.read();
+			if (done) break;
 
-			const frame = result.value;
+			if (frame.codedHeight !== this.encoderConfig.height || frame.codedWidth !== this.encoderConfig.width) {
+				// Ugh we have to re-configure the encoder.
+				const config = await Video.config(this.#media.getSettings() as VideoTrackSettings, frame);
+				this.#encoder.configure(config);
+
+				// TODO we need to update the catalog too.
+			}
 
 			// Create a keyframe at least every 2 seconds.
 			// We set this to undefined not `false` so the encoder can decide too.

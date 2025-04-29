@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import type * as Catalog from "../catalog";
-import * as Container from "../container";
+import type * as Catalog from "../media";
+import * as Media from "../media";
 
 // A map of sample rate to AudioContext.
 // This super weird, but means we get automatic audio sample rate conversion.
@@ -92,7 +92,7 @@ export class AudioTrack {
 	info: Catalog.Audio;
 
 	#context: AudioContext;
-	#container: Container.Reader;
+	#container: Media.Reader;
 	#decoder: AudioDecoder;
 
 	#active?: number;
@@ -117,9 +117,11 @@ export class AudioTrack {
 			numberOfChannels: info.channel_count,
 		});
 
-		this.#container = new Container.Reader(track);
+		this.#container = new Media.Reader(track);
 
-		this.#run();
+		this.#run().finally(() => {
+			this.close();
+		});
 	}
 
 	#decoded(data: AudioData) {
@@ -176,11 +178,14 @@ export class AudioTrack {
 
 			this.#decoder.decode(chunk);
 		}
-
-		this.#decoder.close();
 	}
 
 	close() {
-		this.#container.close();
+		try {
+			this.#container.close();
+			this.#decoder.close();
+		} catch (error) {
+			// Don't care
+		}
 	}
 }

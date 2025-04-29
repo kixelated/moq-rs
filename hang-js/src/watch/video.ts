@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import type * as Catalog from "../catalog";
-import * as Container from "../container";
+import type * as Catalog from "../media";
+import * as Media from "../media";
 import * as Hex from "../util/hex";
 
 // 50ms in microseconds.
@@ -30,6 +30,12 @@ export class Video {
 	}
 
 	set canvas(canvas: HTMLCanvasElement | undefined) {
+		if (canvas) {
+			// Just to set a baseline.
+			canvas.width = 0;
+			canvas.height = 0;
+		}
+
 		this.#render = canvas?.getContext("2d") ?? undefined;
 	}
 
@@ -92,7 +98,7 @@ export class VideoTrack {
 	info: Catalog.Video;
 	render: CanvasRenderingContext2D;
 
-	#container: Container.Reader;
+	#container: Media.Reader;
 	#decoder: VideoDecoder;
 	#queued: VideoFrame[] = [];
 	#animating?: number;
@@ -118,9 +124,9 @@ export class VideoTrack {
 			optimizeForLatency: true,
 		});
 
-		this.#container = new Container.Reader(track);
+		this.#container = new Media.Reader(track);
 
-		this.#run();
+		this.#run().finally(() => this.close());
 	}
 
 	#decoded(frame: VideoFrame) {
@@ -165,8 +171,6 @@ export class VideoTrack {
 
 			this.#decoder.decode(chunk);
 		}
-
-		this.#decoder.close();
 	}
 
 	close() {
@@ -182,6 +186,12 @@ export class VideoTrack {
 		}
 
 		this.#queued = [];
+
+		try {
+			this.#decoder.close();
+		} catch (_) {
+			// ignore
+		}
 	}
 
 	// Drop frames in the queue that are too old.

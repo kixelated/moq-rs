@@ -29,9 +29,6 @@ importers:
       '@kixelated/moq':
         specifier: workspace:../moq-js
         version: link:../moq-js
-      typed-duration:
-        specifier: ^2.0.0
-        version: 2.0.0
       zod:
         specifier: ^3.24.2
         version: 3.24.2
@@ -2096,9 +2093,6 @@ packages:
   type-is@1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
     engines: {node: '>= 0.6'}
-
-  typed-duration@2.0.0:
-    resolution: {integrity: sha512-XTOtfRR/l2hkCjFANwqu/IdLq17jBPts49tnxXc+Oc2ewngECupdu4FEH2H9hQHginRfOXCZ39tb9+pVcBlTcQ==}
 
   typescript@5.8.3:
     resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
@@ -4206,8 +4200,6 @@ snapshots:
     dependencies:
       media-typer: 0.3.0
       mime-types: 2.1.35
-
-  typed-duration@2.0.0: {}
 
   typescript@5.8.3: {}
 

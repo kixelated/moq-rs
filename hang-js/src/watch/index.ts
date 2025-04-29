@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import * as Catalog from "../catalog";
+import * as Media from "../media";
 import { Audio } from "./audio";
 import { Video } from "./video";
 
@@ -100,7 +100,7 @@ export class Watch {
 	async #runCatalog(broadcast: Moq.BroadcastReader, track: Moq.TrackReader) {
 		try {
 			for (;;) {
-				const catalog = await Catalog.Broadcast.fetch(track);
+				const catalog = await Media.Catalog.fetch(track);
 				if (!catalog) break;
 
 				console.debug("updated catalog", catalog);

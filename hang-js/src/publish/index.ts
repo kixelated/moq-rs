@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import * as Catalog from "../catalog";
+import * as Media from "../media";
 import { Audio } from "./audio";
 import { Video } from "./video";
 
@@ -196,7 +196,7 @@ export class Publish {
 		}
 
 		// Create the new catalog.
-		const catalog = new Catalog.Broadcast();
+		const catalog = new Media.Catalog();
 
 		const audio = media?.getAudioTracks().at(0);
 		if (this.#audio?.media !== audio) {

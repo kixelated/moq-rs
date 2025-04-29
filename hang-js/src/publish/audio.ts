@@ -1,7 +1,7 @@
-import { Frame } from "../container/frame";
+import { Frame } from "../media/frame";
 
 import * as Moq from "@kixelated/moq";
-import * as Catalog from "../catalog";
+import * as Media from "../media";
 import { AudioTrackSettings } from "../util/settings";
 
 // Create a group every half a second
@@ -9,7 +9,7 @@ const GOP_DURATION = 0.5;
 
 export class Audio {
 	readonly media: MediaStreamAudioTrack;
-	readonly catalog: Catalog.Audio;
+	readonly catalog: Media.Audio;
 	readonly settings: AudioTrackSettings;
 	readonly track: Moq.Track;
 
