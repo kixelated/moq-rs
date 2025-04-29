@@ -4,11 +4,8 @@ import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import { AudioTrackSettings } from "../util/settings";
 
-const SUPPORTED = [
-	// TODO support AAC
-	// "mp4a"
-	"Opus",
-];
+// Create a group every half a second
+const GOP_DURATION = 0.5;
 
 export class Audio {
 	readonly media: MediaStreamAudioTrack;
@@ -17,6 +14,10 @@ export class Audio {
 	readonly track: Moq.Track;
 
 	#encoder: AudioEncoder;
+
+	// The current group and the timestamp of the first frame in it.
+	#group?: Moq.GroupWriter;
+	#groupTimestamp = 0;
 
 	constructor(media: MediaStreamAudioTrack) {
 		this.media = media;
@@ -31,10 +32,11 @@ export class Audio {
 			codec: "Opus",
 			sample_rate: this.settings.sampleRate,
 			channel_count: this.settings.channelCount,
+			bitrate: 64_000, // TODO support higher bitrates
 		};
 
 		this.#encoder = new AudioEncoder({
-			output: (frame, metadata) => this.#encoded(frame, metadata),
+			output: async (frame, metadata) => this.#encoded(frame, metadata),
 			error: (err) => this.track.writer.abort(err),
 		});
 
@@ -42,6 +44,7 @@ export class Audio {
 			codec: this.catalog.codec,
 			numberOfChannels: this.catalog.channel_count,
 			sampleRate: this.catalog.sample_rate,
+			bitrate: this.catalog.bitrate,
 		});
 
 		this.#run()
@@ -66,24 +69,31 @@ export class Audio {
 		}
 	}
 
-	#encoded(frame: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) {
+	async #encoded(frame: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) {
 		if (frame.type !== "key") {
 			throw new Error("only key frames are supported");
 		}
 
-		// TODO align with video
-		const group = this.track.writer.appendGroup();
+		if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
+			this.#group?.close();
+			this.#group = await this.track.writer.appendGroup();
+			this.#groupTimestamp = frame.timestamp;
+		}
 
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
 		const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
-		hang.encode(group);
-
-		group.close();
+		hang.encode(this.#group);
 	}
 
-	static async isSupported(config: AudioEncoderConfig) {
+	static async #isSupported(config: AudioEncoderConfig) {
+		const SUPPORTED = [
+			// TODO support AAC
+			// "mp4a"
+			"Opus",
+		];
+
 		// Check if we support a specific codec family
 		const short = config.codec.substring(0, 4);
 		if (!SUPPORTED.includes(short)) return false;

@@ -209,6 +209,7 @@ mod test {
 					"sample_rate": 48000,
 					"channel_count": 2,
 					"bitrate": 128000
+					"framerate": 30,
 				}
 			]
 		}"#
@@ -234,6 +235,7 @@ mod test {
 					height: 720,
 				}),
 				bitrate: Some(6_000_000),
+				framerate: Some(30.0),
 			}],
 			audio: vec![Audio {
 				track: Track {

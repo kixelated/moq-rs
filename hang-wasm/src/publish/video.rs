@@ -135,6 +135,7 @@ impl PublishVideo {
 				description: config.description,
 				resolution,
 				bitrate: self.config.bitrate.map(|b| b as _),
+				framerate: self.config.framerate.map(|f| f as _),
 			};
 
 			broadcast.add_video(self.track.consume(), info);

@@ -137,6 +137,7 @@ impl Import {
 					.into(),
 					description: Some(description.freeze()),
 					bitrate: None,
+					framerate: None,
 				}
 			}
 			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
@@ -151,6 +152,7 @@ impl Import {
 					height: vp08.visual.height as _,
 				}),
 				bitrate: None,
+				framerate: None,
 			},
 			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
@@ -176,6 +178,7 @@ impl Import {
 						height: vp09.visual.height as _,
 					}),
 					bitrate: None,
+					framerate: None,
 				}
 			}
 			mp4_atom::Codec::Av01(av01) => {
@@ -208,6 +211,7 @@ impl Import {
 						height: av01.visual.height as _,
 					}),
 					bitrate: None,
+					framerate: None,
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
@@ -241,6 +245,7 @@ impl Import {
 				height: visual.height as _,
 			}),
 			bitrate: None,
+			framerate: None,
 		})
 	}
 

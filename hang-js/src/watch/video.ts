@@ -66,6 +66,14 @@ export class Video {
 		if (!this.#render || !this.#visible || !this.#tracks || !this.#broadcast || !info || this.#paused) {
 			// Nothing to render, unsubscribe.
 			existing?.close();
+
+			if (this.#render) {
+				// Clear the canvas.
+				this.#render.clearRect(0, 0, this.#render.canvas.width, this.#render.canvas.height);
+				this.#render.canvas.width = 0;
+				this.#render.canvas.height = 0;
+			}
+
 			return;
 		}
 
@@ -104,8 +112,8 @@ export class VideoTrack {
 
 		this.#decoder.configure({
 			codec: info.codec,
-			codedHeight: info.resolution.height,
-			codedWidth: info.resolution.width,
+			//codedHeight: info.resolution.height,
+			//codedWidth: info.resolution.width,
 			description: info.description ? Hex.decode(info.description) : undefined,
 			optimizeForLatency: true,
 		});

@@ -42,4 +42,8 @@ pub struct Video {
 	// The maximum bitrate of the video track
 	#[serde(default)]
 	pub bitrate: Option<u64>,
+
+	// The frame rate of the video track
+	#[serde(default)]
+	pub framerate: Option<f64>,
 }

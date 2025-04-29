@@ -67,6 +67,8 @@ export class Publish {
 	}
 
 	async #connect(url: URL): Promise<Moq.Connection> {
+		this.#broadcast?.close();
+
 		// TODO separate this from the URL.
 		const broadcast = new Moq.Broadcast(url.pathname.slice(1));
 
@@ -132,9 +134,48 @@ export class Publish {
 		// Register our new media request to create a chain.
 		// NOTE: We actually await it below.
 		if (this.#device === "camera") {
-			this.#media = navigator.mediaDevices.getUserMedia({ video: this.#videoEnabled, audio: this.#audioEnabled });
+			const video = this.#videoEnabled
+				? {
+						//aspectRatio: { ideal: 16 / 9 },
+						width: { ideal: 1280, max: 1920 },
+						height: { ideal: 720, max: 1080 },
+						frameRate: { ideal: 60, max: 60 },
+						facingMode: { ideal: "user" },
+					}
+				: undefined;
+
+			const audio = this.#audioEnabled
+				? {
+						channelCount: { ideal: 2, max: 2 },
+						echoCancellation: { ideal: true },
+						autoGainControl: { ideal: true },
+						noiseCancellation: { ideal: true },
+					}
+				: undefined;
+
+			this.#media = navigator.mediaDevices.getUserMedia({ video, audio });
 		} else if (this.#device === "screen") {
-			this.#media = navigator.mediaDevices.getDisplayMedia({ video: this.#videoEnabled, audio: this.#audioEnabled });
+			const video = this.#videoEnabled
+				? {
+						frameRate: { ideal: 60, max: 60 },
+						preferCurrentTab: false,
+						selfBrowserSurface: "exclude",
+						surfaceSwitching: "include",
+						systemAudio: "include",
+						resizeMode: "none",
+					}
+				: undefined;
+
+			const audio = this.#audioEnabled
+				? {
+						channelCount: { ideal: 2, max: 2 },
+						echoCancellation: false,
+						autoGainControl: false,
+						noiseCancellation: false,
+					}
+				: undefined;
+
+			this.#media = navigator.mediaDevices.getDisplayMedia({ video, audio });
 		} else {
 			this.#media = undefined;
 		}
@@ -147,21 +188,17 @@ export class Publish {
 			}
 		}
 
-		if (!this.#media) {
-			return;
-		}
-
 		// Finish the media request.
 		const media = await this.#media;
 		if (this.#preview) {
-			this.#preview.srcObject = media;
+			this.#preview.srcObject = media ?? null;
 			this.#preview.play();
 		}
 
 		// Create the new catalog.
 		const catalog = new Catalog.Broadcast();
 
-		const audio = media.getAudioTracks().at(0);
+		const audio = media?.getAudioTracks().at(0);
 		if (this.#audio?.media !== audio) {
 			this.#audio?.close();
 			this.#audio = undefined;
@@ -172,23 +209,26 @@ export class Publish {
 			}
 		}
 
-		if (this.#audio) {
-			catalog.audio.push(this.#audio.catalog);
-		}
+		const video = media?.getVideoTracks().at(0);
 
-		const video = media.getVideoTracks().at(0);
-		if (this.#video?.media !== video) {
+		// Check if the video source has changed.
+		if (video?.id !== this.#video?.id) {
 			this.#video?.close();
 			this.#video = undefined;
 
 			if (video) {
-				this.#video = new Video(video);
+				this.#video = await Video.create(video);
 				this.#broadcast?.insert(this.#video.track.reader.clone());
 			}
 		}
 
+		// We need to wait for the encoder to fully initialize with a few frames.
+		if (this.#audio) {
+			catalog.audio.push(this.#audio.catalog);
+		}
+
 		if (this.#video) {
-			catalog.video.push(this.#video.catalog);
+			catalog.video.push(await this.#video.catalog());
 		}
 
 		if (this.#broadcast) {
@@ -203,7 +243,7 @@ export class Publish {
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
-		const catalogGroup = this.#catalog.writer.appendGroup();
+		const catalogGroup = await this.#catalog.writer.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
 	}

@@ -7,6 +7,7 @@ export const AudioSchema = z.object({
 	codec: z.string(),
 	sample_rate: z.number(),
 	channel_count: z.number(),
+	bitrate: z.number().optional(),
 });
 
 export type Audio = z.infer<typeof AudioSchema>;

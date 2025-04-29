@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark">
+<html lang="en" class="sl-theme-dark dark">
 
 <head>
 	<meta charset="utf-8">
@@ -12,7 +12,7 @@
 		src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
 </head>
 
-<body>
+<body class="prose dark:prose-invert lg:prose-xl max-w-none p-8">
 	<!-- Use the included custom element to render a preview. -->
 	<hang-publish url="http://localhost:4443/demo/me" id="publish">
 		<!-- Optionally provide a custom video element that we can style as needed -->
@@ -52,14 +52,41 @@
 	</div>
 
 	<h3>Tips:</h3>
-	<ul>
-		<li>Change the URL to watch a different broadcast. Or use query params to redirect this demo.
-			<ul>
-				<li>ex. <a href="?scheme=https&host=relay.quic.video">publish</a> and <a
-						href="index.html?scheme=https&host=relay.quic.video">watch</a> over the internet.</li>
-			</ul>
-		</li>
-	</ul>
+	<p>
+		This page creates a broadcast called `demo/me` by default.
+		You can watch it with the <a href="index.html?broadcast=demo/me">watch demo</a>.
+		You can also use <a href="?broadcast=demo/notme">query parameters</a> to create a different broadcaster.
+	</p>
+	<p>
+		Reusing the same broadcast name means viewers will automatically reconnect to the new session.
+		Try reloading the page and broadcasting again; viewers will automatically reconnect!
+	</p>
+	<p>
+		Media only flows over the network when requested!
+		Connecting to a relay means the broadcast is advertised as available, but nothing is transferred until there's
+		at least one viewer per track.
+		If there's multiple viewers, the relay will fan out the media to all of them.
+		<b>TODO</b>: We still encode media even when there are no viewers, but somebody should improve this!
+	</p>
+	<p>
+		You can create a broadcaster via the provided <code class="language-html">&lt;hang-publish&gt;</code> <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
+		Either modify HTML attributes like <code class="language-html">&lt;moq-publish device="camera" /&gt;</code>
+		or access the element's Javascript API:
+	<pre><code class="language-typescript">const publish = document.getElementById("publish");
+publish.lib.device = "camera";</code></pre>
+	And of course you can use the Javascript API directly instead of the Web Component.
+	<pre><code class="language-typescript">import { Publish } from "@kixelated/moq";
+
+// Create a new instance.
+const publish = new Publish();
+
+// Have to provide your own preview element if desired.
+publish.preview = document.querySelector("video");
+
+// And of course set the URL to start loading.
+publish.url = "http://localhost:4443/demo/me";</code></pre>
+	</p>
 
 	<h3>Other demos:</h3>
 	<ul>

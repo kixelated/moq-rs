@@ -10,6 +10,8 @@ export const VideoSchema = z.object({
 		width: z.number(),
 		height: z.number(),
 	}),
+	framerate: z.number().optional(),
+	bitrate: z.number().optional(),
 });
 
 export type Video = z.infer<typeof VideoSchema>;

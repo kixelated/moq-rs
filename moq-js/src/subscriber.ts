@@ -49,9 +49,9 @@ export class Subscriber {
 					}
 				}
 
-				await writer.close();
+				writer.close();
 			} catch (err) {
-				await writer.abort(err);
+				writer.abort(err);
 			} finally {
 				for (const broadcast of active) {
 					console.debug(`announced: broadcast=${broadcast} active=dropped`);
@@ -77,7 +77,11 @@ export class Subscriber {
 
 			// Perform the subscription in the background.
 			this.#runSubscribe(broadcast, track.writer).finally(() => {
-				pair.writer.remove(track.name);
+				try {
+					pair.writer.remove(track.name);
+				} catch (err) {
+					// Already closed.
+				}
 			});
 		});
 

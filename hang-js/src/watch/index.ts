@@ -77,7 +77,6 @@ export class Watch {
 				if (update.broadcast !== announcement.prefix) continue;
 
 				if (update.active) {
-					console.debug("broadcast is live", update);
 					this.#dispatchEvent("status", "live");
 
 					broadcast = connection.consume(update.broadcast);
@@ -106,8 +105,8 @@ export class Watch {
 
 				console.debug("updated catalog", catalog);
 
-				this.video.load(broadcast, catalog.video);
-				this.audio.load(broadcast, catalog.audio);
+				this.video.load(broadcast.clone(), catalog.video);
+				this.audio.load(broadcast.clone(), catalog.audio);
 			}
 		} finally {
 			track.close();
@@ -144,7 +143,7 @@ export class Watch {
 
 // A custom element making it easier to insert a Watch into the DOM.
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url", "paused", "maxLatency"];
+	static observedAttributes = ["url", "paused"];
 
 	// Expose the library so we don't have to duplicate everything.
 	readonly lib: Watch = new Watch();
@@ -196,9 +195,6 @@ export class WatchElement extends HTMLElement {
 		} else if (name === "paused") {
 			this.lib.video.paused = newValue !== undefined;
 			this.lib.audio.paused = newValue !== undefined;
-		} else if (name === "maxLatency") {
-			// Latency in seconds.
-			this.lib.video.maxLatency = Number.parseFloat(newValue ?? "0");
 		}
 	}
 }
