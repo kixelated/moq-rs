@@ -1,7 +1,7 @@
 import "./index.css";
 
 import { PublishElement } from "../publish";
-import { WatchElement } from "../watch";
+import { Element as WatchElement } from "../watch";
 
 export { WatchElement, PublishElement };
 

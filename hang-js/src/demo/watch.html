@@ -88,7 +88,7 @@
 		Either modify HTML attributes like <code class="language-html">&lt;moq-watch paused&gt;</code>
 		or access the element's Javascript API:
 	<pre><code class="language-typescript">const watch = document.getElementById("watch");
-watch.lib.paused = true;
+watch.paused = true;
 </code></pre>
 	And of course you can use the Javascript API directly instead of the Web Component.
 	<pre><code class="language-typescript">import { Watch } from "@kixelated/moq";
@@ -144,7 +144,7 @@ just pub bbb
 
 	// Listen for clicks on the pause button.
 	pause.addEventListener("click", () => {
-		watch.lib.video.paused = !watch.lib.video.paused;
+		watch.video.paused = !watch.video.paused;
 	});
 
 	// Listen for clicks on the fullscreen button.
@@ -164,11 +164,11 @@ just pub bbb
 
 	// Listen for changes to the volume input.
 	volume.addEventListener("sl-input", () => {
-		watch.lib.volume = Number.parseFloat(volume.value);
+		watch.audio.volume = Number.parseFloat(volume.value);
 	});
 
 	// Listen for connection status changes.
-	watch.addEventListener("hang-watch-status", (event) => {
+	watch.addEventListener("hang-watch-connection", (event) => {
 		if (event.detail === "connected") {
 			status.textContent = "Connected";
 			spinner.style.display = "none";
@@ -177,12 +177,6 @@ just pub bbb
 			spinner.style.display = "block";
 		} else if (event.detail === "disconnected") {
 			status.textContent = "Disconnected";
-			spinner.style.display = "none";
-		} else if (event.detail === "live") {
-			status.textContent = "Live";
-			spinner.style.display = "none";
-		} else if (event.detail === "offline") {
-			status.textContent = "Offline";
 			spinner.style.display = "none";
 		} else {
 			throw new Error(`Unknown connection status: ${event.detail}`);

@@ -42,11 +42,12 @@ export class Audio {
 		this.#reload();
 	}
 
-	close() {
+	unload() {
 		this.#broadcast?.close();
 		this.#broadcast = undefined;
 		this.#tracks = undefined;
 		this.#track?.close();
+		this.#track = undefined;
 	}
 
 	async init() {

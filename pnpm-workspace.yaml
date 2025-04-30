@@ -2,6 +2,7 @@ packages:
   - moq-js
   - hang-js
   - hang-wasm
+  - hang-live
 
 onlyBuiltDependencies:
   - wasm-pack

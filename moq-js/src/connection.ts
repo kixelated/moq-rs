@@ -99,6 +99,11 @@ export class Connection {
 		return this.#url;
 	}
 
+	clone(): Connection {
+		this.#refs++;
+		return this;
+	}
+
 	close() {
 		this.#refs--;
 

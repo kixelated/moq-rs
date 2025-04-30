@@ -56,11 +56,12 @@ export class Video {
 		this.#reload();
 	}
 
-	close() {
+	unload() {
 		this.#broadcast?.close();
 		this.#broadcast = undefined;
 		this.#tracks = undefined;
 		this.#track?.close();
+		this.#track = undefined;
 	}
 
 	#reload() {
@@ -72,14 +73,6 @@ export class Video {
 		if (!this.#render || !this.#visible || !this.#tracks || !this.#broadcast || !info || this.#paused) {
 			// Nothing to render, unsubscribe.
 			existing?.close();
-
-			if (this.#render) {
-				// Clear the canvas.
-				this.#render.clearRect(0, 0, this.#render.canvas.width, this.#render.canvas.height);
-				this.#render.canvas.width = 0;
-				this.#render.canvas.height = 0;
-			}
-
 			return;
 		}
 
