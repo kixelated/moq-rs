@@ -2,6 +2,9 @@ import Matter from "matter-js";
 
 const PADDING = 40;
 
+const NORMAL_CATEGORY = 0x0001;
+const DRAG_CATEGORY = 0x0002;
+
 // Canvas setup
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 function resizeCanvas() {
@@ -40,6 +43,8 @@ interface Box {
 const engine = Matter.Engine.create();
 engine.gravity.x = 0;
 engine.gravity.y = 0;
+//engine.positionIterations = 1;
+//engine.velocityIterations = 1;
 
 const randomStart = () => {
 	// Cluster around 0.5
@@ -94,9 +99,12 @@ function join(info: {
 
 	const body = Matter.Bodies.rectangle(startX, startY, info.w, info.h, {
 		inertia: Number.POSITIVE_INFINITY,
-		restitution: 1.0,
-		frictionAir: 1.0,
+		restitution: 0.1,
+		frictionAir: 0.3,
 	});
+
+	body.collisionFilter.category = NORMAL_CATEGORY;
+	body.collisionFilter.mask = NORMAL_CATEGORY;
 
 	const box = {
 		id: info.id,
@@ -157,6 +165,8 @@ setTimeout(() => {
 	});
 }, 5000);
 
+let lastTime = performance.now();
+
 // Simulation loop
 function tick() {
 	updateScale();
@@ -175,7 +185,11 @@ function tick() {
 
 		const dx = box.targetX - body.position.x;
 		const dy = box.targetY - body.position.y;
-		const stiffness = dragging && dragging.id === box.id ? 0.01 : 0.01;
+		let stiffness = 0.001;
+		if (dragging && dragging.id === box.id) {
+			stiffness *= dragging.body.mass / 10;
+		}
+
 		Matter.Body.applyForce(body, body.position, { x: dx * stiffness, y: dy * stiffness });
 
 		// Boundary repulsion
@@ -184,25 +198,55 @@ function tick() {
 		const top = PADDING + box.h / 2;
 		const bottom = canvas.height - PADDING - box.h / 2;
 
+		const wallStrength = 0.01;
 		if (body.position.x < left) {
-			Matter.Body.applyForce(body, body.position, { x: (left - body.position.x) * 0.1, y: 0 });
+			Matter.Body.applyForce(body, body.position, { x: (left - body.position.x) * wallStrength, y: 0 });
 		} else if (body.position.x > right) {
-			Matter.Body.applyForce(body, body.position, { x: (right - body.position.x) * 0.1, y: 0 });
+			Matter.Body.applyForce(body, body.position, { x: (right - body.position.x) * wallStrength, y: 0 });
 		}
 
 		if (body.position.y < top) {
-			Matter.Body.applyForce(body, body.position, { x: 0, y: (top - body.position.y) * 0.1 });
+			Matter.Body.applyForce(body, body.position, { x: 0, y: (top - body.position.y) * wallStrength });
 		} else if (body.position.y > bottom) {
-			Matter.Body.applyForce(body, body.position, { x: 0, y: (bottom - body.position.y) * 0.1 });
+			Matter.Body.applyForce(body, body.position, { x: 0, y: (bottom - body.position.y) * wallStrength });
 		}
 
 		// Slowly drift the targetX/Y towards the actual box.
 		// (reduces fighting the physics engine)
-		box.targetX += (box.body.position.x - box.targetX) * 0.01;
-		box.targetY += (box.body.position.y - box.targetY) * 0.01;
+		box.targetX += (box.body.position.x - box.targetX) * 0.001;
+		box.targetY += (box.body.position.y - box.targetY) * 0.001;
 	}
 
-	Matter.Engine.update(engine, 1000 / 60);
+	if (dragging) {
+		const collisions = Matter.Query.collides(dragging.body, engine.world.bodies);
+		for (const collision of collisions) {
+			if (collision.bodyA === dragging.body && collision.bodyB === dragging.body) {
+				continue;
+			}
+
+			const other = collision.bodyA === dragging.body ? collision.bodyB : collision.bodyA;
+
+			const { normal, depth } = collision;
+			if (collision.bodyA === dragging.body) {
+				normal.x = -normal.x;
+				normal.y = -normal.y;
+			}
+
+			const strength = 0.001;
+			const force = depth * strength;
+
+			Matter.Body.applyForce(other, other.position, {
+				x: normal.x * force,
+				y: normal.y * force,
+			});
+		}
+	}
+
+	const now = performance.now();
+
+	Matter.Engine.update(engine, now - lastTime);
+	lastTime = now;
+
 	render();
 	requestAnimationFrame(tick);
 }
@@ -213,31 +257,42 @@ function render() {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 	for (const box of boxes) {
-		const { x, y } = box.body.position;
-		const angle = box.body.angle;
-
 		ctx.save();
-		ctx.translate(x, y);
-		ctx.rotate(angle);
-		ctx.fillStyle = "#4b9";
-		ctx.fillRect(-box.w / 2, -box.h / 2, box.w, box.h);
-		ctx.strokeStyle = "#000";
-		ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
-		ctx.fillStyle = "#000";
-		ctx.fillText(box.id, -box.w / 2 + 4, -box.h / 2 + 14);
+		if (box !== dragging) {
+			ctx.fillStyle = "#4b9";
+			renderBox(ctx, box);
+		}
 		ctx.restore();
-
-		// Draw target
-		ctx.beginPath();
-		ctx.arc(box.targetX, box.targetY, 4, 0, 2 * Math.PI);
-		ctx.fillStyle = "#f00";
-		ctx.fill();
 	}
 
-	// Draw bounding box
-	ctx.strokeStyle = "#ccc";
-	ctx.lineWidth = 2;
-	ctx.strokeRect(PADDING, PADDING, canvas.width - 2 * PADDING, canvas.height - 2 * PADDING);
+	if (dragging) {
+		ctx.save();
+		// Apply a transparent overlay
+		ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+		renderBox(ctx, dragging);
+		ctx.restore();
+	}
+}
+
+function renderBox(ctx: CanvasRenderingContext2D, box: Box) {
+	const { x, y } = box.body.position;
+	const angle = box.body.angle;
+
+	ctx.translate(x, y);
+	ctx.rotate(angle);
+	ctx.fillRect(-box.w / 2, -box.h / 2, box.w, box.h);
+	ctx.strokeStyle = "#000";
+	ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
+	ctx.fillStyle = "#000";
+	ctx.fillText(box.id, -box.w / 2 + 4, -box.h / 2 + 14);
+
+	// Draw target
+	/*
+	ctx.beginPath();
+	ctx.arc(box.targetX, box.targetY, 4, 0, 2 * Math.PI);
+	ctx.fillStyle = "#f00";
+	ctx.fill();
+	*/
 }
 
 function updateScale() {
@@ -249,7 +304,7 @@ function updateScale() {
 	const totalBoxArea = boxes.reduce((sum, b) => sum + b.sourceW * b.sourceH * b.targetScale * b.targetScale, 0);
 
 	const fillRatio = totalBoxArea / canvasArea;
-	const targetFill = 0.5;
+	const targetFill = 0.4;
 
 	const scale = Math.sqrt(targetFill / fillRatio);
 
@@ -287,6 +342,7 @@ canvas.addEventListener("mousedown", (e) => {
 
 	dragging = boxAt(mx, my);
 	if (dragging) {
+		dragging.body.collisionFilter.mask = 0x0000;
 		canvas.style.cursor = "grabbing";
 	}
 });
@@ -309,13 +365,19 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("mouseup", () => {
-	dragging = null;
-	canvas.style.cursor = "default";
+	if (dragging) {
+		dragging.body.collisionFilter.mask = NORMAL_CATEGORY;
+		dragging = null;
+		canvas.style.cursor = "default";
+	}
 });
 
 canvas.addEventListener("mouseleave", () => {
-	dragging = null;
-	canvas.style.cursor = "default";
+	if (dragging) {
+		dragging.body.collisionFilter.mask = NORMAL_CATEGORY;
+		dragging = null;
+		canvas.style.cursor = "default";
+	}
 });
 
 canvas.addEventListener(
@@ -372,17 +434,18 @@ function recreateBody(box: Box) {
 
 	const newBody = Matter.Bodies.rectangle(position.x, position.y, newW, newH, {
 		inertia: Number.POSITIVE_INFINITY,
-		frictionAir: 1.0,
-		restitution: 1.0,
+		restitution: 0.1,
+		frictionAir: 0.3,
 	});
 
 	Matter.Body.setVelocity(newBody, velocity);
 	Matter.Body.setAngle(newBody, angle);
 	Matter.Body.setAngularVelocity(newBody, angularVelocity);
+	newBody.collisionFilter.mask = box.body.collisionFilter.mask;
 
-	box.body = newBody;
 	box.w = newW;
 	box.h = newH;
+	box.body = newBody;
 
 	Matter.World.add(engine.world, newBody);
 }
