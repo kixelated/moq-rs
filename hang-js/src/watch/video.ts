@@ -10,8 +10,8 @@ export class VideoTracks {
 	#tracks: Media.Video[] = [];
 	#active?: VideoTrack;
 
-	// constraints
-	#enabled = true;
+	// Constraints
+	#enabled = false;
 
 	// The combined video frames from all tracks.
 	frames: ReadableStream<VideoFrame>;
@@ -84,7 +84,6 @@ export class VideoTrack {
 	#writer: WritableStreamDefaultWriter<VideoFrame>;
 
 	#media: Media.Reader;
-
 	#decoder: VideoDecoder;
 
 	constructor(track: Moq.TrackReader, info: Media.Video) {
@@ -144,7 +143,9 @@ export class VideoTrack {
 	}
 }
 
-// An optional component to render a video to a canvas.
+// An component to render a video to a canvas.
+//
+// If no canvas is provided, the `frame` method can be used to retreive frames.
 export class VideoRenderer {
 	#ctx?: CanvasRenderingContext2D;
 	#paused = false;
@@ -208,7 +209,7 @@ export class VideoRenderer {
 			cancelAnimationFrame(this.#animate);
 		}
 
-		if (!this.#ctx || !this.#broadcast || this.#paused) {
+		if (!this.#broadcast || this.#paused) {
 			if (this.#broadcast) {
 				this.#broadcast.enabled = false;
 			}
@@ -221,7 +222,10 @@ export class VideoRenderer {
 		}
 
 		this.#broadcast.enabled = true;
-		this.#animate = requestAnimationFrame(this.#render.bind(this));
+
+		if (this.#ctx) {
+			this.#animate = requestAnimationFrame(this.#render.bind(this));
+		}
 	}
 
 	async #run() {
@@ -235,7 +239,7 @@ export class VideoRenderer {
 	}
 
 	// Returns the frame that should be rendered at the given timestamp.
-	#frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
+	frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
 		const now = nowMs * 1000;
 
 		if (this.#frames.length === 0) {
@@ -273,7 +277,7 @@ export class VideoRenderer {
 	}
 
 	#render(now: DOMHighResTimeStamp) {
-		if (!this.#ctx || !this.#broadcast) {
+		if (!this.#ctx) {
 			return;
 		}
 
@@ -284,7 +288,7 @@ export class VideoRenderer {
 		this.#ctx.font = "12px sans-serif";
 		this.#ctx.fillStyle = "#000";
 
-		const frame = this.#frame(now);
+		const frame = this.frame(now);
 		if (!frame) {
 			return;
 		}
@@ -322,6 +326,10 @@ export class VideoRenderer {
 		}
 
 		this.#frames.length = 0;
+
+		if (this.#animate) {
+			cancelAnimationFrame(this.#animate);
+		}
 
 		this.#reader.cancel().catch(() => void 0);
 		this.#writer.close().catch(() => void 0);

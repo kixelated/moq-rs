@@ -54,7 +54,7 @@ export class Element extends HTMLElement {
 			"click",
 			() => {
 				// When the user clicks the element, we start the audio if the video is playing.
-				this.audio.paused = this.video.paused;
+				this.audio.muted = this.video.paused;
 			},
 			{ once: true },
 		);
@@ -67,7 +67,7 @@ export class Element extends HTMLElement {
 			void this.#connect(newValue);
 		} else if (name === "paused") {
 			this.video.paused = newValue !== undefined;
-			this.audio.paused = newValue !== undefined;
+			this.audio.muted = newValue !== undefined;
 		}
 	}
 

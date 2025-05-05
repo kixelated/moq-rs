@@ -138,9 +138,14 @@ export class AudioTrack {
 	}
 }
 
+// A pair of AudioContext and GainNode.
+type Context = {
+	root: AudioContext;
+	gain: GainNode;
+};
+
 export class AudioEmitter {
-	#context?: AudioContext;
-	#gain?: GainNode;
+	#context?: Context;
 
 	#volume = 0.5;
 	#paused = true;
@@ -162,6 +167,13 @@ export class AudioEmitter {
 
 	// Used to convert from timestamp units to AudioContext units.
 	#ref?: number;
+
+	// A callback that allows connecting AudioNodes to the AudioContext.
+	// An AudioContext will be created based on the sampleRate.
+	// By default, we just output to the speakers.
+	onInit: (ctx: AudioContext, dst: AudioNode) => void = (ctx, dst) => {
+		dst.connect(ctx.destination);
+	};
 
 	constructor() {
 		const queue = new TransformStream<AudioData, AudioData>();
@@ -193,8 +205,8 @@ export class AudioEmitter {
 	set volume(volume: number) {
 		this.#volume = volume;
 
-		if (this.#gain) {
-			this.#gain.gain.value = this.#volume;
+		if (this.#context) {
+			this.#context.gain.gain.value = this.#volume;
 		}
 
 		if (this.#broadcast) {
@@ -202,11 +214,11 @@ export class AudioEmitter {
 		}
 	}
 
-	get paused(): boolean {
+	get muted(): boolean {
 		return this.#paused;
 	}
 
-	set paused(paused: boolean) {
+	set muted(paused: boolean) {
 		this.#paused = paused;
 
 		if (this.#broadcast) {
@@ -233,19 +245,19 @@ export class AudioEmitter {
 	}
 
 	#emit(sample: AudioData) {
-		const [context, gain] = this.#init(sample.sampleRate);
+		const context = this.#init(sample.sampleRate);
 
 		// Convert from microseconds to seconds.
 		const timestamp = sample.timestamp / 1_000_000;
 		const maxLatency = this.#maxLatency / 1000;
 
 		if (!this.#ref) {
-			this.#ref = timestamp - context.currentTime - maxLatency;
+			this.#ref = timestamp - context.root.currentTime - maxLatency;
 		}
 
 		// Determine when the sample should be played in AudioContext units.
 		const when = timestamp - this.#ref;
-		const latency = when - context.currentTime;
+		const latency = when - context.root.currentTime;
 
 		if (latency > maxLatency) {
 			// Skip this sample if it's too far in the future.
@@ -255,11 +267,11 @@ export class AudioEmitter {
 		}
 
 		// Create an audio buffer for this sample.
-		const buffer = this.#createBuffer(sample, context);
+		const buffer = this.#createBuffer(sample, context.root);
 
-		const source = context.createBufferSource();
+		const source = context.root.createBufferSource();
 		source.buffer = buffer;
-		source.connect(gain);
+		source.connect(context.gain);
 		source.onended = () => {
 			this.#buffers.push(buffer);
 			this.#active.shift();
@@ -269,27 +281,28 @@ export class AudioEmitter {
 		this.#active.push(source);
 	}
 
-	#init(sampleRate: number): [AudioContext, GainNode] {
-		if (this.#context?.sampleRate === sampleRate && this.#gain) {
-			if (this.#context.state === "suspended") {
-				this.#context.resume();
+	#init(sampleRate: number): Context {
+		if (this.#context?.root.sampleRate === sampleRate) {
+			if (this.#context.root.state === "suspended") {
+				this.#context.root.resume();
 			}
 
-			return [this.#context, this.#gain];
+			return this.#context;
 		}
 
-		this.#context?.close();
-		this.#buffers.length = 0;
+		if (this.#context) {
+			this.#context.root.close();
+		}
+
 		this.#ref = undefined;
 
-		this.#context = new AudioContext({ latencyHint: "interactive", sampleRate });
+		const root = new AudioContext({ latencyHint: "interactive", sampleRate });
+		const gain = new GainNode(root, { gain: this.#volume });
 
-		this.#gain = this.#context.createGain();
-		this.#gain.gain.value = this.#volume;
+		this.#context = { root, gain };
+		this.onInit(this.#context.root, this.#context.gain);
 
-		this.#gain.connect(this.#context.destination);
-
-		return [this.#context, this.#gain];
+		return this.#context;
 	}
 
 	#createBuffer(sample: AudioData, context: AudioContext): AudioBuffer {
@@ -324,7 +337,7 @@ export class AudioEmitter {
 	}
 
 	close() {
-		this.#context?.close();
+		this.#context?.root.close();
 		this.#writer.close();
 		this.#reader.cancel();
 	}

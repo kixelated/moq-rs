@@ -49,8 +49,7 @@ export class Watch {
 	// Must be called after the user interacts with the page.
 	initAudio() {
 		const context = new AudioContext({ latencyHint: "interactive" });
-		const gain = context.createGain();
-		gain.gain.value = this.#volume;
+		const gain = new GainNode(context, { gain: this.#volume });
 
 		gain.connect(context.destination);
 

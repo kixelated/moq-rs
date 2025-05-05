@@ -195,6 +195,11 @@ just pub bbb
 		watch.audio.latency = Number.parseInt(latency.value);
 		watch.video.latency = Number.parseInt(latency.value);
 	});
+
+	// Optional: Stop downloading video when the page is hidden.
+	document.addEventListener("visibilitychange", () => {
+		watch.video.paused = document.visibilityState === "hidden";
+	});
 </script>
 
 </html>
