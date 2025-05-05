@@ -2,8 +2,10 @@ import { AnnouncedReader } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
-import * as Hex from "./util/hex";
 import * as Wire from "./wire";
+
+// biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
+import { Buffer } from "buffer";
 
 // A pool of connections.
 const pool: Map<URL, Promise<Connection>> = new Map();
@@ -65,7 +67,7 @@ export class Connection {
 
 			// Fetch the fingerprint from the server.
 			const fingerprint = await fetch(fingerprintUrl);
-			const bytes = Hex.decode(await fingerprint.text());
+			const bytes = Buffer.from(await fingerprint.text(), "hex");
 
 			options.serverCertificateHashes = [
 				{

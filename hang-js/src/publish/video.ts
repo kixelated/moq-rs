@@ -2,8 +2,10 @@ import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 import { Frame } from "../media/frame";
 import { Deferred } from "../util/async";
-import * as Hex from "../util/hex";
 import { VideoTrackSettings } from "../util/settings";
+
+// biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
+import { Buffer } from "buffer";
 
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;
@@ -211,7 +213,9 @@ export class Video {
 		const encoderConfig = this.encoderConfig;
 		const decoderConfig = await this.decoderConfig.promise;
 
-		const description = decoderConfig.description ? Hex.encode(decoderConfig.description) : undefined;
+		const description = decoderConfig.description
+			? Buffer.from(decoderConfig.description as Uint8Array).toString("hex")
+			: undefined;
 
 		return {
 			track: {

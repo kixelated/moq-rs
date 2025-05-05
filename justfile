@@ -2,7 +2,7 @@
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
-export RUST_BACKTRACE := "1"
+#export RUST_BACKTRACE := "1"
 #export RUST_LOG := "debug"
 #export GST_DEBUG:="*:4"
 
@@ -52,11 +52,10 @@ cluster:
 
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name:
-	@url=$(just download-url {{name}})
 	mkdir -p dev
 
 	if [ ! -f dev/{{name}}.mp4 ]; then \
-		wget "$url" -O dev/{{name}}.mp4; \
+		wget $(just download-url {{name}}) -O dev/{{name}}.mp4; \
 	fi
 
 	if [ ! -f dev/{{name}}.fmp4 ]; then \

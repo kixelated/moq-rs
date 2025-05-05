@@ -8,8 +8,7 @@
 	"exports": {
 		"./watch": "./src/watch/index.ts",
 		"./publish": "./src/publish/index.ts",
-		"./catalog": "./src/catalog/index.ts",
-		"./container": "./src/container/index.ts"
+		"./media": "./src/media/index.ts"
 	},
 	"scripts": {
 		"build": "rspack build && tsc -b && cp ../LICENSE* ./dist",
@@ -19,6 +18,7 @@
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:../moq-js",
+		"buffer": "^6.0.3",
 		"zod": "^3.24.2"
 	},
 	"devDependencies": {

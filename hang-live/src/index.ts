@@ -1,451 +1,587 @@
-import Matter from "matter-js";
+import * as Moq from "@kixelated/moq";
+//import * as Hang from "@kixelated/hang";
+import * as Media from "@kixelated/hang/media";
 
-const PADDING = 40;
+import { Vector } from "./util/vector";
+import { Bounds } from "./util/bounds";
 
-const NORMAL_CATEGORY = 0x0001;
-const DRAG_CATEGORY = 0x0002;
+// biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
+import { Buffer } from "buffer";
 
-// Canvas setup
-const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-function resizeCanvas() {
-	for (const box of boxes) {
-		box.targetX *= window.innerWidth / canvas.width;
-		box.targetY *= window.innerHeight / canvas.height;
-	}
-	canvas.width = window.innerWidth;
-	canvas.height = window.innerHeight;
-	updateScale();
-}
+export class Room {
+	// The connection to the server.
+	connection: Moq.Connection;
+	#announced: Moq.AnnouncedReader;
+	#broadcasts = new Map<string, Broadcast>();
 
-window.addEventListener("resize", resizeCanvas);
+	canvas: HTMLCanvasElement;
+	#ctx: CanvasRenderingContext2D;
 
-const ctx = canvas.getContext("2d");
-if (!ctx) {
-	throw new Error("Failed to get canvas context");
-}
-ctx.font = "12px sans-serif";
+	#hovering?: Broadcast;
+	#dragging?: Broadcast;
+	#scale = 1.0;
 
-// PARTICIPANT STRUCTURE
-interface Box {
-	id: string;
-	w: number;
-	h: number;
-	targetX: number;
-	targetY: number;
-	sourceW: number;
-	sourceH: number;
-	targetScale: number;
-	scale: number;
-	body: Matter.Body;
-}
+	constructor(connection: Moq.Connection, room: string, canvas: HTMLCanvasElement) {
+		this.connection = connection;
+		this.canvas = canvas;
 
-// SETUP PHYSICS ENGINE (no gravity)
-const engine = Matter.Engine.create();
-engine.gravity.x = 0;
-engine.gravity.y = 0;
-//engine.positionIterations = 1;
-//engine.velocityIterations = 1;
+		this.#announced = connection.announced(room);
 
-const randomStart = () => {
-	// Cluster around 0.5
-	return 0.5 + (Math.random() - 0.5) * Math.random();
-};
-
-const boxes: Box[] = [];
-
-function findVacantPoint(): { x: number; y: number } {
-	const NUM_CANDIDATES = 50;
-
-	for (let i = 0; i < NUM_CANDIDATES; i++) {
-		const x = randomStart() * canvas.width;
-		const y = randomStart() * canvas.height;
-
-		// Query the world for overlapping bodies
-		const overlapping = Matter.Query.point(engine.world.bodies, { x, y });
-
-		if (overlapping.length === 0) {
-			return { x, y };
+		const ctx = canvas.getContext("2d");
+		if (!ctx) {
+			throw new Error("Failed to get canvas context");
 		}
+
+		this.#ctx = ctx;
+
+		canvas.addEventListener("resize", () => {
+			this.#updateScale();
+		});
+
+		canvas.addEventListener("mousedown", (e) => {
+			const rect = canvas.getBoundingClientRect();
+			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+
+			this.#dragging = this.#broadcastAt(mouse);
+			if (this.#dragging) {
+				canvas.style.cursor = "grabbing";
+			}
+		});
+
+		canvas.addEventListener("mousemove", (e) => {
+			const rect = canvas.getBoundingClientRect();
+			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+
+			if (this.#dragging) {
+				this.#dragging.targetPosition = Vector.create(mouse.x / this.canvas.width, mouse.y / this.canvas.height);
+			} else {
+				this.#hovering = this.#broadcastAt(mouse);
+				if (this.#hovering) {
+					canvas.style.cursor = "grab";
+				} else {
+					canvas.style.cursor = "default";
+				}
+			}
+		});
+
+		canvas.addEventListener("mouseup", () => {
+			if (this.#dragging) {
+				this.#dragging = undefined;
+				this.#hovering = undefined;
+				canvas.style.cursor = "default";
+			}
+		});
+
+		canvas.addEventListener("mouseleave", () => {
+			if (this.#dragging) {
+				this.#dragging = undefined;
+				this.#hovering = undefined;
+				canvas.style.cursor = "default";
+			}
+		});
+
+		canvas.addEventListener(
+			"wheel",
+			(e) => {
+				e.preventDefault(); // Prevent scroll
+
+				let broadcast = this.#dragging;
+				if (!broadcast) {
+					const rect = canvas.getBoundingClientRect();
+					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+
+					broadcast = this.#broadcastAt(mouse);
+					if (!broadcast) return;
+
+					this.#hovering = broadcast;
+				}
+
+				const scale = e.deltaY * 0.001;
+				if (scale < 0) {
+					canvas.style.cursor = "zoom-out";
+				} else if (scale > 0) {
+					canvas.style.cursor = "zoom-in";
+				}
+
+				broadcast.targetScale = Math.max(Math.min(broadcast.targetScale + scale, 4), 0.25);
+			},
+			{ passive: false },
+		);
+
+		this.#run().finally(() => this.close());
+		requestAnimationFrame(this.#tick.bind(this));
 	}
 
-	return { x: randomStart() * canvas.width, y: randomStart() * canvas.height };
-}
+	#broadcastAt(point: Vector) {
+		// We need to iterate in reverse order to respect the z-index.
+		// TODO: Short-circuit on the first result, but that requires a reverse iterator.
+		let result: Broadcast | undefined;
 
-function join(info: {
-	id: string;
-	w: number;
-	h: number;
-}) {
-	const { x, y } = findVacantPoint();
+		for (const broadcast of this.#broadcasts.values()) {
+			if (broadcast.bounds.contains(point)) {
+				result = broadcast;
+			}
+		}
 
-	const cx = canvas.width / 2;
-	const cy = canvas.height / 2;
+		return result;
+	}
 
-	// Vector from center to target
-	const dx = x - cx;
-	const dy = y - cy;
-	const len = Math.sqrt(dx * dx + dy * dy);
+	async #run() {
+		for (;;) {
+			const update = await this.#announced.next();
 
-	// Ensure it's fully offscreen: offset by desired margin + box radius
-	const boxRadius = Math.sqrt(info.w ** 2 + info.h ** 2);
-	const margin = 60;
-	const offset = boxRadius + margin;
+			// We're donezo.
+			if (!update) break;
 
-	const unitX = dx / len;
-	const unitY = dy / len;
+			if (update.active) {
+				const broadcast = new Broadcast(this, this.connection.consume(update.broadcast));
+				this.#broadcasts.set(update.broadcast, broadcast);
+			} else {
+				const broadcast = this.#broadcasts.get(update.broadcast);
+				if (!broadcast) continue;
 
-	const startX = x + unitX * offset;
-	const startY = y + unitY * offset;
+				broadcast.close();
+				this.#broadcasts.delete(update.broadcast);
+			}
 
-	const body = Matter.Bodies.rectangle(startX, startY, info.w, info.h, {
-		inertia: Number.POSITIVE_INFINITY,
-		restitution: 0.1,
-		frictionAir: 0.3,
-	});
-
-	body.collisionFilter.category = NORMAL_CATEGORY;
-	body.collisionFilter.mask = NORMAL_CATEGORY;
-
-	const box = {
-		id: info.id,
-		w: info.w,
-		h: info.h,
-		targetX: x,
-		targetY: y,
-		sourceW: info.w,
-		sourceH: info.h,
-		targetScale: 1,
-		scale: 1,
-		body,
-	};
-
-	boxes.push(box);
-	Matter.World.add(engine.world, body);
-
-	updateScale();
-
-	return box;
-}
-
-join({
-	id: "A",
-	w: 1920,
-	h: 1080,
-});
-
-setTimeout(() => {
-	join({
-		id: "B",
-		w: 1280,
-		h: 720,
-	});
-}, 1000);
-
-setTimeout(() => {
-	join({
-		id: "C",
-		w: 768,
-		h: 1024,
-	});
-}, 2000);
-
-setTimeout(() => {
-	join({
-		id: "D",
-		w: 360,
-		h: 640,
-	});
-}, 3000);
-
-setTimeout(() => {
-	join({
-		id: "E",
-		w: 1024,
-		h: 768,
-	});
-}, 5000);
-
-let lastTime = performance.now();
-
-// Simulation loop
-function tick() {
-	updateScale();
-
-	for (const box of boxes) {
-		const { scale, targetScale } = box;
-		if (Math.abs(targetScale - scale) > 0.001) {
-			const newScale = scale + (targetScale - scale) * 0.1;
-			box.scale = newScale;
-			recreateBody(box);
+			this.#updateScale();
 		}
 	}
 
-	for (const box of boxes) {
-		const body = box.body;
+	#tick(now: DOMHighResTimeStamp) {
+		this.#updateScale();
 
-		const dx = box.targetX - body.position.x;
-		const dy = box.targetY - body.position.y;
-		let stiffness = 0.001;
-		if (dragging && dragging.id === box.id) {
-			stiffness *= dragging.body.mass / 10;
+		const broadcasts = Array.from(this.#broadcasts.values());
+
+		for (const broadcast of broadcasts) {
+			broadcast.scale += (broadcast.targetScale - broadcast.scale) * 0.1;
+			broadcast.bounds.size = broadcast.targetSize.mult(broadcast.scale * this.#scale);
+
+			// Slowly slow down the velocity.
+			broadcast.velocity = broadcast.velocity.mult(0.5);
+
+			// Guide the body towards the target position with a bit of force.
+			const target = Vector.create(
+				broadcast.targetPosition.x * this.canvas.width,
+				broadcast.targetPosition.y * this.canvas.height,
+			);
+
+			const middle = broadcast.bounds.middle();
+
+			// Make sure the target wouldn't cause us to be outside the canvas.
+			const width = broadcast.bounds.size.x;
+			const height = broadcast.bounds.size.y;
+
+			target.x = Math.max(width / 2, Math.min(target.x, this.canvas.width - width / 2));
+			target.y = Math.max(height / 2, Math.min(target.y, this.canvas.height - height / 2));
+
+			const force = target.sub(middle);
+			broadcast.velocity = broadcast.velocity.add(force);
+
+			const left = broadcast.bounds.position.x;
+			const right = broadcast.bounds.position.x + broadcast.bounds.size.x;
+			const top = broadcast.bounds.position.y;
+			const bottom = broadcast.bounds.position.y + broadcast.bounds.size.y;
+
+			if (left < 0) {
+				broadcast.velocity.x += -left;
+			} else if (right > this.canvas.width) {
+				broadcast.velocity.x += this.canvas.width - right;
+			}
+
+			if (top < 0) {
+				broadcast.velocity.y += -top;
+			} else if (bottom > this.canvas.height) {
+				broadcast.velocity.y += this.canvas.height - bottom;
+			}
 		}
 
-		Matter.Body.applyForce(body, body.position, { x: dx * stiffness, y: dy * stiffness });
+		// Loop over again, this time checking for collisions.
+		for (let i = 0; i < broadcasts.length; i++) {
+			for (let j = i + 1; j < broadcasts.length; j++) {
+				const a = broadcasts[i];
+				const b = broadcasts[j];
 
-		// Boundary repulsion
-		const left = PADDING + box.w / 2;
-		const right = canvas.width - PADDING - box.w / 2;
-		const top = PADDING + box.h / 2;
-		const bottom = canvas.height - PADDING - box.h / 2;
+				// Compute the intersection rectangle.
+				const intersection = a.bounds.intersects(b.bounds);
+				if (!intersection) {
+					continue;
+				}
 
-		const wallStrength = 0.01;
-		if (body.position.x < left) {
-			Matter.Body.applyForce(body, body.position, { x: (left - body.position.x) * wallStrength, y: 0 });
-		} else if (body.position.x > right) {
-			Matter.Body.applyForce(body, body.position, { x: (right - body.position.x) * wallStrength, y: 0 });
+				// Repel each other based on the size of the intersection.
+				const strength = intersection.area() / a.bounds.area(); // TODO what about b.area()?
+				let force = a.bounds.middle().sub(b.bounds.middle()).mult(strength);
+
+				if (this.#dragging !== a && this.#dragging !== b) {
+					force = force.mult(10);
+				}
+
+				a.velocity = a.velocity.add(force);
+				b.velocity = b.velocity.sub(force);
+			}
 		}
 
-		if (body.position.y < top) {
-			Matter.Body.applyForce(body, body.position, { x: 0, y: (top - body.position.y) * wallStrength });
-		} else if (body.position.y > bottom) {
-			Matter.Body.applyForce(body, body.position, { x: 0, y: (bottom - body.position.y) * wallStrength });
+		// Finally apply the velocity to the position.
+		for (let i = 0; i < broadcasts.length; i++) {
+			const broadcast = broadcasts[i];
+			broadcast.bounds = broadcast.bounds.add(broadcast.velocity.div(50));
 		}
 
-		// Slowly drift the targetX/Y towards the actual box.
-		// (reduces fighting the physics engine)
-		box.targetX += (box.body.position.x - box.targetX) * 0.001;
-		box.targetY += (box.body.position.y - box.targetY) * 0.001;
+		this.#render(now);
+
+		requestAnimationFrame(this.#tick.bind(this));
 	}
 
-	if (dragging) {
-		const collisions = Matter.Query.collides(dragging.body, engine.world.bodies);
-		for (const collision of collisions) {
-			if (collision.bodyA === dragging.body && collision.bodyB === dragging.body) {
+	#render(now: DOMHighResTimeStamp) {
+		this.#ctx.clearRect(0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
+
+		for (const broadcast of this.#broadcasts.values()) {
+			if (this.#dragging !== broadcast) {
+				this.#renderBroadcast(now, broadcast);
+			}
+		}
+
+		// Render the dragging broadcast last so it's on top.
+		if (this.#dragging) {
+			this.#ctx.save();
+			this.#ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+			this.#renderBroadcast(now, this.#dragging);
+			this.#ctx.restore();
+		}
+	}
+
+	#renderBroadcast(now: DOMHighResTimeStamp, broadcast: Broadcast) {
+		const bounds = broadcast.bounds;
+
+		this.#ctx.save();
+		this.#ctx.font = "12px sans-serif";
+		this.#ctx.translate(bounds.position.x, bounds.position.y);
+		this.#ctx.fillStyle = "#000";
+
+		const frame = broadcast.video?.frame(now);
+		if (frame) {
+			// Check if the frame size has changed and recompute the scale.
+			if (broadcast.targetSize.x !== frame.displayWidth || broadcast.targetSize.y !== frame.displayHeight) {
+				broadcast.targetSize = Vector.create(frame.displayWidth, frame.displayHeight);
+				this.#updateScale();
+			}
+
+			if (this.#dragging === broadcast) {
+				// Apply an opacity to the image.
+				this.#ctx.globalAlpha = 0.7;
+			}
+
+			this.#ctx.drawImage(frame, 0, 0, bounds.size.x, bounds.size.y);
+			this.#ctx.globalAlpha = 1.0;
+		} else {
+			this.#ctx.fillRect(0, 0, bounds.size.x, bounds.size.y);
+		}
+
+		if (this.#hovering === broadcast) {
+			this.#ctx.lineWidth = 1;
+			this.#ctx.strokeStyle = "white";
+			this.#ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
+		}
+
+		this.#ctx.lineWidth = 3;
+		this.#ctx.strokeStyle = "black";
+		this.#ctx.strokeText(broadcast.broadcast.path, 4, 14);
+
+		this.#ctx.fillStyle = "white";
+		this.#ctx.fillText(broadcast.broadcast.path, 4, 14);
+		this.#ctx.restore();
+
+		// Draw target for debugging
+		/*
+			this.#ctx.beginPath();
+			this.#ctx.arc(
+				broadcast.targetPosition.x * this.#ctx.canvas.width,
+				broadcast.targetPosition.y * this.#ctx.canvas.height,
+				4,
+				0,
+				2 * Math.PI,
+			);
+			this.#ctx.fillStyle = "#f00";
+			this.#ctx.fill();
+			*/
+	}
+
+	#updateScale() {
+		const canvasArea = this.canvas.width * this.canvas.height;
+		let broadcastArea = 0;
+
+		for (const broadcast of this.#broadcasts.values()) {
+			broadcastArea += broadcast.targetSize.x * broadcast.targetSize.y;
+		}
+
+		const fillRatio = broadcastArea / canvasArea;
+		const targetFill = 0.5;
+
+		this.#scale = Math.sqrt(targetFill / fillRatio);
+	}
+
+	close() {
+		this.connection.close();
+		this.#announced.close();
+	}
+}
+
+// An established broadcast that reloads on catalog changes.
+export class Broadcast {
+	room: Room;
+	broadcast: Moq.BroadcastReader;
+
+	#catalog: Moq.TrackReader;
+	video?: Video;
+
+	bounds: Bounds;
+	scale = 1.0; // 1 is 100%
+	velocity = Vector.create(0, 0); // in pixels per ?
+
+	targetPosition: Vector; // in 0-1
+	targetScale = 1.0; // 1 is 100%
+	targetSize: Vector; // in pixels
+
+	constructor(room: Room, broadcast: Moq.BroadcastReader) {
+		this.room = room;
+		this.broadcast = broadcast;
+
+		this.#catalog = broadcast.subscribe("catalog.json", 0);
+
+		this.targetSize = Vector.create(64, 64);
+
+		// Generates a random value from 0 to 1 skewed towards 0.5
+		const startPos = () => (Math.random() - 0.5) * Math.random() + 0.5;
+		this.targetPosition = Vector.create(startPos(), startPos());
+
+		// Follow the unit vector of the target position and go outside the screen.
+		const position = Vector.create(this.targetPosition.x - 0.5, this.targetPosition.y - 0.5)
+			.normalize()
+			.mult(2 * Math.sqrt(this.room.canvas.width ** 2 + this.room.canvas.height ** 2));
+
+		this.bounds = new Bounds(position, this.targetSize);
+
+		this.#run().finally(() => this.close());
+	}
+
+	async #run() {
+		for (;;) {
+			const catalog = await Media.Catalog.fetch(this.#catalog);
+			if (!catalog) break;
+
+			console.debug("updated catalog", catalog);
+
+			const video = catalog.video.at(0);
+			if (video === this.video?.info) {
+				// No change.
+			} else {
+				this.video?.close();
+
+				if (video) {
+					this.video = new Video(this.broadcast.clone(), video);
+					this.targetSize = Vector.create(video.resolution.width, video.resolution.height);
+				} else {
+					this.video = undefined;
+				}
+			}
+		}
+	}
+
+	close() {
+		this.broadcast.close();
+		this.#catalog.close();
+	}
+}
+
+export class Video {
+	#active?: VideoTrack;
+	#visible = true;
+
+	// Save these variables so we can reload the video if `visible` or `canvas` changes.
+	broadcast: Moq.BroadcastReader;
+	info: Media.Video;
+
+	constructor(broadcast: Moq.BroadcastReader, info: Media.Video) {
+		this.broadcast = broadcast;
+		this.info = info;
+
+		// TODO Perform this at a higher level
+		document.addEventListener("visibilitychange", () => {
+			this.#visible = document.visibilityState === "visible";
+			this.#reload();
+		});
+
+		this.#visible = document.visibilityState === "visible";
+		this.#reload();
+	}
+
+	frame(now: DOMHighResTimeStamp): VideoFrame | undefined {
+		return this.#active?.frame(now);
+	}
+
+	#reload() {
+		this.#active?.close();
+		this.#active = undefined;
+
+		if (!this.#visible) {
+			return;
+		}
+
+		const sub = this.broadcast.subscribe(this.info.track.name, this.info.track.priority);
+		this.#active = new VideoTrack(sub, this.info);
+	}
+
+	close() {
+		this.broadcast.close();
+		this.#active?.close();
+	}
+}
+
+export class VideoTrack {
+	info: Media.Video;
+
+	// The maximum latency in microseconds.
+	// The larger the value, the more tolerance we have for network jitter.
+	// We keep at least 2 frames buffered so we can choose between them to make it smoother.
+	// The default is 17ms because it's right in the middle of these two frames at 30fps.
+	#maxLatency = 17_000;
+
+	#frames: VideoFrame[] = [];
+
+	// The difference between the wall clock units and the timestamp units, in microseconds.
+	#ref?: number;
+
+	#container: Media.Reader;
+	#decoder: VideoDecoder;
+
+	constructor(track: Moq.TrackReader, info: Media.Video) {
+		this.info = info;
+
+		this.#decoder = new VideoDecoder({
+			output: (frame) => this.#decoded(frame as VideoFrame),
+			// TODO bubble up error
+			error: (error) => {
+				console.error(error);
+				this.close();
+			},
+		});
+
+		this.#decoder.configure({
+			codec: info.codec,
+			//codedHeight: info.resolution.height,
+			//codedWidth: info.resolution.width,
+			description: info.description ? Buffer.from(info.description, "hex") : undefined,
+			optimizeForLatency: true,
+		});
+
+		this.#container = new Media.Reader(track);
+
+		this.#run().finally(() => this.close());
+	}
+
+	#decoded(frame: VideoFrame) {
+		this.#frames.push(frame);
+		this.#prune();
+	}
+
+	frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
+		const now = nowMs * 1000;
+
+		if (this.#frames.length === 0) {
+			return;
+		}
+
+		const last = this.#frames[this.#frames.length - 1];
+
+		if (!this.#ref || now - last.timestamp > this.#ref) {
+			this.#ref = now - last.timestamp;
+		}
+
+		// Find the frame that is the closest to the desired timestamp.
+		const goal = now - this.#ref;
+
+		for (let i = 0; i < this.#frames.length; i++) {
+			let frame = this.#frames[i];
+			const diff = frame.timestamp - goal;
+
+			if (diff > 0) {
+				// We want to render in the future.
 				continue;
 			}
 
-			const other = collision.bodyA === dragging.body ? collision.bodyB : collision.bodyA;
-
-			const { normal, depth } = collision;
-			if (collision.bodyA === dragging.body) {
-				normal.x = -normal.x;
-				normal.y = -normal.y;
+			// Check if the previous frame was closer (we continued; over it)
+			if (i > 0 && frame.timestamp - goal < goal - this.#frames[i - 1].timestamp) {
+				frame = this.#frames[i - 1];
 			}
 
-			const strength = 0.001;
-			const force = depth * strength;
+			return frame;
+		}
 
-			Matter.Body.applyForce(other, other.position, {
-				x: normal.x * force,
-				y: normal.y * force,
+		// Render the most recent frame.
+		return last;
+	}
+
+	async #run() {
+		for (;;) {
+			const frame = await this.#container.readFrame();
+			if (!frame) break;
+
+			const chunk = new EncodedVideoChunk({
+				type: frame.keyframe ? "key" : "delta",
+				data: frame.data,
+				timestamp: frame.timestamp,
 			});
+
+			this.#decoder.decode(chunk);
 		}
 	}
 
-	const now = performance.now();
+	close() {
+		this.#container.close();
 
-	Matter.Engine.update(engine, now - lastTime);
-	lastTime = now;
-
-	render();
-	requestAnimationFrame(tick);
-}
-
-// Render loop
-function render() {
-	if (!ctx) return;
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-	for (const box of boxes) {
-		ctx.save();
-		if (box !== dragging) {
-			ctx.fillStyle = "#4b9";
-			renderBox(ctx, box);
+		for (const frame of this.#frames) {
+			frame.close();
 		}
-		ctx.restore();
-	}
 
-	if (dragging) {
-		ctx.save();
-		// Apply a transparent overlay
-		ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-		renderBox(ctx, dragging);
-		ctx.restore();
-	}
-}
+		this.#frames = [];
 
-function renderBox(ctx: CanvasRenderingContext2D, box: Box) {
-	const { x, y } = box.body.position;
-	const angle = box.body.angle;
-
-	ctx.translate(x, y);
-	ctx.rotate(angle);
-	ctx.fillRect(-box.w / 2, -box.h / 2, box.w, box.h);
-	ctx.strokeStyle = "#000";
-	ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
-	ctx.fillStyle = "#000";
-	ctx.fillText(box.id, -box.w / 2 + 4, -box.h / 2 + 14);
-
-	// Draw target
-	/*
-	ctx.beginPath();
-	ctx.arc(box.targetX, box.targetY, 4, 0, 2 * Math.PI);
-	ctx.fillStyle = "#f00";
-	ctx.fill();
-	*/
-}
-
-function updateScale() {
-	const padding = 20;
-	const usableW = canvas.width - 2 * padding;
-	const usableH = canvas.height - 2 * padding;
-	const canvasArea = usableW * usableH;
-
-	const totalBoxArea = boxes.reduce((sum, b) => sum + b.sourceW * b.sourceH * b.targetScale * b.targetScale, 0);
-
-	const fillRatio = totalBoxArea / canvasArea;
-	const targetFill = 0.4;
-
-	const scale = Math.sqrt(targetFill / fillRatio);
-
-	// Apply scale to each box
-	for (const box of boxes) {
-		applyScale(box, scale);
-	}
-}
-
-resizeCanvas(); // initial call
-tick();
-
-let dragging: Box | null = null;
-
-function boxAt(x: number, y: number): Box | null {
-	for (const box of boxes) {
-		const { x: bx, y: by } = box.body.position;
-		const left = bx - box.w / 2;
-		const right = bx + box.w / 2;
-		const top = by - box.h / 2;
-		const bottom = by + box.h / 2;
-
-		if (x >= left && x <= right && y >= top && y <= bottom) {
-			return box;
+		try {
+			this.#decoder.close();
+		} catch (_) {
+			// ignore
 		}
 	}
 
-	return null;
+	get maxLatency(): DOMHighResTimeStamp {
+		return this.#maxLatency / 1000;
+	}
+
+	set maxLatency(latency: DOMHighResTimeStamp) {
+		this.#maxLatency = latency * 1000;
+		this.#prune();
+	}
+
+	#prune() {
+		while (
+			this.#frames.length > 1 &&
+			this.#frames[this.#frames.length - 1].timestamp - this.#frames[0].timestamp > this.#maxLatency
+		) {
+			const frame = this.#frames.shift();
+			frame?.close();
+		}
+	}
 }
 
-canvas.addEventListener("mousedown", (e) => {
-	const rect = canvas.getBoundingClientRect();
-	const mx = e.clientX - rect.left;
-	const my = e.clientY - rect.top;
+// Canvas setup
+const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-	dragging = boxAt(mx, my);
-	if (dragging) {
-		dragging.body.collisionFilter.mask = 0x0000;
-		canvas.style.cursor = "grabbing";
-	}
+window.addEventListener("resize", () => {
+	canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
 });
 
-canvas.addEventListener("mousemove", (e) => {
-	if (dragging) {
-		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-		dragging.targetX = mx;
-		dragging.targetY = my;
-	} else {
-		const box = boxAt(e.clientX, e.clientY);
-		if (box) {
-			canvas.style.cursor = "grab";
-		} else {
-			canvas.style.cursor = "default";
-		}
-	}
+Moq.Connection.connect(new URL("http://localhost:4443")).then((connection) => {
+	new Room(connection, "demo/", canvas);
 });
-
-canvas.addEventListener("mouseup", () => {
-	if (dragging) {
-		dragging.body.collisionFilter.mask = NORMAL_CATEGORY;
-		dragging = null;
-		canvas.style.cursor = "default";
-	}
-});
-
-canvas.addEventListener("mouseleave", () => {
-	if (dragging) {
-		dragging.body.collisionFilter.mask = NORMAL_CATEGORY;
-		dragging = null;
-		canvas.style.cursor = "default";
-	}
-});
-
-canvas.addEventListener(
-	"wheel",
-	(e) => {
-		e.preventDefault(); // Prevent scroll
-
-		let box = dragging;
-		if (!box) {
-			const rect = canvas.getBoundingClientRect();
-			const mx = e.clientX - rect.left;
-			const my = e.clientY - rect.top;
-
-			for (const b of boxes) {
-				const { x, y } = b.body.position;
-				const left = x - b.w / 2;
-				const right = x + b.w / 2;
-				const top = y - b.h / 2;
-				const bottom = y + b.h / 2;
-
-				if (mx >= left && mx <= right && my >= top && my <= bottom) {
-					box = b;
-					break;
-				}
-			}
-
-			if (!box) return;
-		}
-
-		const scale = 1 - e.deltaY * 0.001;
-		if (scale < 1) {
-			canvas.style.cursor = "zoom-out";
-		} else if (scale > 1) {
-			canvas.style.cursor = "zoom-in";
-		}
-
-		applyScale(box, scale);
-	},
-	{ passive: false },
-);
-
-function applyScale(box: Box, scale: number) {
-	const minScale = 0.1;
-	const maxScale = Math.min(canvas.width / box.sourceW, canvas.height / box.sourceH, 2);
-	box.targetScale = Math.max(Math.min(box.targetScale * scale, maxScale), minScale);
-}
-
-function recreateBody(box: Box) {
-	const { position, velocity, angle, angularVelocity } = box.body;
-	Matter.World.remove(engine.world, box.body);
-
-	const newW = box.sourceW * box.scale;
-	const newH = box.sourceH * box.scale;
-
-	const newBody = Matter.Bodies.rectangle(position.x, position.y, newW, newH, {
-		inertia: Number.POSITIVE_INFINITY,
-		restitution: 0.1,
-		frictionAir: 0.3,
-	});
-
-	Matter.Body.setVelocity(newBody, velocity);
-	Matter.Body.setAngle(newBody, angle);
-	Matter.Body.setAngularVelocity(newBody, angularVelocity);
-	newBody.collisionFilter.mask = box.body.collisionFilter.mask;
-
-	box.w = newW;
-	box.h = newH;
-	box.body = newBody;
-
-	Matter.World.add(engine.world, newBody);
-}

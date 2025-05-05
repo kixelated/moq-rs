@@ -20,14 +20,14 @@
 			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
 
-		<!-- Make some simple controls to demonstate the API. -->
-		<div style="justify-content: space-between; align-items: center; margin: 8px 0; gap: 8px; display: flex;">
+		<!-- Make some "simple" controls to demonstate the API. -->
+		<div style="justify-content: space-between; margin: 8px 0; gap: 8px; display: flex;">
 			<div style="display: flex; gap: 8px;">
 				<sl-button id="pause">
 					<sl-icon name="pause" label="Pause" />
 				</sl-button>
 
-				<sl-dropdown placement="top-start" distance={2} hoist>
+				<sl-dropdown placement="top-start" distance=2 hoist>
 					<sl-button slot="trigger">
 						<sl-icon name="volume-up" label="Volume" />
 					</sl-button>
@@ -46,6 +46,10 @@
 			</div>
 
 			<div style="display: flex; gap: 8px;">
+				<sl-tooltip content="Latency" placement="bottom">
+					<sl-range id="latency" min=0 max=4000 step=50 defaultValue=50></sl-range>
+				</sl-tooltip>
+
 				<sl-button id="fullscreen">
 					<sl-icon name="fullscreen" label="Fullscreen" />
 				</sl-button>
@@ -132,6 +136,7 @@ just pub bbb
 	const status = document.getElementById("status");
 	const volume = document.getElementById("volume");
 	const container = document.getElementById("container");
+	const latency = document.getElementById("latency");
 
 	// If query params are provided, use them as the broadcast URL instead of the default.
 	const urlParams = new URLSearchParams(window.location.search);
@@ -144,7 +149,9 @@ just pub bbb
 
 	// Listen for clicks on the pause button.
 	pause.addEventListener("click", () => {
-		watch.video.paused = !watch.video.paused;
+		const paused = watch.video.paused;
+		watch.video.paused = !paused;
+		watch.audio.paused = !paused;
 	});
 
 	// Listen for clicks on the fullscreen button.
@@ -181,6 +188,12 @@ just pub bbb
 		} else {
 			throw new Error(`Unknown connection status: ${event.detail}`);
 		}
+	});
+
+	// Listen for changes to the latency input.
+	latency.addEventListener("sl-input", () => {
+		watch.audio.latency = Number.parseInt(latency.value);
+		watch.video.latency = Number.parseInt(latency.value);
 	});
 </script>
 
