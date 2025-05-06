@@ -1,16 +1,16 @@
 export class Deferred<T> {
 	promise: Promise<T>;
 	resolve!: (value: T | PromiseLike<T>) => void;
-	reject!: (reason: unknown) => void;
+	reject!: (reason: Error) => void;
 	pending = true;
 
 	constructor() {
 		this.promise = new Promise((resolve, reject) => {
-			this.resolve = (value) => {
+			this.resolve = (value: T | PromiseLike<T>) => {
 				this.pending = false;
 				resolve(value);
 			};
-			this.reject = (reason) => {
+			this.reject = (reason: Error) => {
 				this.pending = false;
 				reject(reason);
 			};
@@ -69,7 +69,7 @@ export class WatchProducer<T> {
 		this.#closed.resolve(undefined);
 	}
 
-	abort(reason?: unknown) {
+	abort(reason: Error) {
 		this.#closed.reject(reason);
 	}
 

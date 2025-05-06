@@ -94,7 +94,19 @@ export class Connection {
 			throw new Error(`unsupported server version: ${server.version}`);
 		}
 
-		return new Connection(url, quic, stream);
+		const conn = new Connection(url, quic, stream);
+
+		const cleanup = () => {
+			conn.close();
+		};
+
+		// Close the connection when the window is closed.
+		document.addEventListener("pagehide", cleanup);
+		conn.closed().then(() => {
+			document.removeEventListener("pagehide", cleanup);
+		});
+
+		return conn;
 	}
 
 	get url(): URL {

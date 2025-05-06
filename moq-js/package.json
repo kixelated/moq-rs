@@ -15,8 +15,8 @@
 		"test": "tsx --test"
 	},
 	"devDependencies": {
-		"@typescript/lib-dom": "npm:@types/web@^0.0.214",
-		"tsx": "^4.19.3"
+		"@typescript/lib-dom": "npm:@types/web@^0.0.231",
+		"tsx": "^4.19.4"
 	},
 	"dependencies": {
 		"buffer": "^6.0.3"

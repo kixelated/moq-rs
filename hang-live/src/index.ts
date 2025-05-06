@@ -1,8 +1,8 @@
-import * as Moq from "@kixelated/moq";
 import * as Watch from "@kixelated/hang/watch";
+import * as Moq from "@kixelated/moq";
 
-import { Vector } from "./util/vector";
 import { Bounds } from "./util/bounds";
+import { Vector } from "./util/vector";
 
 export class Room {
 	// The connection to the server.
@@ -169,7 +169,10 @@ export class Room {
 		const broadcast = new Broadcast(this.connection.consume(path));
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
+
 		broadcast.audio.muted = this.#muted;
+		broadcast.audio.latency = 100;
+		broadcast.video.latency = 100;
 
 		this.#broadcasts.set(path, broadcast);
 	}
@@ -423,6 +426,7 @@ export class Room {
 		this.#ctx.restore();
 
 		// Draw target for debugging
+		/*
 		this.#ctx.beginPath();
 		this.#ctx.arc(
 			broadcast.targetPosition.x * this.#ctx.canvas.width,
@@ -433,6 +437,7 @@ export class Room {
 		);
 		this.#ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
 		this.#ctx.fill();
+		*/
 	}
 
 	#updateScale() {
@@ -508,7 +513,7 @@ export class Broadcast {
 
 		this.audio.broadcast = this.watch.audio;
 
-		this.targetSize = Vector.create(64, 64);
+		this.targetSize = Vector.create(128, 128);
 		this.bounds = new Bounds(Vector.create(0, 0), this.targetSize);
 	}
 

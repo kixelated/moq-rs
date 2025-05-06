@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
+import { AudioEmitter } from "./audio";
 import { BroadcastReload } from "./broadcast";
 import { VideoRenderer } from "./video";
-import { AudioEmitter } from "./audio";
 
 // A custom element that renders to a canvas.
 export class Element extends HTMLElement {

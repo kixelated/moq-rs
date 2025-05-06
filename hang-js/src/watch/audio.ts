@@ -338,7 +338,7 @@ export class AudioEmitter {
 
 	close() {
 		this.#context?.root.close();
-		this.#writer.close();
-		this.#reader.cancel();
+		this.#writer.close().catch(() => void 0);
+		this.#reader.cancel().catch(() => void 0);
 	}
 }

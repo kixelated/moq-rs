@@ -297,12 +297,12 @@ export class Writer {
 	}
 
 	close() {
-		this.#writer.close().catch(() => {});
+		this.#writer.close().catch(() => void 0);
 		this.#writer.releaseLock();
 	}
 
 	reset(reason?: unknown) {
-		this.#writer.abort(reason).catch(() => {});
+		this.#writer.abort(reason).catch(() => void 0);
 		this.#writer.releaseLock();
 	}
 

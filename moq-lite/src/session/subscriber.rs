@@ -142,6 +142,7 @@ impl Subscriber {
 			let producer = tokio::select! {
 				producer = broadcast.requested() => producer,
 				_ = broadcast.unused() => break,
+				_ = self.session.closed() => break,
 			};
 
 			// Insert the request into the lookup.

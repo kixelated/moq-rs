@@ -3,8 +3,8 @@ import { z } from "zod";
 import * as Moq from "@kixelated/moq";
 
 import { type Audio, AudioSchema } from "./audio";
-import { type Video, VideoSchema } from "./video";
 import { type Location, LocationSchema } from "./location";
+import { type Video, VideoSchema } from "./video";
 
 export const CatalogSchema = z.object({
 	video: z.array(VideoSchema).optional(),

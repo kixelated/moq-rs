@@ -133,7 +133,7 @@ export class VideoTrack {
 	// Close the track and all associated resources.
 	close() {
 		this.#media.close();
-		this.#writer.close();
+		this.#writer.close().catch(() => void 0);
 
 		try {
 			this.#decoder.close();

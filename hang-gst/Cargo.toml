@@ -14,7 +14,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
-env_logger = "0.9"
+env_logger = "0.11"
 
 gst = { package = "gstreamer", version = "0.23" }
 gst-base = { package = "gstreamer-base", version = "0.23" }

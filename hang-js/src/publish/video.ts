@@ -36,13 +36,13 @@ export class Video {
 		this.encoderConfig = config;
 		this.#encoder = new VideoEncoder({
 			output: (frame, metadata) => this.#encoded(frame, metadata),
-			error: (err) => this.track.writer.abort(err),
+			error: (err: Error) => this.track.writer.abort(err),
 		});
 
 		this.#encoder.configure(config);
 
 		this.#run()
-			.catch((err) => {
+			.catch((err: Error) => {
 				this.track.writer.abort(err);
 				this.decoderConfig.reject(err);
 			})
