@@ -243,38 +243,43 @@ export class VideoRenderer {
 	// Returns the frame that should be rendered at the given timestamp.
 	frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
 		const now = nowMs * 1000;
+		const maxLatency = this.#maxLatency * 1000;
 
 		if (this.#frames.length === 0) {
 			return;
 		}
 
+		// Advance the reference timestamp if we need to.
+		// We want the newest frame (last) to be be scheduled at most maxLatency in the future.
+		// NOTE: This never goes backwards, so clock drift will cause issues.
 		const last = this.#frames[this.#frames.length - 1];
-
-		if (!this.#ref || now - last.timestamp > this.#ref) {
-			this.#ref = now - last.timestamp;
+		if (!this.#ref || last.timestamp - this.#ref - now > maxLatency) {
+			const newRef = last.timestamp - now - maxLatency;
+			this.#ref = newRef;
 		}
 
-		// Find the frame that is the closest to the desired timestamp.
-		const goal = now - this.#ref;
+		const goal = this.#ref + now;
 
-		for (let i = 0; i < this.#frames.length; i++) {
-			let frame = this.#frames[i];
+		// Find the frame that is the closest to the desired timestamp.
+		for (let i = 1; i < this.#frames.length; i++) {
+			const frame = this.#frames[i];
 			const diff = frame.timestamp - goal;
 
-			if (diff > 0) {
-				// We want to render in the future.
+			if (diff < 0) {
+				// This frame was in the past; find one in the future.
 				continue;
 			}
 
-			// Check if the previous frame was closer (we continued; over it)
-			if (i > 0 && frame.timestamp - goal < goal - this.#frames[i - 1].timestamp) {
-				frame = this.#frames[i - 1];
+			if (diff > goal - this.#frames[i - 1].timestamp) {
+				// The previous frame is closer to the goal; use it instead.
+				// This should smooth out the video a little bit.
+				return this.#frames[i - 1];
 			}
 
 			return frame;
 		}
 
-		// Render the most recent frame.
+		// Render the most recent frame if they're all scheduled in the past.
 		return last;
 	}
 
@@ -312,10 +317,19 @@ export class VideoRenderer {
 	}
 
 	#prune() {
-		while (
-			this.#frames.length > 1 &&
-			this.#frames[this.#frames.length - 1].timestamp - this.#frames[0].timestamp > this.#maxLatency * 1000
-		) {
+		const maxLatency = this.#maxLatency * 1000;
+
+		while (this.#frames.length > 1) {
+			const first = this.#frames[0];
+			const last = this.#frames[this.#frames.length - 1];
+
+			// Compute the average duration of a frame, minus one so there's some wiggle room.
+			const duration = (last.timestamp - first.timestamp) / (this.#frames.length - 1);
+
+			if (last.timestamp - first.timestamp <= maxLatency + duration) {
+				break;
+			}
+
 			const frame = this.#frames.shift();
 			frame?.close();
 		}

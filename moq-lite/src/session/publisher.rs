@@ -41,23 +41,29 @@ impl Publisher {
 		let mut announced = self.broadcasts.announced(&prefix);
 
 		// Flush any synchronously announced paths
-		while let Some(announced) = announced.next().await {
-			match announced {
-				Announced::Start(broadcast) => {
-					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+		loop {
+			tokio::select! {
+				announced = announced.next() => {
+					match announced {
+						Some(Announced::Start(broadcast)) => {
+							let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
 
-					let msg = message::Announce::Active {
-						suffix: suffix.to_string(),
-					};
-					stream.writer.encode(&msg).await?;
+							let msg = message::Announce::Active {
+								suffix: suffix.to_string(),
+							};
+							stream.writer.encode(&msg).await?;
+						}
+						Some(Announced::End(broadcast)) => {
+							let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+							let msg = message::Announce::Ended {
+								suffix: suffix.to_string(),
+							};
+							stream.writer.encode(&msg).await?;
+						}
+						None => break,
+					}
 				}
-				Announced::End(broadcast) => {
-					let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
-					let msg = message::Announce::Ended {
-						suffix: suffix.to_string(),
-					};
-					stream.writer.encode(&msg).await?;
-				}
+				res = stream.reader.finished() => return res,
 			}
 		}
 
