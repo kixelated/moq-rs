@@ -11,7 +11,7 @@ use crate::{
 
 use web_async::{spawn, Lock};
 
-use super::{AnnouncedConsumer, OrClose, Reader, Stream};
+use super::{AnnouncedConsumer, Reader, Stream};
 
 #[derive(Clone)]
 pub(super) struct Subscriber {
@@ -42,7 +42,7 @@ impl Subscriber {
 
 		let mut session = self.session.clone();
 		web_async::spawn(async move {
-			let mut stream = match Stream::open(&mut session, message::ControlType::Announce).await {
+			let stream = match Stream::open(&mut session, message::ControlType::Announce).await {
 				Ok(stream) => stream,
 				Err(err) => {
 					tracing::warn!(?err, "failed to open announce stream");
@@ -50,23 +50,24 @@ impl Subscriber {
 				}
 			};
 
-			if let Err(err) = Self::run_announce(&mut stream, prefix, producer)
-				.await
-				.or_close(&mut stream)
-			{
-				tracing::warn!(?err, "announced error");
+			tracing::debug!(%prefix, "announced started");
+
+			if let Err(err) = Self::run_announce(stream, &prefix, producer).await {
+				tracing::warn!(?err, %prefix, "announced error");
+			} else {
+				tracing::debug!(%prefix, "announced complete");
 			}
 		});
 
 		consumer
 	}
 
-	async fn run_announce(stream: &mut Stream, prefix: String, mut announced: AnnouncedProducer) -> Result<(), Error> {
-		tracing::debug!(%prefix, "receiving announcements");
-
+	async fn run_announce(mut stream: Stream, prefix: &str, mut announced: AnnouncedProducer) -> Result<(), Error> {
 		stream
 			.writer
-			.encode(&message::AnnounceRequest { prefix: prefix.clone() })
+			.encode(&message::AnnounceRequest {
+				prefix: prefix.to_string(),
+			})
 			.await?;
 
 		loop {
@@ -76,13 +77,19 @@ impl Subscriber {
 						// Handle the announce
 						Some(announce) => Self::recv_announce(announce, &prefix, &mut announced)?,
 						// Stop if the stream has been closed
-						None => return Ok(()),
+						None => break,
 					}
 				},
 				// Stop if the consumer is no longer interested
-				_ = announced.closed() => return Ok(()),
+				_ = announced.closed() => break,
 			}
 		}
+
+		// Close the writer and wait for the reading side to finish.
+		stream.writer.close();
+		stream.reader.finished().await?;
+
+		Ok(())
 	}
 
 	fn recv_announce(
@@ -120,12 +127,12 @@ impl Subscriber {
 	}
 
 	/// Subscribe to a given broadcast.
-	pub fn consume(&self, broadcast: Broadcast) -> BroadcastConsumer {
+	pub fn consume(&self, broadcast: &Broadcast) -> BroadcastConsumer {
 		if let Some(producer) = self.broadcasts.lock().get(&broadcast.path) {
 			return producer.consume();
 		}
 
-		let producer = broadcast.produce();
+		let producer = broadcast.clone().produce();
 		let consumer = producer.consume();
 
 		// Run the broadcast in the background until all consumers are dropped.
@@ -145,10 +152,6 @@ impl Subscriber {
 				_ = self.session.closed() => break,
 			};
 
-			// Insert the request into the lookup.
-			// TODO This seems useful as part of BroadcastProducer in general?
-			broadcast.insert(producer.consume());
-
 			let mut this = self.clone();
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 			let broadcast = broadcast.clone();
@@ -156,13 +159,13 @@ impl Subscriber {
 			spawn(async move {
 				let track = producer.info.clone();
 
-				if let Ok(mut stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
-					if let Err(err) = this
-						.run_subscribe(id, &broadcast.info, producer, &mut stream)
-						.await
-						.or_close(&mut stream)
-					{
-						tracing::warn!(?err, "subscribe error");
+				tracing::info!(broadcast = %broadcast.info.path, track = %track.name, id, "subscription started");
+
+				if let Ok(stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
+					if let Err(err) = this.run_subscribe(id, &broadcast.info, producer, stream).await {
+						tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.name, id, "subscription error");
+					} else {
+						tracing::info!(broadcast = %broadcast.info.path, track = %track.name, id, "subscription complete");
 					}
 				}
 
@@ -180,7 +183,7 @@ impl Subscriber {
 		id: u64,
 		broadcast: &Broadcast,
 		track: TrackProducer,
-		stream: &mut Stream,
+		mut stream: Stream,
 	) -> Result<(), Error> {
 		self.subscribes.lock().insert(id, track.clone());
 
@@ -213,17 +216,18 @@ impl Subscriber {
 			};
 		}
 
-		tracing::info!(broadcast = %broadcast.path, track = %track.info.name, id, "subscription complete");
+		stream.writer.close();
+
+		// Keep the reader alive until the other side signals they are done.
+		// If they send anything but a FIN, we'll reset the stream.
+		stream.reader.finished().await?;
 
 		Ok(())
 	}
 
-	pub async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
-		let group = stream.decode().await?;
-		self.recv_group_inner(stream, group).await.or_close(stream)
-	}
+	pub async fn recv_group(&mut self, mut stream: Reader) -> Result<(), Error> {
+		let group: message::Group = stream.decode().await?;
 
-	pub async fn recv_group_inner(&mut self, stream: &mut Reader, group: message::Group) -> Result<(), Error> {
 		let mut group = {
 			let mut subs = self.subscribes.lock();
 			let track = subs.get_mut(&group.subscribe).ok_or(Error::Cancel)?;

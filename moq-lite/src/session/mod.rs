@@ -2,14 +2,12 @@ use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Ori
 
 use web_async::spawn;
 
-mod close;
 mod publisher;
 mod reader;
 mod stream;
 mod subscriber;
 mod writer;
 
-use close::*;
 use publisher::*;
 use reader::*;
 use stream::*;
@@ -58,7 +56,7 @@ impl Session {
 	pub async fn connect<T: Into<web_transport::Session>>(session: T) -> Result<Self, Error> {
 		let mut session = session.into();
 		let mut stream = Stream::open(&mut session, message::ControlType::Session).await?;
-		Self::connect_setup(&mut stream).await.or_close(&mut stream)?;
+		Self::connect_setup(&mut stream).await?;
 		Ok(Self::new(session, stream))
 	}
 
@@ -86,7 +84,7 @@ impl Session {
 			return Err(Error::UnexpectedStream(kind));
 		}
 
-		Self::accept_setup(&mut stream).await.or_close(&mut stream)?;
+		Self::accept_setup(&mut stream).await?;
 		Ok(Self::new(session, stream))
 	}
 
@@ -116,16 +114,16 @@ impl Session {
 
 	async fn run_uni(mut session: web_transport::Session, subscriber: Subscriber) -> Result<(), Error> {
 		loop {
-			let mut stream = Reader::accept(&mut session).await?;
+			let stream = Reader::accept(&mut session).await?;
 			let subscriber = subscriber.clone();
 
 			spawn(async move {
-				Self::run_data(&mut stream, subscriber).await.or_close(&mut stream).ok();
+				Self::run_data(stream, subscriber).await.ok();
 			});
 		}
 	}
 
-	async fn run_data(stream: &mut Reader, mut subscriber: Subscriber) -> Result<(), Error> {
+	async fn run_data(mut stream: Reader, mut subscriber: Subscriber) -> Result<(), Error> {
 		let kind = stream.decode().await?;
 		match kind {
 			message::DataType::Group => subscriber.recv_group(stream).await,
@@ -134,19 +132,16 @@ impl Session {
 
 	async fn run_bi(mut session: web_transport::Session, publisher: Publisher) -> Result<(), Error> {
 		loop {
-			let mut stream = Stream::accept(&mut session).await?;
+			let stream = Stream::accept(&mut session).await?;
 			let publisher = publisher.clone();
 
 			spawn(async move {
-				Self::run_control(&mut stream, publisher)
-					.await
-					.or_close(&mut stream)
-					.ok();
+				Self::run_control(stream, publisher).await.ok();
 			});
 		}
 	}
 
-	async fn run_control(stream: &mut Stream, mut publisher: Publisher) -> Result<(), Error> {
+	async fn run_control(mut stream: Stream, mut publisher: Publisher) -> Result<(), Error> {
 		let kind = stream.reader.decode().await?;
 		match kind {
 			message::ControlType::Session => Err(Error::UnexpectedStream(kind)),
@@ -167,7 +162,7 @@ impl Session {
 	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
 	///
 	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
-	pub fn consume(&self, broadcast: Broadcast) -> BroadcastConsumer {
+	pub fn consume(&self, broadcast: &Broadcast) -> BroadcastConsumer {
 		self.subscriber.consume(broadcast)
 	}
 
@@ -191,7 +186,7 @@ impl Session {
 		let mut announced = self.announced(prefix);
 
 		while let Some(broadcast) = announced.active().await {
-			let broadcast = self.consume(broadcast);
+			let broadcast = self.consume(&broadcast);
 			origin.publish(broadcast);
 		}
 	}

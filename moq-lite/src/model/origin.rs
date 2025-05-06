@@ -36,25 +36,17 @@ impl Origin {
 		// Spawn a background task to clean up the broadcast when it closes.
 		let mut this = self.clone();
 		spawn(async move {
-			tracing::debug!(broadcast = ?broadcast.info.path, "waiting for cleanup");
-
 			broadcast.closed().await;
 			let mut routes = this.routes.lock();
 
 			// NOTE: Because we don't have an abort handle (in WASM), we can't cancel the task.
 			// That's why we have to check if our broadcast is still active and not a duplicate.
 
-			tracing::debug!(broadcast = ?broadcast.info.path, "running cleanup");
-
 			let existing = routes.remove(&broadcast.info).unwrap();
 			if existing == broadcast {
-				tracing::debug!(broadcast = ?broadcast.info.path, "removing");
-
 				this.unique.remove(&broadcast.info);
 			} else {
 				// Oops, put it back (we were a duplicate).
-				tracing::debug!(broadcast = ?broadcast.info.path, "reinserting");
-
 				routes.insert(broadcast.info, existing);
 			}
 		});

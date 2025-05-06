@@ -49,7 +49,7 @@ impl Room {
 				continue;
 			}
 
-			let consumer = self.session.consume(broadcast);
+			let consumer = self.session.consume(&broadcast);
 			return Some(consumer.into());
 		}
 	}

@@ -1,8 +1,7 @@
 use crate::{message, model::GroupConsumer, Announced, Broadcast, BroadcastConsumer, Error, Origin, Track};
+use web_async::FuturesExt;
 
-use web_async::{spawn, FuturesExt};
-
-use super::{OrClose, Stream, Writer};
+use super::{Stream, Writer};
 
 #[derive(Clone)]
 pub(super) struct Publisher {
@@ -23,11 +22,22 @@ impl Publisher {
 		self.broadcasts.publish(broadcast)
 	}
 
-	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_announce(&mut self, mut stream: Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceRequest>().await?;
 		let prefix = interest.prefix;
-		tracing::debug!(%prefix, "serving announcements");
 
+		tracing::debug!(%prefix, "announce started");
+
+		if let Err(err) = self.recv_announce_inner(stream, &prefix).await {
+			tracing::warn!(?err, %prefix, "announce error");
+		} else {
+			tracing::debug!(%prefix, "announce complete");
+		}
+
+		Ok(())
+	}
+
+	async fn recv_announce_inner(&mut self, mut stream: Stream, prefix: &str) -> Result<(), Error> {
 		let mut announced = self.broadcasts.announced(&prefix);
 
 		// Flush any synchronously announced paths
@@ -51,21 +61,35 @@ impl Publisher {
 			}
 		}
 
+		stream.writer.close();
+		stream.reader.finished().await?;
+
 		Ok(())
 	}
 
-	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
+	pub async fn recv_subscribe(&mut self, mut stream: Stream) -> Result<(), Error> {
 		let subscribe = stream.reader.decode::<message::Subscribe>().await?;
 
+		tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe started");
+
+		if let Err(err) = self.recv_subscribe_inner(stream, &subscribe).await {
+			tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe error");
+		} else {
+			tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe complete");
+		}
+
+		Ok(())
+	}
+
+	async fn recv_subscribe_inner(&mut self, mut stream: Stream, subscribe: &message::Subscribe) -> Result<(), Error> {
+		let broadcast = Broadcast::new(subscribe.broadcast.clone());
 		let track = Track {
-			name: subscribe.track,
+			name: subscribe.track.clone(),
 			priority: subscribe.priority,
 		};
 
-		let broadcast = Broadcast::new(subscribe.broadcast);
-
 		let broadcast = self.broadcasts.consume(&broadcast).ok_or(Error::NotFound)?;
-		let mut track = broadcast.subscribe(track);
+		let mut track = broadcast.subscribe(&track);
 
 		// TODO wait until track.info() to get the *real* priority
 
@@ -73,22 +97,43 @@ impl Publisher {
 			priority: track.info.priority,
 		};
 
-		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id = subscribe.id, "serving subscription");
-
 		stream.writer.encode(&info).await?;
+
+		// Kind of hacky, but we only serve up to two groups concurrently.
+		// This avoids a race where we try to cancel the previous group at the same time as we FIN it.
+		// We don't want to allow N concurrent groups otherwise slow consumers will eat our RAM.
+		// FuturesOrdered would be used if there was a `pop` method.
+		let mut old_group = None;
+		let mut new_group = None;
 
 		loop {
 			tokio::select! {
 				Some(group) = track.next_group().transpose() => {
-					let mut group = group?;
+					let group = group?;
 					let session = self.session.clone();
 					let priority = Self::stream_priority(subscribe.priority, group.info.sequence);
 
-					spawn(async move {
-						if let Err(err) = Self::serve_group(session, subscribe.id, priority, &mut group).await {
-							tracing::warn!(?err, subscribe = ?subscribe.id, group = ?group.info, "dropped group");
-						}
-					});
+					let future = Some(Box::pin(Self::serve_group(session, subscribe.id, priority, group)));
+					if new_group.is_none() {
+						new_group = future;
+					} else {
+						old_group = new_group;
+						new_group = future;
+					}
+				},
+				Some(res) = async { Some(old_group.as_mut()?.await) } => {
+					old_group = None;
+					if let Err(err) = res {
+						tracing::warn!(?err, subscribe = ?subscribe.id, "group error");
+					}
+				},
+				Some(res) = async { Some(new_group.as_mut()?.await) } => {
+					new_group = None;
+					old_group = None; // Also cancel the old group because it's so far behind.
+
+					if let Err(err) = res {
+						tracing::warn!(?err, subscribe = ?subscribe.id, "group error");
+					}
 				},
 				res = stream.reader.decode_maybe::<message::SubscribeUpdate>() => match res? {
 					Some(_update) => {
@@ -100,7 +145,8 @@ impl Publisher {
 			}
 		}
 
-		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id = subscribe.id, "subscription complete");
+		stream.writer.close();
+		stream.reader.finished().await?;
 
 		Ok(())
 	}
@@ -109,22 +155,13 @@ impl Publisher {
 		mut session: web_transport::Session,
 		subscribe: u64,
 		priority: i32,
-		group: &mut GroupConsumer,
+		mut group: GroupConsumer,
 	) -> Result<(), Error> {
 		// TODO open streams in priority order to help with MAX_STREAMS flow control issues.
 		let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
+
 		stream.set_priority(priority);
 
-		Self::serve_group_inner(subscribe, group, &mut stream)
-			.await
-			.or_close(&mut stream)
-	}
-
-	pub async fn serve_group_inner(
-		subscribe: u64,
-		group: &mut GroupConsumer,
-		stream: &mut Writer,
-	) -> Result<(), Error> {
 		let msg = message::Group {
 			subscribe,
 			sequence: group.info.sequence,
@@ -148,8 +185,7 @@ impl Publisher {
 			}
 		}
 
-		// TODO block until all bytes have been acknowledged so we can still reset
-		// writer.finish().await?;
+		stream.close();
 
 		Ok(())
 	}

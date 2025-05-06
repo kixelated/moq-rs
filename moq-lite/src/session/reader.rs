@@ -4,8 +4,6 @@ use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{coding::*, Error};
 
-use super::Close;
-
 pub struct Reader {
 	stream: web_transport::RecvStream,
 	buffer: BytesMut,
@@ -76,18 +74,10 @@ impl Reader {
 
 		Err(DecodeError::ExpectedEnd.into())
 	}
-
-	/*
-	/// Wait until the stream is closed, ignoring any unread bytes
-	pub async fn closed(&mut self) -> Result<(), Error> {
-		while self.stream.read_buf(&mut self.buffer).await?.is_some() {}
-		Ok(())
-	}
-	*/
 }
 
-impl Close<Error> for Reader {
-	fn close(&mut self, err: Error) {
-		self.stream.stop(err.to_code());
+impl Drop for Reader {
+	fn drop(&mut self) {
+		self.stream.stop(Error::Cancel.to_code());
 	}
 }

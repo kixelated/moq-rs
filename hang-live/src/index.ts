@@ -359,7 +359,7 @@ export class Room {
 		for (let i = 0; i < bars / 2; i++) {
 			const power = barData[i] / 255;
 			const hue = 2 ** power * 100 + 135;
-			const barWidth = 3 ** power * barScale;
+			const barWidth = 4 ** power * barScale;
 
 			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
 			this.#ctx.fillRect(-barWidth, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);
@@ -374,7 +374,7 @@ export class Room {
 		for (let i = 0; i < bars / 2; i++) {
 			const power = barData[i] / 255;
 			const hue = 2 ** power * 100 + 135;
-			const barWidth = 3 ** power * barScale;
+			const barWidth = 4 ** power * barScale;
 
 			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
 			this.#ctx.fillRect(bounds.size.x, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);

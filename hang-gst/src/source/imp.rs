@@ -169,7 +169,7 @@ impl HangSrc {
 
 		let session = client.connect(url).await?;
 		let session = moq_lite::Session::connect(session).await?;
-		let broadcast = session.consume(broadcast.into());
+		let broadcast = session.consume(&broadcast.into());
 		let mut broadcast = hang::BroadcastConsumer::new(broadcast);
 
 		// TODO handle catalog updates
@@ -178,7 +178,7 @@ impl HangSrc {
 		gst::info!(CAT, "catalog: {:?}", catalog);
 
 		for video in catalog.video {
-			let mut track = broadcast.track(video.track.clone());
+			let mut track = broadcast.track(&video.track);
 
 			let caps = match video.codec {
 				hang::VideoCodec::H264(_) => {
@@ -257,7 +257,7 @@ impl HangSrc {
 		}
 
 		for audio in catalog.audio {
-			let mut track = broadcast.track(audio.track.clone());
+			let mut track = broadcast.track(&audio.track);
 
 			let caps = match &audio.codec {
 				hang::AudioCodec::AAC(_aac) => {

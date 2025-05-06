@@ -71,8 +71,8 @@ async fn main() -> anyhow::Result<()> {
 			clock.run().await
 		}
 		Command::Subscribe => {
-			let broadcast = session.consume(broadcast);
-			let track = broadcast.subscribe(track);
+			let broadcast = session.consume(&broadcast);
+			let track = broadcast.subscribe(&track);
 			let clock = clock::Subscriber::new(track);
 
 			clock.run().await

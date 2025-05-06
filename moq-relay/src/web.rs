@@ -116,7 +116,7 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 	tracing::info!(?broadcast, ?track, "subscribing to track");
 
 	let broadcast = cluster.consume(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
-	let mut track = broadcast.subscribe(track);
+	let mut track = broadcast.subscribe(&track);
 
 	let group = match track.next_group().await {
 		Ok(group) => group,

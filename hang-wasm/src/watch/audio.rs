@@ -42,7 +42,7 @@ impl Audio {
 			}
 		}
 
-		let track = broadcast.track(audio.track.clone());
+		let track = broadcast.track(&audio.track);
 
 		// TODO handle the error instead of ignoring it.
 		let track = AudioTrack::new(track, audio.clone()).ok()?;

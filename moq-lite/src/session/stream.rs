@@ -1,4 +1,4 @@
-use super::{Close, Reader, Writer};
+use super::{Reader, Writer};
 use crate::{message, Error};
 
 pub(super) struct Stream {
@@ -24,12 +24,5 @@ impl Stream {
 		let reader = Reader::new(recv);
 
 		Ok(Stream { writer, reader })
-	}
-}
-
-impl Close<Error> for Stream {
-	fn close(&mut self, err: Error) {
-		self.writer.close(err.clone());
-		self.reader.close(err);
 	}
 }

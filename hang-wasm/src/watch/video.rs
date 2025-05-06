@@ -64,7 +64,7 @@ impl Video {
 			}
 		}
 
-		let track = broadcast.track(video.track.clone());
+		let track = broadcast.track(&video.track);
 
 		// TODO handle the error instead of ignoring it.
 		let video = VideoTrack::new(track, video.clone()).ok()?;

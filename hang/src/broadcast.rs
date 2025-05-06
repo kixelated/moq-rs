@@ -89,12 +89,12 @@ impl BroadcastConsumer {
 			priority: -1,
 		};
 
-		let catalog = inner.subscribe(track).into();
+		let catalog = inner.subscribe(&track).into();
 		Self { inner, catalog }
 	}
 
 	/// Subscribes to a track
-	pub fn track(&self, track: Track) -> TrackConsumer {
+	pub fn track(&self, track: &Track) -> TrackConsumer {
 		self.inner.subscribe(track).into()
 	}
 }

@@ -22,25 +22,27 @@ impl Broadcast {
 	pub fn produce(self) -> BroadcastProducer {
 		BroadcastProducer::new(self)
 	}
-
-	/*
-	/// Return a new broadcast with the given prefix removed from the path.
-	///
-	/// If the prefix is not a prefix of the path, return None.
-	pub fn strip_prefix(self, prefix: &str) -> Option<Broadcast> {
-		if prefix.is_empty() {
-			Some(self)
-		} else {
-			let suffix = self.path.strip_prefix(prefix)?;
-			Some(suffix.into())
-		}
-	}
-	*/
 }
 
 impl<T: ToString> From<T> for Broadcast {
 	fn from(path: T) -> Self {
 		Self::new(path)
+	}
+}
+
+struct State {
+	published: HashMap<String, TrackConsumer>,
+	requested: HashMap<String, TrackProducer>,
+	queue: async_channel::Sender<TrackProducer>,
+}
+
+impl State {
+	pub fn new(queue: async_channel::Sender<TrackProducer>) -> Self {
+		Self {
+			published: HashMap::new(),
+			requested: HashMap::new(),
+			queue,
+		}
 	}
 }
 
@@ -52,9 +54,8 @@ impl<T: ToString> From<T> for Broadcast {
 pub struct BroadcastProducer {
 	pub info: Broadcast,
 
-	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
+	state: Arc<Mutex<State>>,
 	queue: async_channel::Receiver<TrackProducer>,
-	weak: async_channel::Sender<TrackProducer>,
 
 	// Dropped when all senders or all receivers are dropped.
 	// TODO Make a better way of doing this.
@@ -67,9 +68,8 @@ impl BroadcastProducer {
 
 		Self {
 			info,
+			state: Arc::new(Mutex::new(State::new(send))),
 			queue: recv,
-			lookup: Arc::new(Mutex::new(HashMap::new())),
-			weak: send.clone(),
 			closed: watch::Sender::default(),
 		}
 	}
@@ -86,22 +86,21 @@ impl BroadcastProducer {
 
 	/// Insert a new track into the lookup, returning the old track if it already exists.
 	pub fn insert(&self, track: TrackConsumer) -> Option<TrackConsumer> {
-		let mut lookup = self.lookup.lock().unwrap();
-		lookup.insert(track.info.name.clone(), track)
+		let mut state = self.state.lock().unwrap();
+		state.published.insert(track.info.name.clone(), track)
 	}
 
 	/// Remove a track from the lookup.
 	pub fn remove(&self, name: &str) -> Option<TrackConsumer> {
-		let mut lookup = self.lookup.lock().unwrap();
-		lookup.remove(name)
+		let mut state = self.state.lock().unwrap();
+		state.published.remove(name)
 	}
 
 	// Try to create a new consumer.
 	pub fn consume(&self) -> BroadcastConsumer {
 		BroadcastConsumer {
 			info: self.info.clone(),
-			queue: self.weak.clone(),
-			lookup: self.lookup.clone(),
+			state: self.state.clone(),
 			closed: self.closed.subscribe(),
 		}
 	}
@@ -125,25 +124,47 @@ impl From<Broadcast> for BroadcastProducer {
 pub struct BroadcastConsumer {
 	pub info: Broadcast,
 
-	lookup: Arc<Mutex<HashMap<String, TrackConsumer>>>,
-	queue: async_channel::Sender<TrackProducer>,
+	state: Arc<Mutex<State>>,
 
 	// Annoying, but we need to know when the above channel is closed without sending.
 	closed: watch::Receiver<()>,
 }
 
 impl BroadcastConsumer {
-	pub fn subscribe(&self, track: Track) -> TrackConsumer {
-		if let Some(consumer) = self.lookup.lock().unwrap().get(&track.name).cloned() {
+	pub fn subscribe(&self, track: &Track) -> TrackConsumer {
+		let mut state = self.state.lock().unwrap();
+
+		// Return any explictly published track.
+		if let Some(consumer) = state.published.get(&track.name).cloned() {
 			return consumer;
 		}
 
-		let producer = track.produce();
+		// Return any requested track, deduplicating it.
+		if let Some(requested) = state.requested.get(&track.name) {
+			return requested.consume();
+		}
+
+		// Otherwise we have never seen this track before and need to create a new producer.
+		let producer = track.clone().produce();
 		let consumer = producer.consume();
 
-		let queue = self.queue.clone();
+		// Insert the producer into the lookup so we will deduplicate requests.
+		// This is not a subscriber so it doesn't count towards "used" subscribers.
+		state.requested.insert(track.name.clone(), producer.clone());
+
+		let queue = state.queue.clone();
+		let state = self.state.clone();
+		let track = track.clone();
+
 		web_async::spawn(async move {
-			let _ = queue.send(producer).await;
+			// Send the request to the producer.
+			let _ = queue.send(producer.clone()).await;
+
+			// Wait until we no longer want this track.
+			producer.unused().await;
+
+			// Remove the track from the lookup.
+			state.lock().unwrap().requested.remove(&track.name);
 		});
 
 		consumer
@@ -157,8 +178,9 @@ impl BroadcastConsumer {
 /// Returns true if both consumers are for the same *instance* of a broadcast.
 ///
 /// Two broadcasts with the same name may NOT be equal if they are different instances.
+// This is pretty gross.
 impl PartialEq for BroadcastConsumer {
 	fn eq(&self, other: &Self) -> bool {
-		Arc::ptr_eq(&self.lookup, &other.lookup)
+		Arc::ptr_eq(&self.state, &other.state)
 	}
 }
