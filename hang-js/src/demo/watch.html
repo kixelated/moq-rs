@@ -1,18 +1,14 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark dark">
+<html lang="en" class="dark">
 
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
-
-	<!-- Use shoelace for some basic UI elements. -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css" />
-	<script type="module"
-		src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
+	<link rel="stylesheet" href="index.css">
 </head>
 
-<body class="prose dark:prose-invert lg:prose-xl max-w-none p-8">
+<body>
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
 		<hang-watch url="http://localhost:4443/demo/bbb" id="watch">
@@ -22,38 +18,25 @@
 
 		<!-- Make some "simple" controls to demonstate the API. -->
 		<div style="justify-content: space-between; margin: 8px 0; gap: 8px; display: flex;">
-			<div style="display: flex; gap: 8px;">
-				<sl-button id="pause">
-					<sl-icon name="pause" label="Pause" />
-				</sl-button>
+			<button id="pause" title="Pause">
+				⏸️
+			</button>
 
-				<sl-dropdown placement="top-start" distance=2 hoist>
-					<sl-button slot="trigger">
-						<sl-icon name="volume-up" label="Volume" />
-					</sl-button>
+			<span>
+				<button id="mute" title="Mute">🔊</button>
+				<input type="range" id="volume" min=0 max=1 step=0.01 value=0.5 title="Volume"></input>
+				<span id="volume-value">50%</span>
+			</span>
 
-					<sl-menu>
-						<sl-menu-item>
-							<sl-range tooltip="none" id="volume" label="Volume" min=0 max=1 step=0.01 />
-						</sl-menu-item>
-					</sl-menu>
-				</sl-dropdown>
-			</div>
+			<span id="status">🟡 Initializing...</span>
 
-			<div style="display: flex; align-items: center; gap: 8px;">
-				<sl-spinner id="spinner"></sl-spinner>
-				<span id="status">Initializing...</span>
-			</div>
+			<span title="Latency">
+				⏳
+				<input type="range" id="latency" min=0 max=4000 step=10 value=50></input>
+				<span id="latency-value">50ms</span>
+			</span>
 
-			<div style="display: flex; gap: 8px;">
-				<sl-tooltip content="Latency" placement="bottom">
-					<sl-range id="latency" min=0 max=4000 step=50 defaultValue=50></sl-range>
-				</sl-tooltip>
-
-				<sl-button id="fullscreen">
-					<sl-icon name="fullscreen" label="Fullscreen" />
-				</sl-button>
-			</div>
+			<button id="fullscreen" title="Fullscreen">⛶</button>
 		</div>
 	</div>
 
@@ -128,15 +111,17 @@ just pub bbb
 
 <script>
 	// Yes this is a terrible mess and not how we make websites in >current year<.
-	// But it's a demo, I'm lazy, and I don't want to require a build step.
+	// But this is a demo and I don't feel like making it more complicated via React.
 	const watch = document.getElementById("watch");
 	const pause = document.getElementById("pause");
 	const fullscreen = document.getElementById("fullscreen");
-	const spinner = document.getElementById("spinner");
 	const status = document.getElementById("status");
 	const volume = document.getElementById("volume");
 	const container = document.getElementById("container");
 	const latency = document.getElementById("latency");
+	const latencyValue = document.getElementById("latency-value");
+	const volumeValue = document.getElementById("volume-value");
+	const mute = document.getElementById("mute");
 
 	// If query params are provided, use them as the broadcast URL instead of the default.
 	const urlParams = new URLSearchParams(window.location.search);
@@ -149,9 +134,29 @@ just pub bbb
 
 	// Listen for clicks on the pause button.
 	pause.addEventListener("click", () => {
-		const paused = watch.video.paused;
-		watch.video.paused = !paused;
-		watch.audio.paused = !paused;
+		watch.video.paused = !watch.video.paused;
+		watch.audio.paused = watch.video.paused;
+
+		if (watch.video.paused) {
+			pause.textContent = "▶️";
+		} else {
+			pause.textContent = "⏸️";
+		}
+	});
+
+	// Listen for clicks on the mute button.
+	mute.addEventListener("click", () => {
+		watch.audio.muted = !watch.audio.muted;
+
+		if (watch.audio.muted) {
+			mute.textContent = "🔇";
+			volume.value = 0;
+			volumeValue.textContent = "0%";
+		} else {
+			mute.textContent = "🔊";
+			volume.value = watch.audio.volume;
+			volumeValue.textContent = `${(watch.audio.volume * 100).toFixed(0)}%`;
+		}
 	});
 
 	// Listen for clicks on the fullscreen button.
@@ -166,39 +171,50 @@ just pub bbb
 		fullscreenActive = !fullscreenActive;
 	});
 
-	// Set the volume to 50% by default.
-	volume.value = 0.50;
-
 	// Listen for changes to the volume input.
-	volume.addEventListener("sl-input", () => {
+	volume.addEventListener("input", () => {
+		if (watch.audio.muted) {
+			mute.textContent = "🔊";
+			watch.audio.muted = false;
+		}
+
 		watch.audio.volume = Number.parseFloat(volume.value);
+		volumeValue.textContent = `${(volume.value * 100).toFixed(0)}%`;
+
+		if (volume.value === 0) {
+			mute.textContent = "🔇";
+		}
 	});
 
 	// Listen for connection status changes.
 	watch.addEventListener("hang-watch-connection", (event) => {
 		if (event.detail === "connected") {
-			status.textContent = "Connected";
-			spinner.style.display = "none";
+			status.textContent = "🟢 Connected";
 		} else if (event.detail === "connecting") {
-			status.textContent = "Connecting...";
-			spinner.style.display = "block";
+			status.textContent = "🟡 Connecting...";
 		} else if (event.detail === "disconnected") {
-			status.textContent = "Disconnected";
-			spinner.style.display = "none";
+			status.textContent = "🔴 Disconnected";
 		} else {
 			throw new Error(`Unknown connection status: ${event.detail}`);
 		}
 	});
 
 	// Listen for changes to the latency input.
-	latency.addEventListener("sl-input", () => {
+	latency.addEventListener("input", () => {
 		watch.audio.latency = Number.parseInt(latency.value);
 		watch.video.latency = Number.parseInt(latency.value);
+		latencyValue.textContent = `${latency.value}ms`;
 	});
 
 	// Optional: Stop downloading video when the page is hidden.
 	document.addEventListener("visibilitychange", () => {
 		watch.video.paused = document.visibilityState === "hidden";
+
+		if (watch.video.paused) {
+			pause.textContent = "▶️";
+		} else {
+			pause.textContent = "⏸️";
+		}
 	});
 </script>
 

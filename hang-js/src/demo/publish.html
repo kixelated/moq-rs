@@ -1,18 +1,13 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark dark">
+<html lang="en" class="dark">
 
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
-
-	<!-- Use shoelace for some basic styling. -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css" />
-	<script type="module"
-		src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
 </head>
 
-<body class="prose dark:prose-invert lg:prose-xl max-w-none p-8">
+<body>
 	<!-- Use the included custom element to render a preview. -->
 	<hang-publish url="http://localhost:4443/demo/me" id="publish">
 		<!-- Optionally provide a custom video element that we can style as needed -->
@@ -20,35 +15,17 @@
 	</hang-publish>
 
 	<!-- Make some simple controls to demonstate the API. -->
-	<div style="display: flex; justify-content: center; gap: 16px; margin: 8px 0;">
-		<div style="display: flex; align-items: center; gap: 8px;">
-			<sl-spinner id="spinner"></sl-spinner>
-			<span id="status">Initializing...</span>
-		</div>
+	<div style="display: flex; justify-content: space-around; gap: 16px; margin: 8px 0;">
+		<span id="status">🟡 Initializing...</span>
 
-		<sl-radio-group>
-			<sl-tooltip content="Publish your webcam." placement="bottom">
-				<sl-radio-button id="camera">
-					<sl-icon slot="prefix" name="camera" label="Camera" />
-				</sl-radio-button>
-			</sl-tooltip>
+		<span style="display: flex; gap: 16px;">
+			Device:
+			<button id="camera" title="Camera">🎥</button>
+			<button id="screen" title="Screen">🖥️</button>
+			<button id="none" title="Nothing">🚫</button>
+		</span>
 
-			<sl-tooltip content="Publish a screen or window." placement="bottom">
-				<sl-radio-button id="screen">
-					<sl-icon slot="prefix" name="display" label="Screen" />
-				</sl-radio-button>
-			</sl-tooltip>
-
-			<sl-tooltip content="Publish nothing." placement="bottom">
-				<sl-radio-button id="none">
-					<sl-icon slot="prefix" name="x" label="None" />
-				</sl-radio-button>
-			</sl-tooltip>
-		</sl-radio-group>
-
-		<div style="display: flex; align-items: center; gap: 8px;">
-			<a target="_blank" id="watch" style="visibility: hidden;">Watch</a>
-		</div>
+		<a target="_blank" id="watch">Watch</a>
 	</div>
 
 	<h3>Other demos:</h3>
@@ -120,21 +97,13 @@ publish.url = "http://localhost:4443/demo/me";</code></pre>
 	// Listen for connection status changes.
 	publish.addEventListener("hang-publish-status", (event) => {
 		if (event.detail === "connected") {
-			status.textContent = "Connected";
-			spinner.style.display = "none";
-			watch.style.visibility = "visible";
+			status.textContent = "🟢 Connected";
 		} else if (event.detail === "connecting") {
-			status.textContent = "Connecting...";
-			spinner.style.display = "block";
-			watch.style.visibility = "hidden";
+			status.textContent = "🟡 Connecting...";
 		} else if (event.detail === "disconnected") {
-			status.textContent = "Disconnected";
-			spinner.style.display = "none";
-			watch.style.visibility = "hidden";
+			status.textContent = "🔴 Disconnected";
 		} else if (event.detail === "live") {
-			status.textContent = "Live";
-			spinner.style.display = "none";
-			watch.style.visibility = "visible";
+			status.textContent = "🟢 Live";
 		} else {
 			throw new Error(`Unknown connection status: ${event.detail}`);
 		}
