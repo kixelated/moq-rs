@@ -38,7 +38,7 @@ impl Publisher {
 	}
 
 	async fn recv_announce_inner(&mut self, mut stream: Stream, prefix: &str) -> Result<(), Error> {
-		let mut announced = self.broadcasts.announced(&prefix);
+		let mut announced = self.broadcasts.announced(prefix);
 
 		// Flush any synchronously announced paths
 		loop {
@@ -46,7 +46,7 @@ impl Publisher {
 				announced = announced.next() => {
 					match announced {
 						Some(Announced::Start(broadcast)) => {
-							let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+							let suffix = broadcast.path.strip_prefix(prefix).ok_or(Error::ProtocolViolation)?;
 
 							let msg = message::Announce::Active {
 								suffix: suffix.to_string(),
@@ -54,7 +54,7 @@ impl Publisher {
 							stream.writer.encode(&msg).await?;
 						}
 						Some(Announced::End(broadcast)) => {
-							let suffix = broadcast.path.strip_prefix(&prefix).ok_or(Error::ProtocolViolation)?;
+							let suffix = broadcast.path.strip_prefix(prefix).ok_or(Error::ProtocolViolation)?;
 							let msg = message::Announce::Ended {
 								suffix: suffix.to_string(),
 							};

@@ -75,7 +75,7 @@ impl Subscriber {
 				res = stream.reader.decode_maybe::<message::Announce>() => {
 					match res? {
 						// Handle the announce
-						Some(announce) => Self::recv_announce(announce, &prefix, &mut announced)?,
+						Some(announce) => Self::recv_announce(announce, prefix, &mut announced)?,
 						// Stop if the stream has been closed
 						None => break,
 					}
