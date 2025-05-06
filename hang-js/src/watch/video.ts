@@ -63,7 +63,9 @@ export class VideoTracks {
 		if (info) {
 			const track = this.broadcast.subscribe(info.track.name, info.track.priority);
 			this.#active = new VideoTrack(track, info);
-			this.#active.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true });
+			this.#active.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch((err) => {
+				console.error("video error", err);
+			});
 		}
 	}
 
@@ -199,7 +201,7 @@ export class VideoRenderer {
 		this.#broadcast?.close();
 
 		this.#broadcast = broadcast;
-		broadcast?.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true });
+		broadcast?.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
 
 		this.#reload();
 	}

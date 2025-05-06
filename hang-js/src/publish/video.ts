@@ -43,6 +43,7 @@ export class Video {
 
 		this.#run()
 			.catch((err: Error) => {
+				console.error("video error", err);
 				this.track.writer.abort(err);
 				this.decoderConfig.reject(err);
 			})

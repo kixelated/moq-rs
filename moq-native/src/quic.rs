@@ -114,6 +114,13 @@ impl Server {
 						return Some(session)
 					}
 				}
+				_ = tokio::signal::ctrl_c() => {
+					self.close();
+					// Give it a chance to close.
+					tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+					return None;
+				}
 			}
 		}
 	}
@@ -162,6 +169,10 @@ impl Server {
 
 	pub fn local_addr(&self) -> anyhow::Result<net::SocketAddr> {
 		self.quic.local_addr().context("failed to get local address")
+	}
+
+	pub fn close(&mut self) {
+		self.quic.close(quinn::VarInt::from_u32(0), b"server shutdown");
 	}
 }
 

@@ -18,6 +18,7 @@ export class Bridge {
 					if (event.data === "Init") {
 						resolve(worker);
 					} else {
+						console.error("unknown init event", event.data);
 						reject(new Error(`Unknown init event: ${event.data}`));
 					}
 				},

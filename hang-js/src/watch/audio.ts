@@ -64,7 +64,7 @@ export class AudioTracks {
 			const track = this.broadcast.subscribe(info.track.name, info.track.priority);
 			this.#active = new AudioTrack(track, info);
 
-			this.#active.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true });
+			this.#active.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
 		}
 	}
 
@@ -192,7 +192,7 @@ export class AudioEmitter {
 
 		if (broadcast) {
 			broadcast.enabled = !this.#paused && this.#volume > 0;
-			broadcast.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true });
+			broadcast.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
 		}
 
 		this.#broadcast = broadcast;

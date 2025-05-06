@@ -11,6 +11,7 @@ export class Deferred<T> {
 				resolve(value);
 			};
 			this.reject = (reason: Error) => {
+				console.error("deferred reject", reason);
 				this.pending = false;
 				reject(reason);
 			};

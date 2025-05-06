@@ -9,6 +9,10 @@ export class Bounds {
 		this.size = size;
 	}
 
+	static dom(el: DOMRect) {
+		return new Bounds(Vector.create(el.x, el.y), Vector.create(el.width, el.height));
+	}
+
 	middle() {
 		return Vector.create(this.position.x + this.size.x / 2, this.position.y + this.size.y / 2);
 	}

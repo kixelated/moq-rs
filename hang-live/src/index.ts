@@ -4,6 +4,9 @@ import * as Moq from "@kixelated/moq";
 import { Bounds } from "./util/bounds";
 import { Vector } from "./util/vector";
 
+const header = document.querySelector("header");
+const footer = document.querySelector("footer");
+
 export class Room {
 	// The connection to the server.
 	connection: Moq.Connection;
@@ -118,6 +121,13 @@ export class Room {
 			{ passive: false },
 		);
 
+		// Optional: Stop downloading video when the page is hidden.
+		document.addEventListener("visibilitychange", () => {
+			for (const broadcast of this.#broadcasts.values()) {
+				broadcast.watch.video.enabled = document.visibilityState !== "hidden";
+			}
+		});
+
 		this.#run().finally(() => this.close());
 		requestAnimationFrame(this.#tick.bind(this));
 	}
@@ -172,6 +182,7 @@ export class Room {
 
 		broadcast.audio.muted = this.#muted;
 		broadcast.audio.latency = 100;
+		broadcast.watch.video.enabled = document.visibilityState !== "hidden";
 		broadcast.video.latency = 100;
 
 		this.#broadcasts.set(path, broadcast);
@@ -233,10 +244,23 @@ export class Room {
 			}
 		}
 
+		const avoid = [];
+
+		if (header) {
+			for (const el of Array.from(header.children)) {
+				avoid.push(Bounds.dom(el.getBoundingClientRect()));
+			}
+		}
+
+		if (footer) {
+			avoid.push(Bounds.dom(footer.getBoundingClientRect()));
+		}
+
 		// Loop over again, this time checking for collisions.
 		for (let i = 0; i < broadcasts.length; i++) {
+			const a = broadcasts[i];
+
 			for (let j = i + 1; j < broadcasts.length; j++) {
-				const a = broadcasts[i];
 				const b = broadcasts[j];
 
 				// Compute the intersection rectangle.
@@ -255,6 +279,16 @@ export class Room {
 
 				a.velocity = a.velocity.add(force);
 				b.velocity = b.velocity.sub(force);
+			}
+
+			for (const nav of avoid) {
+				const intersection = a.bounds.intersects(nav);
+				if (!intersection) {
+					continue;
+				}
+
+				const strength = intersection.area() / nav.area();
+				a.velocity = a.velocity.add(a.bounds.middle().sub(nav.middle()).mult(strength));
 			}
 		}
 
@@ -364,13 +398,35 @@ export class Room {
 				this.#updateScale();
 			}
 
+			this.#ctx.save();
+
 			if (this.#dragging === broadcast) {
 				// Apply an opacity to the image.
 				this.#ctx.globalAlpha = 0.7;
 			}
 
+			// Create a rounded rectangle path
+			const radius = 8;
+			const w = bounds.size.x;
+			const h = bounds.size.y;
+
+			this.#ctx.beginPath();
+			this.#ctx.moveTo(radius, 0);
+			this.#ctx.lineTo(w - radius, 0);
+			this.#ctx.quadraticCurveTo(w, 0, w, radius);
+			this.#ctx.lineTo(w, h - radius);
+			this.#ctx.quadraticCurveTo(w, h, w - radius, h);
+			this.#ctx.lineTo(radius, h);
+			this.#ctx.quadraticCurveTo(0, h, 0, h - radius);
+			this.#ctx.lineTo(0, radius);
+			this.#ctx.quadraticCurveTo(0, 0, radius, 0);
+			this.#ctx.closePath();
+
+			// Clip and draw the image
+			this.#ctx.clip();
+
 			this.#ctx.drawImage(frame, 0, 0, bounds.size.x, bounds.size.y);
-			this.#ctx.globalAlpha = 1.0;
+			this.#ctx.restore();
 		} else {
 			this.#ctx.fillRect(0, 0, bounds.size.x, bounds.size.y);
 		}
@@ -412,17 +468,19 @@ export class Room {
 		}
 
 		if (this.#hovering === broadcast) {
-			//this.#ctx.lineWidth = 1;
-			//this.#ctx.strokeStyle = "white";
-			//this.#ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
+			/*
+			this.#ctx.lineWidth = 2;
+			this.#ctx.strokeStyle = "white";
+			this.#ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
+			*/
 		}
 
 		this.#ctx.lineWidth = 3;
 		this.#ctx.strokeStyle = "black";
-		this.#ctx.strokeText(broadcast.watch.broadcast.path, 4, 14);
+		this.#ctx.strokeText(broadcast.watch.broadcast.path, 6, 16);
 
 		this.#ctx.fillStyle = "white";
-		this.#ctx.fillText(broadcast.watch.broadcast.path, 4, 14);
+		this.#ctx.fillText(broadcast.watch.broadcast.path, 6, 16);
 		this.#ctx.restore();
 
 		// Draw target for debugging
@@ -536,4 +594,8 @@ window.addEventListener("resize", () => {
 
 Moq.Connection.connect(new URL("http://localhost:4443")).then((connection) => {
 	new Room(connection, "demo/", canvas);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+	console.error("Unhandled promise rejection:", event.reason);
 });

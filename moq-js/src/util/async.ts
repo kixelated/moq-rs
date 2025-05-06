@@ -12,6 +12,7 @@ export class Deferred<T> {
 			};
 			this.reject = (reason: Error) => {
 				this.pending = false;
+				console.error("deferred2 reject", reason);
 				reject(reason);
 			};
 		});
@@ -70,6 +71,7 @@ export class WatchProducer<T> {
 	}
 
 	abort(reason: Error) {
+		console.error("watch abort", reason);
 		this.#closed.reject(reason);
 	}
 

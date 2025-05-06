@@ -15,6 +15,6 @@ async fn main() -> anyhow::Result<()> {
 
 	match config.command.clone() {
 		Command::Serve(server) => Server::new(config, server).await?.run(&mut tokio::io::stdin()).await,
-		Command::Publish(client) => BroadcastClient::new(config, client).run(&mut tokio::io::stdin()).await,
+		Command::Publish(client) => Client::new(config, client).run(&mut tokio::io::stdin()).await,
 	}
 }

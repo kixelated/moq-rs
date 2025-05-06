@@ -1,8 +1,9 @@
 use anyhow::Context;
 use clap::Args;
 use hang::cmaf::Import;
-use hang::moq_lite::Session;
+use hang::moq_lite;
 use hang::{BroadcastConsumer, BroadcastProducer};
+use moq_lite::Session;
 use moq_native::quic;
 use tokio::io::AsyncRead;
 use url::Url;
@@ -22,12 +23,12 @@ pub struct ClientConfig {
 	url: Url,
 }
 
-pub struct BroadcastClient {
+pub struct Client {
 	config: Config,
 	url: Url,
 }
 
-impl BroadcastClient {
+impl Client {
 	pub fn new(config: Config, client_config: ClientConfig) -> Self {
 		Self {
 			config,
@@ -63,7 +64,19 @@ impl BroadcastClient {
 
 		session.publish(consumer.inner.clone());
 
-		Err(session.closed().await.into())
+		tokio::select! {
+			// On ctrl-c, close the session and exit.
+			_ = tokio::signal::ctrl_c() => {
+				session.close(moq_lite::Error::Cancel);
+
+				// Give it a chance to close.
+				tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+				Ok(())
+			}
+			// Otherwise wait for the session to close.
+			_ = session.closed() => Err(session.closed().await.into()),
+		}
 	}
 
 	async fn publish<T: AsyncRead + Unpin>(&self, producer: BroadcastProducer, input: &mut T) -> anyhow::Result<()> {
