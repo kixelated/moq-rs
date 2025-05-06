@@ -4,8 +4,7 @@ import * as Moq from "@kixelated/moq";
 import { Bounds } from "./util/bounds";
 import { Vector } from "./util/vector";
 
-const header = document.querySelector("header");
-const footer = document.querySelector("footer");
+const PADDING = 64;
 
 export class Room {
 	// The connection to the server.
@@ -244,18 +243,6 @@ export class Room {
 			}
 		}
 
-		const avoid = [];
-
-		if (header) {
-			for (const el of Array.from(header.children)) {
-				avoid.push(Bounds.dom(el.getBoundingClientRect()));
-			}
-		}
-
-		if (footer) {
-			avoid.push(Bounds.dom(footer.getBoundingClientRect()));
-		}
-
 		// Loop over again, this time checking for collisions.
 		for (let i = 0; i < broadcasts.length; i++) {
 			const a = broadcasts[i];
@@ -281,14 +268,29 @@ export class Room {
 				b.velocity = b.velocity.sub(force);
 			}
 
-			for (const nav of avoid) {
-				const intersection = a.bounds.intersects(nav);
-				if (!intersection) {
-					continue;
-				}
+			const above = PADDING - a.bounds.position.y;
+			const below = a.bounds.position.y + a.bounds.size.y - (this.canvas.height - PADDING);
+			const left = PADDING - a.bounds.position.x;
+			const right = a.bounds.position.x + a.bounds.size.x - (this.canvas.width - PADDING);
 
-				const strength = intersection.area() / nav.area();
-				a.velocity = a.velocity.add(a.bounds.middle().sub(nav.middle()).mult(strength));
+			if (above > 0) {
+				if (below > 0) {
+					// Do nothing, this element is huge.
+				} else {
+					a.velocity.y += above;
+				}
+			} else if (below > 0) {
+				a.velocity.y -= below;
+			}
+
+			if (left > 0) {
+				if (right > 0) {
+					// Do nothing, this element is huge.
+				} else {
+					a.velocity.x += left;
+				}
+			} else if (right > 0) {
+				a.velocity.x -= right;
 			}
 		}
 

@@ -26,7 +26,6 @@
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			color: white;
 			text-shadow:
 				-2px -2px 0 black,
 				2px -2px 0 black,
@@ -41,6 +40,7 @@
 
 		header>* {
 			padding: 16px;
+			border-radius: 4px;
 			backdrop-filter: blur(2px);
 		}
 
@@ -67,9 +67,7 @@
 		}
 
 		canvas {
-			flex: 1;
 			display: block;
-			width: 100%;
 			background: black;
 		}
 
@@ -84,6 +82,10 @@
 			gap: 12px;
 		}
 
+		footer button {
+			cursor: pointer;
+		}
+
 		footer button,
 		footer input[type="text"] {
 			color: white;
@@ -92,10 +94,19 @@
 			background: transparent;
 			border: 0;
 			backdrop-filter: blur(2px);
+
+			text-shadow:
+				-1px -1px 0 black,
+				1px -1px 0 black,
+				-1px 1px 0 black,
+				1px 1px 0 black;
 		}
 
 		footer input[type="text"] {
 			flex: 1;
+			background: transparent;
+			border: 0;
+			color: white;
 		}
 	</style>
 </head>
