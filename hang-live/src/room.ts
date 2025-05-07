@@ -1,15 +1,13 @@
-import * as Watch from "@kixelated/hang/watch";
 import * as Moq from "@kixelated/moq";
 
-import { Bounds } from "./util/bounds";
-import { Vector } from "./util/vector";
+import { Vector } from "./vector";
+import { Broadcast } from "./broadcast";
 
 const PADDING = 64;
 
 export class Room {
 	// The connection to the server.
-	connection: Moq.Connection;
-	#announced: Moq.AnnouncedReader;
+	#connection: Promise<Moq.Connection>;
 	#broadcasts = new Map<string, Broadcast>();
 
 	canvas: HTMLCanvasElement;
@@ -20,12 +18,11 @@ export class Room {
 	#scale = 1.0;
 
 	#muted = true;
+	#visible = true;
 
-	constructor(connection: Moq.Connection, room: string, canvas: HTMLCanvasElement) {
-		this.connection = connection;
+	constructor(relay: URL, room: string, canvas: HTMLCanvasElement) {
+		this.#connection = Moq.Connection.connect(relay);
 		this.canvas = canvas;
-
-		this.#announced = connection.announced(room);
 
 		const ctx = canvas.getContext("2d");
 		if (!ctx) {
@@ -120,15 +117,29 @@ export class Room {
 			{ passive: false },
 		);
 
-		// Optional: Stop downloading video when the page is hidden.
-		document.addEventListener("visibilitychange", () => {
-			for (const broadcast of this.#broadcasts.values()) {
-				broadcast.watch.video.enabled = document.visibilityState !== "hidden";
-			}
-		});
-
-		this.#run().finally(() => this.close());
 		requestAnimationFrame(this.#tick.bind(this));
+
+		this.#run(room).finally(() => this.close());
+	}
+
+	async #run(room: string) {
+		const connection = await this.#connection;
+		const announced = connection.announced(room);
+
+		for (;;) {
+			const update = await announced.next();
+
+			// We're donezo.
+			if (!update) break;
+
+			if (update.active) {
+				this.#startBroadcast(connection, update.broadcast);
+			} else {
+				this.#stopBroadcast(update.broadcast);
+			}
+
+			this.#updateScale();
+		}
 	}
 
 	#broadcastAt(point: Vector) {
@@ -145,24 +156,7 @@ export class Room {
 		return result;
 	}
 
-	async #run() {
-		for (;;) {
-			const update = await this.#announced.next();
-
-			// We're donezo.
-			if (!update) break;
-
-			if (update.active) {
-				this.#startBroadcast(update.broadcast);
-			} else {
-				this.#stopBroadcast(update.broadcast);
-			}
-
-			this.#updateScale();
-		}
-	}
-
-	#startBroadcast(path: string) {
+	#startBroadcast(connection: Moq.Connection, path: string) {
 		const targetPosition = Vector.create(Math.random(), Math.random());
 
 		const offset = Vector.create(targetPosition.x - 0.5, targetPosition.y - 0.5)
@@ -175,13 +169,13 @@ export class Room {
 			targetPosition.y * this.canvas.height,
 		).add(offset);
 
-		const broadcast = new Broadcast(this.connection.consume(path));
+		const broadcast = new Broadcast(connection.consume(path));
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
 
 		broadcast.audio.muted = this.#muted;
+		broadcast.watch.video.enabled = this.#visible;
 		broadcast.audio.latency = 100;
-		broadcast.watch.video.enabled = document.visibilityState !== "hidden";
 		broadcast.video.latency = 100;
 
 		this.#broadcasts.set(path, broadcast);
@@ -515,89 +509,18 @@ export class Room {
 	}
 
 	close() {
-		this.connection.close();
-		this.#announced.close();
+		this.#connection.then((connection) => connection.close());
+	}
+
+	get visible() {
+		return this.#visible;
+	}
+
+	set visible(visible: boolean) {
+		this.#visible = visible;
+
+		for (const broadcast of this.#broadcasts.values()) {
+			broadcast.watch.video.enabled = this.#visible;
+		}
 	}
 }
-
-// An established broadcast that reloads on catalog changes.
-export class Broadcast {
-	watch: Watch.Broadcast;
-
-	audio: Watch.AudioEmitter;
-
-	audioPanner?: StereoPannerNode;
-	audioLeft?: AnalyserNode;
-	audioRight?: AnalyserNode;
-
-	video: Watch.VideoRenderer;
-
-	bounds: Bounds;
-	scale = 1.0; // 1 is 100%
-	velocity = Vector.create(0, 0); // in pixels per ?
-
-	targetPosition = Vector.create(0.5, 0.5); // in 0-1
-	targetScale = 1.0; // 1 is 100%
-	targetSize: Vector; // in pixels
-
-	constructor(broadcast: Moq.BroadcastReader) {
-		this.watch = new Watch.Broadcast(broadcast);
-
-		this.video = new Watch.VideoRenderer();
-		this.video.broadcast = this.watch.video;
-
-		this.audio = new Watch.AudioEmitter();
-		this.audio.onInit = (ctx: AudioContext, node: AudioNode) => {
-			if (node.channelCount >= 2) {
-				this.audioPanner = new StereoPannerNode(ctx, { channelCount: node.channelCount });
-				const splitter = new ChannelSplitterNode(ctx, { channelCount: node.channelCount, numberOfOutputs: 2 });
-
-				this.audioLeft = new AnalyserNode(ctx, { fftSize: 256 });
-				this.audioRight = new AnalyserNode(ctx, { fftSize: 256 });
-
-				splitter.connect(this.audioLeft, 0);
-				splitter.connect(this.audioRight, 1);
-
-				node.connect(this.audioPanner);
-				this.audioPanner.connect(splitter);
-				this.audioPanner.connect(ctx.destination);
-			} else {
-				this.audioPanner = undefined;
-				this.audioLeft = new AnalyserNode(ctx, { fftSize: 256 });
-				this.audioRight = this.audioLeft;
-
-				node.connect(this.audioLeft);
-				node.connect(ctx.destination); // output to the speakers
-			}
-		};
-
-		this.audio.broadcast = this.watch.audio;
-
-		this.targetSize = Vector.create(128, 128);
-		this.bounds = new Bounds(Vector.create(0, 0), this.targetSize);
-	}
-
-	close() {
-		this.watch.close();
-		this.video.close();
-		this.audio.close();
-	}
-}
-
-// Canvas setup
-const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
-window.addEventListener("resize", () => {
-	canvas.width = window.innerWidth;
-	canvas.height = window.innerHeight;
-});
-
-Moq.Connection.connect(new URL("http://localhost:4443")).then((connection) => {
-	new Room(connection, "demo/", canvas);
-});
-
-window.addEventListener("unhandledrejection", (event) => {
-	console.error("Unhandled promise rejection:", event.reason);
-});

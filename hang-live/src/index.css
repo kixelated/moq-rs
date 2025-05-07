@@ -1,0 +1,36 @@
+canvas {
+	display: block;
+	background-color: #000;
+}
+
+.controls {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	padding: 8px 16px;
+	gap: 8px;
+
+	button {
+		cursor: pointer;
+	}
+
+	button,
+	input[type="text"] {
+		color: white;
+		padding: 8px 12px;
+		border-radius: 4px;
+		background: transparent;
+		border: 0;
+		backdrop-filter: blur(2px);
+
+		text-shadow:
+			-1px -1px 0 black,
+			1px -1px 0 black,
+			-1px 1px 0 black,
+			1px 1px 0 black;
+	}
+}
+

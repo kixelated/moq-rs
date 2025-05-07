@@ -1,22 +1,11 @@
 {
 	"extends": "../tsconfig.json",
-	"include": ["src"],
-	"exclude": ["node_modules", "dist"],
 	"compilerOptions": {
-		"lib": ["esnext", "dom"],
-		"target": "esnext",
-		"module": "esnext",
-		"moduleResolution": "bundler",
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js",
 
-		"outDir": "dist",
-		"declaration": true,
-		"sourceMap": true,
-		"isolatedModules": true,
-
-		// Avoids a bug with the dom-mediacapture-transform types.
+		"noEmit": true,
 		"skipLibCheck": true
 	},
-	"paths": {
-		"@/*": ["*"]
-	}
+	"include": ["src"]
 }

@@ -4,6 +4,7 @@ packages:
   - hang-wasm
   - hang-live
 onlyBuiltDependencies:
+  - core-js
   - esbuild
   - wasm-pack
 overrides:
