@@ -10,7 +10,7 @@ export class Reader {
 
 	constructor(track: Moq.TrackReader) {
 		this.#track = track;
-		this.#nextGroup = track.nextGroup();
+		this.#nextGroup = track.next();
 	}
 
 	async readFrame(): Promise<Frame | undefined> {
@@ -45,7 +45,7 @@ export class Reader {
 				}
 
 				// Start fetching the next group.
-				this.#nextGroup = this.#track.nextGroup();
+				this.#nextGroup = this.#track.next();
 
 				if (this.#group && this.#group.id >= group.id) {
 					// Skip this old group.
@@ -63,7 +63,7 @@ export class Reader {
 				this.#group = await this.#nextGroup;
 
 				if (this.#group) {
-					this.#nextGroup = this.#track.nextGroup();
+					this.#nextGroup = this.#track.next();
 					this.#nextFrame = Frame.decode(this.#group, true);
 				} else {
 					this.#nextGroup = undefined;

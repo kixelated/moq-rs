@@ -36,11 +36,10 @@ export class TrackWriter {
 
 		this.#next = group.id + 1;
 		this.#latest.update((latest) => {
-			if (latest) {
-				latest.close();
-			}
+			latest?.close();
 			return group.reader;
 		});
+
 		return group.writer;
 	}
 
@@ -74,33 +73,34 @@ export class TrackReader {
 	readonly name: string;
 	readonly priority: number;
 
-	#latest: WatchConsumer<GroupReader | null>;
+	#groups: WatchConsumer<GroupReader | null>;
+	#seen?: number;
 
-	constructor(name: string, priority: number, latest: WatchConsumer<GroupReader | null>) {
+	constructor(name: string, priority: number, groups: WatchConsumer<GroupReader | null>) {
 		this.name = name;
 		this.priority = priority;
-		this.#latest = latest;
+		this.#groups = groups;
 	}
 
 	async next(): Promise<GroupReader | undefined> {
-		let group = await this.#latest.next();
-		if (group === null) {
-			// First call only.
-			group = await this.#latest.next();
+		const group = await this.#groups.when((group) => (group?.id ?? -1) > (this.#seen ?? -1));
+		if (!group) {
+			return undefined;
 		}
 
-		return group?.clone();
+		this.#seen = group.id;
+		return group.clone();
 	}
 
 	clone(): TrackReader {
-		return new TrackReader(this.name, this.priority, this.#latest.clone());
+		return new TrackReader(this.name, this.priority, this.#groups.clone());
 	}
 
 	close() {
-		this.#latest.close();
+		this.#groups.close();
 	}
 
 	async closed(): Promise<void> {
-		await this.#latest.closed();
+		await this.#groups.closed();
 	}
 }

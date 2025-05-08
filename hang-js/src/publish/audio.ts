@@ -76,7 +76,7 @@ export class Audio {
 
 		if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
 			this.#group?.close();
-			this.#group = await this.track.writer.appendGroup();
+			this.#group = this.track.writer.append();
 			this.#groupTimestamp = frame.timestamp;
 		}
 

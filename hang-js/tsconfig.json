@@ -15,8 +15,5 @@
 
 		// Avoids a bug with the dom-mediacapture-transform types.
 		"skipLibCheck": true
-	},
-	"paths": {
-		"@/*": ["*"]
 	}
 }

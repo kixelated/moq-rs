@@ -5,6 +5,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
+	<link rel="stylesheet" href="index.css">
 </head>
 
 <body>
@@ -63,43 +64,6 @@ publish.lib.device = "camera";</code></pre>
 	</p>
 </body>
 
-<script>
-	// Yes this is a terrible mess and not how we make websites in >current year<.
-	// But it's a demo, I'm lazy, and I don't want to require a build step.
-	const publish = document.getElementById("publish");
-	const camera = document.getElementById("camera");
-	const screen = document.getElementById("screen");
-	const none = document.getElementById("none");
-	const status = document.getElementById("status");
-	const watch = document.getElementById("watch");
-
-	camera.addEventListener("click", () => publish.lib.device = "camera");
-	screen.addEventListener("click", () => publish.lib.device = "screen");
-	none.addEventListener("click", () => publish.lib.device = null);
-
-	// If query params are provided, use them instead of the default.
-	const urlParams = new URLSearchParams(window.location.search);
-	const broadcast = urlParams.get("broadcast") ?? "demo/me";
-	const host = urlParams.get("host") ?? "localhost:4443";
-	const scheme = urlParams.get("scheme") ?? "http";
-
-	publish.setAttribute("url", `${scheme}://${host}/${broadcast}`);
-	watch.setAttribute("href", `index.html?broadcast=${broadcast}&host=${host}&scheme=${scheme}`);
-
-	// Listen for connection status changes.
-	publish.addEventListener("hang-publish-status", (event) => {
-		if (event.detail === "connected") {
-			status.textContent = "🟢 Connected";
-		} else if (event.detail === "connecting") {
-			status.textContent = "🟡 Connecting...";
-		} else if (event.detail === "disconnected") {
-			status.textContent = "🔴 Disconnected";
-		} else if (event.detail === "live") {
-			status.textContent = "🟢 Live";
-		} else {
-			throw new Error(`Unknown connection status: ${event.detail}`);
-		}
-	});
-</script>
+<script type="module" src="publish.ts"></script>
 
 </html>

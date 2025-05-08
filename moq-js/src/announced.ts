@@ -13,6 +13,7 @@ export class Announced {
 	constructor(prefix: string) {
 		this.prefix = prefix;
 
+		// TODO This grows unbounded. We should remove ended broadcasts.
 		const queue = new Watch<Announcement[]>([]);
 		this.writer = new AnnouncedWriter(prefix, queue.producer);
 		this.reader = new AnnouncedReader(prefix, queue.consumer);

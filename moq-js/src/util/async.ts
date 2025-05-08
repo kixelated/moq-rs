@@ -12,7 +12,6 @@ export class Deferred<T> {
 			};
 			this.reject = (reason: Error) => {
 				this.pending = false;
-				console.error("deferred2 reject", reason);
 				reject(reason);
 			};
 		});
@@ -71,7 +70,6 @@ export class WatchProducer<T> {
 	}
 
 	abort(reason: Error) {
-		console.error("watch abort", reason);
 		this.#closed.reject(reason);
 	}
 
@@ -94,7 +92,9 @@ export class WatchProducer<T> {
 
 export class WatchConsumer<T> {
 	#watch: WatchProducer<T>;
-	#init = true;
+
+	// Whether our specific consumer is closed.
+	#closed = new Deferred<undefined>();
 
 	constructor(watch: WatchProducer<T>) {
 		this.#watch = watch;
@@ -105,14 +105,29 @@ export class WatchConsumer<T> {
 	}
 
 	async next(): Promise<T | undefined> {
-		// Return the latest value if this is our first call.
-		if (this.#init) {
-			this.#init = false;
-			return this.#watch.latest();
+		return Promise.race([this.#watch.next(), this.#closed.promise]);
+	}
+
+	async when(fn: (v: T) => boolean): Promise<T | undefined> {
+		if (!this.#closed.pending) {
+			return undefined;
 		}
 
-		// Return the next value
-		return this.#watch.next();
+		const latest = this.latest();
+		if (fn(latest)) {
+			return latest;
+		}
+
+		for (;;) {
+			const v = await this.next();
+			if (v === undefined) {
+				return undefined;
+			}
+
+			if (fn(v)) {
+				return v;
+			}
+		}
 	}
 
 	clone(): WatchConsumer<T> {
@@ -120,10 +135,11 @@ export class WatchConsumer<T> {
 	}
 
 	close() {
+		this.#closed.resolve(undefined);
 		this.#watch.unsubscribe();
 	}
 
 	async closed(): Promise<void> {
-		return this.#watch.closed();
+		await Promise.race([this.#watch.closed(), this.#closed.promise]);
 	}
 }

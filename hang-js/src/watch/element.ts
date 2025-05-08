@@ -165,11 +165,11 @@ declare global {
 }
 
 export interface Events {
-	connection: Moq.ConnectionStatus;
+	connection: keyof Moq.ConnectionStatus;
 }
 
 declare global {
 	interface HTMLElementEventMap {
-		"moq-connection": CustomEvent<Moq.ConnectionStatus>;
+		"moq-connection": CustomEvent<keyof Moq.ConnectionStatus>;
 	}
 }

@@ -55,11 +55,7 @@ export class GroupReader {
 	}
 
 	async read(): Promise<Uint8Array | undefined> {
-		let frames: Uint8Array[] | undefined = this.#frames.latest();
-		if (frames.length <= this.#index) {
-			frames = await this.#frames.next();
-		}
-
+		const frames = await this.#frames.when((frames) => frames.length > this.#index);
 		return frames?.at(this.#index++);
 	}
 

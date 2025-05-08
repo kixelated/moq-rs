@@ -16,7 +16,9 @@
 	},
 	"devDependencies": {
 		"@typescript/lib-dom": "npm:@types/web@^0.0.231",
-		"tsx": "^4.19.4"
+		"tsx": "^4.19.4",
+		"vite": "^6.3.5",
+		"vite-plugin-html": "^3.2.2"
 	},
 	"dependencies": {
 		"buffer": "^6.0.3"
