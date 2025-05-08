@@ -64,11 +64,18 @@ export class BroadcastWriter {
 		return this.#state.closed();
 	}
 
-	abort(reason?: unknown) {
+	abort(reason: Error) {
 		this.#state.abort(reason);
 	}
 
 	close() {
+		this.#state.update((state) => {
+			for (const track of state.tracks.values()) {
+				track.close();
+			}
+			state.tracks.clear();
+			return state;
+		});
 		this.#state.close();
 	}
 }

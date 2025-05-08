@@ -98,7 +98,7 @@ export class Publisher {
 			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
 			stream.close();
 		} catch (err) {
-			console.debug(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
+			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
 			stream.reset(err);
 		} finally {
 			track.close();

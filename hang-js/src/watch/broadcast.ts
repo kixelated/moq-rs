@@ -20,7 +20,7 @@ export class BroadcastReload {
 		this.#run().finally(() => this.close());
 	}
 
-	// Returns next active broadcast.
+	// Returns the next active broadcast.
 	async active(): Promise<Broadcast | undefined> {
 		const reader = this.#active.readable.getReader();
 		const broadcast = await reader.read();
@@ -54,7 +54,6 @@ export class BroadcastReload {
 	}
 
 	close() {
-		this.connection.close();
 		this.#catalog?.close();
 		this.#announced.close();
 	}
@@ -83,8 +82,6 @@ export class Broadcast {
 		for (;;) {
 			const catalog = await Media.Catalog.fetch(this.#catalog);
 			if (!catalog) break;
-
-			console.debug("updated catalog", catalog);
 
 			this.audio.tracks = catalog.audio;
 			this.video.tracks = catalog.video;

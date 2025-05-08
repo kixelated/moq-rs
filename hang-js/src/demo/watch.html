@@ -11,7 +11,7 @@
 <body>
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
-		<hang-watch url="http://localhost:4443/demo/bbb" id="watch">
+		<hang-watch url="http://localhost:4443" name="demo/bbb" id="watch">
 			<!-- Optionally provide a custom canvas element that we can style as needed -->
 			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
@@ -59,7 +59,7 @@
 		limitation.
 
 		For example:
-	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/demo/bbb&quot;&gt;
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; name=&quot;demo/bbb&quot;&gt;
 	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
 	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
 &lt;/hang-watch&gt;</code></pre>
@@ -77,17 +77,11 @@
 	<pre><code class="language-typescript">const watch = document.getElementById("watch");
 watch.paused = true;
 </code></pre>
+
 	And of course you can use the Javascript API directly instead of the Web Component.
-	<pre><code class="language-typescript">import { Watch } from "@kixelated/moq";
+	It's a bit more complicated and subject to change, but it gives you raw <code
+		class="language-typescript">VideoFrame</code> and <code class="language-typescript">AudioData</code> output.
 
-// Create a new player instance.
-const watch = new Watch();
-
-// Have to provide your own canvas element.
-watch.canvas = document.querySelector("canvas")[0];
-
-// And of course set the URL to start loading.
-watch.url = "http://localhost:4443/demo/bbb";</code></pre>
 	</p>
 	<p>
 		This demo supports query parameters to change the broadcast.
@@ -126,10 +120,11 @@ just pub bbb
 	// If query params are provided, use them as the broadcast URL instead of the default.
 	const urlParams = new URLSearchParams(window.location.search);
 	if (urlParams.size > 0) {
-		const broadcast = urlParams.get("broadcast") ?? "demo/bbb";
+		const broadcast = urlParams.get("name") ?? "demo/bbb";
 		const host = urlParams.get("host") ?? "localhost:4443";
 		const scheme = urlParams.get("scheme") ?? "http";
-		watch.setAttribute("url", `${scheme}://${host}/${broadcast}`);
+		watch.setAttribute("url", `${scheme}://${host}`);
+		watch.setAttribute("name", broadcast);
 	}
 
 	// Listen for clicks on the pause button.

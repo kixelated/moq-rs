@@ -2,13 +2,11 @@ import { AnnouncedReader } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
+import { Events } from "./util/events";
 import * as Wire from "./wire";
 
 // biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
 import { Buffer } from "buffer";
-
-// A pool of connections.
-const pool: Map<URL, Promise<Connection>> = new Map();
 
 export class Connection {
 	// The URL of the connection.
@@ -26,9 +24,6 @@ export class Connection {
 	// Module for distributing tracks.
 	#subscriber: Subscriber;
 
-	// The ref count, closed when it reaches 0.
-	#refs = 1;
-
 	constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
 		this.#url = url;
 		this.#quic = quic;
@@ -40,21 +35,7 @@ export class Connection {
 		this.#run().catch((err) => console.error("failed to run connection: ", err));
 	}
 
-	// Connect to a server at the given URL.
-	// This uses a connection pool under the hood.
 	static async connect(url: URL): Promise<Connection> {
-		const cached = pool.get(url);
-		if (cached) {
-			cached.then((conn) => conn.#refs++);
-			return cached;
-		}
-
-		const connect = Connection.#connect(url);
-		pool.set(url, connect);
-		return connect;
-	}
-
-	static async #connect(url: URL): Promise<Connection> {
 		const options: WebTransportOptions = {
 			allowPooling: false,
 			congestionControl: "low-latency",
@@ -80,10 +61,6 @@ export class Connection {
 		}
 
 		const quic = new WebTransport(url, options);
-		quic.closed.then(() => {
-			pool.delete(url);
-		});
-
 		await quic.ready;
 
 		const client = new Wire.SessionClient([Wire.Version.FORK_04]);
@@ -113,17 +90,10 @@ export class Connection {
 		return this.#url;
 	}
 
-	clone(): Connection {
-		this.#refs++;
-		return this;
-	}
-
 	close() {
-		this.#refs--;
-
-		if (this.#refs <= 0) {
+		try {
 			this.#quic.close();
-		}
+		} catch {}
 	}
 
 	async #run(): Promise<void> {
@@ -219,5 +189,78 @@ export class Connection {
 
 	async closed(): Promise<void> {
 		await this.#quic.closed;
+	}
+}
+
+export type ConnectionStatus = {
+	connecting: undefined;
+	connected: Connection;
+	disconnected: undefined;
+};
+
+export class ConnectionReload extends Events<ConnectionStatus> {
+	url: URL;
+	established?: Connection;
+
+	#retryCount = 0;
+	#retryDelay: DOMHighResTimeStamp = 1000;
+
+	// just for cleanup
+	#pending?: Promise<Connection>;
+
+	constructor(url: URL) {
+		super();
+
+		this.url = url;
+		this.#run().finally(() => this.close());
+	}
+
+	onEstablished(callback: (connection: Connection) => void) {
+		this.on("connected", callback);
+	}
+
+	async #run() {
+		for (;;) {
+			await this.#connect();
+
+			this.#retryCount += 1;
+			const delay = this.#retryDelay * 2 ** this.#retryCount;
+
+			if (this.#retryCount > 10) {
+				throw new Error("too many retries");
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, delay));
+		}
+	}
+
+	async #connect() {
+		this.emit("connecting");
+
+		try {
+			this.#pending = Connection.connect(this.url);
+
+			this.established = await this.#pending;
+			this.emit("connected", this.established);
+			this.#retryCount = 0;
+
+			await this.established.closed();
+		} catch (err) {
+			console.error("connection error", err);
+		} finally {
+			this.emit("disconnected");
+
+			this.established?.close();
+			this.established = undefined;
+
+			this.#pending = undefined;
+		}
+	}
+
+	close() {
+		this.established?.close();
+		this.established = undefined;
+
+		this.#pending?.then((connection) => connection.close());
 	}
 }

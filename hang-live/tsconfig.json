@@ -1,8 +1,10 @@
 {
 	"extends": "../tsconfig.json",
 	"compilerOptions": {
-		"jsx": "preserve",
-		"jsxImportSource": "solid-js",
+		// custom JSX implementation
+		"jsx": "react",
+		"jsxFactory": "jsx",
+		"jsxFragmentFactory": "jsxFragment",
 
 		"noEmit": true,
 		"skipLibCheck": true

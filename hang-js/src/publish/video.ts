@@ -272,8 +272,8 @@ export class Video {
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
-		const karp = new Frame(frame.type === "key", frame.timestamp, buffer);
-		karp.encode(this.#group);
+		const container = new Frame(frame.type === "key", frame.timestamp, buffer);
+		container.encode(this.#group);
 	}
 
 	close() {

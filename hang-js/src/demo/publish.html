@@ -57,17 +57,9 @@
 		or access the element's Javascript API:
 	<pre><code class="language-typescript">const publish = document.getElementById("publish");
 publish.lib.device = "camera";</code></pre>
+
 	And of course you can use the Javascript API directly instead of the Web Component.
-	<pre><code class="language-typescript">import { Publish } from "@kixelated/moq";
-
-// Create a new instance.
-const publish = new Publish();
-
-// Have to provide your own preview element if desired.
-publish.preview = document.querySelector("video");
-
-// And of course set the URL to start loading.
-publish.url = "http://localhost:4443/demo/me";</code></pre>
+	It's a bit more complicated and subject to change, but it gives you more control.
 	</p>
 </body>
 

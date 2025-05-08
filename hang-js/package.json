@@ -6,6 +6,7 @@
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
+		"./connection": "./src/connection/index.ts",
 		"./watch": "./src/watch/index.ts",
 		"./publish": "./src/publish/index.ts",
 		"./media": "./src/media/index.ts"

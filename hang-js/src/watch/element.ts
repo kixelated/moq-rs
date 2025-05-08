@@ -1,15 +1,20 @@
 import * as Moq from "@kixelated/moq";
+
 import { AudioEmitter } from "./audio";
 import { BroadcastReload } from "./broadcast";
 import { VideoRenderer } from "./video";
 
 // A custom element that renders to a canvas.
 export class Element extends HTMLElement {
-	static observedAttributes = ["url", "paused"];
+	static observedAttributes = ["url", "name", "paused"];
+
+	#url?: URL;
+	#name?: string;
+	#paused = false;
+
+	#connection?: Moq.ConnectionReload;
 
 	#broadcast?: BroadcastReload;
-	#connection?: Promise<Moq.Connection>;
-
 	audio = new AudioEmitter();
 	video = new VideoRenderer();
 
@@ -64,55 +69,90 @@ export class Element extends HTMLElement {
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
-			void this.#connect(newValue);
+			this.url = newValue ? new URL(newValue) : undefined;
+		} else if (name === "name") {
+			this.name = newValue;
 		} else if (name === "paused") {
-			this.video.paused = newValue !== undefined;
-			this.audio.muted = newValue !== undefined;
+			this.paused = newValue !== undefined;
 		}
 	}
 
-	async #connect(attr?: string) {
-		const url = attr ? new URL(attr) : undefined;
+	get url() {
+		return this.#url;
+	}
+
+	set url(url: URL | undefined) {
+		this.#url = url;
+
+		this.#connection?.close();
+		this.#connection = undefined;
+
 		if (!url) {
-			const existing = await this.#connection;
-			existing?.close();
-
-			this.#connection = undefined;
-
-			this.#broadcast?.close();
-			this.#broadcast = undefined;
-
 			return;
 		}
 
-		const broadcast = url.pathname.slice(1);
+		this.#connection = new Moq.ConnectionReload(url);
 
-		// Connect to the URL without the path
-		const base = new URL(url);
-		base.pathname = "";
+		this.#connection.on("connecting", () => {
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
+		});
 
-		this.#connection = Moq.Connection.connect(base);
+		this.#connection.on("connected", (_connection) => {
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
+			this.#run();
+		});
 
-		try {
-			this.#dispatchEvent("connection", "connecting");
-			const connection = await this.#connection;
-			this.#dispatchEvent("connection", "connected");
-			this.#broadcast = new BroadcastReload(connection, broadcast);
+		this.#connection.on("disconnected", () => {
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
+			this.#stop();
+		});
+	}
 
-			for (;;) {
-				const active = await this.#broadcast.active();
-				if (active) {
-					this.audio.broadcast = active.audio;
-					this.video.broadcast = active.video;
-				}
+	get name() {
+		return this.#name;
+	}
+
+	set name(name: string | undefined) {
+		this.#name = name;
+
+		this.#broadcast?.close();
+		this.#broadcast = undefined;
+
+		this.#run();
+	}
+
+	get paused() {
+		return this.#paused;
+	}
+
+	set paused(paused: boolean) {
+		this.#paused = paused;
+
+		this.video.paused = paused;
+		this.audio.muted = paused;
+	}
+
+	async #run() {
+		this.#stop();
+
+		if (!this.#connection?.established || !this.#name) {
+			return;
+		}
+
+		this.#broadcast = new BroadcastReload(this.#connection.established, this.#name);
+
+		for (;;) {
+			const active = await this.#broadcast.active();
+			if (active) {
+				this.audio.broadcast = active.audio;
+				this.video.broadcast = active.video;
 			}
-		} finally {
-			this.#dispatchEvent("connection", "disconnected");
 		}
 	}
 
-	#dispatchEvent<K extends keyof Events>(type: K, detail: Events[K]) {
-		this.dispatchEvent(new CustomEvent(`hang-watch-${type}`, { detail }));
+	#stop() {
+		this.#broadcast?.close();
+		this.#broadcast = undefined;
 	}
 }
 
@@ -125,13 +165,11 @@ declare global {
 }
 
 export interface Events {
-	connection: ConnectionStatus;
+	connection: Moq.ConnectionStatus;
 }
-
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 declare global {
 	interface HTMLElementEventMap {
-		"hang-watch-connection": CustomEvent<ConnectionStatus>;
+		"moq-connection": CustomEvent<Moq.ConnectionStatus>;
 	}
 }

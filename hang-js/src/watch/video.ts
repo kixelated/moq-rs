@@ -96,7 +96,9 @@ export class VideoTrack {
 		this.#writer = queue.writable.getWriter();
 
 		this.#decoder = new VideoDecoder({
-			output: (frame) => this.#writer.write(frame),
+			output: (frame) => {
+				this.#writer.write(frame);
+			},
 			// TODO bubble up error
 			error: (error) => {
 				console.error(error);

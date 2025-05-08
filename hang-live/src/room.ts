@@ -7,10 +7,12 @@ const PADDING = 64;
 
 export class Room {
 	// The connection to the server.
-	#connection: Promise<Moq.Connection>;
+	connection: Moq.ConnectionReload;
 	#broadcasts = new Map<string, Broadcast>();
 
 	canvas: HTMLCanvasElement;
+	room: string;
+
 	#ctx: CanvasRenderingContext2D;
 
 	#hovering?: Broadcast;
@@ -20,9 +22,14 @@ export class Room {
 	#muted = true;
 	#visible = true;
 
-	constructor(relay: URL, room: string, canvas: HTMLCanvasElement) {
-		this.#connection = Moq.Connection.connect(relay);
+	constructor(connection: Moq.ConnectionReload, room: string, canvas: HTMLCanvasElement) {
+		this.connection = connection;
+		this.connection.on("connected", () => {
+			this.#run();
+		});
+
 		this.canvas = canvas;
+		this.room = room;
 
 		const ctx = canvas.getContext("2d");
 		if (!ctx) {
@@ -31,9 +38,7 @@ export class Room {
 
 		this.#ctx = ctx;
 
-		canvas.addEventListener("resize", () => {
-			this.#updateScale();
-		});
+		canvas.addEventListener("resize", () => {});
 
 		canvas.addEventListener("mousedown", (e) => {
 			const rect = canvas.getBoundingClientRect();
@@ -118,13 +123,13 @@ export class Room {
 		);
 
 		requestAnimationFrame(this.#tick.bind(this));
-
-		this.#run(room).finally(() => this.close());
 	}
 
-	async #run(room: string) {
-		const connection = await this.#connection;
-		const announced = connection.announced(room);
+	async #run() {
+		const connection = this.connection.established;
+		if (!connection) return;
+
+		const announced = connection.announced(`${this.room}/`);
 
 		for (;;) {
 			const update = await announced.next();
@@ -137,8 +142,6 @@ export class Room {
 			} else {
 				this.#stopBroadcast(update.broadcast);
 			}
-
-			this.#updateScale();
 		}
 	}
 
@@ -169,7 +172,7 @@ export class Room {
 			targetPosition.y * this.canvas.height,
 		).add(offset);
 
-		const broadcast = new Broadcast(connection.consume(path));
+		const broadcast = new Broadcast(connection.consume(path), this.room);
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
 
@@ -219,6 +222,8 @@ export class Room {
 			const force = target.sub(middle);
 			broadcast.velocity = broadcast.velocity.add(force);
 
+			// Bounce off the edges of the canvas.
+			/*
 			const left = broadcast.bounds.position.x;
 			const right = broadcast.bounds.position.x + broadcast.bounds.size.x;
 			const top = broadcast.bounds.position.y;
@@ -235,6 +240,7 @@ export class Room {
 			} else if (bottom > this.canvas.height) {
 				broadcast.velocity.y += this.canvas.height - bottom;
 			}
+				*/
 		}
 
 		// Loop over again, this time checking for collisions.
@@ -251,7 +257,7 @@ export class Room {
 				}
 
 				// Repel each other based on the size of the intersection.
-				const strength = intersection.area() / a.bounds.area(); // TODO what about b.area()?
+				const strength = (2 * intersection.area()) / (a.bounds.area() + b.bounds.area());
 				let force = a.bounds.middle().sub(b.bounds.middle()).mult(strength);
 
 				if (this.#dragging !== a && this.#dragging !== b) {
@@ -311,12 +317,16 @@ export class Room {
 		this.#ctx.clearRect(0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
 
 		for (const broadcast of this.#broadcasts.values()) {
-			this.#renderAudio(now, broadcast);
+			this.#ctx.save();
+			broadcast.renderAudio(this.#ctx, now);
+			this.#ctx.restore();
 		}
 
 		for (const broadcast of this.#broadcasts.values()) {
 			if (this.#dragging !== broadcast) {
-				this.#renderBroadcast(now, broadcast);
+				this.#ctx.save();
+				broadcast.renderVideo(this.#ctx, now, { hovering: this.#hovering === broadcast });
+				this.#ctx.restore();
 			}
 		}
 
@@ -324,174 +334,9 @@ export class Room {
 		if (this.#dragging) {
 			this.#ctx.save();
 			this.#ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-			this.#renderBroadcast(now, this.#dragging);
+			this.#dragging.renderVideo(this.#ctx, now, { dragging: true });
 			this.#ctx.restore();
 		}
-	}
-
-	#renderAudio(_now: DOMHighResTimeStamp, broadcast: Broadcast) {
-		if (!broadcast.audioLeft || !broadcast.audioRight) {
-			return;
-		}
-
-		const bounds = broadcast.bounds;
-
-		this.#ctx.save();
-		this.#ctx.translate(bounds.position.x, bounds.position.y);
-
-		// Round down the height to the nearest power of 2.
-		const bars = Math.max(2 ** Math.floor(Math.log2(bounds.size.y / 4)), 32);
-		const barHeight = bounds.size.y / bars;
-		const barData = new Uint8Array(bars); // TODO reuse a buffer.
-		const barScale = 4 * broadcast.scale;
-
-		if (broadcast.audioLeft) {
-			broadcast.audioLeft.fftSize = bars;
-			broadcast.audioLeft.getByteFrequencyData(barData);
-		}
-
-		for (let i = 0; i < bars / 2; i++) {
-			const power = barData[i] / 255;
-			const hue = 2 ** power * 100 + 135;
-			const barWidth = 4 ** power * barScale;
-
-			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
-			this.#ctx.fillRect(-barWidth, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);
-			this.#ctx.fillRect(-barWidth, bounds.size.y / 2 + i * barHeight, barWidth, barHeight + 0.1);
-		}
-
-		if (broadcast.audioRight) {
-			broadcast.audioRight.fftSize = bars;
-			broadcast.audioRight.getByteFrequencyData(barData);
-		}
-
-		for (let i = 0; i < bars / 2; i++) {
-			const power = barData[i] / 255;
-			const hue = 2 ** power * 100 + 135;
-			const barWidth = 4 ** power * barScale;
-
-			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
-			this.#ctx.fillRect(bounds.size.x, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);
-			this.#ctx.fillRect(bounds.size.x, bounds.size.y / 2 + i * barHeight, barWidth, barHeight + 0.1);
-		}
-
-		this.#ctx.restore();
-	}
-
-	#renderBroadcast(now: DOMHighResTimeStamp, broadcast: Broadcast) {
-		const bounds = broadcast.bounds;
-
-		this.#ctx.save();
-		this.#ctx.font = "12px sans-serif";
-		this.#ctx.translate(bounds.position.x, bounds.position.y);
-		this.#ctx.fillStyle = "#000";
-
-		const frame = broadcast.video.frame(now);
-		if (frame) {
-			// Check if the frame size has changed and recompute the scale.
-			if (broadcast.targetSize.x !== frame.displayWidth || broadcast.targetSize.y !== frame.displayHeight) {
-				broadcast.targetSize = Vector.create(frame.displayWidth, frame.displayHeight);
-				this.#updateScale();
-			}
-
-			this.#ctx.save();
-
-			if (this.#dragging === broadcast) {
-				// Apply an opacity to the image.
-				this.#ctx.globalAlpha = 0.7;
-			}
-
-			// Create a rounded rectangle path
-			const radius = 8;
-			const w = bounds.size.x;
-			const h = bounds.size.y;
-
-			this.#ctx.beginPath();
-			this.#ctx.moveTo(radius, 0);
-			this.#ctx.lineTo(w - radius, 0);
-			this.#ctx.quadraticCurveTo(w, 0, w, radius);
-			this.#ctx.lineTo(w, h - radius);
-			this.#ctx.quadraticCurveTo(w, h, w - radius, h);
-			this.#ctx.lineTo(radius, h);
-			this.#ctx.quadraticCurveTo(0, h, 0, h - radius);
-			this.#ctx.lineTo(0, radius);
-			this.#ctx.quadraticCurveTo(0, 0, radius, 0);
-			this.#ctx.closePath();
-
-			// Clip and draw the image
-			this.#ctx.clip();
-
-			this.#ctx.drawImage(frame, 0, 0, bounds.size.x, bounds.size.y);
-			this.#ctx.restore();
-		} else {
-			this.#ctx.fillRect(0, 0, bounds.size.x, bounds.size.y);
-		}
-
-		// Round down the height to the nearest power of 2.
-		const bars = Math.max(2 ** Math.floor(Math.log2(bounds.size.y / 4)), 32);
-		const barHeight = bounds.size.y / bars;
-		const barData = new Uint8Array(bars); // TODO reuse a buffer.
-		const barScale = 2 * broadcast.scale;
-
-		if (broadcast.audioLeft) {
-			broadcast.audioLeft.fftSize = bars;
-			broadcast.audioLeft.getByteFrequencyData(barData);
-		}
-
-		for (let i = 0; i < bars / 2; i++) {
-			const power = barData[i] / 255;
-			const hue = 2 ** power * 100 + 135;
-			const barWidth = 3 ** power * barScale;
-
-			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
-			this.#ctx.fillRect(-barWidth, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);
-			this.#ctx.fillRect(-barWidth, bounds.size.y / 2 + i * barHeight, barWidth, barHeight + 0.1);
-		}
-
-		if (broadcast.audioRight) {
-			broadcast.audioRight.fftSize = bars;
-			broadcast.audioRight.getByteFrequencyData(barData);
-		}
-
-		for (let i = 0; i < bars / 2; i++) {
-			const power = barData[i] / 255;
-			const hue = 2 ** power * 100 + 135;
-			const barWidth = 3 ** power * barScale;
-
-			this.#ctx.fillStyle = `hsla(${hue}, 80%, 40%, ${power})`;
-			this.#ctx.fillRect(bounds.size.x, bounds.size.y / 2 - (i + 1) * barHeight, barWidth, barHeight + 0.1);
-			this.#ctx.fillRect(bounds.size.x, bounds.size.y / 2 + i * barHeight, barWidth, barHeight + 0.1);
-		}
-
-		if (this.#hovering === broadcast) {
-			/*
-			this.#ctx.lineWidth = 2;
-			this.#ctx.strokeStyle = "white";
-			this.#ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
-			*/
-		}
-
-		this.#ctx.lineWidth = 3;
-		this.#ctx.strokeStyle = "black";
-		this.#ctx.strokeText(broadcast.watch.broadcast.path, 6, 16);
-
-		this.#ctx.fillStyle = "white";
-		this.#ctx.fillText(broadcast.watch.broadcast.path, 6, 16);
-		this.#ctx.restore();
-
-		// Draw target for debugging
-		/*
-		this.#ctx.beginPath();
-		this.#ctx.arc(
-			broadcast.targetPosition.x * this.#ctx.canvas.width,
-			broadcast.targetPosition.y * this.#ctx.canvas.height,
-			4,
-			0,
-			2 * Math.PI,
-		);
-		this.#ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
-		this.#ctx.fill();
-		*/
 	}
 
 	#updateScale() {
@@ -509,7 +354,9 @@ export class Room {
 	}
 
 	close() {
-		this.#connection.then((connection) => connection.close());
+		for (const broadcast of this.#broadcasts.values()) {
+			broadcast.close();
+		}
 	}
 
 	get visible() {
