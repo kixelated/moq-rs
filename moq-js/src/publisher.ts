@@ -25,7 +25,10 @@ export class Publisher {
 
 		(async () => {
 			try {
-				await this.#announced.writer.write({ broadcast: broadcast.path, active: true });
+				await this.#announced.writer.write({
+					broadcast: broadcast.path,
+					active: true,
+				});
 				console.debug(`announce: broadcast=${broadcast.path} active=true`);
 
 				// TODO wait until the broadcast is closed, then remove it from the lookup.
@@ -33,7 +36,10 @@ export class Publisher {
 			} finally {
 				console.debug(`announce: broadcast=${broadcast.path} active=false`);
 				this.#broadcasts.delete(broadcast.path);
-				await this.#announced.writer.write({ broadcast: broadcast.path, active: false });
+				await this.#announced.writer.write({
+					broadcast: broadcast.path,
+					active: false,
+				});
 			}
 		})();
 	}

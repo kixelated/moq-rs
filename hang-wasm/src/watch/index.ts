@@ -40,7 +40,9 @@ export class Watch {
 
 	// If a null canvas is provided, video rendering will be disabled.
 	initVideo(canvas: HTMLCanvasElement | null) {
-		this.#bridge.postMessage({ Watch: { Canvas: canvas?.transferControlToOffscreen() ?? null } });
+		this.#bridge.postMessage({
+			Watch: { Canvas: canvas?.transferControlToOffscreen() ?? null },
+		});
 	}
 
 	// Initialize audio rendering.
@@ -176,7 +178,9 @@ export class WatchElement extends HTMLElement {
 		try {
 			this.lib.initAudio();
 		} catch (error) {
-			this.addEventListener("click", () => this.lib.initAudio(), { once: true });
+			this.addEventListener("click", () => this.lib.initAudio(), {
+				once: true,
+			});
 		}
 
 		// Proxy the watch events to the element.

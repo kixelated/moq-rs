@@ -139,7 +139,7 @@ class Volume {
 	#animation?: number;
 	#context?: AudioContext;
 	#source?: MediaStreamAudioSourceNode;
-	#data?: Uint8Array;
+	#data?: Uint8Array<ArrayBuffer>;
 
 	constructor() {
 		this.dom = (
@@ -178,7 +178,9 @@ class Volume {
 			return;
 		}
 
-		this.#context = new AudioContext({ sampleRate: audio.getSettings().sampleRate });
+		this.#context = new AudioContext({
+			sampleRate: audio.getSettings().sampleRate,
+		});
 		this.#analyzer = new AnalyserNode(this.#context, {
 			// Monitor the last x samples of audio.
 			// ex. at 48kHz, 4096 samples is 85ms.

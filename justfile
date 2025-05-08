@@ -201,7 +201,7 @@ fix flags="":
 	pnpm -r i
 
 	# Format and lint
-	biome check --fix --unsafe
+	biome check --fix
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix

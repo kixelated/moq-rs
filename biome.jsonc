@@ -1,22 +1,17 @@
 {
-	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.0.0-beta.2/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
 		"useIgnoreFile": true
 	},
 	"formatter": {
-		"enabled": true,
 		"indentStyle": "tab",
-		"lineWidth": 120
-	},
-	"organizeImports": {
-		"enabled": true
+		"lineWidth": 120,
+		"useEditorconfig": true
 	},
 	"linter": {
-		"enabled": true,
 		"rules": {
-			"recommended": true,
 			"a11y": {
 				"useMediaCaption": "off"
 			},

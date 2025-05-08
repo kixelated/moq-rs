@@ -325,7 +325,9 @@ export class Room {
 		for (const broadcast of this.#broadcasts.values()) {
 			if (this.#dragging !== broadcast) {
 				this.#ctx.save();
-				broadcast.renderVideo(this.#ctx, now, { hovering: this.#hovering === broadcast });
+				broadcast.renderVideo(this.#ctx, now, {
+					hovering: this.#hovering === broadcast,
+				});
 				this.#ctx.restore();
 			}
 		}

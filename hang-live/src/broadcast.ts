@@ -33,8 +33,13 @@ export class Broadcast {
 		this.audio = new Watch.AudioEmitter();
 		this.audio.onInit = (ctx: AudioContext, node: AudioNode) => {
 			if (node.channelCount >= 2) {
-				this.audioPanner = new StereoPannerNode(ctx, { channelCount: node.channelCount });
-				const splitter = new ChannelSplitterNode(ctx, { channelCount: node.channelCount, numberOfOutputs: 2 });
+				this.audioPanner = new StereoPannerNode(ctx, {
+					channelCount: node.channelCount,
+				});
+				const splitter = new ChannelSplitterNode(ctx, {
+					channelCount: node.channelCount,
+					numberOfOutputs: 2,
+				});
 
 				this.audioLeft = new AnalyserNode(ctx, { fftSize: 256 });
 				this.audioRight = new AnalyserNode(ctx, { fftSize: 256 });
