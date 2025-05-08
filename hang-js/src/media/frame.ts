@@ -13,7 +13,7 @@ export class Frame {
 	}
 
 	static async decode(group: GroupReader, keyframe: boolean): Promise<Frame | undefined> {
-		const payload = await group.readFrame();
+		const payload = await group.read();
 		if (!payload) {
 			return undefined;
 		}
@@ -28,6 +28,6 @@ export class Frame {
 		frame.set(this.data, size);
 		frame = new Uint8Array(frame.buffer, 0, this.data.byteLength + size);
 
-		group.writeFrame(frame);
+		group.write(frame);
 	}
 }

@@ -1,3 +1,5 @@
+import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+
 export type Announcement = {
 	broadcast: string;
 	active: boolean;
@@ -11,61 +13,67 @@ export class Announced {
 	constructor(prefix: string) {
 		this.prefix = prefix;
 
-		// We don't really want backpressure here, so use a value that should never be hit.
-		const backpressure = { highWaterMark: 1024 };
-
-		const queue = new TransformStream<Announcement, Announcement>(undefined, backpressure, backpressure);
-		this.writer = new AnnouncedWriter(prefix, queue.writable);
-		this.reader = new AnnouncedReader(prefix, queue.readable);
+		const queue = new Watch<Announcement[]>([]);
+		this.writer = new AnnouncedWriter(prefix, queue.producer);
+		this.reader = new AnnouncedReader(prefix, queue.consumer);
 	}
 }
 
 export class AnnouncedWriter {
 	readonly broadcast: string;
-	#queue: WritableStreamDefaultWriter<Announcement>;
+	#queue: WatchProducer<Announcement[]>;
 
-	constructor(broadcast: string, queue: WritableStream<Announcement>) {
+	constructor(broadcast: string, queue: WatchProducer<Announcement[]>) {
 		this.broadcast = broadcast;
-		this.#queue = queue.getWriter();
+		this.#queue = queue;
 	}
 
-	async write(announcement: Announcement) {
-		await this.#queue.write(announcement);
+	write(announcement: Announcement) {
+		this.#queue.update((announcements) => [...announcements, announcement]);
 	}
 
-	abort(reason?: unknown) {
-		this.#queue.abort(reason).catch(() => {});
+	abort(reason: Error) {
+		this.#queue.abort(reason);
 	}
 
 	close() {
-		this.#queue.close().catch(() => {});
-		this.#queue.releaseLock();
+		this.#queue.close();
+	}
+
+	async closed(): Promise<void> {
+		await this.#queue.closed();
 	}
 }
 
 export class AnnouncedReader {
 	readonly prefix: string;
-	#queue: ReadableStream<Announcement>;
 
-	constructor(broadcast: string, queue: ReadableStream<Announcement>) {
+	#queue: WatchConsumer<Announcement[]>;
+	#index = 0;
+
+	constructor(broadcast: string, queue: WatchConsumer<Announcement[]>) {
 		this.prefix = broadcast;
 		this.#queue = queue;
 	}
 
 	async next(): Promise<Announcement | undefined> {
-		const reader = this.#queue.getReader();
-		const result = await reader.read();
-		reader.releaseLock();
-		return result.done ? undefined : result.value;
+		let queue: Announcement[] | undefined = this.#queue.latest();
+		if (queue.length <= this.#index) {
+			queue = await this.#queue.next();
+		}
+
+		return queue?.at(this.#index++);
 	}
 
 	close() {
-		this.#queue.cancel().catch(() => {});
+		this.#queue.close();
+	}
+
+	async closed(): Promise<void> {
+		await this.#queue.closed();
 	}
 
 	clone(): AnnouncedReader {
-		const [one, two] = this.#queue.tee();
-		this.#queue = one;
-		return new AnnouncedReader(this.prefix, two);
+		return new AnnouncedReader(this.prefix, this.#queue.clone());
 	}
 }

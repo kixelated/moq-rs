@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 
-import { Vector } from "./vector";
 import { Broadcast } from "./broadcast";
+import { Vector } from "./vector";
 
 const PADDING = 64;
 

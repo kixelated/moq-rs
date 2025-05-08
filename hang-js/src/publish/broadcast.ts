@@ -224,8 +224,8 @@ export class Broadcast {
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
-		const catalogGroup = await this.#catalog.writer.appendGroup();
-		catalogGroup.writeFrame(encoded);
+		const catalogGroup = this.#catalog.writer.append();
+		catalogGroup.write(encoded);
 		catalogGroup.close();
 
 		if (this.onMedia) {

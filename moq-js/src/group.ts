@@ -1,3 +1,5 @@
+import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+
 export class Group {
 	readonly id: number;
 	readonly writer: GroupWriter;
@@ -6,12 +8,10 @@ export class Group {
 	constructor(id: number) {
 		this.id = id;
 
-		// arbitrary 32MB limit
-		const strategy = new ByteLengthQueuingStrategy({ highWaterMark: 1024 * 1024 * 32 });
-		const transform = new TransformStream<Uint8Array, Uint8Array>(undefined, strategy, strategy);
+		const watch = new Watch<Uint8Array[]>([]);
 
-		this.writer = new GroupWriter(id, transform.writable);
-		this.reader = new GroupReader(id, transform.readable);
+		this.writer = new GroupWriter(id, watch.producer);
+		this.reader = new GroupReader(id, watch.consumer);
 	}
 }
 
@@ -19,49 +19,55 @@ export class GroupWriter {
 	readonly id: number;
 
 	// A stream of frames.
-	#frames: WritableStreamDefaultWriter<Uint8Array>;
+	#frames: WatchProducer<Uint8Array[]>;
 
-	constructor(id: number, frames: WritableStream<Uint8Array>) {
+	constructor(id: number, frames: WatchProducer<Uint8Array[]>) {
 		this.id = id;
-		this.#frames = frames.getWriter();
+		this.#frames = frames;
 	}
 
-	async writeFrame(frame: Uint8Array) {
-		await this.#frames.write(frame);
+	write(frame: Uint8Array) {
+		this.#frames.update((frames) => [...frames, frame]);
 	}
 
 	close() {
-		this.#frames.close().catch(() => {});
+		this.#frames.close();
 	}
 
-	abort(reason?: unknown) {
-		this.#frames.abort(reason).catch(() => {});
+	async closed(): Promise<void> {
+		await this.#frames.closed();
+	}
+
+	abort(reason: Error) {
+		this.#frames.abort(reason);
 	}
 }
 
 export class GroupReader {
 	readonly id: number;
-	#frames: ReadableStream<Uint8Array>;
 
-	constructor(id: number, frames: ReadableStream<Uint8Array>) {
+	#frames: WatchConsumer<Uint8Array[]>;
+	#index = 0;
+
+	constructor(id: number, frames: WatchConsumer<Uint8Array[]>) {
 		this.id = id;
 		this.#frames = frames;
 	}
 
-	async readFrame(): Promise<Uint8Array | undefined> {
-		const reader = this.#frames.getReader();
-		const result = await reader.read();
-		reader.releaseLock();
-		return result.done ? undefined : result.value;
+	async read(): Promise<Uint8Array | undefined> {
+		let frames: Uint8Array[] | undefined = this.#frames.latest();
+		if (frames.length <= this.#index) {
+			frames = await this.#frames.next();
+		}
+
+		return frames?.at(this.#index++);
 	}
 
 	close() {
-		this.#frames.cancel().catch(() => {});
+		this.#frames.close();
 	}
 
 	clone(): GroupReader {
-		const [one, two] = this.#frames.tee();
-		this.#frames = one;
-		return new GroupReader(this.id, two);
+		return new GroupReader(this.id, this.#frames.clone());
 	}
 }

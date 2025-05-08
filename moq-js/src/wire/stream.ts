@@ -69,10 +69,10 @@ export class Stream {
 
 	close() {
 		this.writer.close();
-		this.reader.stop();
+		this.reader.stop(new Error("cancel"));
 	}
 
-	abort(reason?: unknown) {
+	abort(reason: Error) {
 		this.writer.reset(reason);
 		this.reader.stop(reason);
 	}
@@ -202,7 +202,7 @@ export class Reader {
 		return !(await this.#fill());
 	}
 
-	stop(reason?: unknown) {
+	stop(reason: Error) {
 		this.#reader.cancel(reason).catch(() => {});
 		this.#reader.releaseLock();
 	}
@@ -301,7 +301,11 @@ export class Writer {
 		this.#writer.releaseLock();
 	}
 
-	reset(reason?: unknown) {
+	async closed(): Promise<void> {
+		await this.#writer.closed;
+	}
+
+	reset(reason: Error) {
 		this.#writer.abort(reason).catch(() => void 0);
 		this.#writer.releaseLock();
 	}

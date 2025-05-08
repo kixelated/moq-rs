@@ -172,8 +172,8 @@ export class Connection {
 
 			const [msg, stream] = next;
 			this.#runUni(msg, stream)
-				.catch((err) => stream.stop(err))
-				.finally(() => stream.stop(0));
+				.then(() => stream.stop(new Error("cancel")))
+				.catch((err: Error) => stream.stop(err));
 		}
 	}
 

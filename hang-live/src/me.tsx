@@ -1,5 +1,5 @@
-import * as Moq from "@kixelated/moq";
 import * as Publish from "@kixelated/hang/publish";
+import * as Moq from "@kixelated/moq";
 
 import { jsx } from "./jsx";
 

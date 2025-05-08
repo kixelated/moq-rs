@@ -2,6 +2,7 @@ import { Announced, AnnouncedReader } from "./announced";
 import { Broadcast, BroadcastReader } from "./broadcast";
 import { Group } from "./group";
 import { type TrackWriter } from "./track";
+import { error } from "./util/error";
 import * as Wire from "./wire";
 
 export class Subscriber {
@@ -50,8 +51,8 @@ export class Subscriber {
 				}
 
 				writer.close();
-			} catch (err) {
-				writer.abort(err);
+			} catch (err: unknown) {
+				writer.abort(error(err));
 			} finally {
 				for (const broadcast of active) {
 					console.debug(`announced: broadcast=${broadcast} active=dropped`);
@@ -112,7 +113,7 @@ export class Subscriber {
 
 			track.close();
 		} catch (err) {
-			track.abort(err);
+			track.abort(error(err));
 		} finally {
 			console.debug(`subscribe close: broadcast=${broadcast} track=${track.name}`);
 			this.#subscribes.delete(id);
@@ -125,26 +126,23 @@ export class Subscriber {
 		if (!subscribe) return;
 
 		const pair = new Group(group.sequence);
-
-		// NOTE: To make sure new consumers get all frames, we clone here.
-		// We don't read from our clone so
-		await subscribe.insertGroup(pair.reader);
+		subscribe.insert(pair.reader);
 
 		try {
 			for (;;) {
-				const done = await stream.done();
-				if (done) break;
+				const done = await Promise.race([stream.done(), subscribe.closed(), pair.writer.closed()]);
+				if (done !== false) break;
 
 				const size = await stream.u53();
 				const payload = await stream.read(size);
 				if (!payload) break;
 
-				await pair.writer.writeFrame(payload);
+				pair.writer.write(payload);
 			}
 
 			pair.writer.close();
-		} catch (err) {
-			pair.writer.abort(err);
+		} catch (err: unknown) {
+			pair.writer.abort(error(err));
 		}
 	}
 }

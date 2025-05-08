@@ -256,7 +256,7 @@ export class Video {
 		}
 	}
 
-	async #encoded(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
+	#encoded(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
 		if (metadata?.decoderConfig) {
 			this.decoderConfig.resolve(metadata.decoderConfig);
 		}
@@ -264,7 +264,7 @@ export class Video {
 		if (frame.type === "key") {
 			this.#groupTimestamp = frame.timestamp;
 			this.#group?.close();
-			this.#group = await this.track.writer.appendGroup();
+			this.#group = this.track.writer.append();
 		}
 
 		if (!this.#group) throw new Error("missing keyframe");

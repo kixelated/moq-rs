@@ -103,7 +103,7 @@ export class BroadcastReader {
 		if (state.onUnknown) {
 			state.onUnknown(pair);
 		} else {
-			pair.writer.abort("not found");
+			pair.writer.abort(new Error("not found"));
 		}
 
 		return pair.reader;

@@ -2,6 +2,7 @@ import { Announced } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import type { GroupReader } from "./group";
 import type { TrackReader } from "./track";
+import { error } from "./util/error";
 import * as Wire from "./wire";
 
 export class Publisher {
@@ -38,7 +39,7 @@ export class Publisher {
 	}
 
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		const reader = await this.#announced.reader.clone();
+		const reader = this.#announced.reader.clone();
 
 		for (;;) {
 			const announcement = await reader.next();
@@ -55,12 +56,12 @@ export class Publisher {
 		const broadcast = this.#broadcasts.get(msg.broadcast);
 		if (!broadcast) {
 			console.debug(`publish unknown: broadcast=${msg.broadcast}`);
-			stream.writer.reset(404);
+			stream.writer.reset(new Error("not found"));
 			return;
 		}
 
 		const track = broadcast.subscribe(msg.track, msg.priority);
-		const serving = this.#runTrack(msg.id, broadcast.path, track.clone(), stream.writer);
+		const serving = this.#runTrack(msg.id, broadcast.path, track, stream.writer);
 
 		for (;;) {
 			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);
@@ -80,7 +81,7 @@ export class Publisher {
 
 		try {
 			for (;;) {
-				const group = await track.nextGroup();
+				const group = await Promise.race([track.next(), stream.closed()]);
 				if (!group) break;
 
 				if (!ok) {
@@ -92,14 +93,14 @@ export class Publisher {
 					ok = true;
 				}
 
-				this.#runGroup(sub, group.clone());
+				this.#runGroup(sub, group);
 			}
 
 			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
 			stream.close();
 		} catch (err) {
 			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
-			stream.reset(err);
+			stream.reset(error(err));
 		} finally {
 			track.close();
 		}
@@ -110,16 +111,16 @@ export class Publisher {
 		const stream = await Wire.Writer.open(this.#quic, msg);
 		try {
 			for (;;) {
-				const frame = await group.readFrame();
+				const frame = await Promise.race([group.read(), stream.closed()]);
 				if (!frame) break;
 
 				await stream.u53(frame.byteLength);
 				await stream.write(frame);
 			}
 
-			await stream.close();
-		} catch (err) {
-			await stream.reset(err);
+			stream.close();
+		} catch (err: unknown) {
+			stream.reset(error(err));
 		} finally {
 			group.close();
 		}

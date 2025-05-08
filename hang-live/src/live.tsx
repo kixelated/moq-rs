@@ -1,5 +1,5 @@
-import { Room } from "./room";
 import { jsx } from "./jsx";
+import { Room } from "./room";
 
 import * as Moq from "@kixelated/moq";
 import { Me } from "./me";
