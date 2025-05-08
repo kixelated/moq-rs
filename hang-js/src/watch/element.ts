@@ -67,7 +67,15 @@ export class Element extends HTMLElement {
 		this.attachShadow({ mode: "open" }).append(style, slot);
 	}
 
-	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+	attributeChangedCallback(
+		name: string,
+		oldValue: string | undefined,
+		newValue: string | undefined,
+	) {
+		if (oldValue === newValue) {
+			return;
+		}
+
 		if (name === "url") {
 			this.url = newValue ? new URL(newValue) : undefined;
 		} else if (name === "name") {
@@ -94,16 +102,22 @@ export class Element extends HTMLElement {
 		this.#connection = new Moq.ConnectionReload(url);
 
 		this.#connection.on("connecting", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "connecting" }),
+			);
 		});
 
 		this.#connection.on("connected", (_connection) => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "connected" }),
+			);
 			this.#run();
 		});
 
 		this.#connection.on("disconnected", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "disconnected" }),
+			);
 			this.#stop();
 		});
 	}
@@ -139,7 +153,10 @@ export class Element extends HTMLElement {
 			return;
 		}
 
-		this.#broadcast = new BroadcastReload(this.#connection.established, this.#name);
+		this.#broadcast = new BroadcastReload(
+			this.#connection.established,
+			this.#name,
+		);
 
 		for (;;) {
 			const active = await this.#broadcast.active();

@@ -8,29 +8,29 @@ export class BroadcastReload {
 	// The connection to the server.
 	connection: Moq.Connection;
 	#announced: Moq.AnnouncedReader;
-
 	#catalog?: Moq.TrackReader;
 
-	#active = new TransformStream<Broadcast, Broadcast>();
+	#reader: ReadableStreamDefaultReader<Broadcast>;
+	#writer: WritableStreamDefaultWriter<Broadcast>;
 
 	constructor(connection: Moq.Connection, broadcast: string) {
 		this.connection = connection;
 		this.#announced = connection.announced(broadcast);
+
+		const active = new TransformStream<Broadcast, Broadcast>();
+		this.#reader = active.readable.getReader();
+		this.#writer = active.writable.getWriter();
 
 		this.#run().finally(() => this.close());
 	}
 
 	// Returns the next active broadcast.
 	async active(): Promise<Broadcast | undefined> {
-		const reader = this.#active.readable.getReader();
-		const broadcast = await reader.read();
-		reader.releaseLock();
+		const broadcast = await this.#reader.read();
 		return broadcast.value;
 	}
 
 	async #run() {
-		const writer = this.#active.writable.getWriter();
-
 		for (;;) {
 			const update = await this.#announced.next();
 
@@ -49,8 +49,10 @@ export class BroadcastReload {
 
 			// Create a new broadcast.
 			const broadcast = this.connection.consume(update.broadcast);
-			writer.write(new Broadcast(broadcast));
+			this.#writer.write(new Broadcast(broadcast));
 		}
+
+		this.#writer.close();
 	}
 
 	close() {

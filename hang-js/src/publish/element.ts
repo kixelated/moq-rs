@@ -54,7 +54,11 @@ export class Element extends HTMLElement {
 		this.attachShadow({ mode: "open" }).append(style, slot);
 	}
 
-	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+	attributeChangedCallback(
+		name: string,
+		_oldValue: string | undefined,
+		newValue: string | undefined,
+	) {
 		if (name === "url") {
 			this.url = newValue ? new URL(newValue) : undefined;
 		} else if (name === "name") {
@@ -62,9 +66,9 @@ export class Element extends HTMLElement {
 		} else if (name === "device") {
 			this.device = newValue as Device;
 		} else if (name === "audio") {
-			this.audio = newValue === "true";
+			this.audio = newValue !== undefined;
 		} else if (name === "video") {
-			this.video = newValue === "true";
+			this.video = newValue !== undefined;
 		}
 	}
 
@@ -83,15 +87,21 @@ export class Element extends HTMLElement {
 		this.#connection = new Moq.ConnectionReload(url);
 
 		this.#connection.on("connecting", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "connecting" }),
+			);
 		});
 
 		this.#connection.on("connected", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "connected" }),
+			);
 		});
 
 		this.#connection.on("disconnected", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
+			this.dispatchEvent(
+				new CustomEvent("moq-connection", { detail: "disconnected" }),
+			);
 		});
 
 		this.#run();
@@ -103,6 +113,7 @@ export class Element extends HTMLElement {
 
 	set name(name: string | undefined) {
 		this.#name = name;
+		this.#run();
 	}
 
 	get device() {
@@ -123,6 +134,10 @@ export class Element extends HTMLElement {
 
 	set audio(audio: boolean) {
 		this.#audio = audio;
+
+		if (this.#broadcast) {
+			this.#broadcast.audio = audio;
+		}
 	}
 
 	get video() {
@@ -131,6 +146,10 @@ export class Element extends HTMLElement {
 
 	set video(video: boolean) {
 		this.#video = video;
+
+		if (this.#broadcast) {
+			this.#broadcast.video = video;
+		}
 	}
 
 	async #run() {
@@ -143,6 +162,8 @@ export class Element extends HTMLElement {
 		this.#broadcast = new Broadcast(this.#connection, this.#name);
 		this.#broadcast.device = this.#device;
 		this.#broadcast.preview = this.#preview;
+		this.#broadcast.audio = this.#audio;
+		this.#broadcast.video = this.#video;
 	}
 
 	#stop() {

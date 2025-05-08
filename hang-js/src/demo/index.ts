@@ -13,7 +13,9 @@ const status = document.getElementById("status") as HTMLSpanElement;
 const volume = document.getElementById("volume") as HTMLInputElement;
 const container = document.getElementById("container") as HTMLDivElement;
 const latency = document.getElementById("latency") as HTMLInputElement;
-const latencyValue = document.getElementById("latency-value") as HTMLSpanElement;
+const latencyValue = document.getElementById(
+	"latency-value",
+) as HTMLSpanElement;
 const volumeValue = document.getElementById("volume-value") as HTMLSpanElement;
 const mute = document.getElementById("mute") as HTMLButtonElement;
 
@@ -23,7 +25,7 @@ if (urlParams.size > 0) {
 	const broadcast = urlParams.get("name") ?? "demo/bbb";
 	const host = urlParams.get("host") ?? "localhost:4443";
 	const scheme = urlParams.get("scheme") ?? "http";
-	watch.setAttribute("url", `${scheme}://${host}`);
+	watch.setAttribute("url", `${scheme}://${host}/`);
 	watch.setAttribute("name", broadcast);
 }
 

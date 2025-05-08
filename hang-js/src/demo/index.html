@@ -12,7 +12,7 @@
 <body>
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
-		<hang-watch url="http://localhost:4443" name="demo/bbb" id="watch">
+		<hang-watch url="http://localhost:4443/" name="demo/bbb" id="watch">
 			<!-- Optionally provide a custom canvas element that we can style as needed -->
 			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
@@ -87,7 +87,7 @@ watch.paused = true;
 	<p>
 		This demo supports query parameters to change the broadcast.
 		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
-			href="?broadcast=demo/tos" target="_blank">watch the
+			href="index.html?name=demo/tos" target="_blank">watch the
 			inferior test video</a>. The player also support automatically reloading broadcasts.
 		Try running multiple terminals and kill the broadcast to see what happens.
 

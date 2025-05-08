@@ -1,7 +1,6 @@
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 
-// biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
 import { Buffer } from "buffer";
 
 // Responsible for choosing the best video track for an active broadcast.
@@ -61,11 +60,16 @@ export class VideoTracks {
 		this.#active = undefined;
 
 		if (info) {
-			const track = this.broadcast.subscribe(info.track.name, info.track.priority);
+			const track = this.broadcast.subscribe(
+				info.track.name,
+				info.track.priority,
+			);
 			this.#active = new VideoTrack(track, info);
-			this.#active.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch((err) => {
-				console.error("video error", err);
-			});
+			this.#active.frames
+				.pipeTo(this.#writer, { preventClose: true, preventCancel: true })
+				.catch((err) => {
+					console.error("video error", err);
+				});
 		}
 	}
 
@@ -110,7 +114,9 @@ export class VideoTrack {
 			codec: info.codec,
 			//codedHeight: info.resolution.height,
 			//codedWidth: info.resolution.width,
-			description: info.description ? Buffer.from(info.description, "hex") : undefined,
+			description: info.description
+				? Buffer.from(info.description, "hex")
+				: undefined,
 			optimizeForLatency: true,
 		});
 
@@ -203,7 +209,9 @@ export class VideoRenderer {
 		this.#broadcast?.close();
 
 		this.#broadcast = broadcast;
-		broadcast?.frames.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
+		broadcast?.frames
+			.pipeTo(this.#writer, { preventClose: true, preventCancel: true })
+			.catch(() => void 0);
 
 		this.#reload();
 	}
@@ -305,7 +313,13 @@ export class VideoRenderer {
 		this.#ctx.canvas.width = frame.displayWidth;
 		this.#ctx.canvas.height = frame.displayHeight;
 
-		this.#ctx.drawImage(frame, 0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
+		this.#ctx.drawImage(
+			frame,
+			0,
+			0,
+			this.#ctx.canvas.width,
+			this.#ctx.canvas.height,
+		);
 	}
 
 	get latency(): DOMHighResTimeStamp {
@@ -326,7 +340,8 @@ export class VideoRenderer {
 			const last = this.#frames[this.#frames.length - 1];
 
 			// Compute the average duration of a frame, minus one so there's some wiggle room.
-			const duration = (last.timestamp - first.timestamp) / (this.#frames.length - 1);
+			const duration =
+				(last.timestamp - first.timestamp) / (this.#frames.length - 1);
 
 			if (last.timestamp - first.timestamp <= maxLatency + duration) {
 				break;

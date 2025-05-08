@@ -31,7 +31,11 @@ export class Broadcast {
 
 	#catalog = new Moq.Track("catalog.json", 0);
 
-	constructor(connection: Moq.ConnectionReload, name: string, options: BroadcastOptions = {}) {
+	constructor(
+		connection: Moq.ConnectionReload,
+		name: string,
+		options: BroadcastOptions = {},
+	) {
 		this.connection = connection;
 		const broadcast = new Moq.Broadcast(name);
 		broadcast.writer.insert(this.#catalog.reader);
@@ -46,8 +50,8 @@ export class Broadcast {
 
 		this.#broadcast = broadcast.writer;
 
-		this.#audioEnabled = options.audio ?? true;
-		this.#videoEnabled = options.video ?? true;
+		this.#audioEnabled = options.audio ?? false;
+		this.#videoEnabled = options.video ?? false;
 		this.#device = options.device;
 		this.#preview = options.preview;
 		this.onMedia = options.onMedia;
@@ -60,6 +64,10 @@ export class Broadcast {
 	}
 
 	set audio(enabled: boolean) {
+		if (this.#audioEnabled === enabled) {
+			return;
+		}
+
 		this.#audioEnabled = enabled;
 		this.#init();
 	}
@@ -69,6 +77,10 @@ export class Broadcast {
 	}
 
 	set video(enabled: boolean) {
+		if (this.#videoEnabled === enabled) {
+			return;
+		}
+
 		this.#videoEnabled = enabled;
 		this.#init();
 	}
@@ -78,6 +90,10 @@ export class Broadcast {
 	}
 
 	set device(device: Device | undefined) {
+		if (this.#device === device) {
+			return;
+		}
+
 		this.#device = device;
 		this.#init();
 	}
@@ -87,6 +103,10 @@ export class Broadcast {
 	}
 
 	set preview(preview: HTMLVideoElement | undefined) {
+		if (this.#preview === preview) {
+			return;
+		}
+
 		if (this.#preview) {
 			this.#preview.srcObject = null;
 		}
@@ -105,9 +125,11 @@ export class Broadcast {
 		const existing = this.#media;
 
 		// Register our new media request to create a chain.
-		// NOTE: We actually await it below.
-		if (!this.#videoEnabled && !this.#audioEnabled) {
+		if (!this.#device || (!this.#videoEnabled && !this.#audioEnabled)) {
 			this.#media = undefined;
+
+			// No-op to avoid publishing another empty catalog.
+			if (!existing) return;
 		} else if (this.#device === "camera") {
 			const video = this.#videoEnabled
 				? {
@@ -166,7 +188,7 @@ export class Broadcast {
 				// systemAudio: "exclude",
 			});
 		} else {
-			this.#media = undefined;
+			throw new Error("Invalid device");
 		}
 
 		// Cancel the old media request first.

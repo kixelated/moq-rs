@@ -25,12 +25,21 @@ none.addEventListener("click", () => {
 
 // If query params are provided, use them instead of the default.
 const urlParams = new URLSearchParams(window.location.search);
-const broadcast = urlParams.get("broadcast") ?? "demo/me";
-const host = urlParams.get("host") ?? "localhost:4443";
-const scheme = urlParams.get("scheme") ?? "http";
+if (urlParams.size > 0) {
+	const broadcast = urlParams.get("broadcast") ?? "demo/me";
+	const host = urlParams.get("host") ?? "localhost:4443";
+	const scheme = urlParams.get("scheme") ?? "http";
 
-publish.setAttribute("url", `${scheme}://${host}/${broadcast}`);
-watch.setAttribute("href", `index.html?broadcast=${broadcast}&host=${host}&scheme=${scheme}`);
+	publish.setAttribute("url", `${scheme}://${host}/`);
+	publish.setAttribute("name", broadcast);
+
+	watch.setAttribute(
+		"href",
+		`index.html?name=${broadcast}&host=${host}&scheme=${scheme}`,
+	);
+} else {
+	watch.setAttribute("href", `index.html?name=demo/me`);
+}
 
 // Listen for connection status changes.
 publish.addEventListener("moq-connection", (event) => {

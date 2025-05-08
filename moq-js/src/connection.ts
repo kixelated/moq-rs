@@ -32,7 +32,9 @@ export class Connection {
 		this.#publisher = new Publisher(this.#quic);
 		this.#subscriber = new Subscriber(this.#quic);
 
-		this.#run().catch((err) => console.error("failed to run connection: ", err));
+		this.#run().catch((err) =>
+			console.error("failed to run connection: ", err),
+		);
 	}
 
 	static async connect(url: URL): Promise<Connection> {
@@ -57,6 +59,7 @@ export class Connection {
 				},
 			];
 
+			url = new URL(url);
 			url.protocol = "https:";
 		}
 
