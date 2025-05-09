@@ -1,7 +1,8 @@
 import * as Moq from "@kixelated/moq";
+import { Watch } from "@kixelated/moq/util";
 import * as Media from "../media";
-import { AudioTracks } from "./audio";
-import { VideoTracks } from "./video";
+import { AudioSource } from "./audio";
+import { VideoSource } from "./video";
 
 // A potential broadcast, reloading automatically when live/offline.
 export class BroadcastReload {
@@ -10,24 +11,19 @@ export class BroadcastReload {
 	#announced: Moq.AnnouncedReader;
 	#catalog?: Moq.TrackReader;
 
-	#reader: ReadableStreamDefaultReader<Broadcast>;
-	#writer: WritableStreamDefaultWriter<Broadcast>;
+	#watch = new Watch<Broadcast | null>(null);
 
 	constructor(connection: Moq.Connection, broadcast: string) {
 		this.connection = connection;
 		this.#announced = connection.announced(broadcast);
-
-		const active = new TransformStream<Broadcast, Broadcast>();
-		this.#reader = active.readable.getReader();
-		this.#writer = active.writable.getWriter();
 
 		this.#run().finally(() => this.close());
 	}
 
 	// Returns the next active broadcast.
 	async active(): Promise<Broadcast | undefined> {
-		const broadcast = await this.#reader.read();
-		return broadcast.value;
+		const next = await this.#watch.consumer.next((v) => !!v);
+		return next ?? undefined;
 	}
 
 	async #run() {
@@ -44,15 +40,23 @@ export class BroadcastReload {
 			this.#catalog?.close();
 
 			if (!update.active) {
+				this.#watch.producer.update((old) => {
+					if (old) old.close();
+					return null;
+				});
+
 				continue;
 			}
 
 			// Create a new broadcast.
 			const broadcast = this.connection.consume(update.broadcast);
-			this.#writer.write(new Broadcast(broadcast));
+			this.#watch.producer.update((old) => {
+				if (old) old.close();
+				return new Broadcast(broadcast);
+			});
 		}
 
-		this.#writer.close();
+		this.#watch.producer.close();
 	}
 
 	close() {
@@ -64,15 +68,15 @@ export class BroadcastReload {
 // An active broadcast, potentially with audio and video.
 export class Broadcast {
 	broadcast: Moq.BroadcastReader;
-	audio: AudioTracks;
-	video: VideoTracks;
+	audio: AudioSource;
+	video: VideoSource;
 
 	#catalog: Moq.TrackReader;
 
 	constructor(broadcast: Moq.BroadcastReader) {
 		this.broadcast = broadcast;
-		this.audio = new AudioTracks(broadcast);
-		this.video = new VideoTracks(broadcast);
+		this.audio = new AudioSource(broadcast);
+		this.video = new VideoSource(broadcast);
 
 		const catalog = broadcast.subscribe("catalog.json", 0);
 		this.#catalog = catalog;
@@ -84,6 +88,8 @@ export class Broadcast {
 		for (;;) {
 			const catalog = await Media.Catalog.fetch(this.#catalog);
 			if (!catalog) break;
+
+			console.log("received catalog", this.broadcast.path, catalog);
 
 			this.audio.tracks = catalog.audio;
 			this.video.tracks = catalog.video;

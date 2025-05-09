@@ -13,6 +13,7 @@ export class Element extends HTMLElement {
 
 	#connection?: Moq.ConnectionReload;
 	#broadcast?: Broadcast;
+	#media?: MediaStream;
 
 	constructor() {
 		super();
@@ -34,8 +35,8 @@ export class Element extends HTMLElement {
 				}
 			}
 
-			if (this.#broadcast) {
-				this.#broadcast.preview = this.#preview;
+			if (this.#preview && this.#media) {
+				this.#preview.srcObject = this.#media;
 			}
 		});
 
@@ -54,11 +55,7 @@ export class Element extends HTMLElement {
 		this.attachShadow({ mode: "open" }).append(style, slot);
 	}
 
-	attributeChangedCallback(
-		name: string,
-		_oldValue: string | undefined,
-		newValue: string | undefined,
-	) {
+	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
 			this.url = newValue ? new URL(newValue) : undefined;
 		} else if (name === "name") {
@@ -87,21 +84,15 @@ export class Element extends HTMLElement {
 		this.#connection = new Moq.ConnectionReload(url);
 
 		this.#connection.on("connecting", () => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "connecting" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
 		});
 
 		this.#connection.on("connected", () => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "connected" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
 		});
 
 		this.#connection.on("disconnected", () => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "disconnected" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
 		});
 
 		this.#run();
@@ -159,11 +150,18 @@ export class Element extends HTMLElement {
 			return;
 		}
 
-		this.#broadcast = new Broadcast(this.#connection, this.#name);
-		this.#broadcast.device = this.#device;
-		this.#broadcast.preview = this.#preview;
-		this.#broadcast.audio = this.#audio;
-		this.#broadcast.video = this.#video;
+		this.#broadcast = new Broadcast(this.#connection, this.#name, {
+			device: this.#device,
+			audio: this.#audio,
+			video: this.#video,
+			onMedia: (media) => {
+				this.#media = media;
+
+				if (this.#preview) {
+					this.#preview.srcObject = media ?? null;
+				}
+			},
+		});
 	}
 
 	#stop() {

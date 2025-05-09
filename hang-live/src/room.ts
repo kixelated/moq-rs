@@ -55,7 +55,10 @@ export class Room {
 			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
 
 			if (this.#dragging) {
-				this.#dragging.targetPosition = Vector.create(mouse.x / this.canvas.width, mouse.y / this.canvas.height);
+				this.#dragging.targetPosition = Vector.create(
+					mouse.x / this.canvas.width,
+					mouse.y / this.canvas.height,
+				);
 			} else {
 				this.#hovering = this.#broadcastAt(mouse);
 				if (this.#hovering) {
@@ -88,7 +91,7 @@ export class Room {
 			() => {
 				this.#muted = false;
 				for (const broadcast of this.#broadcasts.values()) {
-					broadcast.audio.muted = this.#muted;
+					broadcast.audio.enabled = !this.#muted;
 				}
 			},
 			{ once: true },
@@ -176,9 +179,11 @@ export class Room {
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
 
-		broadcast.audio.muted = this.#muted;
+		broadcast.audio.enabled = !this.#muted;
+		broadcast.audioEmitter.volume = 1;
+
 		broadcast.watch.video.enabled = this.#visible;
-		broadcast.audio.latency = 100;
+		broadcast.audioEmitter.latency = 100;
 		broadcast.video.latency = 100;
 
 		this.#broadcasts.set(path, broadcast);

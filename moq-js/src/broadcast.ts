@@ -1,5 +1,5 @@
 import { Track, TrackReader, TrackWriter } from "./track";
-import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
 export class Broadcast {
 	readonly path: string;
@@ -41,6 +41,8 @@ export class BroadcastWriter {
 
 	insert(track: TrackReader) {
 		this.#state.update((state) => {
+			const existing = state.tracks.get(track.name);
+			existing?.close();
 			state.tracks.set(track.name, track);
 			return state;
 		});
@@ -48,6 +50,8 @@ export class BroadcastWriter {
 
 	remove(name: string) {
 		this.#state.update((state) => {
+			const track = state.tracks.get(name);
+			track?.close();
 			state.tracks.delete(name);
 			return state;
 		});
@@ -91,7 +95,7 @@ export class BroadcastReader {
 	}
 
 	subscribe(track: string, priority: number): TrackReader {
-		const state = this.#state.latest();
+		const state = this.#state.value();
 
 		const existing = state.tracks.get(track);
 		if (existing) {

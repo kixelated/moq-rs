@@ -1,28 +1,21 @@
 import * as Moq from "@kixelated/moq";
+import { Watch } from "@kixelated/moq/util";
 import type * as Catalog from "../media";
 import * as Media from "../media";
+import { isEqual } from "lodash";
 
 // Responsible for choosing the best audio track for an active broadcast.
-export class AudioTracks {
+export class AudioSource {
 	broadcast: Moq.BroadcastReader;
 	#tracks: Media.Audio[] = [];
-	#active?: AudioTrack;
 
-	// The combined audio samples from all tracks.
-	samples: ReadableStream<AudioData>;
-	#writer: WritableStream<AudioData>;
+	#watch = new Watch<AudioTrack | null>(null);
 
-	// constraints
-	// Audio starts disabled by default.
-	// This is not really by choice; browsers require user interaction before audio contexts can be created.
-	#enabled = false;
+	// Constraints
+	#enabled = false; // Must opt-in
 
 	constructor(broadcast: Moq.BroadcastReader) {
 		this.broadcast = broadcast;
-
-		const queue = new TransformStream<AudioData, AudioData>();
-		this.#writer = queue.writable;
-		this.samples = queue.readable;
 	}
 
 	get tracks(): Media.Audio[] {
@@ -39,38 +32,50 @@ export class AudioTracks {
 	}
 
 	set enabled(enabled: boolean) {
+		if (this.#enabled === enabled) {
+			return;
+		}
+
 		this.#enabled = enabled;
 		this.#reload();
 	}
 
-	// TODO add other constraints.
+	// TODO add max bitrate/resolution/etc.
 
 	#reload() {
-		if (!this.#enabled) {
-			this.#active?.close();
-			this.#active = undefined;
-			return;
-		}
-
 		const info = this.#tracks.at(0);
-		if (this.#active?.info === info) {
+
+		if (!this.#enabled || !info) {
+			this.#watch.producer.update((old) => {
+				old?.close();
+				return null;
+			});
+
 			return;
 		}
 
-		this.#active?.close();
-		this.#active = undefined;
-
-		if (info) {
-			const track = this.broadcast.subscribe(info.track.name, info.track.priority);
-			this.#active = new AudioTrack(track, info);
-
-			this.#active.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
+		const active = this.#watch.producer.value();
+		if (isEqual(active?.info, info)) {
+			// No change
+			return;
 		}
+
+		const track = this.broadcast.subscribe(info.track.name, info.track.priority);
+		this.#watch.producer.update((old) => {
+			old?.close();
+			return new AudioTrack(track, info);
+		});
+	}
+
+	// Returns the next audio track.
+	async track(): Promise<AudioTrack | undefined> {
+		const next = await this.#watch.consumer.next((v) => !!v);
+		return next ?? undefined;
 	}
 
 	close() {
 		this.broadcast.close();
-		this.#active?.close();
+		this.#watch.producer.close();
 	}
 }
 
@@ -148,12 +153,8 @@ export class AudioEmitter {
 	#context?: Context;
 
 	#volume = 0.5;
-	#paused = true;
 
-	#broadcast?: AudioTracks;
-
-	#writer: WritableStream<AudioData>;
-	#reader: ReadableStreamDefaultReader<AudioData>;
+	#source?: AudioSource;
 
 	// Reusable audio buffers.
 	#buffers: AudioBuffer[] = [];
@@ -175,27 +176,33 @@ export class AudioEmitter {
 		dst.connect(ctx.destination);
 	};
 
-	constructor() {
-		const queue = new TransformStream<AudioData, AudioData>();
-		this.#writer = queue.writable;
-		this.#reader = queue.readable.getReader();
-
-		this.#run();
+	get source(): AudioSource | undefined {
+		return this.#source;
 	}
 
-	get broadcast(): AudioTracks | undefined {
-		return this.#broadcast;
-	}
+	set source(source: AudioSource | undefined) {
+		this.#source?.close();
+		this.#source = source;
 
-	set broadcast(broadcast: AudioTracks | undefined) {
-		this.#broadcast?.close();
-
-		if (broadcast) {
-			broadcast.enabled = !this.#paused && this.#volume > 0;
-			broadcast.samples.pipeTo(this.#writer, { preventClose: true, preventCancel: true }).catch(() => void 0);
+		if (source) {
+			this.#run(source);
 		}
+	}
 
-		this.#broadcast = broadcast;
+	async #run(source: AudioSource) {
+		for (;;) {
+			const track = await source.track();
+			if (!track) break;
+
+			const samples = track.samples.getReader();
+
+			for (;;) {
+				const { value: sample } = await samples.read();
+				if (!sample) break;
+
+				this.#emit(sample);
+			}
+		}
 	}
 
 	get volume(): number {
@@ -206,23 +213,13 @@ export class AudioEmitter {
 		this.#volume = volume;
 
 		if (this.#context) {
-			this.#context.gain.gain.value = this.#volume;
+			this.#context.gain.gain.value = volume;
 		}
 
-		if (this.#broadcast) {
-			this.#broadcast.enabled = !this.#paused && this.#volume > 0;
-		}
-	}
-
-	get muted(): boolean {
-		return this.#paused;
-	}
-
-	set muted(paused: boolean) {
-		this.#paused = paused;
-
-		if (this.#broadcast) {
-			this.#broadcast.enabled = !this.#paused && this.#volume > 0;
+		if (volume === 0) {
+			for (const active of this.#active) {
+				active.stop();
+			}
 		}
 	}
 
@@ -233,15 +230,6 @@ export class AudioEmitter {
 	set latency(maxLatency: DOMHighResTimeStamp) {
 		this.#maxLatency = maxLatency;
 		this.#ref = undefined;
-	}
-
-	async #run() {
-		for (;;) {
-			const { done, value: sample } = await this.#reader.read();
-			if (done) break;
-
-			this.#emit(sample);
-		}
 	}
 
 	#emit(sample: AudioData) {
@@ -260,10 +248,13 @@ export class AudioEmitter {
 		const latency = when - context.root.currentTime;
 
 		if (latency > maxLatency) {
+			// Cancel any active samples.
+			for (const active of this.#active) {
+				active.stop();
+			}
+
 			// Skip this sample if it's too far in the future.
 			this.#ref += sample.numberOfFrames / sample.sampleRate;
-			sample.close();
-			return;
 		}
 
 		// Create an audio buffer for this sample.
@@ -338,7 +329,6 @@ export class AudioEmitter {
 
 	close() {
 		this.#context?.root.close();
-		this.#writer.close().catch(() => void 0);
-		this.#reader.cancel().catch(() => void 0);
+		this.#source?.close();
 	}
 }

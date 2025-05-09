@@ -9,16 +9,16 @@ interface BroadcastOptions {
 	audio?: boolean;
 	video?: boolean;
 	device?: Device;
-	preview?: HTMLVideoElement;
 	onMedia?: (media?: MediaStream) => void;
 }
 
 export class Broadcast {
 	connection: Moq.ConnectionReload;
-	#broadcast: Moq.BroadcastWriter;
+	name: string;
+
+	#broadcast?: Moq.BroadcastWriter;
 
 	#device?: Device;
-	#preview?: HTMLVideoElement;
 
 	#media?: Promise<MediaStream>;
 	onMedia?: (media?: MediaStream) => void; // A callback to expose the media stream.
@@ -31,29 +31,12 @@ export class Broadcast {
 
 	#catalog = new Moq.Track("catalog.json", 0);
 
-	constructor(
-		connection: Moq.ConnectionReload,
-		name: string,
-		options: BroadcastOptions = {},
-	) {
+	constructor(connection: Moq.ConnectionReload, name: string, options: BroadcastOptions = {}) {
+		this.name = name;
 		this.connection = connection;
-		const broadcast = new Moq.Broadcast(name);
-		broadcast.writer.insert(this.#catalog.reader);
-
-		this.connection.on("connected", (connection) => {
-			connection.publish(broadcast.reader);
-		});
-
-		if (this.connection.established) {
-			this.connection.established.publish(broadcast.reader);
-		}
-
-		this.#broadcast = broadcast.writer;
-
 		this.#audioEnabled = options.audio ?? false;
 		this.#videoEnabled = options.video ?? false;
 		this.#device = options.device;
-		this.#preview = options.preview;
 		this.onMedia = options.onMedia;
 
 		this.#init();
@@ -98,38 +81,12 @@ export class Broadcast {
 		this.#init();
 	}
 
-	get preview(): HTMLVideoElement | undefined {
-		return this.#preview;
-	}
-
-	set preview(preview: HTMLVideoElement | undefined) {
-		if (this.#preview === preview) {
-			return;
-		}
-
-		if (this.#preview) {
-			this.#preview.srcObject = null;
-		}
-
-		this.#preview = preview;
-
-		if (preview) {
-			this.#media?.then((media) => {
-				preview.srcObject = media;
-				preview.play();
-			});
-		}
-	}
-
 	async #init() {
 		const existing = this.#media;
 
 		// Register our new media request to create a chain.
 		if (!this.#device || (!this.#videoEnabled && !this.#audioEnabled)) {
 			this.#media = undefined;
-
-			// No-op to avoid publishing another empty catalog.
-			if (!existing) return;
 		} else if (this.#device === "camera") {
 			const video = this.#videoEnabled
 				? {
@@ -201,26 +158,22 @@ export class Broadcast {
 
 		// Finish the media request.
 		const media = await this.#media;
-		if (this.#preview) {
-			this.#preview.srcObject = media ?? null;
-			this.#preview.play();
+
+		if (this.onMedia) {
+			this.onMedia(media);
 		}
 
-		// Create the new catalog.
-		const catalog = new Media.Catalog();
-
 		const audio = media?.getAudioTracks().at(0);
+		const video = media?.getVideoTracks().at(0);
+
 		if (this.#audio?.media !== audio) {
 			this.#audio?.close();
 			this.#audio = undefined;
 
 			if (audio) {
 				this.#audio = new Audio(audio);
-				this.#broadcast.insert(this.#audio.track.reader.clone());
 			}
 		}
-
-		const video = media?.getVideoTracks().at(0);
 
 		// Check if the video source has changed.
 		if (video?.id !== this.#video?.id) {
@@ -229,17 +182,39 @@ export class Broadcast {
 
 			if (video) {
 				this.#video = await Video.create(video);
-				this.#broadcast.insert(this.#video.track.reader.clone());
 			}
 		}
+
+		if (!this.#video && !this.#audio) {
+			this.#broadcast?.close();
+			this.#broadcast = undefined;
+			return;
+		}
+
+		if (!this.#broadcast) {
+			const broadcast = new Moq.Broadcast(this.name);
+			this.#broadcast = broadcast.writer;
+			this.#broadcast.insert(this.#catalog.reader.clone());
+
+			// Publish the broadcast to the connection.
+			this.connection.on("connected", (connection) => {
+				connection.publish(broadcast.reader);
+			});
+			this.connection.established?.publish(broadcast.reader);
+		}
+
+		// Create the new catalog.
+		const catalog = new Media.Catalog();
 
 		// We need to wait for the encoder to fully initialize with a few frames.
 		if (this.#audio) {
 			catalog.audio.push(this.#audio.catalog);
+			this.#broadcast.insert(this.#audio.track.reader.clone());
 		}
 
 		if (this.#video) {
 			catalog.video.push(await this.#video.catalog());
+			this.#broadcast.insert(this.#video.track.reader.clone());
 		}
 
 		console.debug("published catalog", this.#broadcast.path, catalog);
@@ -249,10 +224,6 @@ export class Broadcast {
 		const catalogGroup = this.#catalog.writer.append();
 		catalogGroup.write(encoded);
 		catalogGroup.close();
-
-		if (this.onMedia) {
-			this.onMedia(media);
-		}
 	}
 
 	close() {
@@ -262,6 +233,6 @@ export class Broadcast {
 			}
 		});
 
-		this.#broadcast.close();
+		this.#broadcast?.close();
 	}
 }

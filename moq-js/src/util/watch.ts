@@ -32,6 +32,7 @@ export class WatchProducer<T> {
 	#current: T;
 	#next = new Deferred<T>();
 	#closed = new Deferred<undefined>();
+	#epoch = 0;
 
 	#consumers = 0;
 
@@ -39,11 +40,11 @@ export class WatchProducer<T> {
 		this.#current = init;
 	}
 
-	latest(): T {
+	value(): T {
 		return this.#current;
 	}
 
-	async next(): Promise<T | undefined> {
+	async updated(): Promise<T | undefined> {
 		return Promise.race([this.#next.promise, this.#closed.promise]);
 	}
 
@@ -61,6 +62,7 @@ export class WatchProducer<T> {
 
 		const next = new Deferred<T>();
 		this.#current = value;
+		this.#epoch++;
 		this.#next.resolve(this.#current);
 		this.#next = next;
 	}
@@ -88,10 +90,17 @@ export class WatchProducer<T> {
 			this.close();
 		}
 	}
+
+	get epoch(): number {
+		return this.#epoch;
+	}
 }
 
 export class WatchConsumer<T> {
 	#watch: WatchProducer<T>;
+
+	// Used to make sure we don't process the same value twice.
+	#epoch = 0;
 
 	// Whether our specific consumer is closed.
 	#closed = new Deferred<undefined>();
@@ -100,26 +109,54 @@ export class WatchConsumer<T> {
 		this.#watch = watch;
 	}
 
-	latest(): T {
-		return this.#watch.latest();
+	value(): T {
+		return this.#watch.value();
 	}
 
-	async next(): Promise<T | undefined> {
-		return Promise.race([this.#watch.next(), this.#closed.promise]);
+	/// Returns the next value that hasn't been returned by `next` yet.
+	/// Optionally, a filter can be provided to only return values that match the filter.
+	async next(fn?: (v: T) => boolean): Promise<T | undefined> {
+		if (!this.#closed.pending) {
+			return undefined;
+		}
+
+		if (this.#epoch <= this.#watch.epoch) {
+			this.#epoch = this.#watch.epoch + 1;
+
+			const latest = this.value();
+			if (!fn || fn(latest)) {
+				return latest;
+			}
+		}
+
+		for (;;) {
+			const v = await Promise.race([this.#watch.updated(), this.#closed.promise]);
+			this.#epoch = this.#watch.epoch + 1;
+
+			if (v === undefined) {
+				return undefined;
+			}
+
+			if (!fn || fn(v)) {
+				return v;
+			}
+		}
 	}
 
+	/// Returns the next value that matches the filter.
+	/// This will return the same value multiple times if it matches the filter.
 	async when(fn: (v: T) => boolean): Promise<T | undefined> {
 		if (!this.#closed.pending) {
 			return undefined;
 		}
 
-		const latest = this.latest();
+		const latest = this.value();
 		if (fn(latest)) {
 			return latest;
 		}
 
 		for (;;) {
-			const v = await this.next();
+			const v = await Promise.race([this.#watch.updated(), this.#closed.promise]);
 			if (v === undefined) {
 				return undefined;
 			}

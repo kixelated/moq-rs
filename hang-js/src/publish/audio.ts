@@ -21,13 +21,13 @@ export class Audio {
 
 	constructor(media: MediaStreamAudioTrack) {
 		this.media = media;
-		this.track = new Moq.Track("audio", 1);
+		this.track = new Moq.Track(media.id, 1);
 		this.settings = media.getSettings() as AudioTrackSettings;
 
 		this.catalog = {
 			track: {
-				name: "audio",
-				priority: 1,
+				name: this.track.name,
+				priority: this.track.priority,
 			},
 			codec: "Opus",
 			sample_rate: this.settings.sampleRate,

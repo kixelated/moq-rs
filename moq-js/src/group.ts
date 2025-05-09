@@ -1,4 +1,4 @@
-import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
 export class Group {
 	readonly id: number;

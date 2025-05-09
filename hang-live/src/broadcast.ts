@@ -8,12 +8,13 @@ export class Broadcast {
 	watch: Watch.Broadcast;
 	room: string;
 
-	audio: Watch.AudioEmitter;
+	audio: Watch.AudioSource;
+	audioEmitter: Watch.AudioEmitter;
 	audioPanner?: StereoPannerNode;
 	audioLeft?: AnalyserNode;
 	audioRight?: AnalyserNode;
 
-	video: Watch.VideoRenderer;
+	video: Watch.VideoSource;
 
 	bounds: Bounds;
 	scale = 1.0; // 1 is 100%
@@ -27,11 +28,13 @@ export class Broadcast {
 		this.watch = new Watch.Broadcast(broadcast);
 		this.room = room;
 
-		this.video = new Watch.VideoRenderer();
-		this.video.broadcast = this.watch.video;
+		this.video = this.watch.video;
+		this.video.enabled = true;
 
-		this.audio = new Watch.AudioEmitter();
-		this.audio.onInit = (ctx: AudioContext, node: AudioNode) => {
+		this.audio = this.watch.audio;
+
+		this.audioEmitter = new Watch.AudioEmitter();
+		this.audioEmitter.onInit = (ctx: AudioContext, node: AudioNode) => {
 			if (node.channelCount >= 2) {
 				this.audioPanner = new StereoPannerNode(ctx, {
 					channelCount: node.channelCount,
@@ -60,7 +63,7 @@ export class Broadcast {
 			}
 		};
 
-		this.audio.broadcast = this.watch.audio;
+		this.audioEmitter.source = this.audio;
 
 		this.targetSize = Vector.create(128, 128);
 		this.bounds = new Bounds(Vector.create(0, 0), this.targetSize);
@@ -79,7 +82,7 @@ export class Broadcast {
 		const bars = Math.max(2 ** Math.floor(Math.log2(bounds.size.y / 4)), 32);
 		const barHeight = bounds.size.y / bars;
 		const barData = new Uint8Array(bars); // TODO reuse a buffer.
-		const barScale = 4 * this.scale;
+		const barScale = 8 * this.scale;
 
 		this.audioLeft.fftSize = bars;
 		this.audioLeft.getByteFrequencyData(barData);

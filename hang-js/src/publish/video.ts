@@ -31,7 +31,7 @@ export class Video {
 		this.id = media.id;
 		this.#media = media;
 		this.#reader = reader;
-		this.track = new Moq.Track("video", 2);
+		this.track = new Moq.Track(media.id, 2);
 		this.encoderConfig = config;
 		this.#encoder = new VideoEncoder({
 			output: (frame, metadata) => this.#encoded(frame, metadata),
@@ -70,10 +70,7 @@ export class Video {
 	}
 
 	// Try to determine the best config for the given settings.
-	static async config(
-		settings: VideoTrackSettings,
-		frame: VideoFrame,
-	): Promise<VideoEncoderConfig> {
+	static async config(settings: VideoTrackSettings, frame: VideoFrame): Promise<VideoEncoderConfig> {
 		const width = frame.codedWidth;
 		const height = frame.codedHeight;
 
@@ -241,15 +238,9 @@ export class Video {
 			const { done, value: frame } = await this.#reader.read();
 			if (done) break;
 
-			if (
-				frame.codedHeight !== this.encoderConfig.height ||
-				frame.codedWidth !== this.encoderConfig.width
-			) {
+			if (frame.codedHeight !== this.encoderConfig.height || frame.codedWidth !== this.encoderConfig.width) {
 				// Ugh we have to re-configure the encoder.
-				const config = await Video.config(
-					this.#media.getSettings() as VideoTrackSettings,
-					frame,
-				);
+				const config = await Video.config(this.#media.getSettings() as VideoTrackSettings, frame);
 				this.#encoder.configure(config);
 
 				// TODO we need to update the catalog too.
@@ -257,8 +248,7 @@ export class Video {
 
 			// Create a keyframe at least every 2 seconds.
 			// We set this to undefined not `false` so the encoder can decide too.
-			const keyFrame =
-				this.#groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
+			const keyFrame = this.#groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
 
 			this.#encoder.encode(frame, { keyFrame });
 			frame.close();
@@ -281,11 +271,7 @@ export class Video {
 		const buffer = new Uint8Array(frame.byteLength);
 		frame.copyTo(buffer);
 
-		const container = new Media.Frame(
-			frame.type === "key",
-			frame.timestamp,
-			buffer,
-		);
+		const container = new Media.Frame(frame.type === "key", frame.timestamp, buffer);
 		container.encode(this.#group);
 	}
 

@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "vite",
+		"dev": "vite --open",
 		"build": "tsc -b && vite build",
 		"preview": "vite preview",
 		"check": "tsc --noEmit && biome check",

@@ -26,7 +26,8 @@ export class Me extends HTMLElement {
 			background: "transparent",
 			border: "1px solid transparent",
 			backdropFilter: "blur(2px)",
-			textShadow: "-1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black, 1px 1px 0 black",
+			textShadow:
+				"-1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black, 1px 1px 0 black",
 		};
 
 		const button: Partial<CSSStyleDeclaration> = {
@@ -37,13 +38,15 @@ export class Me extends HTMLElement {
 		this.#cameraVolume = new Volume();
 		this.#screenVolume = new Volume();
 
-		this.#camera = new Publish.Broadcast(connection, `${name}/camera`, {
-			audio: false,
-			video: false,
+		this.#camera = new Publish.Broadcast(connection, name, {
 			device: "camera",
 			onMedia: (media) => {
-				microphoneButton.style.borderColor = media?.getAudioTracks().length ? "white" : "transparent";
-				cameraButton.style.borderColor = media?.getVideoTracks().length ? "white" : "transparent";
+				microphoneButton.style.borderColor = media?.getAudioTracks().length
+					? "white"
+					: "transparent";
+				cameraButton.style.borderColor = media?.getVideoTracks().length
+					? "white"
+					: "transparent";
 				this.#cameraVolume.onMedia(media);
 			},
 		});
@@ -79,19 +82,25 @@ export class Me extends HTMLElement {
 				this.#screenVolume.onMedia(undefined);
 				screenButton.style.borderColor = "transparent";
 			} else {
-				this.#screen = new Publish.Broadcast(this.connection, `${this.name}/screen`, {
-					audio: true,
-					video: true,
-					device: "screen",
-					onMedia: (media) => {
-						this.#screenVolume.onMedia(media);
-						screenButton.style.borderColor = media ? "white" : "transparent";
+				this.#screen = new Publish.Broadcast(
+					this.connection,
+					`${this.name}/screen`,
+					{
+						audio: true,
+						video: true,
+						device: "screen",
+						onMedia: (media) => {
+							this.#screenVolume.onMedia(media);
+							screenButton.style.borderColor = media ? "white" : "transparent";
+						},
 					},
-				});
+				);
 			}
 		});
 
-		const chat = <input type="text" placeholder="Type a message..." css={control} />;
+		const chat = (
+			<input type="text" placeholder="Type a message..." css={control} />
+		);
 		const settings = (
 			<button type="button" css={button}>
 				⚙️

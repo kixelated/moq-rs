@@ -1,4 +1,4 @@
-import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
 export type Announcement = {
 	broadcast: string;
@@ -58,11 +58,7 @@ export class AnnouncedReader {
 	}
 
 	async next(): Promise<Announcement | undefined> {
-		let queue: Announcement[] | undefined = this.#queue.latest();
-		if (queue.length <= this.#index) {
-			queue = await this.#queue.next();
-		}
-
+		const queue = await this.#queue.when((v) => v.length > this.#index);
 		return queue?.at(this.#index++);
 	}
 

@@ -13,9 +13,7 @@ const status = document.getElementById("status") as HTMLSpanElement;
 const volume = document.getElementById("volume") as HTMLInputElement;
 const container = document.getElementById("container") as HTMLDivElement;
 const latency = document.getElementById("latency") as HTMLInputElement;
-const latencyValue = document.getElementById(
-	"latency-value",
-) as HTMLSpanElement;
+const latencyValue = document.getElementById("latency-value") as HTMLSpanElement;
 const volumeValue = document.getElementById("volume-value") as HTMLSpanElement;
 const mute = document.getElementById("mute") as HTMLButtonElement;
 
@@ -31,10 +29,9 @@ if (urlParams.size > 0) {
 
 // Listen for clicks on the pause button.
 pause.addEventListener("click", () => {
-	watch.video.paused = !watch.video.paused;
-	watch.audio.muted = watch.video.paused;
+	watch.paused = !watch.paused;
 
-	if (watch.video.paused) {
+	if (watch.paused) {
 		pause.textContent = "▶️";
 	} else {
 		pause.textContent = "⏸️";
@@ -43,16 +40,16 @@ pause.addEventListener("click", () => {
 
 // Listen for clicks on the mute button.
 mute.addEventListener("click", () => {
-	watch.audio.muted = !watch.audio.muted;
+	watch.muted = !watch.muted;
 
-	if (watch.audio.muted) {
+	if (watch.muted) {
 		mute.textContent = "🔇";
 		volume.value = "0";
 		volumeValue.textContent = "0%";
 	} else {
 		mute.textContent = "🔊";
-		volume.value = watch.audio.volume.toString();
-		volumeValue.textContent = `${(watch.audio.volume * 100).toFixed(0)}%`;
+		volume.value = watch.volume.toString();
+		volumeValue.textContent = `${(watch.volume * 100).toFixed(0)}%`;
 	}
 });
 
@@ -70,12 +67,12 @@ fullscreen.addEventListener("click", () => {
 
 // Listen for changes to the volume input.
 volume.addEventListener("input", () => {
-	if (watch.audio.muted) {
+	if (watch.muted) {
 		mute.textContent = "🔊";
-		watch.audio.muted = false;
+		watch.muted = false;
 	}
 
-	watch.audio.volume = Number.parseFloat(volume.value);
+	watch.volume = Number.parseFloat(volume.value);
 	volumeValue.textContent = `${(Number.parseFloat(volume.value) * 100).toFixed(0)}%`;
 
 	if (Number.parseFloat(volume.value) === 0) {
@@ -98,16 +95,15 @@ watch.addEventListener("moq-connection", (event) => {
 
 // Listen for changes to the latency input.
 latency.addEventListener("input", () => {
-	watch.audio.latency = Number.parseInt(latency.value);
-	watch.video.latency = Number.parseInt(latency.value);
+	watch.latency = Number.parseInt(latency.value);
 	latencyValue.textContent = `${latency.value}ms`;
 });
 
 // Optional: Stop downloading video when the page is hidden.
 document.addEventListener("visibilitychange", () => {
-	watch.video.paused = document.visibilityState === "hidden";
+	watch.paused = document.visibilityState === "hidden";
 
-	if (watch.video.paused) {
+	if (watch.paused) {
 		pause.textContent = "▶️";
 	} else {
 		pause.textContent = "⏸️";

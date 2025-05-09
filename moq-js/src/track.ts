@@ -1,5 +1,5 @@
 import { Group, GroupReader, GroupWriter } from "./group";
-import { Watch, WatchConsumer, WatchProducer } from "./util/async";
+import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
 export class Track {
 	readonly name: string;
@@ -74,7 +74,6 @@ export class TrackReader {
 	readonly priority: number;
 
 	#groups: WatchConsumer<GroupReader | null>;
-	#seen?: number;
 
 	constructor(name: string, priority: number, groups: WatchConsumer<GroupReader | null>) {
 		this.name = name;
@@ -83,13 +82,8 @@ export class TrackReader {
 	}
 
 	async next(): Promise<GroupReader | undefined> {
-		const group = await this.#groups.when((group) => (group?.id ?? -1) > (this.#seen ?? -1));
-		if (!group) {
-			return undefined;
-		}
-
-		this.#seen = group.id;
-		return group.clone();
+		const group = await this.#groups.next((group) => !!group);
+		return group?.clone();
 	}
 
 	clone(): TrackReader {

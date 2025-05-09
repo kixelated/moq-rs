@@ -12,7 +12,7 @@
 <body>
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
-		<hang-watch url="http://localhost:4443/" name="demo/bbb" id="watch">
+		<hang-watch url="http://localhost:4443/" name="demo/bbb" muted id="watch">
 			<!-- Optionally provide a custom canvas element that we can style as needed -->
 			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
@@ -24,9 +24,9 @@
 			</button>
 
 			<span>
-				<button id="mute" title="Mute">🔊</button>
-				<input type="range" id="volume" min=0 max=1 step=0.01 value=0.5 title="Volume"></input>
-				<span id="volume-value">50%</span>
+				<button id="mute" title="Mute">🔇</button>
+				<input type="range" id="volume" min=0 max=1 step=0.01 value=0 title="Volume"></input>
+				<span id="volume-value">0%</span>
 			</span>
 
 			<span id="status">🟡 Initializing...</span>

@@ -1,30 +1,34 @@
 import * as Moq from "@kixelated/moq";
 
-import { AudioEmitter } from "./audio";
+import { AudioEmitter, AudioSource } from "./audio";
 import { BroadcastReload } from "./broadcast";
-import { VideoRenderer } from "./video";
+import { VideoRenderer, VideoSource } from "./video";
 
 // A custom element that renders to a canvas.
 export class Element extends HTMLElement {
-	static observedAttributes = ["url", "name", "paused"];
+	static observedAttributes = ["url", "name", "paused", "muted", "latency"];
 
 	#url?: URL;
 	#name?: string;
 	#paused = false;
+	#muted = false;
+	#volume = 0.5;
+
+	// TODO this is pretty high because the BBB audio stutters; fix that.
+	#latency = 100;
 
 	#connection?: Moq.ConnectionReload;
 
 	#broadcast?: BroadcastReload;
-	audio = new AudioEmitter();
-	video = new VideoRenderer();
+
+	#audio?: AudioSource;
+	#video?: VideoSource;
+
+	#emitter = new AudioEmitter();
+	#renderer = new VideoRenderer();
 
 	constructor() {
 		super();
-
-		// Set the maximum latency for the audio and video so they're "synchronized".
-		// TODO this is pretty high because the BBB audio stutters; fix that.
-		this.audio.latency = 100;
-		this.video.latency = 100;
 
 		const canvas = document.createElement("canvas");
 		canvas.style.width = "100%";
@@ -34,16 +38,19 @@ export class Element extends HTMLElement {
 		slot.addEventListener("slotchange", () => {
 			for (const el of slot.assignedElements({ flatten: true })) {
 				if (el instanceof HTMLCanvasElement) {
-					this.video.canvas = el;
+					this.#renderer.canvas = el;
 					return;
 				}
 			}
 
-			this.video.canvas = undefined;
+			this.#renderer.canvas = undefined;
 		});
 
+		// TODO: Move this to AudioSource?
+		this.#emitter.latency = this.#latency;
+
 		slot.appendChild(canvas);
-		this.video.canvas = canvas;
+		this.#renderer.canvas = canvas;
 
 		const style = document.createElement("style");
 		style.textContent = `
@@ -54,24 +61,10 @@ export class Element extends HTMLElement {
 			}
 		`;
 
-		// We can only start audio playback once the user has clicked the element.
-		this.addEventListener(
-			"click",
-			() => {
-				// When the user clicks the element, we start the audio if the video is playing.
-				this.audio.muted = this.video.paused;
-			},
-			{ once: true },
-		);
-
 		this.attachShadow({ mode: "open" }).append(style, slot);
 	}
 
-	attributeChangedCallback(
-		name: string,
-		oldValue: string | undefined,
-		newValue: string | undefined,
-	) {
+	attributeChangedCallback(name: string, oldValue: string | undefined, newValue: string | undefined) {
 		if (oldValue === newValue) {
 			return;
 		}
@@ -82,6 +75,8 @@ export class Element extends HTMLElement {
 			this.name = newValue;
 		} else if (name === "paused") {
 			this.paused = newValue !== undefined;
+		} else if (name === "muted") {
+			this.muted = newValue !== undefined;
 		}
 	}
 
@@ -102,22 +97,16 @@ export class Element extends HTMLElement {
 		this.#connection = new Moq.ConnectionReload(url);
 
 		this.#connection.on("connecting", () => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "connecting" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
 		});
 
 		this.#connection.on("connected", (_connection) => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "connected" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
 			this.#run();
 		});
 
 		this.#connection.on("disconnected", () => {
-			this.dispatchEvent(
-				new CustomEvent("moq-connection", { detail: "disconnected" }),
-			);
+			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
 			this.#stop();
 		});
 	}
@@ -141,9 +130,51 @@ export class Element extends HTMLElement {
 
 	set paused(paused: boolean) {
 		this.#paused = paused;
+		this.#reload();
+	}
 
-		this.video.paused = paused;
-		this.audio.muted = paused;
+	get volume() {
+		return this.#volume;
+	}
+
+	set volume(volume: number) {
+		this.#volume = volume;
+		this.#reload();
+	}
+
+	get muted() {
+		return this.#muted;
+	}
+
+	set muted(muted: boolean) {
+		this.#muted = muted;
+		this.#reload();
+	}
+
+	get latency() {
+		return this.#latency;
+	}
+
+	set latency(latency: number) {
+		this.#latency = latency;
+
+		this.#emitter.latency = this.#latency;
+		if (this.#video) {
+			this.#video.latency = this.#latency;
+		}
+	}
+
+	#reload() {
+		const volume = this.#muted ? 0 : this.#volume;
+		this.#emitter.volume = volume;
+
+		if (this.#audio) {
+			this.#audio.enabled = !this.#paused && volume > 0;
+		}
+
+		if (this.#video) {
+			this.#video.enabled = !this.#paused;
+		}
 	}
 
 	async #run() {
@@ -153,17 +184,19 @@ export class Element extends HTMLElement {
 			return;
 		}
 
-		this.#broadcast = new BroadcastReload(
-			this.#connection.established,
-			this.#name,
-		);
+		this.#broadcast = new BroadcastReload(this.#connection.established, this.#name);
 
 		for (;;) {
 			const active = await this.#broadcast.active();
-			if (active) {
-				this.audio.broadcast = active.audio;
-				this.video.broadcast = active.video;
-			}
+			if (!active) break;
+
+			this.#audio = active.audio;
+			this.#video = active.video;
+
+			this.#video.latency = this.#latency;
+
+			this.#emitter.source = this.#audio;
+			this.#renderer.source = this.#video;
 		}
 	}
 
