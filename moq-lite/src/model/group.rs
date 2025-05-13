@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use tokio::sync::watch;
 
-use crate::Error;
+use crate::{Error, Result};
 
 use super::{Frame, FrameConsumer, FrameProducer};
 
@@ -54,21 +54,13 @@ impl From<u16> for Group {
 	}
 }
 
+#[derive(Default)]
 struct GroupState {
 	// The frames that has been written thus far
 	frames: Vec<FrameConsumer>,
 
-	// Set when the writer or all readers are dropped.
-	closed: Result<(), Error>,
-}
-
-impl Default for GroupState {
-	fn default() -> Self {
-		Self {
-			frames: Vec::new(),
-			closed: Ok(()),
-		}
-	}
+	// Whether the group is finished
+	closed: Option<Result<()>>,
 }
 
 /// Create a group, frame-by-frame.
@@ -96,7 +88,9 @@ impl GroupProducer {
 	pub fn write_frame<B: Into<Bytes>>(&mut self, frame: B) {
 		let data = frame.into();
 		let frame = Frame::new(data.len() as u64);
-		self.create_frame(frame).write(data);
+		let mut frame = self.create_frame(frame);
+		frame.write(data);
+		frame.finish();
 	}
 
 	/// Create a frame with an upfront size
@@ -108,7 +102,19 @@ impl GroupProducer {
 
 	/// Append a frame to the group.
 	pub fn append_frame(&mut self, consumer: FrameConsumer) {
-		self.state.send_modify(|state| state.frames.push(consumer));
+		self.state.send_modify(|state| {
+			assert!(state.closed.is_none());
+			state.frames.push(consumer)
+		});
+	}
+
+	// Clean termination of the group.
+	pub fn finish(&mut self) {
+		self.state.send_modify(|state| state.closed = Some(Ok(())));
+	}
+
+	pub fn abort(&mut self, err: Error) {
+		self.state.send_modify(|state| state.closed = Some(Err(err)));
 	}
 
 	/// Create a new consumer for the group.
@@ -123,13 +129,6 @@ impl GroupProducer {
 
 	pub async fn unused(&self) {
 		self.state.closed().await;
-	}
-
-	/// Close the stream with an error.
-	pub fn close(self, err: Error) {
-		self.state.send_modify(|state| {
-			state.closed = Err(err);
-		});
 	}
 }
 
@@ -158,25 +157,26 @@ pub struct GroupConsumer {
 
 impl GroupConsumer {
 	/// Read the next frame.
-	pub async fn read_frame(&mut self) -> Result<Option<Bytes>, Error> {
+	pub async fn read_frame(&mut self) -> Result<Option<Bytes>> {
 		// In order to be cancel safe, we need to save the active frame.
-		// That way if this method gets caneclled, we can resume where we left off.
+		// That way if this method gets cancelled, we can resume where we left off.
 		if self.active.is_none() {
-			self.active = match self.next_frame().await? {
-				Some(frame) => Some(frame),
-				None => return Ok(None),
-			};
+			self.active = self.next_frame().await?;
 		};
 
 		// Read the frame in one go, which is cancel safe.
-		let frame = self.active.as_mut().unwrap().read_all().await?;
+		let frame = match self.active.as_mut() {
+			Some(frame) => frame.read_all().await?,
+			None => return Ok(None),
+		};
+
 		self.active = None;
 
 		Ok(Some(frame))
 	}
 
 	/// Return a reader for the next frame.
-	pub async fn next_frame(&mut self) -> Result<Option<FrameConsumer>, Error> {
+	pub async fn next_frame(&mut self) -> Result<Option<FrameConsumer>> {
 		// Just in case someone called read_frame, cancelled it, then called next_frame.
 		if let Some(frame) = self.active.take() {
 			return Ok(Some(frame));
@@ -191,20 +191,16 @@ impl GroupConsumer {
 					return Ok(Some(frame));
 				}
 
-				state.closed.clone()?;
+				match &state.closed {
+					Some(Ok(_)) => return Ok(None),
+					Some(Err(err)) => return Err(err.clone()),
+					_ => {}
+				}
 			}
 
 			if self.state.changed().await.is_err() {
-				return Ok(None);
+				return Err(Error::Cancel);
 			}
-		}
-	}
-
-	/// Block until the group is closed and return the error.
-	pub async fn closed(&self) -> Result<(), Error> {
-		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
-			Ok(state) => state.closed.clone(),
-			Err(_) => Ok(()),
 		}
 	}
 }

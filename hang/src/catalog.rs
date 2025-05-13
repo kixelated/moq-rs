@@ -100,15 +100,12 @@ impl CatalogProducer {
 	/// Publish any changes to the catalog.
 	pub fn publish(&mut self) {
 		let current = self.current.lock().unwrap();
+		let mut group = self.track.append_group();
 
 		// TODO decide if this should return an error, or be impossible to fail
 		let frame = current.to_string().expect("invalid catalog");
-
-		let mut group = self.track.append_group();
 		group.write_frame(frame);
-
-		// Make sure the lock is held for the duration of the write.
-		drop(current);
+		group.finish();
 	}
 
 	pub fn consume(&self) -> CatalogConsumer {

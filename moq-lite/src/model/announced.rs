@@ -163,15 +163,15 @@ impl AnnouncedProducer {
 	/// Wait until all consumers have been dropped.
 	///
 	/// NOTE: subscribe can be called to unclose the producer.
-	pub async fn closed(&self) {
+	pub async fn unused(&self) {
 		// Keep looping until all consumers are closed.
-		while let Some(notify) = self.closed_inner() {
+		while let Some(notify) = self.unused_inner() {
 			notify.closed().await;
 		}
 	}
 
 	// Returns the closed notify of any consumer.
-	fn closed_inner(&self) -> Option<mpsc::Sender<()>> {
+	fn unused_inner(&self) -> Option<mpsc::Sender<()>> {
 		let mut state = self.state.lock();
 
 		while let Some((_, notify)) = state.consumers.last() {

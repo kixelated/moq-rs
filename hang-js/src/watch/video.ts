@@ -1,95 +1,119 @@
-import * as Media from "../media";
-import * as Moq from "@kixelated/moq";
 import { Buffer } from "buffer";
-import { isEqual } from "lodash";
+import * as Moq from "@kixelated/moq";
+import * as Media from "../media";
+
+import { Signal, signal, Derived, Root } from "../signals";
+
+export type VideoProps = {
+	broadcast?: Moq.BroadcastReader;
+	available?: Media.Video[];
+	enabled?: boolean;
+	latency?: number;
+};
 
 // Responsible for switching between video tracks and buffering frames.
-export class VideoSource {
-	broadcast: Moq.BroadcastReader;
-	#tracks: Media.Video[] = [];
-
-	#track?: VideoTrack;
-	#frames: VideoFrame[] = [];
-
-	// Constraints
-	#enabled = false; // Must opt-in
+export class Video {
+	broadcast: Signal<Moq.BroadcastReader | undefined>;
+	enabled: Signal<boolean>; // Don't download any longer
 
 	// The maximum latency in milliseconds.
 	// The larger the value, the more tolerance we have for network jitter.
 	// This should be at least 1 frame for smoother playback.
-	#maxLatency = 20;
+	latency: Signal<number>;
+	tracks: Signal<Media.Video[]>;
+
+	selected: Derived<Media.Video | undefined>;
+
+	#frames: VideoFrame[] = [];
 
 	// The difference between the wall clock units and the timestamp units, in seconds.
 	#ref?: number;
 
-	constructor(broadcast: Moq.BroadcastReader) {
-		this.broadcast = broadcast;
+	#root = new Root();
+
+	constructor(props?: VideoProps) {
+		this.broadcast = signal(props?.broadcast);
+		this.tracks = signal(props?.available ?? []);
+		this.enabled = signal(props?.enabled ?? false);
+		this.latency = signal(props?.latency ?? 50);
+
+		this.selected = this.#root.derived(() => this.tracks.get().at(0));
+		this.#root.effect(() => this.#init());
+
+		// Update the ref when the latency changes.
+		this.#root.effect(() => {
+			this.latency.get();
+			this.#prune();
+			this.#ref = undefined;
+		});
 	}
 
-	get tracks(): Media.Video[] {
-		return this.#tracks;
-	}
+	#init() {
+		const enabled = this.enabled.get();
+		if (!enabled) return;
 
-	set tracks(tracks: Media.Video[]) {
-		this.#tracks = tracks;
-		this.#reload();
-	}
+		const selected = this.selected.get();
+		if (!selected) return;
 
-	get enabled(): boolean {
-		return this.#enabled;
-	}
-
-	set enabled(enabled: boolean) {
-		if (this.#enabled === enabled) {
-			return;
-		}
-
-		this.#enabled = enabled;
-		this.#reload();
-	}
-
-	// TODO add max bitrate/resolution/etc.
-
-	#reload() {
-		const info = this.#tracks.at(0);
-
-		if (!this.#enabled || !info) {
-			this.#reset();
-			return;
-		}
-
-		if (isEqual(this.#track?.info, info)) {
-			// No change
-			return;
-		}
+		const broadcast = this.broadcast.get();
+		if (!broadcast) return;
 
 		// We don't clear previous frames so we can seamlessly switch tracks.
-		this.#track?.close();
+		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
+		const media = new Media.Reader(sub);
 
-		const sub = this.broadcast.subscribe(info.track.name, info.track.priority);
-		this.#track = new VideoTrack(sub, info);
+		const decoder = new VideoDecoder({
+			output: (frame) => {
+				this.#frames.push(frame);
+				this.#prune();
+			},
+			// TODO bubble up error
+			error: (error) => {
+				console.error(error);
+				this.close();
+			},
+		});
 
-		this.#run(this.#track);
-	}
+		decoder.configure({
+			codec: selected.codec,
+			//codedHeight: info.resolution.height,
+			//codedWidth: info.resolution.width,
+			description: selected.description ? Buffer.from(selected.description, "hex") : undefined,
+			optimizeForLatency: true,
+		});
 
-	async #run(track: VideoTrack) {
-		const frames = track.frames.getReader();
+		(async () => {
+			try {
+				for (;;) {
+					const frame = await media.readFrame();
+					if (!frame) break;
 
-		for (;;) {
-			const { value: frame } = await frames.read();
-			if (!frame) break;
+					const chunk = new EncodedVideoChunk({
+						type: frame.keyframe ? "key" : "delta",
+						data: frame.data,
+						timestamp: frame.timestamp,
+					});
 
-			this.#frames.push(frame);
-			this.#prune();
-		}
+					decoder.decode(chunk);
+				}
+			} catch (error) {
+				console.warn("video decoder error", error);
+			} finally {
+				media.close();
+			}
+		})();
 
-		frames.cancel();
+		return () => {
+			decoder.close();
+			media.close();
+			sub.close();
+		};
 	}
 
 	// Returns the frame that should be rendered at the given timestamp.
 	frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
 		const now = nowMs * 1000;
-		const maxLatency = this.#maxLatency * 1000;
+		const maxLatency = this.latency.peek() * 1000;
 
 		if (this.#frames.length === 0) {
 			return;
@@ -129,18 +153,8 @@ export class VideoSource {
 		return last;
 	}
 
-	get latency(): DOMHighResTimeStamp {
-		return this.#maxLatency;
-	}
-
-	set latency(latency: DOMHighResTimeStamp) {
-		this.#maxLatency = latency;
-		this.#ref = undefined;
-		this.#prune();
-	}
-
 	#prune() {
-		const maxLatency = this.#maxLatency * 1000;
+		const maxLatency = this.latency.peek() * 1000;
 
 		while (this.#frames.length > 1) {
 			const first = this.#frames[0];
@@ -158,126 +172,46 @@ export class VideoSource {
 		}
 	}
 
-	#reset() {
-		this.#track?.close();
-		this.#track = undefined;
-
+	close() {
 		for (const frame of this.#frames) {
 			frame.close();
 		}
 
 		this.#frames.length = 0;
-	}
-
-	close() {
-		this.#reset();
-		this.broadcast.close();
-		this.#track?.close();
+		this.#root.close();
 	}
 }
 
-// Responsible for decoding video frames for the specified track.
-export class VideoTrack {
-	// The video track info.
-	info: Media.Video;
-
-	// The decoded frames.
-	frames: ReadableStream<VideoFrame>;
-
-	#writer: WritableStreamDefaultWriter<VideoFrame>;
-
-	#media: Media.Reader;
-	#decoder: VideoDecoder;
-
-	constructor(track: Moq.TrackReader, info: Media.Video) {
-		this.info = info;
-
-		const queue = new TransformStream<VideoFrame, VideoFrame>();
-		this.frames = queue.readable;
-		this.#writer = queue.writable.getWriter();
-
-		this.#decoder = new VideoDecoder({
-			output: (frame) => {
-				this.#writer.write(frame);
-			},
-			// TODO bubble up error
-			error: (error) => {
-				console.error(error);
-				this.close();
-			},
-		});
-
-		this.#decoder.configure({
-			codec: info.codec,
-			//codedHeight: info.resolution.height,
-			//codedWidth: info.resolution.width,
-			description: info.description ? Buffer.from(info.description, "hex") : undefined,
-			optimizeForLatency: true,
-		});
-
-		this.#media = new Media.Reader(track);
-
-		this.#run().finally(() => this.close());
-	}
-
-	async #run() {
-		for (;;) {
-			const frame = await this.#media.readFrame();
-			if (!frame) break;
-
-			const chunk = new EncodedVideoChunk({
-				type: frame.keyframe ? "key" : "delta",
-				data: frame.data,
-				timestamp: frame.timestamp,
-			});
-
-			this.#decoder.decode(chunk);
-		}
-	}
-
-	// Close the track and all associated resources.
-	close() {
-		this.#media.close();
-		this.#writer.close().catch(() => void 0);
-
-		try {
-			this.#decoder.close();
-		} catch (_) {
-			// ignore
-		}
-	}
-}
+export type VideoRendererProps = {
+	source: Video;
+	canvas?: HTMLCanvasElement;
+	paused?: boolean;
+};
 
 // An component to render a video to a canvas.
 export class VideoRenderer {
-	#ctx?: CanvasRenderingContext2D;
-	#source?: VideoSource;
+	source: Video;
+
+	canvas: Signal<HTMLCanvasElement | undefined>;
+	paused: Signal<boolean>;
 
 	#animate?: number;
-	#paused = false;
 
-	get canvas(): HTMLCanvasElement | undefined {
-		return this.#ctx?.canvas;
-	}
+	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
+	#root = new Root();
 
-	set canvas(canvas: HTMLCanvasElement | undefined) {
-		this.#ctx = canvas?.getContext("2d") ?? undefined;
-		this.#schedule();
-	}
+	constructor(props: VideoRendererProps) {
+		this.source = props.source;
+		this.canvas = signal(props.canvas);
+		this.paused = signal(props.paused ?? false);
 
-	get source(): VideoSource | undefined {
-		return this.#source;
-	}
-
-	set source(source: VideoSource | undefined) {
-		// Note: doesn't cleanup the previous source so it could be reused
-		this.#source = source;
-		this.#schedule();
+		this.#ctx = this.#root.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
+		this.#root.effect(() => this.#schedule());
 	}
 
 	// (re)schedule a render maybe.
 	#schedule() {
-		if (this.#ctx && !this.#paused && this.#source) {
+		if (this.#ctx.get() && !this.paused.get()) {
 			if (!this.#animate) {
 				this.#animate = requestAnimationFrame(this.#render.bind(this));
 			}
@@ -294,26 +228,29 @@ export class VideoRenderer {
 		this.#animate = undefined;
 		this.#schedule();
 
-		if (!this.#ctx) {
+		const ctx = this.#ctx.get();
+		if (!ctx) {
 			throw new Error("scheduled without a canvas");
 		}
 
-		this.#ctx.save();
-		this.#ctx.fillStyle = "#000";
-		this.#ctx.clearRect(0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
+		ctx.save();
+		ctx.fillStyle = "#000";
+		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-		const frame = this.#source?.frame(now);
+		const frame = this.source.frame(now);
 		if (frame) {
-			this.#ctx.canvas.width = frame.displayWidth;
-			this.#ctx.canvas.height = frame.displayHeight;
-			this.#ctx.drawImage(frame, 0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
+			ctx.canvas.width = frame.displayWidth;
+			ctx.canvas.height = frame.displayHeight;
+			ctx.drawImage(frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
 		}
 
-		this.#ctx.restore();
+		ctx.restore();
 	}
 
 	// Close the track and all associated resources.
 	close() {
+		this.#root.close();
+
 		if (this.#animate) {
 			cancelAnimationFrame(this.#animate);
 			this.#animate = undefined;

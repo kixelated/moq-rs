@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@kixelated/hang": "link:../hang-js",
 		"@kixelated/moq": "link:../moq-js",
+		"solid-js": "^1.9.5",
 		"buffer": "^6.0.3"
 	},
 	"devDependencies": {

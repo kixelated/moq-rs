@@ -14,8 +14,5 @@ export default defineConfig({
 				publish: resolve(__dirname, "src/demo/publish.html"),
 			},
 		},
-	},
-	server: {
-		hmr: false,
-	},
+	}
 });

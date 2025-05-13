@@ -1,13 +1,18 @@
-import * as Moq from "@kixelated/moq";
+import { Connection } from "@kixelated/hang/connection";
 
 import { Broadcast } from "./broadcast";
 import { Vector } from "./vector";
+
+import { Root } from "@kixelated/hang/signals";
 
 const PADDING = 64;
 
 export class Room {
 	// The connection to the server.
-	connection: Moq.ConnectionReload;
+	connection: Connection;
+
+	// All of the broadcasts keyed by their path.
+	// We use the insertion order to determine the z-index.
 	#broadcasts = new Map<string, Broadcast>();
 
 	canvas: HTMLCanvasElement;
@@ -22,12 +27,10 @@ export class Room {
 	#muted = true;
 	#visible = true;
 
-	constructor(connection: Moq.ConnectionReload, room: string, canvas: HTMLCanvasElement) {
-		this.connection = connection;
-		this.connection.on("connected", () => {
-			this.#run();
-		});
+	#root = new Root();
 
+	constructor(connection: Connection, room: string, canvas: HTMLCanvasElement) {
+		this.connection = connection;
 		this.canvas = canvas;
 		this.room = room;
 
@@ -45,9 +48,16 @@ export class Room {
 			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
 
 			this.#dragging = this.#broadcastAt(mouse);
-			if (this.#dragging) {
-				canvas.style.cursor = "grabbing";
+			if (!this.#dragging) return;
+
+			// Reinsert to update the z-index.
+			const name = this.#dragging.watch.name.peek();
+			if (name) {
+				this.#broadcasts.delete(name);
+				this.#broadcasts.set(name, this.#dragging);
 			}
+
+			canvas.style.cursor = "grabbing";
 		});
 
 		canvas.addEventListener("mousemove", (e) => {
@@ -91,7 +101,7 @@ export class Room {
 			() => {
 				this.#muted = false;
 				for (const broadcast of this.#broadcasts.values()) {
-					broadcast.audio.enabled = !this.#muted;
+					broadcast.audio.enabled.set(!this.#muted);
 				}
 			},
 			{ once: true },
@@ -126,26 +136,34 @@ export class Room {
 		);
 
 		requestAnimationFrame(this.#tick.bind(this));
+
+		this.#root.effect(() => this.#init());
 	}
 
-	async #run() {
-		const connection = this.connection.established;
+	#init() {
+		const connection = this.connection.established.get();
 		if (!connection) return;
 
 		const announced = connection.announced(`${this.room}/`);
 
-		for (;;) {
-			const update = await announced.next();
+		(async () => {
+			for (;;) {
+				const update = await announced.next();
 
-			// We're donezo.
-			if (!update) break;
+				// We're donezo.
+				if (!update) break;
 
-			if (update.active) {
-				this.#startBroadcast(connection, update.broadcast);
-			} else {
-				this.#stopBroadcast(update.broadcast);
+				if (update.active) {
+					this.#startBroadcast(update.broadcast);
+				} else {
+					this.#stopBroadcast(update.broadcast);
+				}
 			}
-		}
+		})();
+
+		return () => {
+			announced.close();
+		};
 	}
 
 	#broadcastAt(point: Vector) {
@@ -162,7 +180,7 @@ export class Room {
 		return result;
 	}
 
-	#startBroadcast(connection: Moq.Connection, path: string) {
+	#startBroadcast(path: string) {
 		const targetPosition = Vector.create(Math.random(), Math.random());
 
 		const offset = Vector.create(targetPosition.x - 0.5, targetPosition.y - 0.5)
@@ -175,23 +193,28 @@ export class Room {
 			targetPosition.y * this.canvas.height,
 		).add(offset);
 
-		const broadcast = new Broadcast(connection.consume(path), this.room);
+		const broadcast = new Broadcast(this.connection, this.room);
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
 
-		broadcast.audio.enabled = !this.#muted;
-		broadcast.audioEmitter.volume = 1;
+		broadcast.audio.enabled.set(!this.#muted);
+		broadcast.watch.video.enabled.set(this.#visible);
 
-		broadcast.watch.video.enabled = this.#visible;
-		broadcast.audioEmitter.latency = 100;
-		broadcast.video.latency = 100;
+		// This should never happen, but just in case.
+		const old = this.#broadcasts.get(path);
+		if (old) {
+			old.close();
+		}
 
 		this.#broadcasts.set(path, broadcast);
 	}
 
 	#stopBroadcast(path: string) {
+		console.log("stopping broadcast", path);
 		const broadcast = this.#broadcasts.get(path);
-		if (!broadcast) return;
+
+		// TODO Fix the relay so it doesn't do this.
+		if (!broadcast) return; //throw new Error(`Broadcast not found: ${path}`);
 
 		broadcast.close();
 		this.#broadcasts.delete(path);
@@ -361,6 +384,8 @@ export class Room {
 	}
 
 	close() {
+		this.#root.close();
+
 		for (const broadcast of this.#broadcasts.values()) {
 			broadcast.close();
 		}
@@ -374,7 +399,7 @@ export class Room {
 		this.#visible = visible;
 
 		for (const broadcast of this.#broadcasts.values()) {
-			broadcast.watch.video.enabled = this.#visible;
+			broadcast.watch.video.enabled.set(this.#visible);
 		}
 	}
 }

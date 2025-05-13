@@ -1,3 +1,11 @@
+declare global {
+	interface ImportMeta {
+		env?: {
+			MODE: string;
+		};
+	}
+}
+
 export class Deferred<T> {
 	promise: Promise<T>;
 	resolve!: (value: T | PromiseLike<T>) => void;
@@ -18,6 +26,8 @@ export class Deferred<T> {
 	}
 }
 
+const dev = import.meta.env?.MODE !== "production";
+
 export class Watch<T> {
 	readonly producer: WatchProducer<T>;
 	readonly consumer: WatchConsumer<T>;
@@ -35,9 +45,19 @@ export class WatchProducer<T> {
 	#epoch = 0;
 
 	#consumers = 0;
+	#id = Symbol();
+
+	// Sanity check to make sure `close()` or `abort()` is being called.
+	private static finalizer = new FinalizationRegistry<string>((debugInfo) => {
+		console.warn(`WatchProducer was garbage collected without being closed:\n${debugInfo}`);
+	});
 
 	constructor(init: T) {
 		this.#current = init;
+		if (dev) {
+			const debugInfo = new Error("Created here").stack ?? "No stack";
+			WatchProducer.finalizer.register(this.#id, debugInfo, this.#id);
+		}
 	}
 
 	value(): T {
@@ -69,10 +89,16 @@ export class WatchProducer<T> {
 
 	close() {
 		this.#closed.resolve(undefined);
+		if (dev) {
+			WatchProducer.finalizer.unregister(this.#id);
+		}
 	}
 
 	abort(reason: Error) {
 		this.#closed.reject(reason);
+		if (dev) {
+			WatchProducer.finalizer.unregister(this.#id);
+		}
 	}
 
 	async closed(): Promise<void> {
@@ -105,8 +131,20 @@ export class WatchConsumer<T> {
 	// Whether our specific consumer is closed.
 	#closed = new Deferred<undefined>();
 
+	#id = Symbol();
+
+	// Sanity check to make sure `resolve()` or `reject()` is being called.
+	private static finalizer = new FinalizationRegistry<string>((debugInfo) => {
+		console.warn(`WatchConsumer was garbage collected without being closed:\n${debugInfo}`);
+	});
+
 	constructor(watch: WatchProducer<T>) {
 		this.#watch = watch;
+
+		if (dev) {
+			const debugInfo = new Error("Created here").stack ?? "No stack";
+			WatchConsumer.finalizer.register(this.#id, debugInfo, this.#id);
+		}
 	}
 
 	value(): T {
@@ -174,6 +212,9 @@ export class WatchConsumer<T> {
 	close() {
 		this.#closed.resolve(undefined);
 		this.#watch.unsubscribe();
+		if (dev) {
+			WatchConsumer.finalizer.unregister(this.#id);
+		}
 	}
 
 	async closed(): Promise<void> {

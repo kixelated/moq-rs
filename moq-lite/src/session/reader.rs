@@ -66,7 +66,7 @@ impl Reader {
 		Ok(self.stream.read(max).await?)
 	}
 
-	/// Wait until the stream is closed, ensuring there are no additional bytes
+	/// Wait until the stream is closed, erroring if there are any additional bytes.
 	pub async fn finished(&mut self) -> Result<(), Error> {
 		if self.buffer.is_empty() && self.stream.read_buf(&mut self.buffer).await?.is_none() {
 			return Ok(());
@@ -74,10 +74,8 @@ impl Reader {
 
 		Err(DecodeError::ExpectedEnd.into())
 	}
-}
 
-impl Drop for Reader {
-	fn drop(&mut self) {
-		self.stream.stop(Error::Cancel.to_code());
+	pub fn abort(&mut self, err: &Error) {
+		self.stream.stop(err.to_code());
 	}
 }

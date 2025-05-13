@@ -125,9 +125,16 @@ impl Session {
 
 	async fn run_data(mut stream: Reader, mut subscriber: Subscriber) -> Result<(), Error> {
 		let kind = stream.decode().await?;
-		match kind {
-			message::DataType::Group => subscriber.recv_group(stream).await,
+
+		let res = match kind {
+			message::DataType::Group => subscriber.recv_group(&mut stream).await,
+		};
+
+		if let Err(err) = res {
+			stream.abort(&err);
 		}
+
+		Ok(())
 	}
 
 	async fn run_bi(mut session: web_transport::Session, publisher: Publisher) -> Result<(), Error> {
@@ -143,11 +150,18 @@ impl Session {
 
 	async fn run_control(mut stream: Stream, mut publisher: Publisher) -> Result<(), Error> {
 		let kind = stream.reader.decode().await?;
-		match kind {
+
+		let res = match kind {
 			message::ControlType::Session => Err(Error::UnexpectedStream(kind)),
-			message::ControlType::Announce => publisher.recv_announce(stream).await,
-			message::ControlType::Subscribe => publisher.recv_subscribe(stream).await,
+			message::ControlType::Announce => publisher.recv_announce(&mut stream).await,
+			message::ControlType::Subscribe => publisher.recv_subscribe(&mut stream).await,
+		};
+
+		if let Err(err) = &res {
+			stream.writer.abort(err);
 		}
+
+		res
 	}
 
 	/// Publish a broadcast, automatically announcing and serving it.

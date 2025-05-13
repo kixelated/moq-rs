@@ -70,16 +70,16 @@ export class Subscriber {
 		}
 
 		const pair = new Broadcast(broadcast);
-		pair.writer.unknown((track) => {
+		pair.writer.unknownTrack((track) => {
 			// Save the track in the cache to deduplicate.
 			// NOTE: We don't clone it (yet) so it doesn't count as an active consumer.
 			// When we do clone it, we'll only get the most recent (consumed) group.
-			pair.writer.insert(track.reader);
+			pair.writer.insertTrack(track.reader);
 
 			// Perform the subscription in the background.
 			this.#runSubscribe(broadcast, track.writer).finally(() => {
 				try {
-					pair.writer.remove(track.name);
+					pair.writer.removeTrack(track.name);
 				} catch (err) {
 					// Already closed.
 				}
@@ -126,7 +126,7 @@ export class Subscriber {
 		if (!subscribe) return;
 
 		const pair = new Group(group.sequence);
-		subscribe.insert(pair.reader);
+		subscribe.insertGroup(pair.reader);
 
 		try {
 			for (;;) {
@@ -137,12 +137,14 @@ export class Subscriber {
 				const payload = await stream.read(size);
 				if (!payload) break;
 
-				pair.writer.write(payload);
+				pair.writer.writeFrame(payload);
 			}
 
 			pair.writer.close();
 		} catch (err: unknown) {
 			pair.writer.abort(error(err));
+		} finally {
+			pair.reader.close();
 		}
 	}
 }

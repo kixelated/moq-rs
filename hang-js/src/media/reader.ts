@@ -10,7 +10,7 @@ export class Reader {
 
 	constructor(track: Moq.TrackReader) {
 		this.#track = track;
-		this.#nextGroup = track.next();
+		this.#nextGroup = track.nextGroup();
 	}
 
 	async readFrame(): Promise<Frame | undefined> {
@@ -45,7 +45,7 @@ export class Reader {
 				}
 
 				// Start fetching the next group.
-				this.#nextGroup = this.#track.next();
+				this.#nextGroup = this.#track.nextGroup();
 
 				if (this.#group && this.#group.id >= group.id) {
 					// Skip this old group.
@@ -60,10 +60,12 @@ export class Reader {
 				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
 			} else if (this.#nextGroup) {
 				// Wait for the next group.
-				this.#group = await this.#nextGroup;
+				const group = await this.#nextGroup;
+				this.#group?.close();
+				this.#group = group;
 
 				if (this.#group) {
-					this.#nextGroup = this.#track.next();
+					this.#nextGroup = this.#track.nextGroup();
 					this.#nextFrame = Frame.decode(this.#group, true);
 				} else {
 					this.#nextGroup = undefined;
@@ -73,6 +75,15 @@ export class Reader {
 			} else if (this.#nextFrame) {
 				// We got the next frame, or potentially the end of the track.
 				const frame = await this.#nextFrame;
+				if (!frame) {
+					this.#group?.close();
+					this.#group = undefined;
+
+					this.#nextFrame = undefined;
+					this.#nextGroup = undefined;
+					return undefined;
+				}
+
 				this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
 				return frame;
 			} else {

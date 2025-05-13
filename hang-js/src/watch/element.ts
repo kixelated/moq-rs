@@ -1,31 +1,36 @@
 import * as Moq from "@kixelated/moq";
 
-import { AudioEmitter, AudioSource } from "./audio";
-import { BroadcastReload } from "./broadcast";
-import { VideoRenderer, VideoSource } from "./video";
+import { AudioEmitter } from "./audio";
+import { Broadcast } from "./broadcast";
+import { VideoRenderer } from "./video";
+import { Connection } from "../connection";
+import { signal, Root } from "../signals";
 
 // A custom element that renders to a canvas.
-export class Element extends HTMLElement {
+export class Watch extends HTMLElement {
 	static observedAttributes = ["url", "name", "paused", "muted", "latency"];
 
-	#url?: URL;
-	#name?: string;
-	#paused = false;
-	#muted = false;
-	#volume = 0.5;
+	connection = new Connection();
+	broadcast = new Broadcast({ connection: this.connection });
+
+	video = this.broadcast.video;
+	videoRenderer = new VideoRenderer({ source: this.video });
+
+	audio = this.broadcast.audio;
+	audioEmitter = new AudioEmitter({ source: this.audio });
+
+	paused = signal(false);
+	muted = signal(false);
+	volume = signal(0.5);
 
 	// TODO this is pretty high because the BBB audio stutters; fix that.
-	#latency = 100;
+	latency = signal(100);
 
-	#connection?: Moq.ConnectionReload;
+	// Detect when the element is no longer visible.
+	#visible = signal(true);
+	readonly visible = this.#visible.readonly();
 
-	#broadcast?: BroadcastReload;
-
-	#audio?: AudioSource;
-	#video?: VideoSource;
-
-	#emitter = new AudioEmitter();
-	#renderer = new VideoRenderer();
+	#root?: Root;
 
 	constructor() {
 		super();
@@ -38,19 +43,16 @@ export class Element extends HTMLElement {
 		slot.addEventListener("slotchange", () => {
 			for (const el of slot.assignedElements({ flatten: true })) {
 				if (el instanceof HTMLCanvasElement) {
-					this.#renderer.canvas = el;
+					this.videoRenderer.canvas.set(el);
 					return;
 				}
 			}
 
-			this.#renderer.canvas = undefined;
+			this.videoRenderer.canvas.set(undefined);
 		});
 
-		// TODO: Move this to AudioSource?
-		this.#emitter.latency = this.#latency;
-
 		slot.appendChild(canvas);
-		this.#renderer.canvas = canvas;
+		this.videoRenderer.canvas.set(canvas);
 
 		const style = document.createElement("style");
 		style.textContent = `
@@ -62,6 +64,48 @@ export class Element extends HTMLElement {
 		`;
 
 		this.attachShadow({ mode: "open" }).append(style, slot);
+
+		// Detect when the element is no longer visible.
+		const observer = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					this.#visible.set(entry.isIntersecting);
+				}
+			},
+			{
+				threshold: 0.01, // fire when even a small part is visible
+			},
+		);
+
+		observer.observe(this);
+	}
+
+	connectedCallback() {
+		this.#root = new Root();
+
+		const volume = this.#root.derived(() => (this.muted.get() ? 0 : this.volume.get()));
+
+		this.#root.effect(() => {
+			const enabled = this.paused.get() ? false : volume.get() > 0;
+			this.audioEmitter.volume.set(volume.get());
+			this.audio.enabled.set(enabled);
+			this.audioEmitter.paused.set(this.paused.get());
+		});
+
+		this.#root.effect(() => {
+			const enabled = this.visible.get() && !this.paused.get();
+			this.video.enabled.set(enabled);
+			this.videoRenderer.paused.set(this.paused.get());
+		});
+
+		this.#root.effect(() => {
+			this.audioEmitter.latency.set(this.latency.get());
+			this.video.latency.set(this.latency.get());
+		});
+	}
+
+	disconnectedCallback() {
+		this.#root?.close();
 	}
 
 	attributeChangedCallback(name: string, oldValue: string | undefined, newValue: string | undefined) {
@@ -70,156 +114,35 @@ export class Element extends HTMLElement {
 		}
 
 		if (name === "url") {
-			this.url = newValue ? new URL(newValue) : undefined;
+			this.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "name") {
-			this.name = newValue;
+			this.broadcast.name.set(newValue);
 		} else if (name === "paused") {
-			this.paused = newValue !== undefined;
+			this.paused.set(newValue !== undefined);
 		} else if (name === "muted") {
-			this.muted = newValue !== undefined;
+			this.muted.set(newValue !== undefined);
 		}
 	}
 
-	get url() {
-		return this.#url;
-	}
+	// TODO Do this on disconnectedCallback?
+	close() {
+		this.#root?.close();
 
-	set url(url: URL | undefined) {
-		this.#url = url;
-
-		this.#connection?.close();
-		this.#connection = undefined;
-
-		if (!url) {
-			return;
-		}
-
-		this.#connection = new Moq.ConnectionReload(url);
-
-		this.#connection.on("connecting", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connecting" }));
-		});
-
-		this.#connection.on("connected", (_connection) => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "connected" }));
-			this.#run();
-		});
-
-		this.#connection.on("disconnected", () => {
-			this.dispatchEvent(new CustomEvent("moq-connection", { detail: "disconnected" }));
-			this.#stop();
-		});
-	}
-
-	get name() {
-		return this.#name;
-	}
-
-	set name(name: string | undefined) {
-		this.#name = name;
-
-		this.#broadcast?.close();
-		this.#broadcast = undefined;
-
-		this.#run();
-	}
-
-	get paused() {
-		return this.#paused;
-	}
-
-	set paused(paused: boolean) {
-		this.#paused = paused;
-		this.#reload();
-	}
-
-	get volume() {
-		return this.#volume;
-	}
-
-	set volume(volume: number) {
-		this.#volume = volume;
-		this.#reload();
-	}
-
-	get muted() {
-		return this.#muted;
-	}
-
-	set muted(muted: boolean) {
-		this.#muted = muted;
-		this.#reload();
-	}
-
-	get latency() {
-		return this.#latency;
-	}
-
-	set latency(latency: number) {
-		this.#latency = latency;
-
-		this.#emitter.latency = this.#latency;
-		if (this.#video) {
-			this.#video.latency = this.#latency;
-		}
-	}
-
-	#reload() {
-		const volume = this.#muted ? 0 : this.#volume;
-		this.#emitter.volume = volume;
-
-		if (this.#audio) {
-			this.#audio.enabled = !this.#paused && volume > 0;
-		}
-
-		if (this.#video) {
-			this.#video.enabled = !this.#paused;
-		}
-	}
-
-	async #run() {
-		this.#stop();
-
-		if (!this.#connection?.established || !this.#name) {
-			return;
-		}
-
-		this.#broadcast = new BroadcastReload(this.#connection.established, this.#name);
-
-		for (;;) {
-			const active = await this.#broadcast.active();
-			if (!active) break;
-
-			this.#audio = active.audio;
-			this.#video = active.video;
-
-			this.#video.latency = this.#latency;
-
-			this.#emitter.source = this.#audio;
-			this.#renderer.source = this.#video;
-		}
-	}
-
-	#stop() {
-		this.#broadcast?.close();
-		this.#broadcast = undefined;
+		this.connection.close();
+		this.broadcast.close();
+		this.audio.close();
+		this.video.close();
 	}
 }
 
-customElements.define("hang-watch", Element);
+customElements.define("hang-watch", Watch);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"hang-watch": Element;
+		"hang-watch": Watch;
 	}
 }
 
 export interface Events {
 	connection: keyof Moq.ConnectionStatus;
-}
-
-declare global {
-	interface HTMLElementEventMap {
-		"moq-connection": CustomEvent<keyof Moq.ConnectionStatus>;
-	}
 }

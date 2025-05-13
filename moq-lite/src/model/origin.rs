@@ -19,14 +19,10 @@ impl Origin {
 
 	// Announce a broadcast, replacing the previous announcement if it exists.
 	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
-		tracing::debug!(broadcast = ?broadcast.info.path, "publishing");
-
 		let mut routes = self.routes.lock();
 
 		let existing = routes.insert(broadcast.info.clone(), broadcast.clone());
 		if existing.is_some() {
-			tracing::debug!(broadcast = ?broadcast.info.path, "duplicate");
-
 			// Reannounce as a signal that the origin changed.
 			self.unique.remove(&broadcast.info);
 		}

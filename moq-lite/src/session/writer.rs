@@ -4,14 +4,14 @@ use crate::{coding::*, message, Error};
 
 // A wrapper around a web_transport::SendStream that will reset on Drop
 pub(super) struct Writer {
-	stream: Option<web_transport::SendStream>,
+	stream: web_transport::SendStream,
 	buffer: bytes::BytesMut,
 }
 
 impl Writer {
 	pub fn new(stream: web_transport::SendStream) -> Self {
 		Self {
-			stream: Some(stream),
+			stream,
 			buffer: Default::default(),
 		}
 	}
@@ -30,31 +30,41 @@ impl Writer {
 		msg.encode(&mut self.buffer);
 
 		while !self.buffer.is_empty() {
-			self.stream.as_mut().unwrap().write_buf(&mut self.buffer).await?;
+			self.stream.write_buf(&mut self.buffer).await?;
 		}
 
 		Ok(())
 	}
 
 	pub async fn write(&mut self, buf: &[u8]) -> Result<(), Error> {
-		self.stream.as_mut().unwrap().write(buf).await?; // convert the error type
+		self.stream.write(buf).await?; // convert the error type
 		Ok(())
 	}
 
 	pub fn set_priority(&mut self, priority: i32) {
-		self.stream.as_mut().unwrap().set_priority(priority);
+		self.stream.set_priority(priority);
 	}
 
-	// A clean termination of the stream
-	pub fn close(mut self) {
-		self.stream.take();
+	/// A clean termination of the stream, waiting for the peer to close.
+	pub async fn finish(&mut self) -> Result<(), Error> {
+		self.stream.finish()?;
+		self.stream.closed().await?; // TODO Return any error code?
+		Ok(())
+	}
+
+	pub fn abort(&mut self, err: &Error) {
+		self.stream.reset(err.to_code());
+	}
+
+	pub async fn closed(&mut self) -> Result<(), Error> {
+		self.stream.closed().await?;
+		Ok(())
 	}
 }
 
 impl Drop for Writer {
 	fn drop(&mut self) {
-		if let Some(mut stream) = self.stream.take() {
-			stream.reset(Error::Cancel.to_code());
-		}
+		// Unlike the Quinn default, we abort the stream on drop.
+		self.stream.reset(Error::Cancel.to_code());
 	}
 }

@@ -5,7 +5,6 @@ import { Subscriber } from "./subscriber";
 import { Events } from "./util/events";
 import * as Wire from "./wire";
 
-// biome-ignore lint/style/useNodejsImportProtocol: browser polyfill
 import { Buffer } from "buffer";
 
 export class Connection {
@@ -32,9 +31,7 @@ export class Connection {
 		this.#publisher = new Publisher(this.#quic);
 		this.#subscriber = new Subscriber(this.#quic);
 
-		this.#run().catch((err) =>
-			console.error("failed to run connection: ", err),
-		);
+		this.#run().catch((err) => console.error("failed to run connection: ", err));
 	}
 
 	static async connect(url: URL): Promise<Connection> {

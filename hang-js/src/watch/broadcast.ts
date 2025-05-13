@@ -1,105 +1,157 @@
 import * as Moq from "@kixelated/moq";
-import { Watch } from "@kixelated/moq/util";
 import * as Media from "../media";
-import { AudioSource } from "./audio";
-import { VideoSource } from "./video";
+import { Audio } from "./audio";
+import { Video } from "./video";
+import { Connection } from "../connection";
+import { signal, Root } from "../signals";
 
-// A potential broadcast, reloading automatically when live/offline.
-export class BroadcastReload {
-	// The connection to the server.
-	connection: Moq.Connection;
-	#announced: Moq.AnnouncedReader;
-	#catalog?: Moq.TrackReader;
+export type BroadcastProps = {
+	connection: Connection;
 
-	#watch = new Watch<Broadcast | null>(null);
+	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
+	reload?: boolean;
+};
 
-	constructor(connection: Moq.Connection, broadcast: string) {
-		this.connection = connection;
-		this.#announced = connection.announced(broadcast);
+// A broadcast that (optionally) reloads automatically when live/offline.
+export class Broadcast {
+	connection: Connection;
+	name = signal<string | undefined>(undefined);
+	status = signal<"offline" | "loading" | "live">("offline");
 
-		this.#run().finally(() => this.close());
+	audio: Audio = new Audio();
+	video: Video = new Video();
+
+	#broadcast = signal<Moq.BroadcastReader | undefined>(undefined);
+
+	#catalog = signal<Media.Catalog | undefined>(undefined);
+	readonly catalog = this.#catalog.readonly();
+
+	#active = signal(false);
+	readonly active = this.#active.readonly();
+
+	#reload: boolean;
+	#root = new Root();
+
+	constructor(props: BroadcastProps) {
+		this.connection = props.connection;
+		this.#reload = props.reload ?? true;
+
+		this.#root.effect(() => this.#runActive());
+		this.#root.effect(() => this.#runBroadcast());
+		this.#root.effect(() => this.#runCatalog());
+		this.#root.effect(() => this.#runTracks());
 	}
 
-	// Returns the next active broadcast.
-	async active(): Promise<Broadcast | undefined> {
-		const next = await this.#watch.consumer.next((v) => !!v);
-		return next ?? undefined;
-	}
+	#runActive() {
+		if (!this.#reload) {
+			this.#active.set(true);
 
-	async #run() {
-		for (;;) {
-			const update = await this.#announced.next();
-
-			// We're donezo.
-			if (!update) break;
-
-			// Require full equality.
-			if (update.broadcast !== this.#announced.prefix) continue;
-
-			// Close the previous catalog.
-			this.#catalog?.close();
-
-			if (!update.active) {
-				this.#watch.producer.update((old) => {
-					if (old) old.close();
-					return null;
-				});
-
-				continue;
-			}
-
-			// Create a new broadcast.
-			const broadcast = this.connection.consume(update.broadcast);
-			this.#watch.producer.update((old) => {
-				if (old) old.close();
-				return new Broadcast(broadcast);
-			});
+			return () => {
+				this.#active.set(false);
+			};
 		}
 
-		this.#watch.producer.close();
+		const conn = this.connection.established.get();
+		if (!conn) return;
+
+		const name = this.name.get();
+		if (!name) return;
+
+		const announced = conn.announced(name);
+		(async () => {
+			for (;;) {
+				const update = await announced.next();
+
+				// We're donezo.
+				if (!update) break;
+
+				// Require full equality.
+				if (update.broadcast !== announced.prefix) continue;
+
+				this.#active.set(update.active);
+			}
+		})();
+
+		return () => {
+			announced.close();
+		};
 	}
 
-	close() {
-		this.#catalog?.close();
-		this.#announced.close();
+	#runBroadcast() {
+		const conn = this.connection.established.get();
+		if (!conn) return;
+
+		const name = this.name.get();
+		if (!name) return;
+
+		if (!this.#active.get()) return;
+
+		const broadcast = conn.consume(name);
+		this.#broadcast.set(broadcast);
+
+		this.audio.broadcast.set(broadcast);
+		this.video.broadcast.set(broadcast);
+
+		return () => {
+			broadcast.close();
+
+			this.#broadcast.set(undefined);
+			this.audio.broadcast.set(undefined);
+			this.video.broadcast.set(undefined);
+		};
 	}
-}
 
-// An active broadcast, potentially with audio and video.
-export class Broadcast {
-	broadcast: Moq.BroadcastReader;
-	audio: AudioSource;
-	video: VideoSource;
+	#runCatalog() {
+		const broadcast = this.#broadcast.get();
+		if (!broadcast) return;
 
-	#catalog: Moq.TrackReader;
-
-	constructor(broadcast: Moq.BroadcastReader) {
-		this.broadcast = broadcast;
-		this.audio = new AudioSource(broadcast);
-		this.video = new VideoSource(broadcast);
+		this.status.set("loading");
 
 		const catalog = broadcast.subscribe("catalog.json", 0);
-		this.#catalog = catalog;
 
-		this.#run().finally(() => this.close());
+		(async () => {
+			try {
+				for (;;) {
+					const update = await Media.Catalog.fetch(catalog);
+					if (!update) break;
+
+					this.#catalog.set(update);
+					this.status.set("live");
+				}
+			} catch (err) {
+				console.error("catalog error", err);
+			} finally {
+				this.#catalog.set(undefined);
+				this.status.set("offline");
+			}
+		})();
+
+		return () => {
+			catalog.close();
+		};
 	}
 
-	async #run() {
-		for (;;) {
-			const catalog = await Media.Catalog.fetch(this.#catalog);
-			if (!catalog) break;
+	#runTracks() {
+		const broadcast = this.#broadcast.get();
+		if (!broadcast) return;
 
-			console.log("received catalog", this.broadcast.path, catalog);
+		const catalog = this.#catalog.get();
+		if (!catalog) return;
 
-			this.audio.tracks = catalog.audio;
-			this.video.tracks = catalog.video;
-		}
+		console.log("catalog", catalog);
+		this.audio.available.set(catalog.audio);
+		this.video.tracks.set(catalog.video);
+
+		return () => {
+			this.audio.available.set([]);
+			this.video.tracks.set([]);
+		};
 	}
 
 	close() {
-		this.broadcast.close();
+		this.#root.close();
+
 		this.audio.close();
 		this.video.close();
-		this.#catalog.close();
 	}
 }

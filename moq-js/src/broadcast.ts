@@ -33,13 +33,13 @@ export class BroadcastWriter {
 		this.#state = state;
 	}
 
-	create(name: string): TrackWriter {
+	createTrack(name: string): TrackWriter {
 		const track = new Track(name, 0);
-		this.insert(track.reader);
+		this.insertTrack(track.reader);
 		return track.writer;
 	}
 
-	insert(track: TrackReader) {
+	insertTrack(track: TrackReader) {
 		this.#state.update((state) => {
 			const existing = state.tracks.get(track.name);
 			existing?.close();
@@ -48,7 +48,7 @@ export class BroadcastWriter {
 		});
 	}
 
-	remove(name: string) {
+	removeTrack(name: string) {
 		this.#state.update((state) => {
 			const track = state.tracks.get(name);
 			track?.close();
@@ -57,7 +57,7 @@ export class BroadcastWriter {
 		});
 	}
 
-	unknown(fn?: (track: Track) => void) {
+	unknownTrack(fn?: (track: Track) => void) {
 		this.#state.update((state) => {
 			state.onUnknown = fn;
 			return state;

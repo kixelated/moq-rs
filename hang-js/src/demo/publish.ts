@@ -1,7 +1,7 @@
 import "./index.css";
 import "./highlight";
 
-import { Element as Publish } from "../publish";
+import { Publish } from "../publish";
 export { Publish };
 
 // Yes this is a terrible mess and not how we make websites in >current year<.
@@ -33,10 +33,7 @@ if (urlParams.size > 0) {
 	publish.setAttribute("url", `${scheme}://${host}/`);
 	publish.setAttribute("name", broadcast);
 
-	watch.setAttribute(
-		"href",
-		`index.html?name=${broadcast}&host=${host}&scheme=${scheme}`,
-	);
+	watch.setAttribute("href", `index.html?name=${broadcast}&host=${host}&scheme=${scheme}`);
 } else {
 	watch.setAttribute("href", `index.html?name=demo/me`);
 }

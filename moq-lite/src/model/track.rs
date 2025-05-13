@@ -14,8 +14,9 @@
 
 use tokio::sync::watch;
 
+use crate::{Error, Result};
+
 use super::{Group, GroupConsumer, GroupProducer};
-use crate::Error;
 
 use std::cmp::Ordering;
 
@@ -39,18 +40,10 @@ impl Track {
 	}
 }
 
+#[derive(Default)]
 struct TrackState {
 	latest: Option<GroupConsumer>,
-	closed: Result<(), Error>,
-}
-
-impl Default for TrackState {
-	fn default() -> Self {
-		Self {
-			latest: None,
-			closed: Ok(()),
-		}
-	}
+	closed: Option<Result<()>>,
 }
 
 /// A producer for a track, used to create new groups.
@@ -71,6 +64,8 @@ impl TrackProducer {
 	/// Insert a group into the track, returning true if this is the latest group.
 	pub fn insert_group(&mut self, group: GroupConsumer) -> bool {
 		self.state.send_if_modified(|state| {
+			assert!(state.closed.is_none());
+
 			if let Some(latest) = &state.latest {
 				match group.info.cmp(&latest.info) {
 					Ordering::Less => return false,
@@ -106,11 +101,12 @@ impl TrackProducer {
 		self.create_group(group).unwrap()
 	}
 
-	/// Close the track with an error.
-	pub fn close(self, err: Error) {
-		self.state.send_modify(|state| {
-			state.closed = Err(err);
-		});
+	pub fn finish(&mut self) {
+		self.state.send_modify(|state| state.closed = Some(Ok(())));
+	}
+
+	pub fn abort(&mut self, err: Error) {
+		self.state.send_modify(|state| state.closed = Some(Err(err)));
 	}
 
 	/// Create a new consumer for the track.
@@ -146,36 +142,41 @@ impl TrackConsumer {
 	/// Return the next group in order.
 	///
 	/// NOTE: This can have gaps if the reader is too slow or there were network slowdowns.
-	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>, Error> {
+	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>> {
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self
 			.state
 			.wait_for(|state| {
-				state.latest.as_ref().map(|group| group.info.sequence) != self.prev || state.closed.is_err()
+				state.latest.as_ref().map(|group| group.info.sequence) > self.prev || state.closed.is_some()
 			})
 			.await
 		{
 			Ok(state) => state,
-			Err(_) => return Ok(None),
+			Err(_) => return Err(Error::Cancel),
 		};
 
-		// If there's a new latest group, return it.
-		if let Some(group) = state.latest.as_ref() {
-			if Some(group.info.sequence) != self.prev {
-				self.prev = Some(group.info.sequence);
-				return Ok(Some(group.clone()));
-			}
+		match &state.closed {
+			Some(Ok(_)) => return Ok(None),
+			Some(Err(err)) => return Err(err.clone()),
+			_ => {}
 		}
 
-		// Otherwise the track is closed.
-		Err(state.closed.clone().unwrap_err())
+		// If there's a new latest group, return it.
+		let group = state.latest.clone().unwrap();
+		self.prev = Some(group.info.sequence);
+
+		Ok(Some(group))
 	}
 
-	/// Block until the track is closed and return the error.
-	pub async fn closed(&self) -> Result<(), Error> {
-		match self.state.clone().wait_for(|state| state.closed.is_err()).await {
-			Ok(state) => state.closed.clone(),
-			Err(_) => Ok(()),
+	/// Block until the track is closed.
+	pub async fn closed(&self) -> Result<()> {
+		match self.state.clone().wait_for(|state| state.closed.is_some()).await {
+			Ok(state) => match &state.closed {
+				Some(Ok(_)) => Ok(()),
+				Some(Err(err)) => Err(err.clone()),
+				_ => unreachable!(),
+			},
+			Err(_) => Err(Error::Cancel),
 		}
 	}
 }

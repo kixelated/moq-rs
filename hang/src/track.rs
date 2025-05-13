@@ -23,15 +23,22 @@ impl TrackProducer {
 		let mut header = BytesMut::with_capacity(timestamp.encode_size());
 		timestamp.encode(&mut header);
 
+		if frame.keyframe {
+			if let Some(mut group) = self.group.take() {
+				group.finish();
+			}
+		}
+
 		let mut group = match self.group.take() {
-			Some(group) if !frame.keyframe => group,
-			_ => self.inner.append_group(),
+			Some(group) => group,
+			None => self.inner.append_group(),
 		};
 
 		let size = header.len() + frame.payload.len();
 		let mut chunked = group.create_frame(size.into());
 		chunked.write(header.freeze());
 		chunked.write(frame.payload);
+		chunked.finish();
 
 		self.group.replace(group);
 	}

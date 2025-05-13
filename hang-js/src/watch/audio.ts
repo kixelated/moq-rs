@@ -1,243 +1,206 @@
 import * as Moq from "@kixelated/moq";
-import { Watch } from "@kixelated/moq/util";
-import type * as Catalog from "../media";
 import * as Media from "../media";
-import { isEqual } from "lodash";
+import { Derived, Root, signal, Signal } from "../signals";
 
-// Responsible for choosing the best audio track for an active broadcast.
-export class AudioSource {
-	broadcast: Moq.BroadcastReader;
-	#tracks: Media.Audio[] = [];
+export type AudioProps = {
+	broadcast?: Moq.BroadcastReader;
+	available?: Media.Audio[];
+	enabled?: boolean;
+};
 
-	#watch = new Watch<AudioTrack | null>(null);
+export class Audio {
+	broadcast: Signal<Moq.BroadcastReader | undefined>;
+	available: Signal<Media.Audio[]>;
+	enabled: Signal<boolean>;
+	selected: Derived<Media.Audio | undefined>;
 
-	// Constraints
-	#enabled = false; // Must opt-in
-
-	constructor(broadcast: Moq.BroadcastReader) {
-		this.broadcast = broadcast;
-	}
-
-	get tracks(): Media.Audio[] {
-		return this.#tracks;
-	}
-
-	set tracks(tracks: Media.Audio[]) {
-		this.#tracks = tracks;
-		this.#reload();
-	}
-
-	get enabled(): boolean {
-		return this.#enabled;
-	}
-
-	set enabled(enabled: boolean) {
-		if (this.#enabled === enabled) {
-			return;
-		}
-
-		this.#enabled = enabled;
-		this.#reload();
-	}
-
-	// TODO add max bitrate/resolution/etc.
-
-	#reload() {
-		const info = this.#tracks.at(0);
-
-		if (!this.#enabled || !info) {
-			this.#watch.producer.update((old) => {
-				old?.close();
-				return null;
-			});
-
-			return;
-		}
-
-		const active = this.#watch.producer.value();
-		if (isEqual(active?.info, info)) {
-			// No change
-			return;
-		}
-
-		const track = this.broadcast.subscribe(info.track.name, info.track.priority);
-		this.#watch.producer.update((old) => {
-			old?.close();
-			return new AudioTrack(track, info);
-		});
-	}
-
-	// Returns the next audio track.
-	async track(): Promise<AudioTrack | undefined> {
-		const next = await this.#watch.consumer.next((v) => !!v);
-		return next ?? undefined;
-	}
-
-	close() {
-		this.broadcast.close();
-		this.#watch.producer.close();
-	}
-}
-
-// A single audio track, decoding and writing audio samples to a stream.
-export class AudioTrack {
-	info: Catalog.Audio;
 	samples: ReadableStream<AudioData>;
 	#writer: WritableStreamDefaultWriter<AudioData>;
 
-	#container: Media.Reader;
-	#decoder: AudioDecoder;
+	// TODO add max bitrate/resolution/etc.
 
-	constructor(track: Moq.TrackReader, info: Catalog.Audio) {
-		this.info = info;
+	#root = new Root();
+
+	constructor(props?: AudioProps) {
+		this.broadcast = signal(props?.broadcast);
+		this.available = signal(props?.available ?? []);
+		this.enabled = signal(props?.enabled ?? false);
 
 		const queue = new TransformStream<AudioData, AudioData>();
 		this.#writer = queue.writable.getWriter();
 		this.samples = queue.readable;
 
-		this.#decoder = new AudioDecoder({
-			output: (data) => this.#writer.write(data),
-			error: (error) => {
-				console.error(error);
-				this.close();
-			},
-		});
-
-		this.#decoder.configure({
-			codec: info.codec,
-			sampleRate: info.sample_rate,
-			numberOfChannels: info.channel_count,
-		});
-
-		this.#container = new Media.Reader(track);
-
-		this.#run().finally(() => {
-			this.close();
-		});
+		this.selected = this.#root.derived(() => this.available.get().at(0));
+		this.#root.effect(() => this.#init());
 	}
 
-	async #run() {
-		for (;;) {
-			const frame = await this.#container.readFrame();
-			if (!frame) break;
+	#init() {
+		if (!this.enabled.get()) return;
 
-			const chunk = new EncodedAudioChunk({
-				type: "key",
-				data: frame.data,
-				timestamp: frame.timestamp,
-			});
+		const selected = this.selected.get();
+		if (!selected) return;
 
-			this.#decoder.decode(chunk);
-		}
+		const broadcast = this.broadcast.get();
+		if (!broadcast) return;
+
+		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
+
+		const decoder = new AudioDecoder({
+			output: (data) => this.#writer.write(data),
+			error: (error) => console.error(error),
+		});
+
+		decoder.configure({
+			codec: selected.codec,
+			sampleRate: selected.sample_rate,
+			numberOfChannels: selected.channel_count,
+		});
+
+		const media = new Media.Reader(sub);
+
+		(async () => {
+			for (;;) {
+				const frame = await media.readFrame();
+				if (!frame) break;
+
+				const chunk = new EncodedAudioChunk({
+					type: "key",
+					data: frame.data,
+					timestamp: frame.timestamp,
+				});
+
+				decoder.decode(chunk);
+			}
+		})();
+
+		return () => {
+			sub.close();
+			media.close();
+			decoder.close();
+		};
 	}
 
 	close() {
-		this.#container.close();
-		this.#writer.close().catch(() => void 0);
-
-		try {
-			this.#decoder.close();
-		} catch (error) {
-			// Don't care
-		}
+		this.#root.close();
+		this.#writer.close();
 	}
 }
 
 // A pair of AudioContext and GainNode.
-type Context = {
+export type Context = {
 	root: AudioContext;
 	gain: GainNode;
 };
 
+export type AudioEmitterProps = {
+	source: Audio;
+	volume?: number;
+	latency?: number;
+	paused?: boolean;
+};
+
 export class AudioEmitter {
-	#context?: Context;
-
-	#volume = 0.5;
-
-	#source?: AudioSource;
-
-	// Reusable audio buffers.
-	#buffers: AudioBuffer[] = [];
-
-	#active: AudioBufferSourceNode[] = [];
+	source: Audio;
+	volume: Signal<number>;
+	paused: Signal<boolean>;
 
 	// The maximum latency in seconds.
 	// The larger the value, the more tolerance we have for network jitter.
 	// Audio gaps are more noticable so a larger buffer is recommended.
-	#maxLatency = 50;
+	latency: Signal<number>;
+
+	#context = signal<Context | undefined>(undefined);
+	readonly context = this.#context.readonly();
+
+	#sampleRate = signal<number | undefined>(undefined);
+	readonly sampleRate = this.#sampleRate.readonly();
+
+	// Reusable audio buffers.
+	#buffers: AudioBuffer[] = [];
+	#active: AudioBufferSourceNode[] = [];
 
 	// Used to convert from timestamp units to AudioContext units.
 	#ref?: number;
+	#root = new Root();
 
-	// A callback that allows connecting AudioNodes to the AudioContext.
-	// An AudioContext will be created based on the sampleRate.
-	// By default, we just output to the speakers.
-	onInit: (ctx: AudioContext, dst: AudioNode) => void = (ctx, dst) => {
-		dst.connect(ctx.destination);
-	};
+	constructor(props: AudioEmitterProps) {
+		this.source = props.source;
+		this.volume = signal(props.volume ?? 0.5);
+		this.latency = signal(props.latency ?? 50);
+		this.paused = signal(props.paused ?? false);
 
-	get source(): AudioSource | undefined {
-		return this.#source;
-	}
+		this.#root.effect(() => {
+			const ctx = this.#context.get();
+			if (!ctx) return;
 
-	set source(source: AudioSource | undefined) {
-		this.#source?.close();
-		this.#source = source;
+			const volume = this.volume.get();
+			ctx.gain.gain.value = volume;
 
-		if (source) {
-			this.#run(source);
-		}
-	}
-
-	async #run(source: AudioSource) {
-		for (;;) {
-			const track = await source.track();
-			if (!track) break;
-
-			const samples = track.samples.getReader();
-
-			for (;;) {
-				const { value: sample } = await samples.read();
-				if (!sample) break;
-
-				this.#emit(sample);
+			if (volume === 0) {
+				for (const active of this.#active) {
+					active.stop();
+				}
 			}
-		}
-	}
+		});
 
-	get volume(): number {
-		return this.#volume;
-	}
+		// Update the ref when the latency changes.
+		this.#root.effect(() => {
+			this.latency.get();
+			this.#ref = undefined;
+		});
 
-	set volume(volume: number) {
-		this.#volume = volume;
+		this.#root.effect(() => {
+			if (!this.paused.get()) return;
 
-		if (this.#context) {
-			this.#context.gain.gain.value = volume;
-		}
-
-		if (volume === 0) {
+			// Cancel any active samples.
 			for (const active of this.#active) {
 				active.stop();
 			}
+		});
+
+		this.#root.effect(() => {
+			const sampleRate = this.#sampleRate.get();
+			if (!sampleRate) return undefined;
+
+			const root = new AudioContext({ latencyHint: "interactive", sampleRate });
+			const gain = new GainNode(root, { gain: this.volume.peek() });
+
+			gain.connect(root.destination);
+
+			this.#context.set({ root, gain });
+
+			return () => {
+				gain.disconnect();
+				root.close();
+			};
+		});
+
+		this.#run();
+	}
+
+	async #run() {
+		const reader = this.source.samples.getReader();
+		for (;;) {
+			const { value: sample } = await reader.read();
+			if (!sample) break;
+
+			this.#emit(sample);
 		}
-	}
 
-	get latency(): DOMHighResTimeStamp {
-		return this.#maxLatency;
-	}
-
-	set latency(maxLatency: DOMHighResTimeStamp) {
-		this.#maxLatency = maxLatency;
-		this.#ref = undefined;
+		reader.releaseLock();
 	}
 
 	#emit(sample: AudioData) {
-		const context = this.#init(sample.sampleRate);
+		this.#sampleRate.set(sample.sampleRate);
+
+		const context = this.#context.get();
+		if (!context) return;
+
+		if (this.paused.get()) return;
 
 		// Convert from microseconds to seconds.
 		const timestamp = sample.timestamp / 1_000_000;
-		const maxLatency = this.#maxLatency / 1000;
+		const maxLatency = this.latency.get() / 1000;
 
 		if (!this.#ref) {
 			this.#ref = timestamp - context.root.currentTime - maxLatency;
@@ -272,30 +235,6 @@ export class AudioEmitter {
 		this.#active.push(source);
 	}
 
-	#init(sampleRate: number): Context {
-		if (this.#context?.root.sampleRate === sampleRate) {
-			if (this.#context.root.state === "suspended") {
-				this.#context.root.resume();
-			}
-
-			return this.#context;
-		}
-
-		if (this.#context) {
-			this.#context.root.close();
-		}
-
-		this.#ref = undefined;
-
-		const root = new AudioContext({ latencyHint: "interactive", sampleRate });
-		const gain = new GainNode(root, { gain: this.#volume });
-
-		this.#context = { root, gain };
-		this.onInit(this.#context.root, this.#context.gain);
-
-		return this.#context;
-	}
-
 	#createBuffer(sample: AudioData, context: AudioContext): AudioBuffer {
 		let buffer: AudioBuffer | undefined;
 
@@ -328,7 +267,6 @@ export class AudioEmitter {
 	}
 
 	close() {
-		this.#context?.root.close();
-		this.#source?.close();
+		this.#root.close();
 	}
 }

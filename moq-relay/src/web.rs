@@ -119,13 +119,9 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 	let mut track = broadcast.subscribe(&track);
 
 	let group = match track.next_group().await {
-		Ok(group) => group,
-		Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into()),
-	};
-
-	let group = match group {
-		Some(group) => group,
-		None => return Err(StatusCode::NOT_FOUND.into()),
+		Ok(Some(group)) => group,
+		Ok(None) => return Err(StatusCode::NOT_FOUND.into()),
+		Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
 	};
 
 	Ok(ServeGroup::new(group))

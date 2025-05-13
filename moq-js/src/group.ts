@@ -26,7 +26,7 @@ export class GroupWriter {
 		this.#frames = frames;
 	}
 
-	write(frame: Uint8Array) {
+	writeFrame(frame: Uint8Array) {
 		this.#frames.update((frames) => [...frames, frame]);
 	}
 
@@ -54,7 +54,7 @@ export class GroupReader {
 		this.#frames = frames;
 	}
 
-	async read(): Promise<Uint8Array | undefined> {
+	async readFrame(): Promise<Uint8Array | undefined> {
 		const frames = await this.#frames.when((frames) => frames.length > this.#index);
 		return frames?.at(this.#index++);
 	}

@@ -59,11 +59,15 @@ impl Publisher {
 			// Get the current time again to check if we overslept
 			let next = Utc::now();
 			if next.minute() != now.minute() {
-				return Ok(());
+				break;
 			}
 
 			now = next;
 		}
+
+		segment.finish();
+
+		Ok(())
 	}
 }
 pub struct Subscriber {

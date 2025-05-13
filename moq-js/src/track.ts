@@ -31,7 +31,7 @@ export class TrackWriter {
 		this.#latest = latest;
 	}
 
-	append(): GroupWriter {
+	appendGroup(): GroupWriter {
 		const group = new Group(this.#next ?? 0);
 
 		this.#next = group.id + 1;
@@ -43,7 +43,7 @@ export class TrackWriter {
 		return group.writer;
 	}
 
-	insert(group: GroupReader) {
+	insertGroup(group: GroupReader) {
 		if (group.id < (this.#next ?? 0)) {
 			group.close();
 			return;
@@ -81,7 +81,7 @@ export class TrackReader {
 		this.#groups = groups;
 	}
 
-	async next(): Promise<GroupReader | undefined> {
+	async nextGroup(): Promise<GroupReader | undefined> {
 		const group = await this.#groups.next((group) => !!group);
 		return group?.clone();
 	}

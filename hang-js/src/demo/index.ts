@@ -1,7 +1,7 @@
 import "./index.css";
 import "./highlight";
 
-import { Element as Watch } from "../watch";
+import { Watch } from "../watch";
 export { Watch };
 
 // Yes this is a terrible mess and not how we make websites in >current year<.
@@ -16,6 +16,7 @@ const latency = document.getElementById("latency") as HTMLInputElement;
 const latencyValue = document.getElementById("latency-value") as HTMLSpanElement;
 const volumeValue = document.getElementById("volume-value") as HTMLSpanElement;
 const mute = document.getElementById("mute") as HTMLButtonElement;
+const broadcastStatus = document.getElementById("broadcast-status") as HTMLSpanElement;
 
 // If query params are provided, use them as the broadcast URL instead of the default.
 const urlParams = new URLSearchParams(window.location.search);
@@ -29,9 +30,9 @@ if (urlParams.size > 0) {
 
 // Listen for clicks on the pause button.
 pause.addEventListener("click", () => {
-	watch.paused = !watch.paused;
+	watch.paused.set(!watch.paused.get());
 
-	if (watch.paused) {
+	if (watch.paused.get()) {
 		pause.textContent = "▶️";
 	} else {
 		pause.textContent = "⏸️";
@@ -40,16 +41,16 @@ pause.addEventListener("click", () => {
 
 // Listen for clicks on the mute button.
 mute.addEventListener("click", () => {
-	watch.muted = !watch.muted;
+	watch.muted.set(!watch.muted.get());
 
-	if (watch.muted) {
+	if (watch.muted.get()) {
 		mute.textContent = "🔇";
 		volume.value = "0";
 		volumeValue.textContent = "0%";
 	} else {
 		mute.textContent = "🔊";
-		volume.value = watch.volume.toString();
-		volumeValue.textContent = `${(watch.volume * 100).toFixed(0)}%`;
+		volume.value = watch.volume.get().toString();
+		volumeValue.textContent = `${(watch.volume.get() * 100).toFixed(0)}%`;
 	}
 });
 
@@ -67,43 +68,63 @@ fullscreen.addEventListener("click", () => {
 
 // Listen for changes to the volume input.
 volume.addEventListener("input", () => {
-	if (watch.muted) {
+	const value = Number.parseFloat(volume.value);
+
+	if (value > 0) {
 		mute.textContent = "🔊";
-		watch.muted = false;
+		watch.muted.set(false);
+	} else {
+		mute.textContent = "🔇";
 	}
 
-	watch.volume = Number.parseFloat(volume.value);
-	volumeValue.textContent = `${(Number.parseFloat(volume.value) * 100).toFixed(0)}%`;
+	watch.volume.set(value);
+	volumeValue.textContent = `${(value * 100).toFixed(0)}%`;
+});
 
-	if (Number.parseFloat(volume.value) === 0) {
-		mute.textContent = "🔇";
+// You can "subscribe" to any of the properties.
+// Or you can use SolidJS directly.
+const cleanup = watch.connection.status.subscribe((value) => {
+	if (value === "connected") {
+		status.textContent = "🟢 Connected";
+	} else if (value === "connecting") {
+		status.textContent = "🟡 Connecting...";
+	} else if (value === "disconnected") {
+		status.textContent = "🔴 Disconnected";
+	} else {
+		throw new Error(`Unknown connection status: ${value}`);
 	}
 });
 
-// Listen for connection status changes.
-watch.addEventListener("moq-connection", (event) => {
-	if (event.detail === "connected") {
-		status.textContent = "🟢 Connected";
-	} else if (event.detail === "connecting") {
-		status.textContent = "🟡 Connecting...";
-	} else if (event.detail === "disconnected") {
-		status.textContent = "🔴 Disconnected";
+const cleanup2 = watch.broadcast.status.subscribe((value) => {
+	if (value === "offline") {
+		broadcastStatus.textContent = "🔴 Offline";
+	} else if (value === "loading") {
+		broadcastStatus.textContent = "🟡 Loading...";
+	} else if (value === "live") {
+		broadcastStatus.textContent = "🟢 Live";
 	} else {
-		throw new Error(`Unknown connection status: ${event.detail}`);
+		throw new Error(`Unknown broadcast status: ${value}`);
 	}
+});
+
+// Avoids (temporary) console warnings in development mode.
+// I want to catch any memory leaks, like the above `subscribe`, because it never gets cancelled!
+document.addEventListener("unload", () => {
+	cleanup();
+	cleanup2();
 });
 
 // Listen for changes to the latency input.
 latency.addEventListener("input", () => {
-	watch.latency = Number.parseInt(latency.value);
+	watch.latency.set(Number.parseInt(latency.value));
 	latencyValue.textContent = `${latency.value}ms`;
 });
 
 // Optional: Stop downloading video when the page is hidden.
 document.addEventListener("visibilitychange", () => {
-	watch.paused = document.visibilityState === "hidden";
+	watch.paused.set(document.visibilityState === "hidden");
 
-	if (watch.paused) {
+	if (watch.paused.get()) {
 		pause.textContent = "▶️";
 	} else {
 		pause.textContent = "⏸️";

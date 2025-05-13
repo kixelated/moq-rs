@@ -37,25 +37,6 @@ impl Encode for Subscribe {
 }
 
 #[derive(Clone, Debug)]
-pub struct SubscribeUpdate {
-	pub priority: u64,
-}
-
-impl Decode for SubscribeUpdate {
-	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
-		let priority = u64::decode(r)?;
-
-		Ok(Self { priority })
-	}
-}
-
-impl Encode for SubscribeUpdate {
-	fn encode<W: bytes::BufMut>(&self, w: &mut W) {
-		self.priority.encode(w);
-	}
-}
-
-#[derive(Clone, Debug)]
 pub struct SubscribeOk {
 	pub priority: i8,
 }

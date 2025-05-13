@@ -194,7 +194,7 @@ export class Broadcast {
 		if (!this.#broadcast) {
 			const broadcast = new Moq.Broadcast(this.name);
 			this.#broadcast = broadcast.writer;
-			this.#broadcast.insert(this.#catalog.reader.clone());
+			this.#broadcast.insertTrack(this.#catalog.reader.clone());
 
 			// Publish the broadcast to the connection.
 			this.connection.on("connected", (connection) => {
@@ -209,20 +209,20 @@ export class Broadcast {
 		// We need to wait for the encoder to fully initialize with a few frames.
 		if (this.#audio) {
 			catalog.audio.push(this.#audio.catalog);
-			this.#broadcast.insert(this.#audio.track.reader.clone());
+			this.#broadcast.insertTrack(this.#audio.track.reader.clone());
 		}
 
 		if (this.#video) {
 			catalog.video.push(await this.#video.catalog());
-			this.#broadcast.insert(this.#video.track.reader.clone());
+			this.#broadcast.insertTrack(this.#video.track.reader.clone());
 		}
 
 		console.debug("published catalog", this.#broadcast.path, catalog);
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
-		const catalogGroup = this.#catalog.writer.append();
-		catalogGroup.write(encoded);
+		const catalogGroup = this.#catalog.writer.appendGroup();
+		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
 	}
 

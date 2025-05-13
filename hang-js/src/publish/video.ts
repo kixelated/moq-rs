@@ -263,7 +263,7 @@ export class Video {
 		if (frame.type === "key") {
 			this.#groupTimestamp = frame.timestamp;
 			this.#group?.close();
-			this.#group = this.track.writer.append();
+			this.#group = this.track.writer.appendGroup();
 		}
 
 		if (!this.#group) throw new Error("missing keyframe");

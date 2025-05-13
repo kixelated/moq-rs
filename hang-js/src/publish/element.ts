@@ -2,7 +2,7 @@ import * as Moq from "@kixelated/moq";
 
 import { Broadcast, Device } from "./broadcast";
 
-export class Element extends HTMLElement {
+export class Publish extends HTMLElement {
 	static observedAttributes = ["url", "name", "device", "audio", "video"];
 
 	#name?: string;
@@ -170,11 +170,11 @@ export class Element extends HTMLElement {
 	}
 }
 
-customElements.define("hang-publish", Element);
+customElements.define("hang-publish", Publish);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"hang-publish": Element;
+		"hang-publish": Publish;
 	}
 }
 

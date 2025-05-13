@@ -9,10 +9,7 @@ const MAX_U53 = Number.MAX_SAFE_INTEGER;
 // TODO: Figure out why webpack is converting this to Math.pow
 //const MAX_U62: bigint = 2n ** 62n - 1n;
 
-export type StreamBi =
-	| Wire.SessionClient
-	| Wire.AnnounceInterest
-	| Wire.Subscribe;
+export type StreamBi = Wire.SessionClient | Wire.AnnounceInterest | Wire.Subscribe;
 export type StreamUni = Wire.Group;
 
 export class Stream {
@@ -27,9 +24,7 @@ export class Stream {
 		this.reader = new Reader(props.readable);
 	}
 
-	static async accept(
-		quic: WebTransport,
-	): Promise<[StreamBi, Stream] | undefined> {
+	static async accept(quic: WebTransport): Promise<[StreamBi, Stream] | undefined> {
 		const reader = quic.incomingBidirectionalStreams.getReader();
 		const next = await reader.read();
 		reader.releaseLock();
@@ -128,15 +123,8 @@ export class Reader {
 
 	// Consumes the first size bytes of the buffer.
 	#slice(size: number): Uint8Array {
-		const result = new Uint8Array(
-			this.#buffer.buffer,
-			this.#buffer.byteOffset,
-			size,
-		);
-		this.#buffer = new Uint8Array(
-			this.#buffer.buffer,
-			this.#buffer.byteOffset + size,
-		);
+		const result = new Uint8Array(this.#buffer.buffer, this.#buffer.byteOffset, size);
+		this.#buffer = new Uint8Array(this.#buffer.buffer, this.#buffer.byteOffset + size);
 
 		return result;
 	}
@@ -156,9 +144,7 @@ export class Reader {
 	async string(maxLength?: number): Promise<string> {
 		const length = await this.u53();
 		if (maxLength !== undefined && length > maxLength) {
-			throw new Error(
-				`string length ${length} exceeds max length ${maxLength}`,
-			);
+			throw new Error(`string length ${length} exceeds max length ${maxLength}`);
 		}
 
 		const buffer = await this.read(length);
@@ -192,22 +178,14 @@ export class Reader {
 		if (size === 1) {
 			await this.#fillTo(2);
 			const slice = this.#slice(2);
-			const view = new DataView(
-				slice.buffer,
-				slice.byteOffset,
-				slice.byteLength,
-			);
+			const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
 
 			return BigInt(view.getInt16(0)) & 0x3fffn;
 		}
 		if (size === 2) {
 			await this.#fillTo(4);
 			const slice = this.#slice(4);
-			const view = new DataView(
-				slice.buffer,
-				slice.byteOffset,
-				slice.byteLength,
-			);
+			const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
 
 			return BigInt(view.getUint32(0)) & 0x3fffffffn;
 		}
@@ -232,9 +210,7 @@ export class Reader {
 		return this.#reader.closed;
 	}
 
-	static async accept(
-		quic: WebTransport,
-	): Promise<[StreamUni, Reader] | undefined> {
+	static async accept(quic: WebTransport): Promise<[StreamUni, Reader] | undefined> {
 		const reader = quic.incomingUnidirectionalStreams.getReader();
 		const next = await reader.read();
 		reader.releaseLock();

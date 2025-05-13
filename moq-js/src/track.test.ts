@@ -10,25 +10,25 @@ test("track clone", async () => {
 	const readerA = track.reader;
 	const readerB = readerA.clone();
 
-	const group1 = writer.append();
+	const group1 = writer.appendGroup();
 
 	// Clone the reader after we appended that group; we still get it.
 	const readerC = readerA.clone();
 
-	const group1A = await readerA.next();
-	const group1B = await readerB.next();
-	const group1C = await readerC.next();
+	const group1A = await readerA.nextGroup();
+	const group1B = await readerB.nextGroup();
+	const group1C = await readerC.nextGroup();
 
 	assert.strictEqual(group1A?.id, group1.id);
 	assert.strictEqual(group1B?.id, group1.id);
 	assert.strictEqual(group1C?.id, group1.id);
 
 	// Append a new group, everybody gets it
-	const group2 = writer.append();
+	const group2 = writer.appendGroup();
 
-	const group2A = await readerA.next();
-	const group2B = await readerB.next();
-	const group2C = await readerC.next();
+	const group2A = await readerA.nextGroup();
+	const group2B = await readerB.nextGroup();
+	const group2C = await readerC.nextGroup();
 
 	assert.strictEqual(group2A?.id, group2.id);
 	assert.strictEqual(group2B?.id, group2.id);
@@ -38,16 +38,16 @@ test("track clone", async () => {
 	// This new reader gets the most recent group but that's it.
 	const readerD = readerA.clone();
 
-	const group2D = await readerD.next();
+	const group2D = await readerD.nextGroup();
 	assert.strictEqual(group2D?.id, group2.id);
 
 	// Everybody gets the new group
-	const group3 = writer.append();
+	const group3 = writer.appendGroup();
 
-	const group3A = await readerA.next();
-	const group3B = await readerB.next();
-	const group3C = await readerC.next();
-	const group3D = await readerD.next();
+	const group3A = await readerA.nextGroup();
+	const group3B = await readerB.nextGroup();
+	const group3C = await readerC.nextGroup();
+	const group3D = await readerD.nextGroup();
 
 	assert.strictEqual(group3A?.id, group3.id);
 	assert.strictEqual(group3B?.id, group3.id);
@@ -58,12 +58,12 @@ test("track clone", async () => {
 	readerA.close();
 	readerB.close();
 
-	const group4 = writer.append();
+	const group4 = writer.appendGroup();
 
-	const group4A = await readerA.next();
-	const group4B = await readerB.next();
-	const group4C = await readerC.next();
-	const group4D = await readerD.next();
+	const group4A = await readerA.nextGroup();
+	const group4B = await readerB.nextGroup();
+	const group4C = await readerC.nextGroup();
+	const group4D = await readerD.nextGroup();
 
 	assert.strictEqual(group4A?.id, undefined);
 	assert.strictEqual(group4B?.id, undefined);
@@ -71,7 +71,7 @@ test("track clone", async () => {
 	assert.strictEqual(group4D?.id, group4.id);
 
 	const readerE = readerC.clone();
-	const group4E = await readerE.next();
+	const group4E = await readerE.nextGroup();
 	assert.strictEqual(group4E?.id, group4.id);
 });
 
@@ -83,13 +83,13 @@ test("track group cloning", async () => {
 	const readerB = readerA.clone();
 
 	// Make sure both readers get separate copies of the groups.
-	const group = writer.append();
-	group.write(new Uint8Array([1]));
-	group.write(new Uint8Array([2]));
-	group.write(new Uint8Array([3]));
+	const group = writer.appendGroup();
+	group.writeFrame(new Uint8Array([1]));
+	group.writeFrame(new Uint8Array([2]));
+	group.writeFrame(new Uint8Array([3]));
 
-	const groupA = await readerA.next();
-	const groupB = await readerB.next();
+	const groupA = await readerA.nextGroup();
+	const groupB = await readerB.nextGroup();
 
 	assert.strictEqual(groupA?.id, group.id);
 	assert.strictEqual(groupB?.id, group.id);

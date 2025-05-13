@@ -1,5 +1,6 @@
+import { Connection } from "@kixelated/hang/connection";
 import * as Watch from "@kixelated/hang/watch";
-import * as Moq from "@kixelated/moq";
+import { Root } from "@kixelated/hang/signals";
 
 import { Bounds } from "./bounds";
 import { Vector } from "./vector";
@@ -8,13 +9,13 @@ export class Broadcast {
 	watch: Watch.Broadcast;
 	room: string;
 
-	audio: Watch.AudioSource;
+	audio: Watch.Audio;
 	audioEmitter: Watch.AudioEmitter;
 	audioPanner?: StereoPannerNode;
 	audioLeft?: AnalyserNode;
 	audioRight?: AnalyserNode;
 
-	video: Watch.VideoSource;
+	video: Watch.Video;
 
 	bounds: Bounds;
 	scale = 1.0; // 1 is 100%
@@ -24,49 +25,62 @@ export class Broadcast {
 	targetScale = 1.0; // 1 is 100%
 	targetSize: Vector; // in pixels
 
-	constructor(broadcast: Moq.BroadcastReader, room: string) {
-		this.watch = new Watch.Broadcast(broadcast);
+	#root = new Root();
+
+	constructor(connection: Connection, room: string) {
+		this.watch = new Watch.Broadcast({ connection, reload: false });
 		this.room = room;
 
 		this.video = this.watch.video;
-		this.video.enabled = true;
+		this.video.enabled.set(true);
 
 		this.audio = this.watch.audio;
-
-		this.audioEmitter = new Watch.AudioEmitter();
-		this.audioEmitter.onInit = (ctx: AudioContext, node: AudioNode) => {
-			if (node.channelCount >= 2) {
-				this.audioPanner = new StereoPannerNode(ctx, {
-					channelCount: node.channelCount,
-				});
-				const splitter = new ChannelSplitterNode(ctx, {
-					channelCount: node.channelCount,
-					numberOfOutputs: 2,
-				});
-
-				this.audioLeft = new AnalyserNode(ctx, { fftSize: 256 });
-				this.audioRight = new AnalyserNode(ctx, { fftSize: 256 });
-
-				splitter.connect(this.audioLeft, 0);
-				splitter.connect(this.audioRight, 1);
-
-				node.connect(this.audioPanner);
-				this.audioPanner.connect(splitter);
-				this.audioPanner.connect(ctx.destination);
-			} else {
-				this.audioPanner = undefined;
-				this.audioLeft = new AnalyserNode(ctx, { fftSize: 256 });
-				this.audioRight = this.audioLeft;
-
-				node.connect(this.audioLeft);
-				node.connect(ctx.destination); // output to the speakers
-			}
-		};
-
-		this.audioEmitter.source = this.audio;
+		this.audioEmitter = new Watch.AudioEmitter({ source: this.audio });
 
 		this.targetSize = Vector.create(128, 128);
 		this.bounds = new Bounds(Vector.create(0, 0), this.targetSize);
+
+		this.#root.effect(() => this.#setupAudio());
+	}
+
+	#setupAudio() {
+		const audio = this.audioEmitter.context.get();
+		if (!audio) return;
+
+		const { root: context, gain } = audio;
+
+		if (gain.channelCount >= 2) {
+			this.audioPanner = new StereoPannerNode(context, {
+				channelCount: gain.channelCount,
+			});
+			const splitter = new ChannelSplitterNode(context, {
+				channelCount: gain.channelCount,
+				numberOfOutputs: 2,
+			});
+
+			this.audioLeft = new AnalyserNode(context, { fftSize: 256 });
+			this.audioRight = new AnalyserNode(context, { fftSize: 256 });
+
+			splitter.connect(this.audioLeft, 0);
+			splitter.connect(this.audioRight, 1);
+
+			gain.connect(this.audioPanner);
+			this.audioPanner.connect(splitter);
+			this.audioPanner.connect(context.destination);
+		} else {
+			this.audioPanner = undefined;
+			this.audioLeft = new AnalyserNode(context, { fftSize: 256 });
+			this.audioRight = this.audioLeft;
+
+			gain.connect(this.audioLeft);
+			gain.connect(context.destination); // output to the speakers
+		}
+
+		return () => {
+			this.audioLeft?.disconnect();
+			this.audioRight?.disconnect();
+			this.audioPanner?.disconnect();
+		};
 	}
 
 	renderAudio(ctx: CanvasRenderingContext2D, _now: DOMHighResTimeStamp) {
@@ -166,15 +180,19 @@ export class Broadcast {
 			*/
 		}
 
-		const name = this.watch.broadcast.path.slice(this.room.length + 1);
+		const name = this.watch.name.get();
+		if (name) {
+			const suffix = name.slice(this.room.length + 1);
 
-		ctx.font = "12px sans-serif";
-		ctx.lineWidth = 3;
-		ctx.strokeStyle = "black";
-		ctx.strokeText(name, 6, 16);
+			ctx.font = "12px sans-serif";
+			ctx.lineWidth = 3;
+			ctx.strokeStyle = "black";
+			ctx.strokeText(suffix, 6, 16);
 
-		ctx.fillStyle = "white";
-		ctx.fillText(name, 6, 16);
+			ctx.fillStyle = "white";
+			ctx.fillText(suffix, 6, 16);
+		}
+
 		ctx.restore();
 
 		// Draw target for debugging

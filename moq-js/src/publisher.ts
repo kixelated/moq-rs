@@ -25,7 +25,7 @@ export class Publisher {
 
 		(async () => {
 			try {
-				await this.#announced.writer.write({
+				this.#announced.writer.write({
 					broadcast: broadcast.path,
 					active: true,
 				});
@@ -36,7 +36,8 @@ export class Publisher {
 			} finally {
 				console.debug(`announce: broadcast=${broadcast.path} active=false`);
 				this.#broadcasts.delete(broadcast.path);
-				await this.#announced.writer.write({
+
+				this.#announced.writer.write({
 					broadcast: broadcast.path,
 					active: false,
 				});
@@ -52,10 +53,7 @@ export class Publisher {
 			if (!announcement) break;
 
 			if (announcement.broadcast.startsWith(msg.prefix)) {
-				const wire = new Wire.Announce(
-					announcement.broadcast.slice(msg.prefix.length),
-					announcement.active,
-				);
+				const wire = new Wire.Announce(announcement.broadcast.slice(msg.prefix.length), announcement.active);
 				await wire.encode(stream.writer);
 			}
 		}
@@ -70,12 +68,7 @@ export class Publisher {
 		}
 
 		const track = broadcast.subscribe(msg.track, msg.priority);
-		const serving = this.#runTrack(
-			msg.id,
-			broadcast.path,
-			track,
-			stream.writer,
-		);
+		const serving = this.#runTrack(msg.id, broadcast.path, track, stream.writer);
 
 		for (;;) {
 			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);
@@ -90,23 +83,16 @@ export class Publisher {
 		}
 	}
 
-	async #runTrack(
-		sub: bigint,
-		broadcast: string,
-		track: TrackReader,
-		stream: Wire.Writer,
-	) {
+	async #runTrack(sub: bigint, broadcast: string, track: TrackReader, stream: Wire.Writer) {
 		let ok = false;
 
 		try {
 			for (;;) {
-				const group = await Promise.race([track.next(), stream.closed()]);
+				const group = await Promise.race([track.nextGroup(), stream.closed()]);
 				if (!group) break;
 
 				if (!ok) {
-					console.debug(
-						`publish ok: broadcast=${broadcast} track=${track.name}`,
-					);
+					console.debug(`publish ok: broadcast=${broadcast} track=${track.name}`);
 
 					// Write the SUBSCRIBE_OK message on the first group.
 					const info = new Wire.SubscribeOk(track.priority);
@@ -117,14 +103,10 @@ export class Publisher {
 				this.#runGroup(sub, group);
 			}
 
-			console.debug(
-				`publish close: broadcast=${broadcast} track=${track.name}`,
-			);
+			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
 			stream.close();
 		} catch (err) {
-			console.warn(
-				`publish error: broadcast=${broadcast} track=${track.name} error=${err}`,
-			);
+			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
 			stream.reset(error(err));
 		} finally {
 			track.close();
@@ -136,7 +118,7 @@ export class Publisher {
 		const stream = await Wire.Writer.open(this.#quic, msg);
 		try {
 			for (;;) {
-				const frame = await Promise.race([group.read(), stream.closed()]);
+				const frame = await Promise.race([group.readFrame(), stream.closed()]);
 				if (!frame) break;
 
 				await stream.u53(frame.byteLength);

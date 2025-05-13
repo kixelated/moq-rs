@@ -36,11 +36,11 @@ export class Catalog {
 	}
 
 	static async fetch(track: Moq.TrackReader): Promise<Catalog | undefined> {
-		const group = await track.next();
+		const group = await track.nextGroup();
 		if (!group) return undefined; // track is done
 
 		try {
-			const frame = await group.read();
+			const frame = await group.readFrame();
 			if (!frame) throw new Error("empty group");
 			return Catalog.decode(frame);
 		} finally {

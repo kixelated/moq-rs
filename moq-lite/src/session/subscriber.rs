@@ -6,7 +6,7 @@ use std::{
 use crate::{
 	message,
 	model::{BroadcastConsumer, BroadcastProducer},
-	AnnouncedProducer, Broadcast, Error, Frame, Group, TrackProducer,
+	AnnouncedProducer, Broadcast, Error, Frame, FrameProducer, Group, GroupProducer, TrackProducer,
 };
 
 use web_async::{spawn, Lock};
@@ -40,29 +40,33 @@ impl Subscriber {
 		let producer = AnnouncedProducer::default();
 		let consumer = producer.consume(prefix.clone());
 
-		let mut session = self.session.clone();
-		web_async::spawn(async move {
-			let stream = match Stream::open(&mut session, message::ControlType::Announce).await {
-				Ok(stream) => stream,
-				Err(err) => {
-					tracing::warn!(?err, "failed to open announce stream");
-					return;
-				}
-			};
-
-			tracing::debug!(%prefix, "announced started");
-
-			if let Err(err) = Self::run_announce(stream, &prefix, producer).await {
-				tracing::warn!(?err, %prefix, "announced error");
-			} else {
-				tracing::debug!(%prefix, "announced complete");
-			}
-		});
+		web_async::spawn(self.clone().run_announced(prefix, producer));
 
 		consumer
 	}
 
-	async fn run_announce(mut stream: Stream, prefix: &str, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announced(mut self, prefix: String, producer: AnnouncedProducer) {
+		tracing::debug!(%prefix, "announced started");
+
+		// Keep running until we don't care about the producer anymore.
+		let closed = producer.clone();
+
+		// Wait until the producer is no longer needed or the stream is closed.
+		let res = tokio::select! {
+			_ = closed.unused() => Err(Error::Cancel),
+			res = self.run_announce(&prefix, producer) => res,
+		};
+
+		if let Err(err) = res {
+			tracing::warn!(?err, %prefix, "announced error");
+		} else {
+			tracing::debug!(%prefix, "announced complete");
+		}
+	}
+
+	async fn run_announce(&mut self, prefix: &str, mut announced: AnnouncedProducer) -> Result<(), Error> {
+		let mut stream = Stream::open(&mut self.session, message::ControlType::Announce).await?;
+
 		stream
 			.writer
 			.encode(&message::AnnounceRequest {
@@ -70,60 +74,37 @@ impl Subscriber {
 			})
 			.await?;
 
-		loop {
-			tokio::select! {
-				res = stream.reader.decode_maybe::<message::Announce>() => {
-					match res? {
-						// Handle the announce
-						Some(announce) => Self::recv_announce(announce, prefix, &mut announced)?,
-						// Stop if the stream has been closed
-						None => break,
+		while let Some(announce) = stream.reader.decode_maybe::<message::Announce>().await? {
+			match announce {
+				message::Announce::Active { suffix } => {
+					let broadcast = match prefix {
+						"" => Broadcast::new(suffix),
+						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
+					};
+
+					tracing::debug!(broadcast = %broadcast.path, "received announced");
+
+					if !announced.insert(broadcast) {
+						return Err(Error::Duplicate);
 					}
-				},
-				// Stop if the consumer is no longer interested
-				_ = announced.closed() => break,
-			}
-		}
-
-		// Close the writer and wait for the reading side to finish.
-		stream.writer.close();
-		stream.reader.finished().await?;
-
-		Ok(())
-	}
-
-	fn recv_announce(
-		announce: message::Announce,
-		prefix: &str,
-		announced: &mut AnnouncedProducer,
-	) -> Result<(), Error> {
-		match announce {
-			message::Announce::Active { suffix } => {
-				let broadcast = match prefix {
-					"" => Broadcast::new(suffix),
-					prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
-				};
-
-				tracing::debug!(broadcast = %broadcast.path, "received announced");
-
-				if !announced.insert(broadcast) {
-					return Err(Error::Duplicate);
 				}
-			}
-			message::Announce::Ended { suffix } => {
-				let broadcast = match prefix {
-					"" => Broadcast::new(suffix),
-					prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
-				};
+				message::Announce::Ended { suffix } => {
+					let broadcast = match prefix {
+						"" => Broadcast::new(suffix),
+						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
+					};
 
-				tracing::debug!(broadcast = %broadcast.path, "received unannounced");
+					tracing::debug!(broadcast = %broadcast.path, "received unannounced");
 
-				if !announced.remove(&broadcast) {
-					return Err(Error::NotFound);
+					if !announced.remove(&broadcast) {
+						return Err(Error::NotFound);
+					}
 				}
 			}
 		}
-		Ok(())
+
+		// Close the writer.
+		stream.writer.finish().await
 	}
 
 	/// Subscribe to a given broadcast.
@@ -152,81 +133,70 @@ impl Subscriber {
 				_ = self.session.closed() => break,
 			};
 
-			let mut this = self.clone();
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-			let broadcast = broadcast.clone();
-
-			spawn(async move {
-				let track = producer.info.clone();
-
-				tracing::info!(broadcast = %broadcast.info.path, track = %track.name, id, "subscription started");
-
-				if let Ok(stream) = Stream::open(&mut this.session, message::ControlType::Subscribe).await {
-					if let Err(err) = this.run_subscribe(id, &broadcast.info, producer, stream).await {
-						tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.name, id, "subscription error");
-					} else {
-						tracing::info!(broadcast = %broadcast.info.path, track = %track.name, id, "subscription complete");
-					}
-				}
-
-				this.subscribes.lock().remove(&id);
-				broadcast.remove(&track.name);
-			});
+			spawn(self.clone().run_subscribe(id, broadcast.clone(), producer));
 		}
 
 		// Remove the broadcast from the lookup.
 		self.broadcasts.lock().remove(&broadcast.info.path);
 	}
 
-	async fn run_subscribe(
-		&mut self,
-		id: u64,
-		broadcast: &Broadcast,
-		track: TrackProducer,
-		mut stream: Stream,
-	) -> Result<(), Error> {
+	async fn run_subscribe(mut self, id: u64, broadcast: BroadcastProducer, mut track: TrackProducer) {
 		self.subscribes.lock().insert(id, track.clone());
 
-		let request = message::Subscribe {
+		let msg = message::Subscribe {
 			id,
-			broadcast: broadcast.path.clone(),
+			broadcast: broadcast.info.path.clone(),
 			track: track.info.name.clone(),
 			priority: track.info.priority,
 		};
 
-		stream.writer.encode(&request).await?;
+		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription started");
+
+		let res = tokio::select! {
+			_ = track.unused() => Err(Error::Cancel),
+			res = self.run_track(msg) => res,
+		};
+
+		if let Err(err) = res {
+			tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription error");
+			track.abort(err);
+		} else {
+			tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription complete");
+			track.finish();
+		}
+
+		self.subscribes.lock().remove(&id);
+		broadcast.remove(&track.info.name);
+	}
+
+	async fn run_track(&mut self, msg: message::Subscribe) -> Result<(), Error> {
+		let mut stream = Stream::open(&mut self.session, message::ControlType::Subscribe).await?;
+
+		if let Err(err) = self.run_track_stream(&mut stream, msg).await {
+			stream.writer.abort(&err);
+			return Err(err);
+		}
+
+		stream.writer.finish().await
+	}
+
+	async fn run_track_stream(&mut self, stream: &mut Stream, msg: message::Subscribe) -> Result<(), Error> {
+		stream.writer.encode(&msg).await?;
 
 		// TODO use the response correctly populate the track info
 		let _info: message::SubscribeOk = stream.reader.decode().await?;
 
-		loop {
-			tokio::select! {
-				res = stream.reader.decode_maybe::<message::GroupDrop>() => {
-					match res? {
-						Some(drop) => {
-							tracing::info!(?drop, "dropped");
-							// TODO expose updates to application
-							// TODO use to detect gaps
-						},
-						None => break,
-					}
-				}
-				// Close when there are no more subscribers
-				_ = track.unused() => break
-			};
-		}
-
-		stream.writer.close();
-
-		// Keep the reader alive until the other side signals they are done.
-		// If they send anything but a FIN, we'll reset the stream.
+		// Wait until the stream is closed
 		stream.reader.finished().await?;
 
 		Ok(())
 	}
 
-	pub async fn recv_group(&mut self, mut stream: Reader) -> Result<(), Error> {
+	pub async fn recv_group(&mut self, stream: &mut Reader) -> Result<(), Error> {
 		let group: message::Group = stream.decode().await?;
+
+		tracing::trace!(group = %group.sequence, "received group");
 
 		let mut group = {
 			let mut subs = self.subscribes.lock();
@@ -238,18 +208,53 @@ impl Subscriber {
 			track.create_group(group).ok_or(Error::Old)?
 		};
 
+		let res = tokio::select! {
+			_ = group.unused() => Err(Error::Cancel),
+			res = self.run_group(stream, group.clone()) => res,
+		};
+
+		if let Err(err) = res {
+			tracing::warn!(?err, group = %group.info.sequence, "group error");
+
+			group.abort(err.clone());
+			return Err(err);
+		}
+
+		tracing::trace!(group = %group.info.sequence, "group complete");
+
+		Ok(())
+	}
+
+	async fn run_group(&mut self, stream: &mut Reader, mut group: GroupProducer) -> Result<(), Error> {
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
-			let frame = Frame { size: frame.size };
-			let mut remain = frame.size;
-			let mut frame = group.create_frame(frame);
+			let mut frame = group.create_frame(Frame { size: frame.size });
 
-			while remain > 0 {
-				let chunk = stream.read(remain as usize).await?.ok_or(Error::WrongSize)?;
+			let res = tokio::select! {
+				_ = frame.unused() => Err(Error::Cancel),
+				res = self.run_frame(stream, frame.clone()) => res,
+			};
 
-				remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
-				frame.write(chunk);
+			if let Err(err) = res {
+				frame.abort(err.clone());
+				return Err(err);
 			}
 		}
+
+		group.finish();
+
+		Ok(())
+	}
+
+	async fn run_frame(&mut self, stream: &mut Reader, mut frame: FrameProducer) -> Result<(), Error> {
+		let mut remain = frame.info.size;
+
+		while remain > 0 {
+			let chunk = stream.read(remain as usize).await?.ok_or(Error::WrongSize)?;
+			remain = remain.checked_sub(chunk.len() as u64).ok_or(Error::WrongSize)?;
+			frame.write(chunk);
+		}
+
+		frame.finish();
 
 		Ok(())
 	}
