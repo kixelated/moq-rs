@@ -26,16 +26,16 @@ none.addEventListener("click", () => {
 // If query params are provided, use them instead of the default.
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.size > 0) {
-	const broadcast = urlParams.get("broadcast") ?? "demo/me";
+	const path = urlParams.get("path") ?? "demo/me";
 	const host = urlParams.get("host") ?? "localhost:4443";
 	const scheme = urlParams.get("scheme") ?? "http";
 
 	publish.setAttribute("url", `${scheme}://${host}/`);
-	publish.setAttribute("name", broadcast);
+	publish.setAttribute("path", path);
 
-	watch.setAttribute("href", `index.html?name=${broadcast}&host=${host}&scheme=${scheme}`);
+	watch.setAttribute("href", `index.html?path=${path}&host=${host}&scheme=${scheme}`);
 } else {
-	watch.setAttribute("href", `index.html?name=demo/me`);
+	watch.setAttribute("href", `index.html?path=demo/me`);
 }
 
 // Listen for connection status changes.

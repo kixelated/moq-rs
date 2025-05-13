@@ -9,8 +9,8 @@ export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
 	connection: Connection;
-
-	name?: string;
+	enabled?: boolean;
+	path?: string;
 	audio?: boolean;
 	video?: boolean;
 	device?: Device;
@@ -21,7 +21,8 @@ export type BroadcastProps = {
 
 export class Broadcast {
 	connection: Connection;
-	name: Signal<string | undefined>;
+	enabled: Signal<boolean>;
+	path: Signal<string | undefined>;
 
 	#media = signal<MediaStream | undefined>(undefined);
 	media = this.#media.readonly();
@@ -37,14 +38,17 @@ export class Broadcast {
 
 	constructor(props: BroadcastProps) {
 		this.connection = props.connection;
-		this.name = signal(props.name);
+		this.enabled = signal(props.enabled ?? true);
+		this.path = signal(props.path);
 		this.audio = new Audio({ enabled: props.audio});
 		this.video = new Video({ enabled: props.video});
 		this.device = signal(props.device);
 
 		this.#signals.effect(() => {
-			const name = this.name.get();
+			const name = this.path.get();
 			if (!name) return;
+
+			if (!this.enabled.get()) return;
 
 			const broadcast = new Moq.Broadcast(name);
 			broadcast.writer.insertTrack(this.#catalog.reader.clone());
@@ -107,6 +111,8 @@ export class Broadcast {
 	#promptUser() {
 		const device = this.device.get();
 		if (!device) return;
+
+		if (!this.enabled.get()) return;
 
 		const videoEnabled = this.video.enabled.get();
 		const audioEnabled = this.audio.enabled.get();
@@ -182,7 +188,10 @@ export class Broadcast {
 		});
 
 		return () => {
-			this.#media.set(undefined);
+			this.#media.set((prev) => {
+				prev?.getTracks().forEach((track) => track.stop());
+				return undefined;
+			});
 		}
 	}
 

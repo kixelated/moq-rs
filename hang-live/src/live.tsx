@@ -1,8 +1,8 @@
 import { jsx } from "./jsx";
 import { Room } from "./room";
 
-import * as Moq from "@kixelated/moq";
 import { Me } from "./me";
+import { Connection } from "@kixelated/hang/connection"
 
 const RELAY = new URL("http://localhost:4443");
 
@@ -17,10 +17,10 @@ export class HangLive extends HTMLElement {
 				css={{ display: "block", backgroundColor: "#000" }}
 			/>
 		) as HTMLCanvasElement;
-		const connect = new Moq.ConnectionReload(RELAY);
+		const connection = new Connection({ url: RELAY });
 
-		const me = new Me(connect, "demo/me");
-		const room = new Room(connect, "demo", canvas);
+		const me = new Me({ connection, room: "demo", name: "me" });
+		const room = new Room({ connection, path: "demo", canvas });
 
 		// Register any window/document level events.
 		const resize = () => {

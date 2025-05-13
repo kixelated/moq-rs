@@ -1,23 +1,41 @@
 import * as Publish from "@kixelated/hang/publish";
-import * as Moq from "@kixelated/moq";
+import { Connection } from "@kixelated/hang/connection";
 
 import { jsx } from "./jsx";
+import { Signal, signal, Signals } from "@kixelated/hang/signals"
+
+export type MeProps = {
+	connection: Connection;
+	room?: string;
+	name?: string;
+};
 
 export class Me extends HTMLElement {
-	connection: Moq.ConnectionReload;
-	name: string;
+	connection: Connection;
+	room: Signal<string | undefined>;
+	name: Signal<string | undefined>;
 
 	#camera: Publish.Broadcast;
 	#cameraVolume: Volume;
 
-	#screen?: Publish.Broadcast;
+	#screen: Publish.Broadcast;
 	#screenVolume: Volume;
 
-	constructor(connection: Moq.ConnectionReload, name: string) {
+	#signals = new Signals();
+
+	constructor(props: MeProps) {
 		super();
 
-		this.connection = connection;
-		this.name = name;
+		this.connection = props.connection;
+		this.room = signal(props.room);
+		this.name = signal(props.name);
+
+		const path = this.#signals.derived(() => {
+			const room = this.room.get();
+			const name = this.name.get();
+			if (!room || !name) return undefined;
+			return `${room}/${name}`;
+		});
 
 		const control: Partial<CSSStyleDeclaration> = {
 			color: "white",
@@ -34,16 +52,20 @@ export class Me extends HTMLElement {
 			...control,
 		};
 
-		this.#cameraVolume = new Volume();
-		this.#screenVolume = new Volume();
+		this.#camera = new Publish.Broadcast({ connection: this.connection, device: "camera", video: false, audio: false});
+		this.#cameraVolume = new Volume(this.#camera);
+		const cameraButton = (
+			<button type="button" css={button}>
+				📷
+			</button>
+		);
 
-		this.#camera = new Publish.Broadcast(connection, name, {
-			device: "camera",
-			onMedia: (media) => {
-				microphoneButton.style.borderColor = media?.getAudioTracks().length ? "white" : "transparent";
-				cameraButton.style.borderColor = media?.getVideoTracks().length ? "white" : "transparent";
-				this.#cameraVolume.onMedia(media);
-			},
+		cameraButton.addEventListener("click", () => {
+			this.#camera.video.enabled.set(!this.#camera.video.enabled.peek());
+		});
+
+		this.#signals.effect(() => {
+			this.#camera.path.set(path.get());
 		});
 
 		const microphoneButton = (
@@ -52,17 +74,24 @@ export class Me extends HTMLElement {
 			</button>
 		);
 
-		microphoneButton.addEventListener("click", () => {
-			this.#camera.audio = !this.#camera.audio;
+		this.#signals.effect(() => {
+			const media = this.#camera.media.get();
+			microphoneButton.style.borderColor = media?.getAudioTracks().length ? "white" : "transparent";
+			cameraButton.style.borderColor = media?.getVideoTracks().length ? "white" : "transparent";
 		});
 
-		const cameraButton = (
-			<button type="button" css={button}>
-				📷
-			</button>
-		);
-		cameraButton.addEventListener("click", () => {
-			this.#camera.video = !this.#camera.video;
+		microphoneButton.addEventListener("click", () => {
+			this.#camera.audio.enabled.set(!this.#camera.audio.enabled.peek());
+		});
+
+		this.#screen = new Publish.Broadcast({ connection: this.connection, device: "screen", enabled: false });
+		this.#screenVolume = new Volume(this.#screen);
+		this.#signals.effect(() => {
+			let screenPath = path.get();
+			if (screenPath) {
+				screenPath = `${screenPath}/screen`;
+			}
+			this.#screen.path.set(screenPath);
 		});
 
 		const screenButton = (
@@ -71,22 +100,8 @@ export class Me extends HTMLElement {
 			</button>
 		);
 		screenButton.addEventListener("click", () => {
-			if (this.#screen) {
-				this.#screen.close();
-				this.#screen = undefined;
-				this.#screenVolume.onMedia(undefined);
-				screenButton.style.borderColor = "transparent";
-			} else {
-				this.#screen = new Publish.Broadcast(this.connection, `${this.name}/screen`, {
-					audio: true,
-					video: true,
-					device: "screen",
-					onMedia: (media) => {
-						this.#screenVolume.onMedia(media);
-						screenButton.style.borderColor = media ? "white" : "transparent";
-					},
-				});
-			}
+			this.#screen.enabled.set(!this.#screen.enabled.peek());
+			screenButton.style.borderColor = this.#screen.enabled.peek() ? "white" : "transparent";
 		});
 
 		const chat = <input type="text" placeholder="Type a message..." css={control} />;
@@ -131,15 +146,14 @@ customElements.define("hang-me", Me);
 
 // Renders a volume meter.
 class Volume {
+	broadcast: Publish.Broadcast;
 	dom: HTMLDivElement;
 
-	#analyzer?: AnalyserNode;
 	#animation?: number;
-	#context?: AudioContext;
-	#source?: MediaStreamAudioSourceNode;
-	#data?: Uint8Array<ArrayBuffer>;
+	#signals = new Signals();
 
-	constructor() {
+	constructor(broadcast: Publish.Broadcast) {
+		this.broadcast = broadcast;
 		this.dom = (
 			<div
 				css={{
@@ -152,64 +166,63 @@ class Volume {
 				}}
 			/>
 		) as HTMLDivElement;
+
+		this.#signals.effect(() => this.#onMedia());
 	}
 
-	onMedia(media?: MediaStream) {
+	#onMedia() {
+		const media = this.broadcast.media.get();
+
 		this.dom.style.backgroundColor = "transparent";
 		this.dom.style.top = "100%";
-
-		if (this.#animation) {
-			cancelAnimationFrame(this.#animation);
-			this.#animation = undefined;
-		}
-
-		this.#source?.disconnect();
-		this.#context?.close();
-		this.#analyzer?.disconnect();
-
-		this.#analyzer = undefined;
-		this.#context = undefined;
-		this.#source = undefined;
 
 		const audio = media?.getAudioTracks().at(0);
 		if (!media || !audio) {
 			return;
 		}
 
-		this.#context = new AudioContext({
+		const context = new AudioContext({
 			sampleRate: audio.getSettings().sampleRate,
 		});
-		this.#analyzer = new AnalyserNode(this.#context, {
+		const analyzer = new AnalyserNode(context, {
 			// Monitor the last x samples of audio.
 			// ex. at 48kHz, 4096 samples is 85ms.
 			fftSize: 4096,
 		});
-		this.#data = new Uint8Array(this.#analyzer.frequencyBinCount);
 
-		this.#source = this.#context.createMediaStreamSource(media);
-		this.#source.connect(this.#analyzer);
+		const source = context.createMediaStreamSource(media);
+		source.connect(analyzer);
 
-		this.#animation = requestAnimationFrame(this.#render.bind(this));
+		// Create a buffer that we will reuse
+		const data = new Uint8Array(analyzer.frequencyBinCount);
+		this.#animation = requestAnimationFrame(this.#render.bind(this, analyzer, data));
+
+		return () => {
+			if (this.#animation) {
+				cancelAnimationFrame(this.#animation);
+				this.#animation = undefined;
+			}
+
+			analyzer.disconnect();
+			source.disconnect();
+			context.close();
+		}
 	}
 
-	#render() {
-		if (!this.#data || !this.#analyzer) {
-			return;
-		}
-
-		this.#analyzer.getByteTimeDomainData(this.#data);
+	#render(analyzer: AnalyserNode, buffer: Uint8Array<ArrayBuffer>) {
+		analyzer.getByteTimeDomainData(buffer);
 
 		// Convert from [0, 255] to [-1, 1]
 		let sum = 0;
-		for (let i = 0; i < this.#data.length; i++) {
-			const sample = (this.#data[i] - 128) / 128;
+		for (let i = 0; i < buffer.length; i++) {
+			const sample = (buffer[i] - 128) / 128;
 			sum += sample * sample;
 		}
-		const power = 2 * Math.sqrt(sum / this.#data.length);
+		const power = 2 * Math.sqrt(sum / buffer.length);
 		const hue = 2 ** power * 100 + 135;
 
 		this.dom.style.backgroundColor = `hsla(${hue}, 80%, 40%, 0.75)`;
 		this.dom.style.top = `${Math.min(100, 100 - power * 100)}%`;
-		this.#animation = requestAnimationFrame(this.#render.bind(this));
+		this.#animation = requestAnimationFrame(this.#render.bind(this, analyzer, buffer));
 	}
 }

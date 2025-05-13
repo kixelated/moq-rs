@@ -114,7 +114,7 @@ export class Watch extends HTMLElement {
 		if (name === "url") {
 			this.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "name") {
-			this.broadcast.name.set(newValue);
+			this.broadcast.path.set(newValue);
 		} else if (name === "paused") {
 			this.paused.set(newValue !== undefined);
 		} else if (name === "muted") {

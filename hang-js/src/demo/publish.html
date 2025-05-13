@@ -10,7 +10,7 @@
 
 <body>
 	<!-- Use the included custom element to render a preview. -->
-	<hang-publish audio video url="http://localhost:4443/" name="demo/me" id="publish">
+	<hang-publish audio video url="http://localhost:4443/" path="demo/me" id="publish">
 		<!-- Optionally provide a custom video element that we can style as needed -->
 		<video style="max-width: 100%; height: auto; border-radius: 4px;" muted autoplay></video>
 	</hang-publish>
@@ -37,11 +37,11 @@
 	<h3>Tips:</h3>
 	<p>
 		This page creates a broadcast called `demo/me` by default.
-		You can watch it with the <a href="index.html?name=demo/me">watch demo</a>.
-		You can also use <a href="index.html?name=demo/notme">query parameters</a> to create a different broadcaster.
+		You can watch it with the <a href="index.html?path=demo/me">watch demo</a>.
+		You can also use <a href="index.html?path=demo/notme">query parameters</a> to create a different broadcaster.
 	</p>
 	<p>
-		Reusing the same broadcast name means viewers will automatically reconnect to the new session.
+		Reusing the same broadcast path means viewers will automatically reconnect to the new session.
 		Try reloading the page and broadcasting again; viewers will automatically reconnect!
 	</p>
 	<p>

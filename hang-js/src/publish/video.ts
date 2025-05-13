@@ -27,6 +27,9 @@ export class Video {
 	#encoderConfig = signal<VideoEncoderConfig | undefined>(undefined);
 	#decoderConfig = signal<VideoDecoderConfig | undefined>(undefined);
 
+	#group?: Moq.GroupWriter;
+	#groupTimestamp = 0;
+
 	#signals = new Signals();
 	#id = 0;
 
@@ -67,9 +70,6 @@ export class Video {
 		const processor = new MediaStreamTrackProcessor({ track: media });
 		const reader = processor.readable.getReader();
 
-		let group = track.writer.appendGroup();
-		let groupTimestamp = 0;
-
 		const encoder = new VideoEncoder({
 			output: (frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) => {
 				if (metadata?.decoderConfig) {
@@ -77,18 +77,25 @@ export class Video {
 				}
 
 				if (frame.type === "key") {
-					groupTimestamp = frame.timestamp;
-					group.close();
-					group = track.writer.appendGroup();
+					this.#groupTimestamp = frame.timestamp;
+					this.#group?.close();
+					this.#group = track.writer.appendGroup();
+				} else if (!this.#group) {
+					throw new Error("no keyframe");
 				}
 
 				const buffer = new Uint8Array(frame.byteLength);
 				frame.copyTo(buffer);
 
 				const container = new Media.Frame(frame.type === "key", frame.timestamp, buffer);
-				container.encode(group);
+				container.encode(this.#group);
 			},
-			error: (err: Error) => track.writer.abort(err),
+			error: (err: Error) => {
+				this.#group?.abort(err);
+				this.#group = undefined;
+
+				track.writer.abort(err);
+			}
 		});
 
 		this.#encoderConfig.set(undefined);
@@ -104,8 +111,8 @@ export class Video {
 			this.#encoderConfig.set(config);
 
 			while (frame) {
-				const keyFrame = groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
-				groupTimestamp = frame.timestamp;
+				const keyFrame = this.#groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
+				this.#groupTimestamp = frame.timestamp;
 
 				encoder.encode(frame, { keyFrame });
 				frame.close();
@@ -113,12 +120,16 @@ export class Video {
 				({ value: frame } = await reader.read());
 			}
 
-			encoder.close();
+			try {
+				encoder.close();
+
+				this.#group?.close();
+				this.#group = undefined;
+			} catch {}
 		})();
 
 		return () => {
 			reader.cancel();
-			encoder.close();
 		}
 	}
 

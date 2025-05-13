@@ -3,12 +3,20 @@ import { Connection } from "@kixelated/hang/connection";
 import { Broadcast } from "./broadcast";
 import { Vector } from "./vector";
 
-import { Signals } from "@kixelated/hang/signals";
+import { signal, Signal, Signals } from "@kixelated/hang/signals";
+import * as Watch from "@kixelated/hang/watch";
 
 const PADDING = 64;
 
+export type RoomProps = {
+	connection: Connection;
+	canvas: HTMLCanvasElement;
+	path?: string;
+};
+
 export class Room {
 	// The connection to the server.
+	// This is reactive; it may still be pending.
 	connection: Connection;
 
 	// All of the broadcasts keyed by their path.
@@ -16,7 +24,7 @@ export class Room {
 	#broadcasts = new Map<string, Broadcast>();
 
 	canvas: HTMLCanvasElement;
-	room: string;
+	path: Signal<string | undefined>;
 
 	#ctx: CanvasRenderingContext2D;
 
@@ -29,39 +37,39 @@ export class Room {
 
 	#signals = new Signals();
 
-	constructor(connection: Connection, room: string, canvas: HTMLCanvasElement) {
-		this.connection = connection;
-		this.canvas = canvas;
-		this.room = room;
+	constructor(props: RoomProps) {
+		this.connection = props.connection;
+		this.canvas = props.canvas;
+		this.path = signal(props.path);
 
-		const ctx = canvas.getContext("2d");
+		const ctx = this.canvas.getContext("2d");
 		if (!ctx) {
 			throw new Error("Failed to get canvas context");
 		}
 
 		this.#ctx = ctx;
 
-		canvas.addEventListener("resize", () => {});
+		this.canvas.addEventListener("resize", () => {});
 
-		canvas.addEventListener("mousedown", (e) => {
-			const rect = canvas.getBoundingClientRect();
+		this.canvas.addEventListener("mousedown", (e) => {
+			const rect = this.canvas.getBoundingClientRect();
 			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
 
 			this.#dragging = this.#broadcastAt(mouse);
 			if (!this.#dragging) return;
 
 			// Reinsert to update the z-index.
-			const name = this.#dragging.watch.name.peek();
+			const name = this.#dragging.watch.path.peek();
 			if (name) {
 				this.#broadcasts.delete(name);
 				this.#broadcasts.set(name, this.#dragging);
 			}
 
-			canvas.style.cursor = "grabbing";
+			this.canvas.style.cursor = "grabbing";
 		});
 
-		canvas.addEventListener("mousemove", (e) => {
-			const rect = canvas.getBoundingClientRect();
+		this.canvas.addEventListener("mousemove", (e) => {
+			const rect = this.canvas.getBoundingClientRect();
 			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
 
 			if (this.#dragging) {
@@ -72,31 +80,31 @@ export class Room {
 			} else {
 				this.#hovering = this.#broadcastAt(mouse);
 				if (this.#hovering) {
-					canvas.style.cursor = "grab";
+					this.canvas.style.cursor = "grab";
 				} else {
-					canvas.style.cursor = "default";
+					this.canvas.style.cursor = "default";
 				}
 			}
 		});
 
-		canvas.addEventListener("mouseup", () => {
+		this.canvas.addEventListener("mouseup", () => {
 			if (this.#dragging) {
 				this.#dragging = undefined;
 				this.#hovering = undefined;
-				canvas.style.cursor = "default";
+				this.canvas.style.cursor = "default";
 			}
 		});
 
-		canvas.addEventListener("mouseleave", () => {
+		this.canvas.addEventListener("mouseleave", () => {
 			if (this.#dragging) {
 				this.#dragging = undefined;
 				this.#hovering = undefined;
-				canvas.style.cursor = "default";
+				this.canvas.style.cursor = "default";
 			}
 		});
 
 		// We require user interaction to unmute the audio.
-		canvas.addEventListener(
+		this.canvas.addEventListener(
 			"click",
 			() => {
 				this.#muted = false;
@@ -107,14 +115,14 @@ export class Room {
 			{ once: true },
 		);
 
-		canvas.addEventListener(
+		this.canvas.addEventListener(
 			"wheel",
 			(e) => {
 				e.preventDefault(); // Prevent scroll
 
 				let broadcast = this.#dragging;
 				if (!broadcast) {
-					const rect = canvas.getBoundingClientRect();
+					const rect = this.canvas.getBoundingClientRect();
 					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
 
 					broadcast = this.#broadcastAt(mouse);
@@ -125,9 +133,9 @@ export class Room {
 
 				const scale = e.deltaY * 0.001;
 				if (scale < 0) {
-					canvas.style.cursor = "zoom-out";
+					this.canvas.style.cursor = "zoom-out";
 				} else if (scale > 0) {
-					canvas.style.cursor = "zoom-in";
+					this.canvas.style.cursor = "zoom-in";
 				}
 
 				broadcast.targetScale = Math.max(Math.min(broadcast.targetScale + scale, 4), 0.25);
@@ -144,7 +152,10 @@ export class Room {
 		const connection = this.connection.established.get();
 		if (!connection) return;
 
-		const announced = connection.announced(`${this.room}/`);
+		const path = this.path.get();
+		if (!path) return;
+
+		const announced = connection.announced(`${path}/`);
 
 		(async () => {
 			for (;;) {
@@ -153,12 +164,20 @@ export class Room {
 				// We're donezo.
 				if (!update) break;
 
+				const name = update.broadcast.slice(path.length + 1);
+
 				if (update.active) {
-					this.#startBroadcast(update.broadcast);
+					this.#startBroadcast(path, name);
 				} else {
-					this.#stopBroadcast(update.broadcast);
+					this.#stopBroadcast(name);
 				}
 			}
+
+			for (const broadcast of this.#broadcasts.values()) {
+				broadcast.close();
+			}
+
+			this.#broadcasts.clear();
 		})();
 
 		return () => {
@@ -180,7 +199,7 @@ export class Room {
 		return result;
 	}
 
-	#startBroadcast(path: string) {
+	#startBroadcast(path: string, name: string) {
 		const targetPosition = Vector.create(Math.random(), Math.random());
 
 		const offset = Vector.create(targetPosition.x - 0.5, targetPosition.y - 0.5)
@@ -193,7 +212,9 @@ export class Room {
 			targetPosition.y * this.canvas.height,
 		).add(offset);
 
-		const broadcast = new Broadcast(this.connection, this.room);
+		const watch = new Watch.Broadcast({ connection: this.connection, path: `${path}/${name}`, reload: false });
+
+		const broadcast = new Broadcast(watch, name);
 		broadcast.targetPosition = targetPosition;
 		broadcast.bounds.position = startPosition;
 
@@ -201,16 +222,15 @@ export class Room {
 		broadcast.watch.video.enabled.set(this.#visible);
 
 		// This should never happen, but just in case.
-		const old = this.#broadcasts.get(path);
+		const old = this.#broadcasts.get(name);
 		if (old) {
 			old.close();
 		}
 
-		this.#broadcasts.set(path, broadcast);
+		this.#broadcasts.set(name, broadcast);
 	}
 
 	#stopBroadcast(path: string) {
-		console.log("stopping broadcast", path);
 		const broadcast = this.#broadcasts.get(path);
 
 		// TODO Fix the relay so it doesn't do this.
@@ -227,7 +247,11 @@ export class Room {
 
 		for (const broadcast of broadcasts) {
 			broadcast.scale += (broadcast.targetScale - broadcast.scale) * 0.1;
-			broadcast.bounds.size = broadcast.targetSize.mult(broadcast.scale * this.#scale);
+			const targetSize = broadcast.targetSize.mult(broadcast.scale * this.#scale);
+
+			// Slowly move from the actual size to the target size
+			broadcast.bounds.size.x += (targetSize.x - broadcast.bounds.size.x) * 0.1;
+			broadcast.bounds.size.y += (targetSize.y - broadcast.bounds.size.y) * 0.1;
 
 			// Slowly slow down the velocity.
 			broadcast.velocity = broadcast.velocity.mult(0.5);

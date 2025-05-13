@@ -3,10 +3,12 @@ import * as Media from "../media";
 import { Audio } from "./audio";
 import { Video } from "./video";
 import { Connection } from "../connection";
-import { signal, Signals } from "../signals";
+import { Signal, signal, Signals } from "../signals";
 
 export type BroadcastProps = {
 	connection: Connection;
+
+	path?: string;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
@@ -15,7 +17,7 @@ export type BroadcastProps = {
 // A broadcast that (optionally) reloads automatically when live/offline.
 export class Broadcast {
 	connection: Connection;
-	name = signal<string | undefined>(undefined);
+	path: Signal<string | undefined>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
 	audio: Audio = new Audio();
@@ -34,6 +36,7 @@ export class Broadcast {
 
 	constructor(props: BroadcastProps) {
 		this.connection = props.connection;
+		this.path = signal(props.path);
 		this.#reload = props.reload ?? true;
 
 		this.#signals.effect(() => this.#runActive());
@@ -54,7 +57,7 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.name.get();
+		const name = this.path.get();
 		if (!name) return;
 
 		const announced = conn.announced(name);
@@ -81,7 +84,7 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.name.get();
+		const name = this.path.get();
 		if (!name) return;
 
 		if (!this.#active.get()) return;

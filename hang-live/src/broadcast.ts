@@ -1,4 +1,3 @@
-import { Connection } from "@kixelated/hang/connection";
 import * as Watch from "@kixelated/hang/watch";
 import { Signals } from "@kixelated/hang/signals";
 
@@ -7,7 +6,7 @@ import { Vector } from "./vector";
 
 export class Broadcast {
 	watch: Watch.Broadcast;
-	room: string;
+	name: string;
 
 	audio: Watch.Audio;
 	audioEmitter: Watch.AudioEmitter;
@@ -25,11 +24,14 @@ export class Broadcast {
 	targetScale = 1.0; // 1 is 100%
 	targetSize: Vector; // in pixels
 
+	// 1 when a video frame is fully rendered, 0 when it's not.
+	fade = 0;
+
 	#signals = new Signals();
 
-	constructor(connection: Connection, room: string) {
-		this.watch = new Watch.Broadcast({ connection, reload: false });
-		this.room = room;
+	constructor(watch: Watch.Broadcast, name: string) {
+		this.watch = watch;
+		this.name = name;
 
 		this.video = this.watch.video;
 		this.video.enabled.set(true);
@@ -135,41 +137,82 @@ export class Broadcast {
 		ctx.translate(bounds.position.x, bounds.position.y);
 		ctx.fillStyle = "#000";
 
-		const frame = this.video.frame(now);
-		if (frame) {
-			// Check if the frame size has changed.
-			this.targetSize = Vector.create(frame.displayWidth, frame.displayHeight);
-			ctx.save();
+		ctx.save();
 
-			if (modifiers.dragging) {
-				// Apply an opacity to the image.
-				ctx.globalAlpha = 0.7;
+		// Create a rounded rectangle path
+		const radius = 8;
+		const w = bounds.size.x;
+		const h = bounds.size.y;
+
+		ctx.beginPath();
+		ctx.moveTo(radius, 0);
+		ctx.lineTo(w - radius, 0);
+		ctx.quadraticCurveTo(w, 0, w, radius);
+		ctx.lineTo(w, h - radius);
+		ctx.quadraticCurveTo(w, h, w - radius, h);
+		ctx.lineTo(radius, h);
+		ctx.quadraticCurveTo(0, h, 0, h - radius);
+		ctx.lineTo(0, radius);
+		ctx.quadraticCurveTo(0, 0, radius, 0);
+		ctx.closePath();
+
+		// Clip and draw the image
+		ctx.clip();
+
+			// Apply an opacity to the image.
+		if (modifiers.dragging) {
+			ctx.globalAlpha = 0.7;
+		}
+
+		const closest = this.video.frame(now);
+
+		// Check if the frame size has changed.
+		if (closest && this.video.selected.peek()) {
+			this.targetSize = Vector.create(closest.frame.displayWidth, closest.frame.displayHeight);
+			this.fade = Math.min(this.fade + 0.05, 1);
+		} else {
+			this.targetSize = Vector.create(128, 128);
+			this.fade = Math.max(this.fade - 0.05, 0);
+		}
+
+		if (closest) {
+			ctx.save();
+			ctx.globalAlpha *= this.fade;
+
+			// Compute grayscale level based on how late the frame is.
+			const lag = Math.min(Math.max((closest.lag - 1000) / (5000 - 1000), 0), 1);
+			if (lag > 0) {
+				ctx.filter = `grayscale(${lag})`;
 			}
 
-			// Create a rounded rectangle path
-			const radius = 8;
-			const w = bounds.size.x;
-			const h = bounds.size.y;
-
-			ctx.beginPath();
-			ctx.moveTo(radius, 0);
-			ctx.lineTo(w - radius, 0);
-			ctx.quadraticCurveTo(w, 0, w, radius);
-			ctx.lineTo(w, h - radius);
-			ctx.quadraticCurveTo(w, h, w - radius, h);
-			ctx.lineTo(radius, h);
-			ctx.quadraticCurveTo(0, h, 0, h - radius);
-			ctx.lineTo(0, radius);
-			ctx.quadraticCurveTo(0, 0, radius, 0);
-			ctx.closePath();
-
-			// Clip and draw the image
-			ctx.clip();
-
-			ctx.drawImage(frame, 0, 0, bounds.size.x, bounds.size.y);
+			ctx.drawImage(closest.frame, 0, 0, bounds.size.x, bounds.size.y);
 			ctx.restore();
-		} else {
+
+			if (lag > 0) {
+				const spinnerSize = 32;
+				const spinnerX = bounds.size.x / 2 - spinnerSize / 2;
+				const spinnerY = bounds.size.y / 2 - spinnerSize / 2;
+				const angle = (now % 1000) / 1000 * 2 * Math.PI;
+
+				ctx.save();
+				ctx.translate(spinnerX + spinnerSize / 2, spinnerY + spinnerSize / 2);
+				ctx.rotate(angle);
+
+				ctx.beginPath();
+				ctx.arc(0, 0, spinnerSize / 2 - 2, 0, Math.PI * 1.5); // crude 3/4 arc
+				ctx.lineWidth = 4;
+				ctx.strokeStyle = `hsla(290, 80%, 40%, ${lag})`;
+				ctx.stroke();
+
+				ctx.restore();
+			}
+		}
+
+		if (this.fade < 1) {
+			ctx.save();
+			ctx.globalAlpha *= (1 - this.fade);
 			ctx.fillRect(0, 0, bounds.size.x, bounds.size.y);
+			ctx.restore();
 		}
 
 		if (modifiers.hovering) {
@@ -180,18 +223,13 @@ export class Broadcast {
 			*/
 		}
 
-		const name = this.watch.name.get();
-		if (name) {
-			const suffix = name.slice(this.room.length + 1);
+		ctx.font = "12px sans-serif";
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = "black";
+		ctx.strokeText(this.name, 6, 16);
 
-			ctx.font = "12px sans-serif";
-			ctx.lineWidth = 3;
-			ctx.strokeStyle = "black";
-			ctx.strokeText(suffix, 6, 16);
-
-			ctx.fillStyle = "white";
-			ctx.fillText(suffix, 6, 16);
-		}
+		ctx.fillStyle = "white";
+		ctx.fillText(this.name, 6, 16);
 
 		ctx.restore();
 
@@ -211,6 +249,7 @@ export class Broadcast {
 	}
 
 	close() {
+		this.#signals.close();
 		this.watch.close();
 		this.video.close();
 		this.audio.close();

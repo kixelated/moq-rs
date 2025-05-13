@@ -44,16 +44,12 @@ export function signal<T>(initial: T): Signal<T> {
 	};
 }
 
-/*
-export function root(fn: () => void): Dispose {
-	return createRoot((dispose) => {
-		effect(fn);
-		return dispose;
-	});
+export function cleanup(fn: () => void) {
+	onCleanup(fn);
 }
-*/
 
 export type Dispose = () => void;
+
 // biome-ignore lint/suspicious/noConfusingVoidType: pls
 export type MaybeDispose = (() => void) | void;
 
@@ -63,8 +59,7 @@ export interface Derived<T> {
 	subscribe(fn: (value: T) => void): Dispose;
 }
 
-// Not public so you can't call it without a root.
-function derived<T>(fn: () => T): Derived<T> {
+export function derived<T>(fn: () => T): Derived<T> {
 	const sig = signal(fn());
 	effect(() => {
 		sig.set(fn());
@@ -73,8 +68,7 @@ function derived<T>(fn: () => T): Derived<T> {
 	return sig;
 }
 
-// Not public so you can't call it without a root.
-function effect(fn: () => MaybeDispose) {
+export function effect(fn: () => MaybeDispose) {
 	return createEffect(() => {
 		const res = fn();
 		if (res) {
@@ -123,6 +117,17 @@ export class Signals {
 		}
 
 		return res;
+	}
+
+	cleanup(fn: () => void): void {
+		const ok = runWithOwner(this.#owner, () => {
+			onCleanup(fn);
+			return true;
+		});
+
+		if (!ok) {
+			fn();
+		}
 	}
 
 	close(): void {

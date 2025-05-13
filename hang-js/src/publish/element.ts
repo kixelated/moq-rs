@@ -62,7 +62,7 @@ export class Publish extends HTMLElement {
 		if (name === "url") {
 			this.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "name") {
-			this.broadcast.name.set(newValue);
+			this.broadcast.path.set(newValue);
 		} else if (name === "device") {
 			this.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {

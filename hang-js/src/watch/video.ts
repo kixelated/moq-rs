@@ -111,7 +111,8 @@ export class Video {
 	}
 
 	// Returns the frame that should be rendered at the given timestamp.
-	frame(nowMs: DOMHighResTimeStamp): VideoFrame | undefined {
+	// Includes the latency offset to determine how timely the frame is.
+	frame(nowMs: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp} | undefined {
 		const now = nowMs * 1000;
 		const maxLatency = this.latency.peek() * 1000;
 
@@ -143,14 +144,14 @@ export class Video {
 			if (diff > goal - this.#frames[i - 1].timestamp) {
 				// The previous frame is closer to the goal; use it instead.
 				// This should smooth out the video a little bit.
-				return this.#frames[i - 1];
+				return { frame: this.#frames[i - 1], lag: (this.#frames[i - 1].timestamp - goal) / 1000 };
 			}
 
-			return frame;
+			return { frame, lag: diff / 1000 };
 		}
 
 		// Render the most recent frame if they're all scheduled in the past.
-		return last;
+		return { frame: last, lag: (goal - last.timestamp) / 1000 };
 	}
 
 	#prune() {
@@ -170,6 +171,15 @@ export class Video {
 			const frame = this.#frames.shift();
 			frame?.close();
 		}
+	}
+
+
+	clear() {
+		for (const frame of this.#frames) {
+			frame.close();
+		}
+
+		this.#frames.length = 0;
 	}
 
 	close() {
@@ -237,11 +247,11 @@ export class VideoRenderer {
 		ctx.fillStyle = "#000";
 		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-		const frame = this.source.frame(now);
-		if (frame) {
-			ctx.canvas.width = frame.displayWidth;
-			ctx.canvas.height = frame.displayHeight;
-			ctx.drawImage(frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
+		const closest = this.source.frame(now);
+		if (closest) {
+			ctx.canvas.width = closest.frame.displayWidth;
+			ctx.canvas.height = closest.frame.displayHeight;
+			ctx.drawImage(closest.frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
 		}
 
 		ctx.restore();

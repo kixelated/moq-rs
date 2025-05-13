@@ -23,12 +23,10 @@ export class Audio {
 	#track = signal<Moq.Track | undefined>(undefined);
 	readonly track = this.#track.readonly();
 
-	// The current group and the timestamp of the first frame in it.
 	#group?: Moq.GroupWriter;
 	#groupTimestamp = 0;
 
 	#id = 0;
-
 	#signals = new Signals();
 
 	constructor(props?: AudioProps) {
@@ -84,23 +82,28 @@ export class Audio {
 
 		const encoder = new AudioEncoder({
 			output: (frame) => {
-			if (frame.type !== "key") {
-				throw new Error("only key frames are supported");
+				if (frame.type !== "key") {
+					throw new Error("only key frames are supported");
+				}
+
+				if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
+					this.#group?.close();
+					this.#group = track.writer.appendGroup();
+					this.#groupTimestamp = frame.timestamp;
+				}
+
+				const buffer = new Uint8Array(frame.byteLength);
+				frame.copyTo(buffer);
+
+				const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
+				hang.encode(this.#group);
+			},
+			error: (err) => {
+				this.#group?.abort(err);
+				this.#group = undefined;
+
+				track.writer.abort(err);
 			}
-
-			if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
-				this.#group?.close();
-				this.#group = track.writer.appendGroup();
-				this.#groupTimestamp = frame.timestamp;
-			}
-
-			const buffer = new Uint8Array(frame.byteLength);
-			frame.copyTo(buffer);
-
-			const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
-			hang.encode(this.#group);
-		},
-			error: (err) => track.writer.abort(err),
 		});
 
 		encoder.configure({
@@ -109,7 +112,6 @@ export class Audio {
 			sampleRate: catalog.sample_rate,
 			bitrate: catalog.bitrate,
 		});
-
 
 		const input = new MediaStreamTrackProcessor({ track: media });
 		const reader = input.readable.getReader();
@@ -124,11 +126,17 @@ export class Audio {
 				encoder.encode(frame);
 				frame.close();
 			}
+
+			try {
+				this.#group?.close();
+				this.#group = undefined;
+
+				encoder.close();
+			} catch {}
 		})();
 
 		return () => {
 			reader.cancel();
-			encoder.close();
 		};
 	}
 
