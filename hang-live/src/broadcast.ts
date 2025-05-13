@@ -1,6 +1,6 @@
 import { Connection } from "@kixelated/hang/connection";
 import * as Watch from "@kixelated/hang/watch";
-import { Root } from "@kixelated/hang/signals";
+import { Signals } from "@kixelated/hang/signals";
 
 import { Bounds } from "./bounds";
 import { Vector } from "./vector";
@@ -25,7 +25,7 @@ export class Broadcast {
 	targetScale = 1.0; // 1 is 100%
 	targetSize: Vector; // in pixels
 
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(connection: Connection, room: string) {
 		this.watch = new Watch.Broadcast({ connection, reload: false });
@@ -40,7 +40,7 @@ export class Broadcast {
 		this.targetSize = Vector.create(128, 128);
 		this.bounds = new Bounds(Vector.create(0, 0), this.targetSize);
 
-		this.#root.effect(() => this.#setupAudio());
+		this.#signals.effect(() => this.#setupAudio());
 	}
 
 	#setupAudio() {

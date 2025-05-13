@@ -23,7 +23,7 @@ export function signal<T>(initial: T): Signal<T> {
 		set,
 		peek: () => untrack(get),
 		subscribe(fn) {
-			const temp = new Root();
+			const temp = new Signals();
 			temp.effect(() => fn(get()));
 			return temp.close.bind(temp);
 		},
@@ -35,7 +35,7 @@ export function signal<T>(initial: T): Signal<T> {
 				get: () => get(),
 				peek: () => untrack(get),
 				subscribe(fn) {
-					const temp = new Root();
+					const temp = new Signals();
 					temp.effect(() => fn(get()));
 					return temp.close.bind(temp);
 				},
@@ -83,7 +83,7 @@ function effect(fn: () => MaybeDispose) {
 	});
 }
 
-export class Root {
+export class Signals {
 	#id = Symbol();
 	#dispose: Dispose;
 	#owner: Owner;
@@ -96,9 +96,9 @@ export class Root {
 	});
 
 	constructor() {
-		if (Root.dev) {
+		if (Signals.dev) {
 			const debug = new Error("created here:").stack ?? "No stack";
-			Root.#finalizer.register(this.#id, debug, this.#id);
+			Signals.#finalizer.register(this.#id, debug, this.#id);
 		}
 
 		[this.#dispose, this.#owner] = createRoot((dispose) => {
@@ -127,12 +127,12 @@ export class Root {
 
 	close(): void {
 		this.#dispose();
-		if (Root.dev) {
-			Root.#finalizer.unregister(this.#id);
+		if (Signals.dev) {
+			Signals.#finalizer.unregister(this.#id);
 		}
 	}
 }
 
-export function root(): Root {
-	return new Root();
+export function signals(): Signals {
+	return new Signals();
 }

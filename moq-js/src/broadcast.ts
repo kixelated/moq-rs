@@ -14,6 +14,11 @@ export class Broadcast {
 		this.writer = new BroadcastWriter(path, watch.producer);
 		this.reader = new BroadcastReader(path, watch.consumer);
 	}
+
+	close() {
+		this.writer.close();
+		this.reader.close();
+	}
 }
 
 class State {

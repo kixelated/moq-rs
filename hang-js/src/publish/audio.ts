@@ -3,92 +3,136 @@ import { Frame } from "../media/frame";
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 import { AudioTrackSettings } from "../util/settings";
+import { Signal, Signals, signal } from "../signals"
 
 // Create a group every half a second
 const GOP_DURATION = 0.5;
 
-export class Audio {
-	readonly media: MediaStreamAudioTrack;
-	readonly catalog: Media.Audio;
-	readonly settings: AudioTrackSettings;
-	readonly track: Moq.Track;
+export type AudioProps = {
+	media?: MediaStreamAudioTrack;
+	enabled?: boolean;
+};
 
-	#encoder: AudioEncoder;
+export class Audio {
+	readonly media: Signal<MediaStreamAudioTrack | undefined>;
+	readonly enabled: Signal<boolean>;
+
+	#catalog = signal<Media.Audio | undefined>(undefined);
+	readonly catalog = this.#catalog.readonly();
+
+	#track = signal<Moq.Track | undefined>(undefined);
+	readonly track = this.#track.readonly();
 
 	// The current group and the timestamp of the first frame in it.
 	#group?: Moq.GroupWriter;
 	#groupTimestamp = 0;
 
-	constructor(media: MediaStreamAudioTrack) {
-		this.media = media;
-		this.track = new Moq.Track(media.id, 1);
-		this.settings = media.getSettings() as AudioTrackSettings;
+	#id = 0;
 
-		this.catalog = {
+	#signals = new Signals();
+
+	constructor(props?: AudioProps) {
+		this.media = signal(props?.media);
+		this.enabled = signal(props?.enabled ?? true);
+
+		this.#signals.effect(() => this.#runCatalog());
+		this.#signals.effect(() => this.#runEncoder());
+	}
+
+	#runCatalog() {
+		const media = this.media.get();
+		if (!media) return;
+
+		const track = new Moq.Track(`audio-${this.#id++}`, 1);
+		this.#track.set(track);
+
+		const settings = media.getSettings() as AudioTrackSettings;
+
+		const catalog = {
 			track: {
-				name: this.track.name,
-				priority: this.track.priority,
+				name: track.name,
+				priority: track.priority,
 			},
 			codec: "Opus",
-			sample_rate: this.settings.sampleRate,
-			channel_count: this.settings.channelCount,
+			sample_rate: settings.sampleRate,
+			channel_count: settings.channelCount,
 			bitrate: 64_000, // TODO support higher bitrates
-		};
+		}
 
-		this.#encoder = new AudioEncoder({
-			output: async (frame) => this.#encoded(frame),
-			error: (err) => this.track.writer.abort(err),
-		});
+		this.#catalog.set(catalog);
 
-		this.#encoder.configure({
-			codec: this.catalog.codec,
-			numberOfChannels: this.catalog.channel_count,
-			sampleRate: this.catalog.sample_rate,
-			bitrate: this.catalog.bitrate,
-		});
+		return () => {
+			track.close();
 
-		this.#run()
-			.catch((err) => this.track.writer.abort(err))
-			.finally(() => this.track.writer.close());
+			this.#catalog.set(undefined);
+			this.#track.set(undefined);
+		}
 	}
 
-	async #run() {
-		const input = new MediaStreamTrackProcessor({ track: this.media });
-		const reader = input.readable.getReader();
+	#runEncoder() {
+		const enabled = this.enabled.get();
+		if (!enabled) return;
 
-		for (;;) {
-			const result = await reader.read();
-			if (!result || result.done) {
-				break;
+		const media = this.media.get();
+		if (!media) return;
+
+		const track = this.#track.get();
+		if (!track) return;
+
+		const catalog = this.#catalog.get();
+		if (!catalog) return;
+
+		const encoder = new AudioEncoder({
+			output: (frame) => {
+			if (frame.type !== "key") {
+				throw new Error("only key frames are supported");
 			}
 
-			const frame = result.value;
-			this.#encoder.encode(frame);
+			if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
+				this.#group?.close();
+				this.#group = track.writer.appendGroup();
+				this.#groupTimestamp = frame.timestamp;
+			}
 
-			frame.close();
-		}
-	}
+			const buffer = new Uint8Array(frame.byteLength);
+			frame.copyTo(buffer);
 
-	async #encoded(frame: EncodedAudioChunk) {
-		if (frame.type !== "key") {
-			throw new Error("only key frames are supported");
-		}
+			const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
+			hang.encode(this.#group);
+		},
+			error: (err) => track.writer.abort(err),
+		});
 
-		if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
-			this.#group?.close();
-			this.#group = this.track.writer.appendGroup();
-			this.#groupTimestamp = frame.timestamp;
-		}
+		encoder.configure({
+			codec: catalog.codec,
+			numberOfChannels: catalog.channel_count,
+			sampleRate: catalog.sample_rate,
+			bitrate: catalog.bitrate,
+		});
 
-		const buffer = new Uint8Array(frame.byteLength);
-		frame.copyTo(buffer);
 
-		const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
-		hang.encode(this.#group);
+		const input = new MediaStreamTrackProcessor({ track: media });
+		const reader = input.readable.getReader();
+
+		(async () => {
+			for (;;) {
+				const { value: frame } = await reader.read();
+				if (!frame) {
+					break;
+				}
+
+				encoder.encode(frame);
+				frame.close();
+			}
+		})();
+
+		return () => {
+			reader.cancel();
+			encoder.close();
+		};
 	}
 
 	close() {
-		this.track.writer.close();
-		this.#encoder.close();
+		this.#signals.close();
 	}
 }

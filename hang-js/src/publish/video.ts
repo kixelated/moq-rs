@@ -1,76 +1,129 @@
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 
-import { Deferred } from "../util/async";
 import { VideoTrackSettings } from "../util/settings";
 
 import { Buffer } from "buffer";
+import { Signal, Signals, signal } from "../signals"
 
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;
 
+export type VideoProps = {
+	media?: MediaStreamVideoTrack;
+	enabled?: boolean;
+};
+
 export class Video {
-	readonly id: string;
-	readonly track: Moq.Track;
-	readonly encoderConfig: VideoEncoderConfig;
-	readonly decoderConfig = new Deferred<VideoDecoderConfig>();
+	readonly media: Signal<MediaStreamVideoTrack | undefined>;
+	readonly enabled: Signal<boolean>;
 
-	#encoder: VideoEncoder;
-	#reader: ReadableStreamDefaultReader<VideoFrame>;
-	#media: MediaStreamVideoTrack;
+	#catalog = signal<Media.Video | undefined>(undefined);
+	readonly catalog = this.#catalog.readonly();
 
-	// The current group and the timestamp of the first frame in it.
-	#group?: Moq.GroupWriter;
-	#groupTimestamp = 0;
+	#track = signal<Moq.Track | undefined>(undefined);
+	readonly track = this.#track.readonly();
 
-	constructor(
-		media: MediaStreamVideoTrack,
-		reader: ReadableStreamDefaultReader<VideoFrame>,
-		config: VideoEncoderConfig,
-	) {
-		this.id = media.id;
-		this.#media = media;
-		this.#reader = reader;
-		this.track = new Moq.Track(media.id, 2);
-		this.encoderConfig = config;
-		this.#encoder = new VideoEncoder({
-			output: (frame, metadata) => this.#encoded(frame, metadata),
-			error: (err: Error) => this.track.writer.abort(err),
-		});
+	#encoderConfig = signal<VideoEncoderConfig | undefined>(undefined);
+	#decoderConfig = signal<VideoDecoderConfig | undefined>(undefined);
 
-		this.#encoder.configure(config);
+	#signals = new Signals();
+	#id = 0;
 
-		this.#run()
-			.catch((err: Error) => {
-				console.error("video error", err);
-				this.track.writer.abort(err);
-				this.decoderConfig.reject(err);
-			})
-			.finally(() => {
-				this.#reader.cancel();
-				this.track.writer.close();
-			});
+	constructor(props?: VideoProps) {
+		this.media = signal(props?.media);
+		this.enabled = signal(props?.enabled ?? true);
+
+		this.#signals.effect(() => this.#runTrack());
+		this.#signals.effect(() => this.#runEncoder());
+		this.#signals.effect(() => this.#runCatalog());
 	}
 
-	// This is called instead of the constructor to determine the best configuration.
-	static async create(media: MediaStreamVideoTrack): Promise<Video> {
-		// `getSettings` is not reliable, so we read the first frame to determine the resolution.
-		const processor = new MediaStreamTrackProcessor({ track: media });
-		const reader = processor.readable.getReader();
-		const { value: frame } = await reader.read();
-		if (!frame) throw new Error("no first frame");
+	#runTrack() {
+		const media = this.media.get();
+		if (!media) return;
 
-		// But we still use the settings to determine the framerate.
+		const track = new Moq.Track(`video-${this.#id++}`, 1);
+		this.#track.set(track);
+
+		return () => {
+			track.close();
+			this.#track.set(undefined);
+		}
+	}
+
+	#runEncoder() {
+		const enabled = this.enabled.get();
+		if (!enabled) return;
+
+		const media = this.media.get();
+		if (!media) return;
+
+		const track = this.track.get();
+		if (!track) return;
+
 		const settings = media.getSettings() as VideoTrackSettings;
 
-		const config = await Video.config(settings, frame);
-		frame.close();
+		const processor = new MediaStreamTrackProcessor({ track: media });
+		const reader = processor.readable.getReader();
 
-		return new Video(media, reader, config);
+		let group = track.writer.appendGroup();
+		let groupTimestamp = 0;
+
+		const encoder = new VideoEncoder({
+			output: (frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) => {
+				if (metadata?.decoderConfig) {
+					this.#decoderConfig.set(metadata.decoderConfig);
+				}
+
+				if (frame.type === "key") {
+					groupTimestamp = frame.timestamp;
+					group.close();
+					group = track.writer.appendGroup();
+				}
+
+				const buffer = new Uint8Array(frame.byteLength);
+				frame.copyTo(buffer);
+
+				const container = new Media.Frame(frame.type === "key", frame.timestamp, buffer);
+				container.encode(group);
+			},
+			error: (err: Error) => track.writer.abort(err),
+		});
+
+		this.#encoderConfig.set(undefined);
+		this.#decoderConfig.set(undefined);
+
+		(async () => {
+			let { value: frame } = await reader.read();
+			if (!frame) return;
+
+			const config = await Video.#bestEncoderConfig(settings, frame);
+			encoder.configure(config);
+
+			this.#encoderConfig.set(config);
+
+			while (frame) {
+				const keyFrame = groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
+				groupTimestamp = frame.timestamp;
+
+				encoder.encode(frame, { keyFrame });
+				frame.close();
+
+				({ value: frame } = await reader.read());
+			}
+
+			encoder.close();
+		})();
+
+		return () => {
+			reader.cancel();
+			encoder.close();
+		}
 	}
 
 	// Try to determine the best config for the given settings.
-	static async config(settings: VideoTrackSettings, frame: VideoFrame): Promise<VideoEncoderConfig> {
+	static async #bestEncoderConfig(settings: VideoTrackSettings, frame: VideoFrame): Promise<VideoEncoderConfig> {
 		const width = frame.codedWidth;
 		const height = frame.codedHeight;
 
@@ -209,18 +262,24 @@ export class Video {
 	}
 
 	// Returns the catalog for the configured settings.
-	async catalog(): Promise<Media.Video> {
-		const encoderConfig = this.encoderConfig;
-		const decoderConfig = await this.decoderConfig.promise;
+	#runCatalog() {
+		const encoderConfig = this.#encoderConfig.get();
+		if (!encoderConfig) return;
+
+		const decoderConfig = this.#decoderConfig.get();
+		if (!decoderConfig) return;
+
+		const track = this.track.get();
+		if (!track) return;
 
 		const description = decoderConfig.description
 			? Buffer.from(decoderConfig.description as Uint8Array).toString("hex")
 			: undefined;
 
-		return {
+		const catalog: Media.Video = {
 			track: {
-				name: this.track.name,
-				priority: this.track.priority,
+				name: track.name,
+				priority: track.priority,
 			},
 			codec: decoderConfig.codec,
 			description,
@@ -231,52 +290,15 @@ export class Video {
 			framerate: encoderConfig.framerate,
 			bitrate: encoderConfig.bitrate,
 		};
-	}
 
-	async #run() {
-		for (;;) {
-			const { done, value: frame } = await this.#reader.read();
-			if (done) break;
+		this.#catalog.set(catalog);
 
-			if (frame.codedHeight !== this.encoderConfig.height || frame.codedWidth !== this.encoderConfig.width) {
-				// Ugh we have to re-configure the encoder.
-				const config = await Video.config(this.#media.getSettings() as VideoTrackSettings, frame);
-				this.#encoder.configure(config);
-
-				// TODO we need to update the catalog too.
-			}
-
-			// Create a keyframe at least every 2 seconds.
-			// We set this to undefined not `false` so the encoder can decide too.
-			const keyFrame = this.#groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
-
-			this.#encoder.encode(frame, { keyFrame });
-			frame.close();
+		return () => {
+			this.#catalog.set(undefined);
 		}
-	}
-
-	#encoded(frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
-		if (metadata?.decoderConfig) {
-			this.decoderConfig.resolve(metadata.decoderConfig);
-		}
-
-		if (frame.type === "key") {
-			this.#groupTimestamp = frame.timestamp;
-			this.#group?.close();
-			this.#group = this.track.writer.appendGroup();
-		}
-
-		if (!this.#group) throw new Error("missing keyframe");
-
-		const buffer = new Uint8Array(frame.byteLength);
-		frame.copyTo(buffer);
-
-		const container = new Media.Frame(frame.type === "key", frame.timestamp, buffer);
-		container.encode(this.#group);
 	}
 
 	close() {
-		this.track.writer.close();
-		this.#encoder.close();
+		this.#signals.close();
 	}
 }

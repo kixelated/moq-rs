@@ -13,6 +13,11 @@ export class Group {
 		this.writer = new GroupWriter(id, watch.producer);
 		this.reader = new GroupReader(id, watch.consumer);
 	}
+
+	close() {
+		this.writer.close();
+		this.reader.close();
+	}
 }
 
 export class GroupWriter {

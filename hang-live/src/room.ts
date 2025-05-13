@@ -3,7 +3,7 @@ import { Connection } from "@kixelated/hang/connection";
 import { Broadcast } from "./broadcast";
 import { Vector } from "./vector";
 
-import { Root } from "@kixelated/hang/signals";
+import { Signals } from "@kixelated/hang/signals";
 
 const PADDING = 64;
 
@@ -27,7 +27,7 @@ export class Room {
 	#muted = true;
 	#visible = true;
 
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(connection: Connection, room: string, canvas: HTMLCanvasElement) {
 		this.connection = connection;
@@ -137,7 +137,7 @@ export class Room {
 
 		requestAnimationFrame(this.#tick.bind(this));
 
-		this.#root.effect(() => this.#init());
+		this.#signals.effect(() => this.#init());
 	}
 
 	#init() {
@@ -384,7 +384,7 @@ export class Room {
 	}
 
 	close() {
-		this.#root.close();
+		this.#signals.close();
 
 		for (const broadcast of this.#broadcasts.values()) {
 			broadcast.close();

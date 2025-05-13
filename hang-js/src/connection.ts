@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import { signal, Root, Signal } from "./signals";
+import { signal, Signals, Signal } from "./signals";
 
 export type ConnectionProps = {
 	// The URL of the relay server.
@@ -27,7 +27,7 @@ export class Connection {
 	readonly delay: number;
 	readonly maxDelay: number;
 
-	#root = new Root();
+	#signals = new Signals();
 	#delay: number;
 
 	// Increased by 1 each time to trigger a reload.
@@ -42,7 +42,7 @@ export class Connection {
 		this.#delay = this.delay;
 
 		// Create a reactive root so cleanup is easier.
-		this.#root.effect(() => this.#connect());
+		this.#signals.effect(() => this.#connect());
 	}
 
 	#connect() {
@@ -92,6 +92,6 @@ export class Connection {
 	}
 
 	close() {
-		this.#root.close();
+		this.#signals.close();
 	}
 }

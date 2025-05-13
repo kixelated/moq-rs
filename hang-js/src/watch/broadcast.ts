@@ -3,7 +3,7 @@ import * as Media from "../media";
 import { Audio } from "./audio";
 import { Video } from "./video";
 import { Connection } from "../connection";
-import { signal, Root } from "../signals";
+import { signal, Signals } from "../signals";
 
 export type BroadcastProps = {
 	connection: Connection;
@@ -30,16 +30,16 @@ export class Broadcast {
 	readonly active = this.#active.readonly();
 
 	#reload: boolean;
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(props: BroadcastProps) {
 		this.connection = props.connection;
 		this.#reload = props.reload ?? true;
 
-		this.#root.effect(() => this.#runActive());
-		this.#root.effect(() => this.#runBroadcast());
-		this.#root.effect(() => this.#runCatalog());
-		this.#root.effect(() => this.#runTracks());
+		this.#signals.effect(() => this.#runActive());
+		this.#signals.effect(() => this.#runBroadcast());
+		this.#signals.effect(() => this.#runCatalog());
+		this.#signals.effect(() => this.#runTracks());
 	}
 
 	#runActive() {
@@ -149,7 +149,7 @@ export class Broadcast {
 	}
 
 	close() {
-		this.#root.close();
+		this.#signals.close();
 
 		this.audio.close();
 		this.video.close();

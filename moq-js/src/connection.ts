@@ -2,7 +2,6 @@ import { AnnouncedReader } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
-import { Events } from "./util/events";
 import * as Wire from "./wire";
 
 import { Buffer } from "buffer";
@@ -189,78 +188,5 @@ export class Connection {
 
 	async closed(): Promise<void> {
 		await this.#quic.closed;
-	}
-}
-
-export type ConnectionStatus = {
-	connecting: undefined;
-	connected: Connection;
-	disconnected: undefined;
-};
-
-export class ConnectionReload extends Events<ConnectionStatus> {
-	url: URL;
-	established?: Connection;
-
-	#retryCount = 0;
-	#retryDelay: DOMHighResTimeStamp = 1000;
-
-	// just for cleanup
-	#pending?: Promise<Connection>;
-
-	constructor(url: URL) {
-		super();
-
-		this.url = url;
-		this.#run().finally(() => this.close());
-	}
-
-	onEstablished(callback: (connection: Connection) => void) {
-		this.on("connected", callback);
-	}
-
-	async #run() {
-		for (;;) {
-			await this.#connect();
-
-			this.#retryCount += 1;
-			const delay = this.#retryDelay * 2 ** this.#retryCount;
-
-			if (this.#retryCount > 10) {
-				throw new Error("too many retries");
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, delay));
-		}
-	}
-
-	async #connect() {
-		this.emit("connecting");
-
-		try {
-			this.#pending = Connection.connect(this.url);
-
-			this.established = await this.#pending;
-			this.emit("connected", this.established);
-			this.#retryCount = 0;
-
-			await this.established.closed();
-		} catch (err) {
-			console.error("connection error", err);
-		} finally {
-			this.emit("disconnected");
-
-			this.established?.close();
-			this.established = undefined;
-
-			this.#pending = undefined;
-		}
-	}
-
-	close() {
-		this.established?.close();
-		this.established = undefined;
-
-		this.#pending?.then((connection) => connection.close());
 	}
 }

@@ -14,13 +14,13 @@ const status = document.getElementById("status") as HTMLSpanElement;
 const watch = document.getElementById("watch") as HTMLAnchorElement;
 
 camera.addEventListener("click", () => {
-	publish.device = "camera";
+	publish.broadcast.device.set("camera");
 });
 screen.addEventListener("click", () => {
-	publish.device = "screen";
+	publish.broadcast.device.set("screen");
 });
 none.addEventListener("click", () => {
-	publish.device = undefined;
+	publish.broadcast.device.set(undefined);
 });
 
 // If query params are provided, use them instead of the default.
@@ -39,16 +39,16 @@ if (urlParams.size > 0) {
 }
 
 // Listen for connection status changes.
-publish.addEventListener("moq-connection", (event) => {
-	if (event.detail === "connected") {
+const cleanup = publish.connection.status.subscribe((value) => {
+	if (value === "connected") {
 		status.textContent = "🟢 Connected";
-	} else if (event.detail === "connecting") {
+	} else if (value === "connecting") {
 		status.textContent = "🟡 Connecting...";
-	} else if (event.detail === "disconnected") {
+	} else if (value === "disconnected") {
 		status.textContent = "🔴 Disconnected";
-	} else if (event.detail === "live") {
-		status.textContent = "🟢 Live";
 	} else {
-		throw new Error(`Unknown connection status: ${event.detail}`);
+		throw new Error(`Unknown connection status: ${value}`);
 	}
 });
+
+document.addEventListener("unload", () => cleanup());

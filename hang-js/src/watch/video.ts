@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 
-import { Signal, signal, Derived, Root } from "../signals";
+import { Signal, signal, Derived, Signals } from "../signals";
 
 export type VideoProps = {
 	broadcast?: Moq.BroadcastReader;
@@ -29,7 +29,7 @@ export class Video {
 	// The difference between the wall clock units and the timestamp units, in seconds.
 	#ref?: number;
 
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(props?: VideoProps) {
 		this.broadcast = signal(props?.broadcast);
@@ -37,11 +37,11 @@ export class Video {
 		this.enabled = signal(props?.enabled ?? false);
 		this.latency = signal(props?.latency ?? 50);
 
-		this.selected = this.#root.derived(() => this.tracks.get().at(0));
-		this.#root.effect(() => this.#init());
+		this.selected = this.#signals.derived(() => this.tracks.get().at(0));
+		this.#signals.effect(() => this.#init());
 
 		// Update the ref when the latency changes.
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			this.latency.get();
 			this.#prune();
 			this.#ref = undefined;
@@ -178,7 +178,7 @@ export class Video {
 		}
 
 		this.#frames.length = 0;
-		this.#root.close();
+		this.#signals.close();
 	}
 }
 
@@ -198,15 +198,15 @@ export class VideoRenderer {
 	#animate?: number;
 
 	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(props: VideoRendererProps) {
 		this.source = props.source;
 		this.canvas = signal(props.canvas);
 		this.paused = signal(props.paused ?? false);
 
-		this.#ctx = this.#root.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
-		this.#root.effect(() => this.#schedule());
+		this.#ctx = this.#signals.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
+		this.#signals.effect(() => this.#schedule());
 	}
 
 	// (re)schedule a render maybe.
@@ -249,7 +249,7 @@ export class VideoRenderer {
 
 	// Close the track and all associated resources.
 	close() {
-		this.#root.close();
+		this.#signals.close();
 
 		if (this.#animate) {
 			cancelAnimationFrame(this.#animate);

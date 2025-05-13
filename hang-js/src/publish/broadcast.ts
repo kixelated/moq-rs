@@ -2,93 +2,120 @@ import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 import { Audio } from "./audio";
 import { Video } from "./video";
+import { Connection } from "../connection"
+import { Signals, Signal, signal, Derived } from "../signals"
 
 export type Device = "screen" | "camera";
 
-interface BroadcastOptions {
+export type BroadcastProps = {
+	connection: Connection;
+
+	name?: string;
 	audio?: boolean;
 	video?: boolean;
 	device?: Device;
-	onMedia?: (media?: MediaStream) => void;
-}
+
+	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
+	reload?: boolean;
+};
 
 export class Broadcast {
-	connection: Moq.ConnectionReload;
-	name: string;
+	connection: Connection;
+	name: Signal<string | undefined>;
 
-	#broadcast?: Moq.BroadcastWriter;
+	#media = signal<MediaStream | undefined>(undefined);
+	media = this.#media.readonly();
 
-	#device?: Device;
+	audio: Audio;
+	video: Video;
+	catalog: Derived<Media.Catalog>;
+	device: Signal<Device | undefined>;
 
-	#media?: Promise<MediaStream>;
-	onMedia?: (media?: MediaStream) => void; // A callback to expose the media stream.
-
-	#audio?: Audio;
-	#audioEnabled: boolean;
-
-	#video?: Video;
-	#videoEnabled: boolean;
-
+	#broadcast = signal<Moq.Broadcast | undefined>(undefined);
 	#catalog = new Moq.Track("catalog.json", 0);
+	#signals = new Signals();
 
-	constructor(connection: Moq.ConnectionReload, name: string, options: BroadcastOptions = {}) {
-		this.name = name;
-		this.connection = connection;
-		this.#audioEnabled = options.audio ?? false;
-		this.#videoEnabled = options.video ?? false;
-		this.#device = options.device;
-		this.onMedia = options.onMedia;
+	constructor(props: BroadcastProps) {
+		this.connection = props.connection;
+		this.name = signal(props.name);
+		this.audio = new Audio({ enabled: props.audio});
+		this.video = new Video({ enabled: props.video});
+		this.device = signal(props.device);
 
-		this.#init();
+		this.#signals.effect(() => {
+			const name = this.name.get();
+			if (!name) return;
+
+			const broadcast = new Moq.Broadcast(name);
+			broadcast.writer.insertTrack(this.#catalog.reader.clone());
+
+			this.#broadcast.set(broadcast);
+
+			return () => {
+				broadcast.close();
+				this.#broadcast.set(undefined);
+			}
+		});
+
+		this.#signals.effect(() => {
+			const broadcast = this.#broadcast.get();
+			if (!broadcast) return;
+
+			const connection = this.connection.established.get();
+			if (!connection) return;
+
+			// Publish the broadcast to the connection.
+			connection.publish(broadcast.reader.clone());
+		});
+
+		this.#signals.effect(() => {
+			const broadcast = this.#broadcast.get();
+			if (!broadcast) return;
+
+			const track = this.video.track.get();
+			if (!track) return;
+
+			broadcast.writer.insertTrack(track.reader.clone());
+
+			return () => {
+				broadcast.writer.removeTrack(track.name);
+			}
+		});
+
+		this.#signals.effect(() => {
+			const broadcast = this.#broadcast.get();
+			if (!broadcast) return;
+
+			const track = this.audio.track.get();
+			if (!track) return;
+
+			broadcast.writer.insertTrack(track.reader.clone());
+			return () => {
+				broadcast.writer.removeTrack(track.name);
+			}
+		});
+
+		this.#signals.effect(() => this.#promptUser());
+		this.#signals.effect(() => {
+			this.audio.media.set(this.media.get()?.getAudioTracks().at(0));
+			this.video.media.set(this.media.get()?.getVideoTracks().at(0));
+		});
+
+		this.catalog = this.#signals.derived(() => this.#runCatalog());
 	}
 
-	get audio() {
-		return this.#audioEnabled;
-	}
+	#promptUser() {
+		const device = this.device.get();
+		if (!device) return;
 
-	set audio(enabled: boolean) {
-		if (this.#audioEnabled === enabled) {
-			return;
-		}
+		const videoEnabled = this.video.enabled.get();
+		const audioEnabled = this.audio.enabled.get();
+		if (!videoEnabled && !audioEnabled) return;
 
-		this.#audioEnabled = enabled;
-		this.#init();
-	}
+		let media: Promise<MediaStream>;
 
-	get video() {
-		return this.#videoEnabled;
-	}
-
-	set video(enabled: boolean) {
-		if (this.#videoEnabled === enabled) {
-			return;
-		}
-
-		this.#videoEnabled = enabled;
-		this.#init();
-	}
-
-	get device(): Device | undefined {
-		return this.#device;
-	}
-
-	set device(device: Device | undefined) {
-		if (this.#device === device) {
-			return;
-		}
-
-		this.#device = device;
-		this.#init();
-	}
-
-	async #init() {
-		const existing = this.#media;
-
-		// Register our new media request to create a chain.
-		if (!this.#device || (!this.#videoEnabled && !this.#audioEnabled)) {
-			this.#media = undefined;
-		} else if (this.#device === "camera") {
-			const video = this.#videoEnabled
+		if (device === "camera") {
+			const video = videoEnabled
 				? {
 						//aspectRatio: { ideal: 16 / 9 },
 						width: { ideal: 1280, max: 1920 },
@@ -98,7 +125,7 @@ export class Broadcast {
 					}
 				: undefined;
 
-			const audio = this.#audioEnabled
+			const audio = audioEnabled
 				? {
 						channelCount: { ideal: 2, max: 2 },
 						echoCancellation: { ideal: true },
@@ -107,9 +134,9 @@ export class Broadcast {
 					}
 				: undefined;
 
-			this.#media = navigator.mediaDevices.getUserMedia({ video, audio });
-		} else if (this.#device === "screen") {
-			const video = this.#videoEnabled
+			media = navigator.mediaDevices.getUserMedia({ video, audio });
+		} else if (device === "screen") {
+			const video = videoEnabled
 				? {
 						frameRate: { ideal: 60, max: 60 },
 						preferCurrentTab: false,
@@ -120,7 +147,7 @@ export class Broadcast {
 					}
 				: undefined;
 
-			const audio = this.#audioEnabled
+			const audio = audioEnabled
 				? {
 						channelCount: { ideal: 2, max: 2 },
 						echoCancellation: false,
@@ -133,7 +160,7 @@ export class Broadcast {
 			const controller = new CaptureController();
 			controller.setFocusBehavior("no-focus-change");
 
-			this.#media = navigator.mediaDevices.getDisplayMedia({
+			media = navigator.mediaDevices.getDisplayMedia({
 				video,
 				audio,
 				// @ts-ignore new API
@@ -148,91 +175,47 @@ export class Broadcast {
 			throw new Error("Invalid device");
 		}
 
-		// Cancel the old media request first.
-		if (existing) {
-			const media = await existing;
-			for (const track of media.getTracks()) {
-				track.stop();
-			}
+		media.then((media) => {
+			this.#media.set(media);
+		}).catch((err) => {
+			console.error("failed to get media", err);
+		});
+
+		return () => {
+			this.#media.set(undefined);
 		}
+	}
 
-		// Finish the media request.
-		const media = await this.#media;
-
-		if (this.onMedia) {
-			this.onMedia(media);
-		}
-
-		const audio = media?.getAudioTracks().at(0);
-		const video = media?.getVideoTracks().at(0);
-
-		if (this.#audio?.media !== audio) {
-			this.#audio?.close();
-			this.#audio = undefined;
-
-			if (audio) {
-				this.#audio = new Audio(audio);
-			}
-		}
-
-		// Check if the video source has changed.
-		if (video?.id !== this.#video?.id) {
-			this.#video?.close();
-			this.#video = undefined;
-
-			if (video) {
-				this.#video = await Video.create(video);
-			}
-		}
-
-		if (!this.#video && !this.#audio) {
-			this.#broadcast?.close();
-			this.#broadcast = undefined;
-			return;
-		}
-
-		if (!this.#broadcast) {
-			const broadcast = new Moq.Broadcast(this.name);
-			this.#broadcast = broadcast.writer;
-			this.#broadcast.insertTrack(this.#catalog.reader.clone());
-
-			// Publish the broadcast to the connection.
-			this.connection.on("connected", (connection) => {
-				connection.publish(broadcast.reader);
-			});
-			this.connection.established?.publish(broadcast.reader);
-		}
+	#runCatalog(): Media.Catalog {
+		const audio = this.audio.catalog.get();
+		const video = this.video.catalog.get();
 
 		// Create the new catalog.
 		const catalog = new Media.Catalog();
 
 		// We need to wait for the encoder to fully initialize with a few frames.
-		if (this.#audio) {
-			catalog.audio.push(this.#audio.catalog);
-			this.#broadcast.insertTrack(this.#audio.track.reader.clone());
+		if (audio) {
+			catalog.audio.push(audio);
 		}
 
-		if (this.#video) {
-			catalog.video.push(await this.#video.catalog());
-			this.#broadcast.insertTrack(this.#video.track.reader.clone());
+		if (video) {
+			catalog.video.push(video);
 		}
-
-		console.debug("published catalog", this.#broadcast.path, catalog);
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
 		const catalogGroup = this.#catalog.writer.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
+
+		console.debug("published catalog", catalog);
+
+		return catalog;
 	}
 
 	close() {
-		this.#media?.then((media) => {
-			for (const track of media.getTracks()) {
-				track.stop();
-			}
-		});
-
-		this.#broadcast?.close();
+		this.#signals.close();
+		this.audio.close();
+		this.video.close();
 	}
 }

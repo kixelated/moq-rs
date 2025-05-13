@@ -1,10 +1,8 @@
-import * as Moq from "@kixelated/moq";
-
 import { AudioEmitter } from "./audio";
 import { Broadcast } from "./broadcast";
 import { VideoRenderer } from "./video";
 import { Connection } from "../connection";
-import { signal, Root } from "../signals";
+import { signal, Signals } from "../signals";
 
 // A custom element that renders to a canvas.
 export class Watch extends HTMLElement {
@@ -30,7 +28,7 @@ export class Watch extends HTMLElement {
 	#visible = signal(true);
 	readonly visible = this.#visible.readonly();
 
-	#root?: Root;
+	#signals?: Signals;
 
 	constructor() {
 		super();
@@ -81,31 +79,31 @@ export class Watch extends HTMLElement {
 	}
 
 	connectedCallback() {
-		this.#root = new Root();
+		this.#signals = new Signals();
 
-		const volume = this.#root.derived(() => (this.muted.get() ? 0 : this.volume.get()));
+		const volume = this.#signals.derived(() => (this.muted.get() ? 0 : this.volume.get()));
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			const enabled = this.paused.get() ? false : volume.get() > 0;
 			this.audioEmitter.volume.set(volume.get());
 			this.audio.enabled.set(enabled);
 			this.audioEmitter.paused.set(this.paused.get());
 		});
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			const enabled = this.visible.get() && !this.paused.get();
 			this.video.enabled.set(enabled);
 			this.videoRenderer.paused.set(this.paused.get());
 		});
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			this.audioEmitter.latency.set(this.latency.get());
 			this.video.latency.set(this.latency.get());
 		});
 	}
 
 	disconnectedCallback() {
-		this.#root?.close();
+		this.#signals?.close();
 	}
 
 	attributeChangedCallback(name: string, oldValue: string | undefined, newValue: string | undefined) {
@@ -126,7 +124,7 @@ export class Watch extends HTMLElement {
 
 	// TODO Do this on disconnectedCallback?
 	close() {
-		this.#root?.close();
+		this.#signals?.close();
 
 		this.connection.close();
 		this.broadcast.close();
@@ -141,8 +139,4 @@ declare global {
 	interface HTMLElementTagNameMap {
 		"hang-watch": Watch;
 	}
-}
-
-export interface Events {
-	connection: keyof Moq.ConnectionStatus;
 }

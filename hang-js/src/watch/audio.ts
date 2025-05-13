@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
-import { Derived, Root, signal, Signal } from "../signals";
+import { Derived, Signals, signal, Signal } from "../signals";
 
 export type AudioProps = {
 	broadcast?: Moq.BroadcastReader;
@@ -19,7 +19,7 @@ export class Audio {
 
 	// TODO add max bitrate/resolution/etc.
 
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(props?: AudioProps) {
 		this.broadcast = signal(props?.broadcast);
@@ -30,8 +30,8 @@ export class Audio {
 		this.#writer = queue.writable.getWriter();
 		this.samples = queue.readable;
 
-		this.selected = this.#root.derived(() => this.available.get().at(0));
-		this.#root.effect(() => this.#init());
+		this.selected = this.#signals.derived(() => this.available.get().at(0));
+		this.#signals.effect(() => this.#init());
 	}
 
 	#init() {
@@ -81,7 +81,7 @@ export class Audio {
 	}
 
 	close() {
-		this.#root.close();
+		this.#signals.close();
 		this.#writer.close();
 	}
 }
@@ -121,7 +121,7 @@ export class AudioEmitter {
 
 	// Used to convert from timestamp units to AudioContext units.
 	#ref?: number;
-	#root = new Root();
+	#signals = new Signals();
 
 	constructor(props: AudioEmitterProps) {
 		this.source = props.source;
@@ -129,7 +129,7 @@ export class AudioEmitter {
 		this.latency = signal(props.latency ?? 50);
 		this.paused = signal(props.paused ?? false);
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			const ctx = this.#context.get();
 			if (!ctx) return;
 
@@ -144,12 +144,12 @@ export class AudioEmitter {
 		});
 
 		// Update the ref when the latency changes.
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			this.latency.get();
 			this.#ref = undefined;
 		});
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			if (!this.paused.get()) return;
 
 			// Cancel any active samples.
@@ -158,7 +158,7 @@ export class AudioEmitter {
 			}
 		});
 
-		this.#root.effect(() => {
+		this.#signals.effect(() => {
 			const sampleRate = this.#sampleRate.get();
 			if (!sampleRate) return undefined;
 
@@ -267,6 +267,6 @@ export class AudioEmitter {
 	}
 
 	close() {
-		this.#root.close();
+		this.#signals.close();
 	}
 }

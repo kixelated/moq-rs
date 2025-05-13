@@ -16,6 +16,11 @@ export class Track {
 		this.writer = new TrackWriter(name, priority, watch.producer);
 		this.reader = new TrackReader(name, priority, watch.consumer);
 	}
+
+	close() {
+		this.writer.close();
+		this.reader.close();
+	}
 }
 
 export class TrackWriter {

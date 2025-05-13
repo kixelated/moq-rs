@@ -18,6 +18,11 @@ export class Announced {
 		this.writer = new AnnouncedWriter(prefix, queue.producer);
 		this.reader = new AnnouncedReader(prefix, queue.consumer);
 	}
+
+	close() {
+		this.writer.close();
+		this.reader.close();
+	}
 }
 
 export class AnnouncedWriter {
