@@ -1,6 +1,7 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.0.0-beta.2/schema.json",
 	"files": {
+		// For some reason, biome is too dumb to use our .gitignore.
 		"includes": ["**", "!**/node_modules", "!**/dist"]
 	},
 	"vcs": {
