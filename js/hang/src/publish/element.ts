@@ -3,7 +3,7 @@ import { Signals, signal } from "../signals";
 import { Broadcast, Device } from "./broadcast";
 
 export class Publish extends HTMLElement {
-	static observedAttributes = ["url", "name", "device", "audio", "video"];
+	static observedAttributes = ["url", "broadcast", "device", "audio", "video"];
 
 	connection = new Connection();
 	broadcast = new Broadcast({ connection: this.connection });
@@ -56,12 +56,19 @@ export class Publish extends HTMLElement {
 				preview.srcObject = null;
 			};
 		});
+
+		// Only publish when we have media available.
+		this.#signals.effect(() => {
+			const audio = this.broadcast.audio.media.get();
+			const video = this.broadcast.video.media.get();
+			this.broadcast.publish.set(!!audio || !!video);
+		});
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
 			this.connection.url.set(newValue ? new URL(newValue) : undefined);
-		} else if (name === "name") {
+		} else if (name === "broadcast") {
 			this.broadcast.path.set(newValue);
 		} else if (name === "device") {
 			this.broadcast.device.set(newValue as Device);

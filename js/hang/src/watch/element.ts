@@ -6,7 +6,7 @@ import { VideoRenderer } from "./video";
 
 // A custom element that renders to a canvas.
 export class Watch extends HTMLElement {
-	static observedAttributes = ["url", "name", "paused", "muted", "latency"];
+	static observedAttributes = ["url", "broadcast", "paused", "muted", "latency"];
 
 	connection = new Connection();
 	broadcast = new Broadcast({ connection: this.connection });
@@ -113,7 +113,7 @@ export class Watch extends HTMLElement {
 
 		if (name === "url") {
 			this.connection.url.set(newValue ? new URL(newValue) : undefined);
-		} else if (name === "name") {
+		} else if (name === "broadcast") {
 			this.broadcast.path.set(newValue);
 		} else if (name === "paused") {
 			this.paused.set(newValue !== undefined);

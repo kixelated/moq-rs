@@ -7,12 +7,13 @@
 	<title>MoQ Demo</title>
 
 	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
 
 <body>
 	<div id="container">
 		<!-- Include the custom element to set up the canvas. -->
-		<hang-watch url="http://localhost:4443/" path="demo/bbb" muted id="watch">
+		<hang-watch url="http://localhost:4443/" broadcast="demo/bbb" muted id="watch">
 			<!-- Optionally provide a custom canvas element that we can style as needed -->
 			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
 		</hang-watch>
@@ -78,7 +79,7 @@
 			href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
 		works.
 		For example:
-	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; path=&quot;demo/bbb&quot;&gt;
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; broadcast=&quot;demo/bbb&quot;&gt;
 	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
 	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
 &lt;/hang-watch&gt;</code></pre>
@@ -149,7 +150,7 @@ just pub bbb
 			href="publish.html">publish demo</a>.
 		For example,
 		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
-			href="index.html?path=demo/tos" target="_blank">watch robots bang</a>.
+			href="index.html?broadcast=demo/tos" target="_blank">watch robots bang</a>.
 	</p>
 </body>
 

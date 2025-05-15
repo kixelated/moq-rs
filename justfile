@@ -19,7 +19,7 @@ setup:
 all: build
 	# Then run the relay with a slight head start.
 	# It doesn't matter if the web beats BBB because we support automatic reloading.
-	node js/node_modules/.bin/concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 1 && just web"
+	js/node_modules/.bin/concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 1 && just web"
 
 # Run a localhost relay server
 relay:

@@ -21,11 +21,11 @@ const broadcastStatus = document.getElementById("broadcast-status") as HTMLSpanE
 // If query params are provided, use them as the broadcast URL instead of the default.
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.size > 0) {
-	const path = urlParams.get("path") ?? "demo/bbb";
+	const broadcast = urlParams.get("broadcast") ?? "demo/bbb";
 	const host = urlParams.get("host") ?? "localhost:4443";
 	const scheme = urlParams.get("scheme") ?? "http";
 	watch.setAttribute("url", `${scheme}://${host}/`);
-	watch.setAttribute("path", path);
+	watch.setAttribute("broadcast", broadcast);
 }
 
 // Listen for clicks on the pause button.

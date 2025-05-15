@@ -12,6 +12,7 @@ const screen = document.getElementById("screen") as HTMLButtonElement;
 const none = document.getElementById("none") as HTMLButtonElement;
 const status = document.getElementById("status") as HTMLSpanElement;
 const watch = document.getElementById("watch") as HTMLAnchorElement;
+const broadcast = document.getElementById("broadcast") as HTMLInputElement;
 
 camera.addEventListener("click", () => {
 	publish.broadcast.device.set("camera");
@@ -25,18 +26,22 @@ none.addEventListener("click", () => {
 
 // If query params are provided, use them instead of the default.
 const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.size > 0) {
-	const path = urlParams.get("path") ?? "demo/me";
-	const host = urlParams.get("host") ?? "localhost:4443";
-	const scheme = urlParams.get("scheme") ?? "http";
-
-	publish.setAttribute("url", `${scheme}://${host}/`);
-	publish.setAttribute("path", path);
-
-	watch.setAttribute("href", `index.html?path=${path}&host=${host}&scheme=${scheme}`);
-} else {
-	watch.setAttribute("href", "index.html?path=demo/me");
+const scheme = urlParams.get("scheme");
+const host = urlParams.get("host");
+if (host || scheme) {
+	publish.setAttribute("url", `${scheme ?? "http"}://${host ?? "localhost:4443"}/`);
 }
+
+const broadcastName = urlParams.get("broadcast");
+if (broadcastName) {
+	publish.setAttribute("broadcast", broadcastName);
+	broadcast.value = broadcastName;
+}
+
+broadcast.addEventListener("change", () => {
+	publish.setAttribute("broadcast", broadcast.value);
+	watch.setAttribute("href", `index.html?broadcast=${broadcast.value}`); // TODO: Add host and scheme
+});
 
 // Listen for connection status changes.
 const cleanup = publish.connection.status.subscribe((value) => {

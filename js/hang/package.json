@@ -28,12 +28,13 @@
 	"devDependencies": {
 		"@tailwindcss/postcss": "^4.1.7",
 		"@tailwindcss/typography": "^0.5.16",
+		"@tailwindcss/vite": "^4.1.7",
 		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/lodash": "^4.17.16",
-		"typescript": "^5.8.3",
 		"@typescript/lib-dom": "npm:@types/web@^0.0.234",
 		"highlight.js": "^11.11.1",
 		"tailwindcss": "^4.1.7",
+		"typescript": "^5.8.3",
 		"vite": "^6.3.5",
 		"vite-plugin-html": "^3.2.2"
 	}

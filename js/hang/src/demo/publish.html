@@ -5,12 +5,14 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>MoQ Demo</title>
+
 	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
 
 <body>
 	<!-- Use the included custom element to render a preview. -->
-	<hang-publish audio video url="http://localhost:4443/" path="demo/me" id="publish">
+	<hang-publish audio video url="http://localhost:4443/" broadcast="demo/me" id="publish">
 		<!-- Optionally provide a custom video element that we can style as needed -->
 		<video style="max-width: 100%; height: auto; border-radius: 4px;" muted autoplay></video>
 	</hang-publish>
@@ -26,7 +28,9 @@
 			<button id="none" title="Nothing">🚫</button>
 		</span>
 
-		<a target="_blank" id="watch">Watch</a>
+		<input type="text" id="broadcast" placeholder="demo/me" title="Broadcast name"></input>
+
+		<a target="_blank" id="watch" href="index.html?broadcast=demo/me">Watch</a>
 	</div>
 
 	<h3>Other demos:</h3>
