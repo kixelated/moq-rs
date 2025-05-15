@@ -1,10 +1,15 @@
 import { Buffer } from "buffer";
-import { AnnouncedReader } from "./announced";
-import { BroadcastReader } from "./broadcast";
+import { AnnouncedConsumer as AnnouncedConsumer } from "./announced";
+import { BroadcastConsumer } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
 import * as Wire from "./wire";
 
+/**
+ * Represents a connection to a MoQ server.
+ *
+ * @beta
+ */
 export class Connection {
 	// The URL of the connection.
 	#url: URL;
@@ -21,6 +26,14 @@ export class Connection {
 	// Module for distributing tracks.
 	#subscriber: Subscriber;
 
+	/**
+	 * Creates a new Connection instance.
+	 * @param url - The URL of the connection
+	 * @param quic - The WebTransport session
+	 * @param session - The session stream
+	 *
+	 * @internal
+	 */
 	constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
 		this.#url = url;
 		this.#quic = quic;
@@ -32,6 +45,14 @@ export class Connection {
 		this.#run().catch((err) => console.error("failed to run connection: ", err));
 	}
 
+	/**
+	 * Establishes a connection to a MOQ server.
+	 *
+	 * @param url - The URL of the server to connect to
+	 * @returns A promise that resolves to a Connection instance
+	 *
+	 * @beta
+	 */
 	static async connect(url: URL): Promise<Connection> {
 		const options: WebTransportOptions = {
 			allowPooling: false,
@@ -84,10 +105,21 @@ export class Connection {
 		return conn;
 	}
 
+	/**
+	 * Gets the URL of the connection.
+	 * @returns The URL of the connection
+	 *
+	 * @beta
+	 */
 	get url(): URL {
 		return this.#url;
 	}
 
+	/**
+	 * Closes the connection.
+	 *
+	 * @beta
+	 */
 	close() {
 		try {
 			this.#quic.close();
@@ -102,15 +134,39 @@ export class Connection {
 		await Promise.all([session, bidis, unis]);
 	}
 
-	publish(broadcast: BroadcastReader) {
+	/**
+	 * Publishes a broadcast to the connection.
+	 * @param broadcast - The broadcast to publish
+	 *
+	 * @beta
+	 */
+	publish(broadcast: BroadcastConsumer) {
 		this.#publisher.publish(broadcast);
 	}
 
-	announced(prefix = ""): AnnouncedReader {
+	/**
+	 * Gets an announced reader for the specified prefix.
+	 * @param prefix - The prefix for announcements
+	 * @returns An AnnounceConsumer instance
+	 *
+	 * @beta
+	 */
+	announced(prefix = ""): AnnouncedConsumer {
 		return this.#subscriber.announced(prefix);
 	}
 
-	consume(broadcast: string): BroadcastReader {
+	/**
+	 * Consumes a broadcast from the connection.
+	 *
+	 * @remarks
+	 * If the broadcast is not found, a "not found" error will be thrown when requesting any tracks.
+	 *
+	 * @param broadcast - The name of the broadcast to consume
+	 * @returns A BroadcastConsumer instance
+	 *
+	 * @beta
+	 */
+	consume(broadcast: string): BroadcastConsumer {
 		// To avoid downloading the a broadcast we're publishing, check the publisher first.
 		const publisher = this.#publisher.consume(broadcast);
 		if (publisher) return publisher;
@@ -127,6 +183,11 @@ export class Connection {
 		}
 	}
 
+	/**
+	 * Runs the bidirectional stream loop.
+	 *
+	 * @internal
+	 */
 	async #runBidis() {
 		for (;;) {
 			const next = await Wire.Stream.accept(this.#quic);
@@ -141,6 +202,13 @@ export class Connection {
 		}
 	}
 
+	/**
+	 * Handles a bidirectional stream message.
+	 * @param msg - The message to handle
+	 * @param stream - The stream to handle
+	 *
+	 * @internal
+	 */
 	async #runBidi(msg: Wire.StreamBi, stream: Wire.Stream) {
 		if (msg instanceof Wire.SessionClient) {
 			throw new Error("duplicate session stream");
@@ -165,6 +233,11 @@ export class Connection {
 		throw new Error("unknown message: ", msg);
 	}
 
+	/**
+	 * Runs the unidirectional stream loop.
+	 *
+	 * @internal
+	 */
 	async #runUnis() {
 		for (;;) {
 			const next = await Wire.Reader.accept(this.#quic);
@@ -179,6 +252,13 @@ export class Connection {
 		}
 	}
 
+	/**
+	 * Handles a unidirectional stream message.
+	 * @param msg - The message to handle
+	 * @param stream - The stream to handle
+	 *
+	 * @internal
+	 */
 	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
 		if (msg instanceof Wire.Group) {
 			if (!this.#subscriber) {
@@ -189,6 +269,12 @@ export class Connection {
 		}
 	}
 
+	/**
+	 * Returns a promise that resolves when the connection is closed.
+	 * @returns A promise that resolves when closed
+	 *
+	 * @beta
+	 */
 	async closed(): Promise<void> {
 		await this.#quic.closed;
 	}

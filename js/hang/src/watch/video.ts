@@ -5,7 +5,7 @@ import * as Media from "../media";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type VideoProps = {
-	broadcast?: Moq.BroadcastReader;
+	broadcast?: Moq.BroadcastConsumer;
 	available?: Media.Video[];
 	enabled?: boolean;
 	latency?: number;
@@ -13,7 +13,7 @@ export type VideoProps = {
 
 // Responsible for switching between video tracks and buffering frames.
 export class Video {
-	broadcast: Signal<Moq.BroadcastReader | undefined>;
+	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	enabled: Signal<boolean>; // Don't download any longer
 
 	// The maximum latency in milliseconds.

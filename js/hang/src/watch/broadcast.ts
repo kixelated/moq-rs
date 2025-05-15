@@ -23,7 +23,7 @@ export class Broadcast {
 	audio: Audio = new Audio();
 	video: Video = new Video();
 
-	#broadcast = signal<Moq.BroadcastReader | undefined>(undefined);
+	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
 	#catalog = signal<Media.Catalog | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();

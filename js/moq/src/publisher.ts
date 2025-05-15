@@ -1,10 +1,15 @@
 import { Announced } from "./announced";
-import { BroadcastReader } from "./broadcast";
-import type { GroupReader } from "./group";
-import type { TrackReader } from "./track";
+import { BroadcastConsumer } from "./broadcast";
+import type { GroupConsumer } from "./group";
+import type { TrackConsumer } from "./track";
 import { error } from "./util/error";
 import * as Wire from "./wire";
 
+/**
+ * Handles publishing broadcasts and managing their lifecycle.
+ *
+ * @beta
+ */
 export class Publisher {
 	#quic: WebTransport;
 
@@ -13,23 +18,41 @@ export class Publisher {
 	#announced = new Announced("");
 
 	// Our published broadcasts.
-	#broadcasts = new Map<string, BroadcastReader>();
+	#broadcasts = new Map<string, BroadcastConsumer>();
 
+	/**
+	 * Creates a new Publisher instance.
+	 * @param quic - The WebTransport session to use
+	 *
+	 * @internal
+	 */
 	constructor(quic: WebTransport) {
 		this.#quic = quic;
 	}
 
-	consume(broadcast: string): BroadcastReader | undefined {
+	/**
+	 * Gets a broadcast reader for the specified broadcast.
+	 * @param broadcast - The name of the broadcast to consume
+	 * @returns A BroadcastConsumer instance or undefined if not found
+	 *
+	 * @beta
+	 */
+	consume(broadcast: string): BroadcastConsumer | undefined {
 		return this.#broadcasts.get(broadcast)?.clone();
 	}
 
-	// Publish a broadcast with any associated tracks.
-	publish(broadcast: BroadcastReader) {
+	/**
+	 * Publishes a broadcast with any associated tracks.
+	 * @param broadcast - The broadcast to publish
+	 *
+	 * @beta
+	 */
+	publish(broadcast: BroadcastConsumer) {
 		this.#broadcasts.set(broadcast.path, broadcast);
 
 		(async () => {
 			try {
-				this.#announced.writer.write({
+				this.#announced.producer.write({
 					broadcast: broadcast.path,
 					active: true,
 				});
@@ -44,7 +67,7 @@ export class Publisher {
 				console.debug(`announce: broadcast=${broadcast.path} active=false`);
 				this.#broadcasts.delete(broadcast.path);
 
-				this.#announced.writer.write({
+				this.#announced.producer.write({
 					broadcast: broadcast.path,
 					active: false,
 				});
@@ -52,8 +75,15 @@ export class Publisher {
 		})();
 	}
 
+	/**
+	 * Handles an announce interest message.
+	 * @param msg - The announce interest message
+	 * @param stream - The stream to write announcements to
+	 *
+	 * @internal
+	 */
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		const reader = this.#announced.reader.clone();
+		const reader = this.#announced.consumer.clone();
 
 		for (;;) {
 			const announcement = await reader.next();
@@ -67,6 +97,13 @@ export class Publisher {
 		}
 	}
 
+	/**
+	 * Handles a subscribe message.
+	 * @param msg - The subscribe message
+	 * @param stream - The stream to write track data to
+	 *
+	 * @internal
+	 */
 	async runSubscribe(msg: Wire.Subscribe, stream: Wire.Stream) {
 		const broadcast = this.#broadcasts.get(msg.broadcast);
 		if (!broadcast) {
@@ -91,7 +128,16 @@ export class Publisher {
 		}
 	}
 
-	async #runTrack(sub: bigint, broadcast: string, track: TrackReader, stream: Wire.Writer) {
+	/**
+	 * Runs a track and sends its data to the stream.
+	 * @param sub - The subscription ID
+	 * @param broadcast - The broadcast name
+	 * @param track - The track to run
+	 * @param stream - The stream to write to
+	 *
+	 * @internal
+	 */
+	async #runTrack(sub: bigint, broadcast: string, track: TrackConsumer, stream: Wire.Writer) {
 		let ok = false;
 
 		try {
@@ -121,7 +167,14 @@ export class Publisher {
 		}
 	}
 
-	async #runGroup(sub: bigint, group: GroupReader) {
+	/**
+	 * Runs a group and sends its frames to the stream.
+	 * @param sub - The subscription ID
+	 * @param group - The group to run
+	 *
+	 * @internal
+	 */
+	async #runGroup(sub: bigint, group: GroupConsumer) {
 		const msg = new Wire.Group(sub, group.id);
 		const stream = await Wire.Writer.open(this.#quic, msg);
 		try {

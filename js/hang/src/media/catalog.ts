@@ -34,7 +34,7 @@ export class Catalog {
 		return broadcast;
 	}
 
-	static async fetch(track: Moq.TrackReader): Promise<Catalog | undefined> {
+	static async fetch(track: Moq.TrackConsumer): Promise<Catalog | undefined> {
 		const group = await track.nextGroup();
 		if (!group) return undefined; // track is done
 

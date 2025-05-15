@@ -4,10 +4,10 @@ import { Track } from "./track";
 
 test("track clone", async () => {
 	const track = new Track("test", 0);
-	const writer = track.writer;
+	const writer= track.producer;
 
 	// Clone the reader before we append any groups
-	const readerA = track.reader;
+	const readerA = track.consumer;
 	const readerB = readerA.clone();
 
 	const group1 = writer.appendGroup();
@@ -77,9 +77,9 @@ test("track clone", async () => {
 
 test("track group cloning", async () => {
 	const track = new Track("test", 0);
-	const writer = track.writer;
+	const writer = track.producer;
 
-	const readerA = track.reader;
+	const readerA = track.consumer;
 	const readerB = readerA.clone();
 
 	// Make sure both readers get separate copies of the groups.

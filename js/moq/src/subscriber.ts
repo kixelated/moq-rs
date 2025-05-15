@@ -1,27 +1,45 @@
-import { Announced, AnnouncedReader } from "./announced";
-import { Broadcast, BroadcastReader } from "./broadcast";
+import { Announced, AnnouncedConsumer } from "./announced";
+import { Broadcast, BroadcastConsumer } from "./broadcast";
 import { Group } from "./group";
-import { type TrackWriter } from "./track";
+import { type TrackProducer } from "./track";
 import { error } from "./util/error";
 import * as Wire from "./wire";
 
+/**
+ * Handles subscribing to broadcasts and managing their lifecycle.
+ *
+ * @beta
+ */
 export class Subscriber {
 	#quic: WebTransport;
 
 	// Our subscribed tracks.
-	#subscribes = new Map<bigint, TrackWriter>();
+	#subscribes = new Map<bigint, TrackProducer>();
 	#subscribeNext = 0n;
 
 	// A cache of active subscriptions that can be tee'd.
-	#broadcasts = new Map<string, BroadcastReader>();
+	#broadcasts = new Map<string, BroadcastConsumer>();
 
+	/**
+	 * Creates a new Subscriber instance.
+	 * @param quic - The WebTransport session to use
+	 *
+	 * @internal
+	 */
 	constructor(quic: WebTransport) {
 		this.#quic = quic;
 	}
 
-	announced(prefix = ""): AnnouncedReader {
+	/**
+	 * Gets an announced reader for the specified prefix.
+	 * @param prefix - The prefix for announcements
+	 * @returns An AnnounceConsumer instance
+	 *
+	 * @beta
+	 */
+	announced(prefix = ""): AnnouncedConsumer {
 		const pair = new Announced(prefix);
-		const writer = pair.writer;
+		const writer = pair.producer;
 
 		const msg = new Wire.AnnounceInterest(prefix);
 
@@ -60,43 +78,50 @@ export class Subscriber {
 			}
 		})();
 
-		return pair.reader;
+		return pair.consumer;
 	}
 
-	consume(broadcast: string): BroadcastReader {
+	/**
+	 * Consumes a broadcast from the connection.
+	 * @param broadcast - The name of the broadcast to consume
+	 * @returns A BroadcastConsumer instance
+	 *
+	 * @beta
+	 */
+	consume(broadcast: string): BroadcastConsumer {
 		const existing = this.#broadcasts.get(broadcast);
 		if (existing) {
 			return existing.clone();
 		}
 
 		const pair = new Broadcast(broadcast);
-		pair.writer.unknownTrack((track) => {
+		pair.producer.unknownTrack((track) => {
 			// Save the track in the cache to deduplicate.
 			// NOTE: We don't clone it (yet) so it doesn't count as an active consumer.
 			// When we do clone it, we'll only get the most recent (consumed) group.
-			pair.writer.insertTrack(track.reader);
+			pair.producer.insertTrack(track.consumer);
 
 			// Perform the subscription in the background.
-			this.#runSubscribe(broadcast, track.writer).finally(() => {
+			this.#runSubscribe(broadcast, track.producer).finally(() => {
 				try {
-					pair.writer.removeTrack(track.name);
+					pair.producer.removeTrack(track.name);
 				} catch (err) {
 					// Already closed.
 				}
 			});
 		});
 
-		this.#broadcasts.set(broadcast, pair.reader);
+		this.#broadcasts.set(broadcast, pair.consumer);
 
 		// Delete when there are no more consumers.
-		pair.writer.closed().finally(() => {
+		pair.consumer.closed().finally(() => {
 			this.#broadcasts.delete(broadcast);
 		});
 
-		return pair.reader;
+		return pair.consumer;
 	}
 
-	async #runSubscribe(broadcast: string, track: TrackWriter) {
+	async #runSubscribe(broadcast: string, track: TrackProducer) {
 		const id = this.#subscribeNext++;
 
 		// Save the writer so we can append groups to it.
@@ -121,30 +146,35 @@ export class Subscriber {
 		}
 	}
 
+	/**
+	 * Handles a group message.
+	 * @param group - The group message
+	 * @param stream - The stream to read frames from
+	 *
+	 * @internal
+	 */
 	async runGroup(group: Wire.Group, stream: Wire.Reader) {
 		const subscribe = this.#subscribes.get(group.subscribe);
 		if (!subscribe) return;
 
 		const pair = new Group(group.sequence);
-		subscribe.insertGroup(pair.reader);
+		subscribe.insertGroup(pair.consumer);
 
 		try {
 			for (;;) {
-				const done = await Promise.race([stream.done(), subscribe.closed(), pair.writer.closed()]);
+				const done = await Promise.race([stream.done(), subscribe.closed(), pair.producer.closed()]);
 				if (done !== false) break;
 
 				const size = await stream.u53();
 				const payload = await stream.read(size);
 				if (!payload) break;
 
-				pair.writer.writeFrame(payload);
+				pair.producer.writeFrame(payload);
 			}
 
-			pair.writer.close();
+			pair.close();
 		} catch (err: unknown) {
-			pair.writer.abort(error(err));
-		} finally {
-			pair.reader.close();
+			pair.abort(error(err));
 		}
 	}
 }

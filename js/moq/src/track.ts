@@ -1,54 +1,107 @@
-import { Group, GroupReader, GroupWriter } from "./group";
+import { Group, GroupConsumer, GroupProducer } from "./group";
 import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
+/**
+ * Represents a track with a publisher/consumer pair for managing groups.
+ *
+ * @beta
+ */
 export class Track {
+	/** The name of the track */
 	readonly name: string;
+	/** The priority level of the track */
 	readonly priority: number;
 
-	readonly writer: TrackWriter;
-	readonly reader: TrackReader;
+	/** The publisher component for managing groups */
+	readonly producer: TrackProducer;
+	/** The consumer component for consuming groups */
+	readonly consumer: TrackConsumer;
 
+	/**
+	 * Creates a new Track instance with the specified name and priority.
+	 * @param name - The name of the track
+	 * @param priority - The priority level
+	 *
+	 * @beta
+	 */
 	constructor(name: string, priority: number) {
 		this.name = name;
 		this.priority = priority;
 
-		const watch = new Watch<GroupReader | null>(null);
-		this.writer = new TrackWriter(name, priority, watch.producer);
-		this.reader = new TrackReader(name, priority, watch.consumer);
+		const watch = new Watch<GroupConsumer | null>(null);
+		this.producer = new TrackProducer(name, priority, watch.producer);
+		this.consumer = new TrackConsumer(name, priority, watch.consumer);
 	}
 
+	/**
+	 * Closes both the publisher and consumer components.
+	 *
+	 * @beta
+	 */
 	close() {
-		this.writer.close();
-		this.reader.close();
+		this.producer.close();
+		this.consumer.close();
+	}
+
+	abort(reason: Error) {
+		this.producer.abort(reason);
+		this.consumer.close();
 	}
 }
 
-export class TrackWriter {
+/**
+ * Handles writing and managing groups in a track.
+ *
+ * @beta
+ */
+export class TrackProducer {
+	/** The name of the track */
 	readonly name: string;
+	/** The priority level of the track */
 	readonly priority: number;
 
-	#latest: WatchProducer<GroupReader | null>;
+	#latest: WatchProducer<GroupConsumer | null>;
 	#next?: number;
 
-	constructor(name: string, priority: number, latest: WatchProducer<GroupReader | null>) {
+	/**
+	 * Creates a new TrackProducer with the specified name, priority, and latest group producer.
+	 * @param name - The name of the track
+	 * @param priority - The priority level
+	 * @param latest - The latest group producer
+	 *
+	 * @internal
+	 */
+	constructor(name: string, priority: number, latest: WatchProducer<GroupConsumer | null>) {
 		this.name = name;
 		this.priority = priority;
 		this.#latest = latest;
 	}
 
-	appendGroup(): GroupWriter {
+	/**
+	 * Appends a new group to the track.
+	 * @returns A GroupProducer for the new group
+	 *
+	 * @beta
+	 */
+	appendGroup(): GroupProducer {
 		const group = new Group(this.#next ?? 0);
 
 		this.#next = group.id + 1;
 		this.#latest.update((latest) => {
 			latest?.close();
-			return group.reader;
+			return group.consumer;
 		});
 
-		return group.writer;
+		return group.producer;
 	}
 
-	insertGroup(group: GroupReader) {
+	/**
+	 * Inserts an existing group into the track.
+	 * @param group - The group to insert
+	 *
+	 * @beta
+	 */
+	insertGroup(group: GroupConsumer) {
 		if (group.id < (this.#next ?? 0)) {
 			group.close();
 			return;
@@ -61,6 +114,11 @@ export class TrackWriter {
 		});
 	}
 
+	/**
+	 * Closes the publisher and all associated groups.
+	 *
+	 * @beta
+	 */
 	close() {
 		try {
 			this.#latest.update((latest) => {
@@ -72,10 +130,22 @@ export class TrackWriter {
 		} catch {}
 	}
 
+	/**
+	 * Returns a promise that resolves when the publisher is closed.
+	 * @returns A promise that resolves when closed
+	 *
+	 * @beta
+	 */
 	async closed(): Promise<void> {
 		await this.#latest.closed();
 	}
 
+	/**
+	 * Aborts the publisher with an error.
+	 * @param reason - The error reason for aborting
+	 *
+	 * @beta
+	 */
 	abort(reason: Error) {
 		try {
 			this.#latest.update((latest) => {
@@ -87,31 +157,69 @@ export class TrackWriter {
 	}
 }
 
-export class TrackReader {
+/**
+ * Handles reading groups from a track.
+ *
+ * @beta
+ */
+export class TrackConsumer {
+	/** The name of the track */
 	readonly name: string;
+	/** The priority level of the track */
 	readonly priority: number;
 
-	#groups: WatchConsumer<GroupReader | null>;
+	#groups: WatchConsumer<GroupConsumer | null>;
 
-	constructor(name: string, priority: number, groups: WatchConsumer<GroupReader | null>) {
+	/**
+	 * Creates a new TrackConsumer with the specified name, priority, and groups consumer.
+	 * @param name - The name of the track
+	 * @param priority - The priority level
+	 * @param groups - The groups consumer
+	 *
+	 * @internal
+	 */
+	constructor(name: string, priority: number, groups: WatchConsumer<GroupConsumer | null>) {
 		this.name = name;
 		this.priority = priority;
 		this.#groups = groups;
 	}
 
-	async nextGroup(): Promise<GroupReader | undefined> {
+	/**
+	 * Gets the next group from the track.
+	 * @returns A promise that resolves to the next group or undefined
+	 *
+	 * @beta
+	 */
+	async nextGroup(): Promise<GroupConsumer | undefined> {
 		const group = await this.#groups.next((group) => !!group);
 		return group?.clone();
 	}
 
-	clone(): TrackReader {
-		return new TrackReader(this.name, this.priority, this.#groups.clone());
+	/**
+	 * Creates a new instance of the consumer using the same groups consumer.
+	 * @returns A new TrackConsumer instance
+	 *
+	 * @beta
+	 */
+	clone(): TrackConsumer {
+		return new TrackConsumer(this.name, this.priority, this.#groups.clone());
 	}
 
+	/**
+	 * Closes the consumer.
+	 *
+	 * @beta
+	 */
 	close() {
 		this.#groups.close();
 	}
 
+	/**
+	 * Returns a promise that resolves when the consumer is closed.
+	 * @returns A promise that resolves when closed
+	 *
+	 * @beta
+	 */
 	async closed(): Promise<void> {
 		await this.#groups.closed();
 	}

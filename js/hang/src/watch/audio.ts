@@ -3,13 +3,13 @@ import * as Media from "../media";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type AudioProps = {
-	broadcast?: Moq.BroadcastReader;
+	broadcast?: Moq.BroadcastConsumer;
 	available?: Media.Audio[];
 	enabled?: boolean;
 };
 
 export class Audio {
-	broadcast: Signal<Moq.BroadcastReader | undefined>;
+	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	available: Signal<Media.Audio[]>;
 	enabled: Signal<boolean>;
 	selected: Derived<Media.Audio | undefined>;

@@ -1,84 +1,177 @@
 import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 
-export type Announcement = {
+/**
+ * The availability of a broadcast.
+ *
+ * @beta
+ */
+export type Announce = {
 	broadcast: string;
 	active: boolean;
 };
 
+/**
+ * A Writer/Reader pair for producing and consuming announcements.
+ *
+ * @beta
+ */
 export class Announced {
+	/** The prefix for all announcements managed by this instance */
 	readonly prefix: string;
-	readonly writer: AnnouncedWriter;
-	readonly reader: AnnouncedReader;
+	/** The writer component for creating announcements */
+	readonly producer: AnnouncedProducer;
+	/** The reader component for consuming announcements */
+	readonly consumer: AnnouncedConsumer;
 
+	/**
+	 * Creates a new Announced instance with the specified prefix.
+	 * @param prefix - The string prefix.
+	 *
+	 * @beta
+	 */
 	constructor(prefix: string) {
 		this.prefix = prefix;
 
 		// TODO This grows unbounded. We should remove ended broadcasts.
-		const queue = new Watch<Announcement[]>([]);
-		this.writer = new AnnouncedWriter(prefix, queue.producer);
-		this.reader = new AnnouncedReader(prefix, queue.consumer);
+		const queue = new Watch<Announce[]>([]);
+		this.producer = new AnnouncedProducer(prefix, queue.producer);
+		this.consumer = new AnnouncedConsumer(prefix, queue.consumer);
 	}
 
+	/**
+	 * Closes both the writer and reader components.
+	 *
+	 * @beta
+	 */
 	close() {
-		this.writer.close();
-		this.reader.close();
+		this.producer.close();
+		this.consumer.close();
+	}
+
+	abort(reason: Error) {
+		this.producer.abort(reason);
+		this.consumer.close();
 	}
 }
 
-export class AnnouncedWriter {
+/**
+ * Handles writing announcements to the announcement queue.
+ *
+ * @beta
+ */
+export class AnnouncedProducer {
+	/** The broadcast identifier for this writer */
 	readonly broadcast: string;
-	#queue: WatchProducer<Announcement[]>;
+	#queue: WatchProducer<Announce[]>;
 
-	constructor(broadcast: string, queue: WatchProducer<Announcement[]>) {
+	/**
+	 * Creates a new AnnounceProducer with the specified broadcast and queue.
+	 *
+	 * @param broadcast - The broadcast identifier
+	 * @param queue - The queue to write announcements to
+	 *
+	 * @internal
+	 */
+	constructor(broadcast: string, queue: WatchProducer<Announce[]>) {
 		this.broadcast = broadcast;
 		this.#queue = queue;
 	}
 
-	write(announcement: Announcement) {
+	/**
+	 * Writes an announcement to the queue.
+	 * @param announcement - The announcement to write
+	 * @beta
+	 */
+	write(announcement: Announce) {
 		this.#queue.update((announcements) => {
 			announcements.push(announcement);
 			return announcements;
 		});
 	}
 
+	/**
+	 * Aborts the writer with an error.
+	 * @param reason - The error reason for aborting
+	 * @beta
+	 */
 	abort(reason: Error) {
 		this.#queue.abort(reason);
 	}
 
+	/**
+	 * Closes the writer.
+	 * @beta
+	 */
 	close() {
 		this.#queue.close();
 	}
 
+	/**
+	 * Returns a promise that resolves when the writer is closed.
+	 * @returns A promise that resolves when closed
+	 * @beta
+	 */
 	async closed(): Promise<void> {
 		await this.#queue.closed();
 	}
 }
 
-export class AnnouncedReader {
+/**
+ * Handles reading announcements from the announcement queue.
+ * @beta
+ */
+export class AnnouncedConsumer {
+	/** The prefix for this reader */
 	readonly prefix: string;
 
-	#queue: WatchConsumer<Announcement[]>;
+	#queue: WatchConsumer<Announce[]>;
 	#index = 0;
 
-	constructor(prefix: string, queue: WatchConsumer<Announcement[]>) {
+	/**
+	 * Creates a new AnnounceConsumer with the specified prefix and queue.
+	 * @param prefix - The prefix for the reader
+	 * @param queue - The queue to read announcements from
+	 *
+	 * @internal
+	 */
+	constructor(prefix: string, queue: WatchConsumer<Announce[]>) {
 		this.prefix = prefix;
 		this.#queue = queue;
 	}
 
-	async next(): Promise<Announcement | undefined> {
+	/**
+	 * Returns the next announcement from the queue.
+	 * @returns A promise that resolves to the next announcement or undefined
+	 * @beta
+	 */
+	async next(): Promise<Announce | undefined> {
 		const queue = await this.#queue.when((v) => v.length > this.#index);
 		return queue?.at(this.#index++);
 	}
 
+	/**
+	 * Closes the reader.
+	 * @beta
+	 */
 	close() {
 		this.#queue.close();
 	}
 
+	/**
+	 * Returns a promise that resolves when the reader is closed.
+	 * @returns A promise that resolves when closed
+	 * @beta
+	 */
 	async closed(): Promise<void> {
 		await this.#queue.closed();
 	}
 
-	clone(): AnnouncedReader {
-		return new AnnouncedReader(this.prefix, this.#queue.clone());
+	/**
+	 * Creates a new instance of the reader using the same queue.
+	 * @returns A new AnnounceConsumer instance
+	 * @beta
+	 */
+	clone(): AnnouncedConsumer {
+		return new AnnouncedConsumer(this.prefix, this.#queue.clone());
 	}
 }

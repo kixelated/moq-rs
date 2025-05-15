@@ -2,13 +2,13 @@ import * as Moq from "@kixelated/moq";
 import { Frame } from "./frame";
 
 export class Reader {
-	#track: Moq.TrackReader;
+	#track: Moq.TrackConsumer;
 	#group?: Moq.GroupReader;
 
 	#nextGroup?: Promise<Moq.GroupReader | undefined>;
 	#nextFrame?: Promise<Frame | undefined>;
 
-	constructor(track: Moq.TrackReader) {
+	constructor(track: Moq.TrackConsumer) {
 		this.#track = track;
 		this.#nextGroup = track.nextGroup();
 	}
