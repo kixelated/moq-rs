@@ -1,10 +1,8 @@
 import { Connection } from "@kixelated/hang/connection";
-
-import { Broadcast } from "./broadcast";
-import { Vector } from "./vector";
-
 import { Signal, Signals, signal } from "@kixelated/hang/signals";
 import * as Watch from "@kixelated/hang/watch";
+import { Broadcast } from "./broadcast";
+import { Vector } from "./vector";
 
 const PADDING = 64;
 
@@ -76,10 +74,7 @@ export class Room {
 			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(window.devicePixelRatio);
 
 			if (this.#dragging) {
-				this.#dragging.targetPosition = Vector.create(
-					mouse.x / this.canvas.width,
-					mouse.y / this.canvas.height,
-				);
+				this.#dragging.targetPosition = Vector.create(mouse.x / this.canvas.width, mouse.y / this.canvas.height);
 			} else {
 				this.#hovering = this.#broadcastAt(mouse);
 				if (this.#hovering) {
@@ -126,9 +121,7 @@ export class Room {
 				let broadcast = this.#dragging;
 				if (!broadcast) {
 					const rect = this.canvas.getBoundingClientRect();
-					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(
-						window.devicePixelRatio,
-					);
+					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(window.devicePixelRatio);
 
 					broadcast = this.#broadcastAt(mouse);
 					if (!broadcast) return;

@@ -1,10 +1,9 @@
+import { Buffer } from "buffer";
 import { AnnouncedReader } from "./announced";
 import { BroadcastReader } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";
 import * as Wire from "./wire";
-
-import { Buffer } from "buffer";
 
 export class Connection {
 	// The URL of the connection.

@@ -1,8 +1,7 @@
-import { jsx } from "./jsx";
-import { Room } from "./room";
-
 import { Connection } from "@kixelated/hang/connection";
+import { jsx } from "./jsx";
 import { Me } from "./me";
+import { Room } from "./room";
 
 const RELAY = new URL("http://localhost:4443");
 

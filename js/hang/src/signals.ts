@@ -1,25 +1,18 @@
 // A wrapper around solid-js signals to provide a more ergonomic API.
 
 import {
-	Owner,
-	SignalOptions,
 	createEffect,
 	createRoot,
 	createSignal,
 	getOwner,
+	Owner,
 	onCleanup,
 	runWithOwner,
+	SignalOptions,
 	untrack,
 } from "solid-js";
-export { batch } from "solid-js";
 
-declare global {
-	interface ImportMeta {
-		env?: {
-			MODE: string;
-		};
-	}
-}
+export { batch } from "solid-js";
 
 export interface Signal<T> extends Derived<T> {
 	set(value: T | ((prev: T) => T)): void;
@@ -93,6 +86,7 @@ export class Signals {
 	#dispose: Dispose;
 	#owner: Owner;
 
+	// @ts-ignore depends on the bundler
 	static dev = import.meta.env?.MODE !== "production";
 
 	// Sanity check to make sure roots are being disposed on dev.

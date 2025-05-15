@@ -1,10 +1,8 @@
 import * as Moq from "@kixelated/moq";
-import * as Media from "../media";
-
-import { VideoTrackSettings } from "../util/settings";
-
 import { Buffer } from "buffer";
+import * as Media from "../media";
 import { Signal, Signals, signal } from "../signals";
+import { VideoTrackSettings } from "../util/settings";
 
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;

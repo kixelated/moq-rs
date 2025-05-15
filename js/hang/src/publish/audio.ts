@@ -1,7 +1,6 @@
-import { Frame } from "../media/frame";
-
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
+import { Frame } from "../media/frame";
 import { Signal, Signals, signal } from "../signals";
 import { AudioTrackSettings } from "../util/settings";
 

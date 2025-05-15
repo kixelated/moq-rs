@@ -15,8 +15,7 @@
 	"scripts": {
 		"build": "vite build && tsc -b && cp ../LICENSE* ./dist",
 		"dev": "vite --open",
-		"check": "tsc --noEmit && biome check",
-		"fix": "biome check --fix --unsafe"
+		"check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@kixelated/moq": "link:../moq",

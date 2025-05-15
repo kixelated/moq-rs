@@ -35,7 +35,7 @@ if (urlParams.size > 0) {
 
 	watch.setAttribute("href", `index.html?path=${path}&host=${host}&scheme=${scheme}`);
 } else {
-	watch.setAttribute("href", `index.html?path=demo/me`);
+	watch.setAttribute("href", "index.html?path=demo/me");
 }
 
 // Listen for connection status changes.

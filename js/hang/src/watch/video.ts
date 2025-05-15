@@ -1,9 +1,7 @@
-import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
-import * as Media from "../media";
-
-import { deepEqual } from "assert";
+import { Buffer } from "buffer";
 import { isEqual } from "lodash";
+import * as Media from "../media";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type VideoProps = {

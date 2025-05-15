@@ -23,11 +23,3 @@ export interface VideoTrackSettings {
 	resizeMode: "none" | "crop-and-scale";
 	width: number;
 }
-
-export function isAudioTrackSettings(settings: MediaTrackSettings): settings is AudioTrackSettings {
-	return "sampleRate" in settings;
-}
-
-export function isVideoTrackSettings(settings: MediaTrackSettings): settings is VideoTrackSettings {
-	return "width" in settings;
-}

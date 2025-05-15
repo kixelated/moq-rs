@@ -1,11 +1,3 @@
-declare global {
-	interface ImportMeta {
-		env?: {
-			MODE: string;
-		};
-	}
-}
-
 export class Deferred<T> {
 	promise: Promise<T>;
 	resolve!: (value: T | PromiseLike<T>) => void;
@@ -26,6 +18,7 @@ export class Deferred<T> {
 	}
 }
 
+// @ts-ignore depends on the bundler
 const dev = import.meta.env?.MODE !== "production";
 
 export class Watch<T> {

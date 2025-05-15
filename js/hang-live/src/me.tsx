@@ -1,7 +1,7 @@
 import { Connection } from "@kixelated/hang/connection";
 import * as Publish from "@kixelated/hang/publish";
 
-import { Signal, Signals, batch, signal } from "@kixelated/hang/signals";
+import { batch, Signal, Signals, signal } from "@kixelated/hang/signals";
 import { jsx } from "./jsx";
 
 export type MeProps = {
