@@ -47,11 +47,11 @@ export class Publish extends HTMLElement {
 		this.attachShadow({ mode: "open" }).append(style, slot);
 
 		this.#signals.effect(() => {
-			const media = this.broadcast.media.get();
+			const media = this.broadcast.video.media.get();
 			const preview = this.preview.get();
-			if (!preview) return;
+			if (!preview || !media) return;
 
-			preview.srcObject = media ?? null;
+			preview.srcObject = new MediaStream([ media ]) ?? null;
 			return () => {
 				preview.srcObject = null;
 			}
@@ -66,9 +66,9 @@ export class Publish extends HTMLElement {
 		} else if (name === "device") {
 			this.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {
-			this.broadcast.audio.enabled.set(newValue !== undefined);
+			this.broadcast.audio.constraints.set(newValue !== undefined);
 		} else if (name === "video") {
-			this.broadcast.video.enabled.set(newValue !== undefined);
+			this.broadcast.video.constraints.set(newValue !== undefined);
 		}
 	}
 }

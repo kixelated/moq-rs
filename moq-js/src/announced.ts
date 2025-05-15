@@ -35,7 +35,11 @@ export class AnnouncedWriter {
 	}
 
 	write(announcement: Announcement) {
-		this.#queue.update((announcements) => [...announcements, announcement]);
+		this.#queue.update((announcements) => {
+			announcements.push(announcement);
+			console.log("updated announcements", announcements);
+			return announcements;
+		});
 	}
 
 	abort(reason: Error) {
@@ -57,13 +61,14 @@ export class AnnouncedReader {
 	#queue: WatchConsumer<Announcement[]>;
 	#index = 0;
 
-	constructor(broadcast: string, queue: WatchConsumer<Announcement[]>) {
-		this.prefix = broadcast;
+	constructor(prefix: string, queue: WatchConsumer<Announcement[]>) {
+		this.prefix = prefix;
 		this.#queue = queue;
 	}
 
 	async next(): Promise<Announcement | undefined> {
 		const queue = await this.#queue.when((v) => v.length > this.#index);
+		console.log("next queue", queue);
 		return queue?.at(this.#index++);
 	}
 

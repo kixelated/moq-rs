@@ -9,14 +9,26 @@ import { Signal, Signals, signal } from "../signals"
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;
 
+export type VideoTrackConstraints = Omit<MediaTrackConstraints,
+  | "autoGainControl"
+  | "channelCount"
+  | "echoCancellation"
+  | "noiseSuppression"
+  | "sampleRate"
+  | "sampleSize"
+> & {
+	// TODO update @types/web
+	resizeMode?: "none" | "crop-and-scale";
+};
+
 export type VideoProps = {
 	media?: MediaStreamVideoTrack;
-	enabled?: boolean;
+	constraints?: VideoTrackConstraints | boolean;
 };
 
 export class Video {
 	readonly media: Signal<MediaStreamVideoTrack | undefined>;
-	readonly enabled: Signal<boolean>;
+	readonly constraints: Signal<VideoTrackConstraints | boolean | undefined>;
 
 	#catalog = signal<Media.Video | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -35,7 +47,7 @@ export class Video {
 
 	constructor(props?: VideoProps) {
 		this.media = signal(props?.media);
-		this.enabled = signal(props?.enabled ?? true);
+		this.constraints = signal(props?.constraints);
 
 		this.#signals.effect(() => this.#runTrack());
 		this.#signals.effect(() => this.#runEncoder());
@@ -56,9 +68,6 @@ export class Video {
 	}
 
 	#runEncoder() {
-		const enabled = this.enabled.get();
-		if (!enabled) return;
-
 		const media = this.media.get();
 		if (!media) return;
 
@@ -66,6 +75,7 @@ export class Video {
 		if (!track) return;
 
 		const settings = media.getSettings() as VideoTrackSettings;
+		console.log("settings:", settings);
 
 		const processor = new MediaStreamTrackProcessor({ track: media });
 		const reader = processor.readable.getReader();

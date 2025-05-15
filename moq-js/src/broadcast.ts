@@ -54,12 +54,16 @@ export class BroadcastWriter {
 	}
 
 	removeTrack(name: string) {
+		try {
 		this.#state.update((state) => {
 			const track = state.tracks.get(name);
 			track?.close();
 			state.tracks.delete(name);
 			return state;
 		});
+	} catch {
+		// We don't care if we try to remove when closed
+	}
 	}
 
 	unknownTrack(fn?: (track: Track) => void) {

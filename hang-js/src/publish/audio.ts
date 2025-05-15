@@ -8,14 +8,24 @@ import { Signal, Signals, signal } from "../signals"
 // Create a group every half a second
 const GOP_DURATION = 0.5;
 
+export type AudioTrackConstraints = Omit<MediaTrackConstraints,
+  | "aspectRatio"
+  | "backgroundBlur"
+  | "displaySurface"
+  | "facingMode"
+  | "frameRate"
+  | "height"
+  | "width"
+>;
+
 export type AudioProps = {
 	media?: MediaStreamAudioTrack;
-	enabled?: boolean;
+	constraints?: AudioTrackConstraints | boolean;
 };
 
 export class Audio {
 	readonly media: Signal<MediaStreamAudioTrack | undefined>;
-	readonly enabled: Signal<boolean>;
+	readonly constraints: Signal<AudioTrackConstraints | boolean | undefined>;
 
 	#catalog = signal<Media.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -31,7 +41,7 @@ export class Audio {
 
 	constructor(props?: AudioProps) {
 		this.media = signal(props?.media);
-		this.enabled = signal(props?.enabled ?? true);
+		this.constraints = signal(props?.constraints);
 
 		this.#signals.effect(() => this.#runCatalog());
 		this.#signals.effect(() => this.#runEncoder());
@@ -68,9 +78,6 @@ export class Audio {
 	}
 
 	#runEncoder() {
-		const enabled = this.enabled.get();
-		if (!enabled) return;
-
 		const media = this.media.get();
 		if (!media) return;
 

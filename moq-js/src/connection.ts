@@ -112,6 +112,10 @@ export class Connection {
 	}
 
 	consume(broadcast: string): BroadcastReader {
+		// To avoid downloading the a broadcast we're publishing, check the publisher first.
+		const publisher = this.#publisher.consume(broadcast);
+		if (publisher) return publisher;
+
 		return this.#subscriber.consume(broadcast);
 	}
 

@@ -19,6 +19,10 @@ export class Publisher {
 		this.#quic = quic;
 	}
 
+	consume(broadcast: string): BroadcastReader | undefined {
+		return this.#broadcasts.get(broadcast)?.clone();
+	}
+
 	// Publish a broadcast with any associated tracks.
 	publish(broadcast: BroadcastReader) {
 		this.#broadcasts.set(broadcast.path, broadcast);
@@ -29,9 +33,10 @@ export class Publisher {
 					broadcast: broadcast.path,
 					active: true,
 				});
+
 				console.debug(`announce: broadcast=${broadcast.path} active=true`);
 
-				// TODO wait until the broadcast is closed, then remove it from the lookup.
+				// Wait until the broadcast is closed, then remove it from the lookup.
 				await broadcast.closed();
 			} finally {
 				console.debug(`announce: broadcast=${broadcast.path} active=false`);
@@ -50,11 +55,17 @@ export class Publisher {
 
 		for (;;) {
 			const announcement = await reader.next();
+			console.log("next announce", announcement);
 			if (!announcement) break;
 
 			if (announcement.broadcast.startsWith(msg.prefix)) {
-				const wire = new Wire.Announce(announcement.broadcast.slice(msg.prefix.length), announcement.active);
+				console.log("encoding", announcement);
+
+				const suffix = announcement.broadcast.slice(msg.prefix.length);
+				const wire = new Wire.Announce(suffix, announcement.active);
 				await wire.encode(stream.writer);
+			} else {
+				console.log("skipping");
 			}
 		}
 	}

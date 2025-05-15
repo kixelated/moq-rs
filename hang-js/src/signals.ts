@@ -1,6 +1,7 @@
 // A wrapper around solid-js signals to provide a more ergonomic API.
 
 import { createEffect, createRoot, createSignal, untrack, getOwner, Owner, runWithOwner, onCleanup } from "solid-js";
+export { batch } from "solid-js"
 
 declare global {
 	interface ImportMeta {

@@ -2,7 +2,7 @@ import * as Publish from "@kixelated/hang/publish";
 import { Connection } from "@kixelated/hang/connection";
 
 import { jsx } from "./jsx";
-import { Signal, signal, Signals } from "@kixelated/hang/signals"
+import { batch, Signal, signal, Signals } from "@kixelated/hang/signals"
 
 export type MeProps = {
 	connection: Connection;
@@ -53,7 +53,7 @@ export class Me extends HTMLElement {
 		};
 
 		this.#camera = new Publish.Broadcast({ connection: this.connection, device: "camera", video: false, audio: false});
-		this.#cameraVolume = new Volume(this.#camera);
+		this.#cameraVolume = new Volume(this.#camera.audio);
 		const cameraButton = (
 			<button type="button" css={button}>
 				📷
@@ -61,7 +61,15 @@ export class Me extends HTMLElement {
 		);
 
 		cameraButton.addEventListener("click", () => {
-			this.#camera.video.enabled.set(!this.#camera.video.enabled.peek());
+			const video: Publish.VideoTrackConstraints | undefined = this.#camera.video.constraints.peek() ? undefined : {
+						// 480p but square, so the browser can choose the best aspect ratio.
+						width: { ideal: 640 },
+						height: { ideal: 640},
+						frameRate: { ideal: 60},
+						facingMode: { ideal: "user" },
+						resizeMode: "none",
+					};
+			this.#camera.video.constraints.set(video);
 		});
 
 		this.#signals.effect(() => {
@@ -75,17 +83,26 @@ export class Me extends HTMLElement {
 		);
 
 		this.#signals.effect(() => {
-			const media = this.#camera.media.get();
-			microphoneButton.style.borderColor = media?.getAudioTracks().length ? "white" : "transparent";
-			cameraButton.style.borderColor = media?.getVideoTracks().length ? "white" : "transparent";
+			const video = this.#camera.video.media.get();
+			const audio = this.#camera.audio.media.get();
+
+			microphoneButton.style.borderColor = audio ? "white" : "transparent";
+			cameraButton.style.borderColor = video ? "white" : "transparent";
 		});
 
 		microphoneButton.addEventListener("click", () => {
-			this.#camera.audio.enabled.set(!this.#camera.audio.enabled.peek());
+			const audio = this.#camera.audio.constraints.peek() ? undefined : {
+						channelCount: { ideal: 2, max: 2 },
+						echoCancellation: { ideal: true },
+						autoGainControl: { ideal: true },
+						noiseCancellation: { ideal: true },
+					};
+			this.#camera.audio.constraints.set(audio);
 		});
 
-		this.#screen = new Publish.Broadcast({ connection: this.connection, device: "screen", enabled: false });
-		this.#screenVolume = new Volume(this.#screen);
+		this.#screen = new Publish.Broadcast({ connection: this.connection, device: "screen", publish: false,
+		 });
+		this.#screenVolume = new Volume(this.#screen.audio);
 		this.#signals.effect(() => {
 			let screenPath = path.get();
 			if (screenPath) {
@@ -99,9 +116,25 @@ export class Me extends HTMLElement {
 				{this.#screenVolume.dom}🖥️
 			</button>
 		);
+
 		screenButton.addEventListener("click", () => {
-			this.#screen.enabled.set(!this.#screen.enabled.peek());
-			screenButton.style.borderColor = this.#screen.enabled.peek() ? "white" : "transparent";
+			// We need to batch otherwise we'll request the device twice.
+			batch(() => {
+				this.#screen.video.constraints.set(this.#screen.video.constraints.peek() ? undefined :{
+					frameRate: { ideal: 60 },
+					resizeMode: "none",
+				});
+				this.#screen.audio.constraints.set(this.#screen.audio.constraints.peek() ? undefined : {
+					channelCount: { ideal: 2, max: 2 },
+				});
+			});
+
+			screenButton.style.borderColor = this.#screen.video.constraints.peek() ? "white" : "transparent";
+		});
+
+		this.#signals.effect(() =>{
+			// Publish only once we have at least one active track.
+			this.#screen.publish.set(!!this.#screen.video.media.get() || !!this.#screen.audio.media.get());
 		});
 
 		const chat = <input type="text" placeholder="Type a message..." css={control} />;
@@ -146,14 +179,14 @@ customElements.define("hang-me", Me);
 
 // Renders a volume meter.
 class Volume {
-	broadcast: Publish.Broadcast;
+	audio: Publish.Audio;
 	dom: HTMLDivElement;
 
 	#animation?: number;
 	#signals = new Signals();
 
-	constructor(broadcast: Publish.Broadcast) {
-		this.broadcast = broadcast;
+	constructor(audio: Publish.Audio) {
+		this.audio = audio;
 		this.dom = (
 			<div
 				css={{
@@ -171,13 +204,12 @@ class Volume {
 	}
 
 	#onMedia() {
-		const media = this.broadcast.media.get();
+		const audio = this.audio.media.get();
 
 		this.dom.style.backgroundColor = "transparent";
 		this.dom.style.top = "100%";
 
-		const audio = media?.getAudioTracks().at(0);
-		if (!media || !audio) {
+		if (!audio) {
 			return;
 		}
 
@@ -190,7 +222,7 @@ class Volume {
 			fftSize: 4096,
 		});
 
-		const source = context.createMediaStreamSource(media);
+		const source = context.createMediaStreamSource(new MediaStream([audio]));
 		source.connect(analyzer);
 
 		// Create a buffer that we will reuse

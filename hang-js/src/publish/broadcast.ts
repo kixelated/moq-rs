@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
-import { Audio } from "./audio";
-import { Video } from "./video";
+import { Audio, AudioTrackConstraints } from "./audio";
+import { Video, VideoTrackConstraints } from "./video";
 import { Connection } from "../connection"
 import { Signals, Signal, signal, Derived } from "../signals"
 
@@ -9,10 +9,10 @@ export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
 	connection: Connection;
-	enabled?: boolean;
+	publish?: boolean;
 	path?: string;
-	audio?: boolean;
-	video?: boolean;
+	audio?: AudioTrackConstraints | boolean;
+	video?: VideoTrackConstraints | boolean;
 	device?: Device;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
@@ -21,11 +21,11 @@ export type BroadcastProps = {
 
 export class Broadcast {
 	connection: Connection;
-	enabled: Signal<boolean>;
+	publish: Signal<boolean>;
 	path: Signal<string | undefined>;
 
-	#media = signal<MediaStream | undefined>(undefined);
-	media = this.#media.readonly();
+	//#media = signal<MediaStream | undefined>(undefined);
+	//media = this.#media.readonly();
 
 	audio: Audio;
 	video: Video;
@@ -38,22 +38,28 @@ export class Broadcast {
 
 	constructor(props: BroadcastProps) {
 		this.connection = props.connection;
-		this.enabled = signal(props.enabled ?? true);
+		this.publish = signal(props.publish ?? true);
 		this.path = signal(props.path);
-		this.audio = new Audio({ enabled: props.audio});
-		this.video = new Video({ enabled: props.video});
+		this.audio = new Audio({ constraints: props.audio});
+		this.video = new Video({ constraints: props.video});
 		this.device = signal(props.device);
 
 		this.#signals.effect(() => {
+			if (!this.publish.get()) return;
+
 			const name = this.path.get();
 			if (!name) return;
 
-			if (!this.enabled.get()) return;
+			const connection = this.connection.established.get();
+			if (!connection) return;
 
 			const broadcast = new Moq.Broadcast(name);
 			broadcast.writer.insertTrack(this.#catalog.reader.clone());
 
 			this.#broadcast.set(broadcast);
+
+			// Publish the broadcast to the connection.
+			connection.publish(broadcast.reader.clone());
 
 			return () => {
 				broadcast.close();
@@ -65,22 +71,10 @@ export class Broadcast {
 			const broadcast = this.#broadcast.get();
 			if (!broadcast) return;
 
-			const connection = this.connection.established.get();
-			if (!connection) return;
-
-			// Publish the broadcast to the connection.
-			connection.publish(broadcast.reader.clone());
-		});
-
-		this.#signals.effect(() => {
-			const broadcast = this.#broadcast.get();
-			if (!broadcast) return;
-
 			const track = this.video.track.get();
 			if (!track) return;
 
 			broadcast.writer.insertTrack(track.reader.clone());
-
 			return () => {
 				broadcast.writer.removeTrack(track.name);
 			}
@@ -99,74 +93,75 @@ export class Broadcast {
 			}
 		});
 
-		this.#signals.effect(() => this.#promptUser());
-		this.#signals.effect(() => {
-			this.audio.media.set(this.media.get()?.getAudioTracks().at(0));
-			this.video.media.set(this.media.get()?.getVideoTracks().at(0));
-		});
+		// These are separate effects because the camera audio/video constraints can be independent.
+		// The screen constraints are needed at the same time.
+		this.#signals.effect(() => this.#runCameraAudio());
+		this.#signals.effect(() => this.#runCameraVideo());
+		this.#signals.effect(() => this.#runScreen());
 
 		this.catalog = this.#signals.derived(() => this.#runCatalog());
 	}
 
-	#promptUser() {
+	#runCameraAudio() {
 		const device = this.device.get();
-		if (!device) return;
+		if (device !== "camera") return;
 
-		if (!this.enabled.get()) return;
+		const audio = this.audio.constraints.get();
+		if (!audio) return;
 
-		const videoEnabled = this.video.enabled.get();
-		const audioEnabled = this.audio.enabled.get();
-		if (!videoEnabled && !audioEnabled) return;
+		const media = navigator.mediaDevices.getUserMedia({ audio });
 
-		let media: Promise<MediaStream>;
+		media.then((media) => {
+			this.audio.media.set(media.getAudioTracks().at(0));
+		}).catch((err) => {
+			console.error("failed to get media", err);
+		});
 
-		if (device === "camera") {
-			const video = videoEnabled
-				? {
-						//aspectRatio: { ideal: 16 / 9 },
-						width: { ideal: 1280, max: 1920 },
-						height: { ideal: 720, max: 1080 },
-						frameRate: { ideal: 60, max: 60 },
-						facingMode: { ideal: "user" },
-					}
-				: undefined;
+		return () => {
+			this.audio.media.set((prev) => {
+				prev?.stop();
+				return undefined;
+			});
+		}
+	}
 
-			const audio = audioEnabled
-				? {
-						channelCount: { ideal: 2, max: 2 },
-						echoCancellation: { ideal: true },
-						autoGainControl: { ideal: true },
-						noiseCancellation: { ideal: true },
-					}
-				: undefined;
+	#runCameraVideo() {
+		const device = this.device.get();
+		if (device !== "camera") return;
 
-			media = navigator.mediaDevices.getUserMedia({ video, audio });
-		} else if (device === "screen") {
-			const video = videoEnabled
-				? {
-						frameRate: { ideal: 60, max: 60 },
-						preferCurrentTab: false,
-						selfBrowserSurface: "exclude",
-						surfaceSwitching: "include",
-						systemAudio: "include",
-						resizeMode: "none",
-					}
-				: undefined;
+		const video = this.video.constraints.get();
+		if (!video) return;
 
-			const audio = audioEnabled
-				? {
-						channelCount: { ideal: 2, max: 2 },
-						echoCancellation: false,
-						autoGainControl: false,
-						noiseCancellation: false,
-					}
-				: undefined;
+		const media = navigator.mediaDevices.getUserMedia({ video });
 
+		media.then((media) => {
+			this.video.media.set(media.getVideoTracks().at(0));
+		}).catch((err) => {
+			console.error("failed to get media", err);
+		});
+
+		return () => {
+			this.video.media.set((prev) => {
+				prev?.stop();
+				return undefined;
+			});
+		}
+	}
+
+	#runScreen() {
+		const device = this.device.get();
+		if (device !== "screen") return;
+
+		const audio = this.audio.constraints.get();
+		const video = this.video.constraints.get();
+		if (!audio && !video) return;
+
+			// TODO Expose these to the application.
 			// @ts-ignore new API
 			const controller = new CaptureController();
 			controller.setFocusBehavior("no-focus-change");
 
-			media = navigator.mediaDevices.getDisplayMedia({
+			const media = navigator.mediaDevices.getDisplayMedia({
 				video,
 				audio,
 				// @ts-ignore new API
@@ -177,19 +172,23 @@ export class Broadcast {
 				// TODO We should try to get system audio, but need to be careful about feedback.
 				// systemAudio: "exclude",
 			});
-		} else {
-			throw new Error("Invalid device");
-		}
+
 
 		media.then((media) => {
-			this.#media.set(media);
+			this.video.media.set(media.getVideoTracks().at(0));
+			this.audio.media.set(media.getAudioTracks().at(0));
 		}).catch((err) => {
 			console.error("failed to get media", err);
 		});
 
 		return () => {
-			this.#media.set((prev) => {
-				prev?.getTracks().forEach((track) => track.stop());
+			this.video.media.set((prev) => {
+				prev?.stop();
+				return undefined;
+			});
+
+			this.audio.media.set((prev) => {
+				prev?.stop();
 				return undefined;
 			});
 		}
@@ -216,8 +215,6 @@ export class Broadcast {
 		const catalogGroup = this.#catalog.writer.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
-
-		console.debug("published catalog", catalog);
 
 		return catalog;
 	}

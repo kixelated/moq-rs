@@ -40,7 +40,7 @@ export class Subscriber {
 					const broadcast = prefix.concat(announce.suffix);
 
 					console.debug(`announced: broadcast=${broadcast} active=${announce.active}`);
-					await writer.write({ broadcast, active: announce.active });
+					writer.write({ broadcast, active: announce.active });
 
 					// Just for logging
 					if (announce.active) {

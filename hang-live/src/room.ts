@@ -231,6 +231,8 @@ export class Room {
 	}
 
 	#stopBroadcast(path: string) {
+		console.log("stopping broadcast", path);
+		console.log(this.#broadcasts);
 		const broadcast = this.#broadcasts.get(path);
 
 		// TODO Fix the relay so it doesn't do this.
@@ -402,7 +404,7 @@ export class Room {
 		}
 
 		const fillRatio = broadcastArea / canvasArea;
-		const targetFill = 0.5;
+		const targetFill = 0.25;
 
 		this.#scale = Math.sqrt(targetFill / fillRatio);
 	}

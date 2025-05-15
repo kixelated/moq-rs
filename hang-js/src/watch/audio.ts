@@ -82,7 +82,7 @@ export class Audio {
 
 	close() {
 		this.#signals.close();
-		this.#writer.close();
+		this.#writer.close().catch(() => void 0);
 	}
 }
 
