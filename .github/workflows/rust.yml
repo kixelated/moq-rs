@@ -1,4 +1,4 @@
-name: Rust CI
+name: Rust
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ env:
 
 jobs:
   check:
-    name: Rust Check
+    name: Check
     runs-on: ubuntu-latest
 
     defaults:

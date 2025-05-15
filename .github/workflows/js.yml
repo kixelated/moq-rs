@@ -1,4 +1,4 @@
-name: Javascript CI
+name: Javascript
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ env:
 
 jobs:
   check:
-    name: Javascript Check
+    name: Check
     runs-on: ubuntu-latest
 
     defaults:
@@ -21,6 +21,9 @@ jobs:
 
       # Install Just to run CI scripts
       - uses: extractions/setup-just@v3
+
+      # Install pnpm
+      - uses: pnpm/action-setup@v4
 
       # Install Node
       - uses: actions/setup-node@v4
