@@ -18,10 +18,11 @@ export class Decoder {
 			if (this.#nextGroup && this.#nextFrame) {
 				// Figure out if nextFrame or nextGroup wins the race.
 				// TODO support variable latency
-				const next: { frame: Frame | undefined } | { group: Moq.GroupConsumer | undefined } = await Promise.race([
-					this.#nextFrame.then((frame) => ({ frame })),
-					this.#nextGroup.then((group) => ({ group })),
-				]);
+				const next: { frame: Frame | undefined } | { group: Moq.GroupConsumer | undefined } =
+					await Promise.race([
+						this.#nextFrame.then((frame) => ({ frame })),
+						this.#nextGroup.then((group) => ({ group })),
+					]);
 
 				if ("frame" in next) {
 					const frame = next.frame;

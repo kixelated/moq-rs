@@ -16,7 +16,7 @@ check:
 	pnpm -r i
 
 	# Format the JS packages
-	pnpm exec biome check
+	pnpm -r exec biome check --config-path ../../biome.jsonc --vcs-root ../../ --vcs-use-ignore-file=true
 
 	# Make sure Typescript compiles
 	pnpm -r run check
@@ -33,7 +33,7 @@ fix:
 	pnpm -r i
 
 	# Format and lint
-	pnpm exec biome check --fix
+	pnpm -r exec biome check --fix --config-path ../../biome.jsonc --vcs-root ../../ --vcs-use-ignore-file=true
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix

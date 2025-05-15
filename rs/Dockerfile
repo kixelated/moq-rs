@@ -23,10 +23,6 @@ RUN apt-get update && apt-get install -y ca-certificates curl build-essential no
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install -f wasm-bindgen-cli
 
-# Install node dependencies
-COPY package.json package-lock.json ./
-RUN npm ci
-
 # Copy the rest
 COPY . ./
 
