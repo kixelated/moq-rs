@@ -207,7 +207,16 @@ export class AudioEmitter {
 		}
 
 		// Determine when the sample should be played in AudioContext units.
-		const when = timestamp - this.#ref;
+		let when = timestamp - this.#ref;
+
+		// Don't play samples in the past u nerd.
+		// TODO This indicates a bug in the latency calculation TBH.
+		if (when < 0) {
+			this.#ref = timestamp;
+			when = 0;
+		}
+
+
 		const latency = when - context.root.currentTime;
 
 		if (latency > maxLatency) {

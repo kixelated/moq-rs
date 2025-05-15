@@ -204,11 +204,9 @@ impl Session {
 			match announced {
 				Announced::Start(broadcast) => {
 					let broadcast = self.consume(&broadcast);
-					tracing::debug!(broadcast = %broadcast.info.path, "publish");
 					origin.publish(broadcast);
 				}
 				Announced::End(broadcast) => {
-					tracing::debug!(broadcast = %broadcast.path, "unpublish");
 					origin.unpublish(&broadcast);
 				}
 			}
@@ -223,12 +221,10 @@ impl Session {
 			match announced {
 				Announced::Start(broadcast) => {
 					if let Some(upstream) = origin.consume(&broadcast) {
-						tracing::debug!(broadcast = %broadcast.path, "consume");
 						self.publish(upstream);
 					}
 				}
 				Announced::End(broadcast) => {
-					tracing::debug!(broadcast = %broadcast.path, "unconsume");
 					self.unpublish(&broadcast);
 				}
 			}

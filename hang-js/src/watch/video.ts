@@ -3,6 +3,8 @@ import * as Moq from "@kixelated/moq";
 import * as Media from "../media";
 
 import { Signal, signal, Derived, Signals } from "../signals";
+import { deepEqual } from "assert"
+import { isEqual } from "lodash"
 
 export type VideoProps = {
 	broadcast?: Moq.BroadcastReader;
@@ -37,7 +39,9 @@ export class Video {
 		this.enabled = signal(props?.enabled ?? false);
 		this.latency = signal(props?.latency ?? 50);
 
-		this.selected = this.#signals.derived(() => this.tracks.get().at(0));
+		this.selected = this.#signals.derived(() => this.tracks.get().at(0), {
+			equals: (a, b) => isEqual(a, b),
+		});
 		this.#signals.effect(() => this.#init());
 
 		// Update the ref when the latency changes.

@@ -12,9 +12,7 @@ export class HangLive extends HTMLElement {
 
 		const canvas = (
 			<canvas
-				width={window.innerWidth}
-				height={window.innerHeight}
-				css={{ display: "block", backgroundColor: "#000" }}
+				css={{ display: "block", backgroundColor: "#000", width: "100%", height: "100%" }}
 			/>
 		) as HTMLCanvasElement;
 		const connection = new Connection({ url: RELAY });
@@ -24,14 +22,15 @@ export class HangLive extends HTMLElement {
 
 		// Register any window/document level events.
 		const resize = () => {
-			canvas.width = window.innerWidth;
-			canvas.height = window.innerHeight;
+			canvas.width = window.devicePixelRatio * window.innerWidth;
+			canvas.height = window.devicePixelRatio * window.innerHeight;
 		};
 
 		const visible = () => {
 			room.visible = document.visibilityState !== "hidden";
 		};
 
+		resize();
 		visible();
 
 		window.addEventListener("resize", resize);

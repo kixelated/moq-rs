@@ -62,7 +62,14 @@ export class TrackWriter {
 	}
 
 	close() {
-		this.#latest.close();
+		try {
+		this.#latest.update((latest) => {
+			latest?.close();
+				return null;
+			});
+
+			this.#latest.close();
+		} catch {}
 	}
 
 	async closed(): Promise<void> {
@@ -70,7 +77,14 @@ export class TrackWriter {
 	}
 
 	abort(reason: Error) {
-		this.#latest.abort(reason);
+		try {
+			this.#latest.update((latest) => {
+				latest?.close();
+				return null;
+			});
+			this.#latest.abort(reason);
+		} catch {}
+
 	}
 }
 

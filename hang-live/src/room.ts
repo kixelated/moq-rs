@@ -23,6 +23,9 @@ export class Room {
 	// We use the insertion order to determine the z-index.
 	#broadcasts = new Map<string, Broadcast>();
 
+	// The broadcasts that have been closed and are fading away.
+	#rip: Broadcast[] = [];
+
 	canvas: HTMLCanvasElement;
 	path: Signal<string | undefined>;
 
@@ -53,7 +56,7 @@ export class Room {
 
 		this.canvas.addEventListener("mousedown", (e) => {
 			const rect = this.canvas.getBoundingClientRect();
-			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(window.devicePixelRatio);
 
 			this.#dragging = this.#broadcastAt(mouse);
 			if (!this.#dragging) return;
@@ -70,11 +73,11 @@ export class Room {
 
 		this.canvas.addEventListener("mousemove", (e) => {
 			const rect = this.canvas.getBoundingClientRect();
-			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+			const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(window.devicePixelRatio);
 
 			if (this.#dragging) {
 				this.#dragging.targetPosition = Vector.create(
-					mouse.x / this.canvas.width,
+					mouse.x / this.canvas.width ,
 					mouse.y / this.canvas.height,
 				);
 			} else {
@@ -123,7 +126,7 @@ export class Room {
 				let broadcast = this.#dragging;
 				if (!broadcast) {
 					const rect = this.canvas.getBoundingClientRect();
-					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top);
+					const mouse = Vector.create(e.clientX - rect.left, e.clientY - rect.top).mult(window.devicePixelRatio);
 
 					broadcast = this.#broadcastAt(mouse);
 					if (!broadcast) return;
@@ -234,15 +237,50 @@ export class Room {
 		const broadcast = this.#broadcasts.get(path);
 
 		// TODO Fix the relay so it doesn't do this.
-		if (!broadcast) return; //throw new Error(`Broadcast not found: ${path}`);
+		if (!broadcast) {
+			console.warn(`Broadcast not found: ${path}`);
+			return;
+		}
 
-		broadcast.close();
 		this.#broadcasts.delete(path);
+		this.#rip.push(broadcast);
+
+		// Follow the unit vector of the target position and go outside the screen.
+		const half = Vector.create(0.5, 0.5);
+		broadcast.targetPosition = broadcast.targetPosition.sub(half).normalize().mult(2).add(half);
+
+		setTimeout(() => {
+			this.#rip.shift();
+		}, 1000);
 	}
 
 	#tick(now: DOMHighResTimeStamp) {
 		this.#updateScale();
 
+		// Move the rip broadcasts but disable collisions.
+		for (const broadcast of this.#rip) {
+			broadcast.scale += (broadcast.targetScale - broadcast.scale) * 0.1;
+			const targetSize = broadcast.targetSize.mult(broadcast.scale * this.#scale);
+
+			// Slowly move from the actual size to the target size
+			broadcast.bounds.size.x += (targetSize.x - broadcast.bounds.size.x) * 0.1;
+			broadcast.bounds.size.y += (targetSize.y - broadcast.bounds.size.y) * 0.1;
+
+			// Slowly slow down the velocity.
+			broadcast.velocity = broadcast.velocity.mult(0.5);
+
+			// Guide the body towards the target position with a bit of force.
+			const target = Vector.create(
+				broadcast.targetPosition.x * this.canvas.width,
+				broadcast.targetPosition.y * this.canvas.height,
+			);
+
+			const middle = broadcast.bounds.middle();
+			const force = target.sub(middle);
+			broadcast.velocity = broadcast.velocity.add(force);
+		}
+
+		// Now move the broadcasts that are not rip.
 		const broadcasts = Array.from(this.#broadcasts.values());
 
 		for (const broadcast of broadcasts) {
@@ -292,7 +330,7 @@ export class Room {
 			} else if (bottom > this.canvas.height) {
 				broadcast.velocity.y += this.canvas.height - bottom;
 			}
-				*/
+			*/
 		}
 
 		// Loop over again, this time checking for collisions.
@@ -368,9 +406,16 @@ export class Room {
 	#render(now: DOMHighResTimeStamp) {
 		this.#ctx.clearRect(0, 0, this.#ctx.canvas.width, this.#ctx.canvas.height);
 
+
 		for (const broadcast of this.#broadcasts.values()) {
 			this.#ctx.save();
 			broadcast.renderAudio(this.#ctx, now);
+			this.#ctx.restore();
+		}
+
+		for (const broadcast of this.#rip) {
+			this.#ctx.save();
+			broadcast.renderVideo(this.#ctx, now);
 			this.#ctx.restore();
 		}
 
@@ -394,9 +439,9 @@ export class Room {
 	}
 
 	#updateScale() {
-		const canvasArea = this.canvas.width * this.canvas.height;
-		let broadcastArea = 0;
+		const canvasArea = this.canvas.width * this.canvas.height
 
+		let broadcastArea = 0;
 		for (const broadcast of this.#broadcasts.values()) {
 			broadcastArea += broadcast.targetSize.x * broadcast.targetSize.y;
 		}

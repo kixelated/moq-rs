@@ -119,8 +119,10 @@ export class Video {
 			this.#encoderConfig.set(config);
 
 			while (frame) {
-				const keyFrame = this.#groupTimestamp + GOP_DURATION_US < frame.timestamp || undefined;
-				this.#groupTimestamp = frame.timestamp;
+				const keyFrame = this.#groupTimestamp + GOP_DURATION_US < frame.timestamp;
+				if (keyFrame) {
+					this.#groupTimestamp = frame.timestamp;
+				}
 
 				encoder.encode(frame, { keyFrame });
 				frame.close();

@@ -130,17 +130,16 @@ export class Broadcast {
 	renderVideo(
 		ctx: CanvasRenderingContext2D,
 		now: DOMHighResTimeStamp,
-		modifiers: { dragging?: boolean; hovering?: boolean },
+		modifiers?: { dragging?: boolean; hovering?: boolean },
 	) {
 		const bounds = this.bounds;
+		ctx.save();
 
 		ctx.translate(bounds.position.x, bounds.position.y);
 		ctx.fillStyle = "#000";
 
-		ctx.save();
-
 		// Create a rounded rectangle path
-		const radius = 8;
+		const radius = 8 * this.scale;
 		const w = bounds.size.x;
 		const h = bounds.size.y;
 
@@ -160,7 +159,7 @@ export class Broadcast {
 		ctx.clip();
 
 			// Apply an opacity to the image.
-		if (modifiers.dragging) {
+		if (modifiers?.dragging) {
 			ctx.globalAlpha = 0.7;
 		}
 
@@ -172,7 +171,7 @@ export class Broadcast {
 			this.fade = Math.min(this.fade + 0.05, 1);
 		} else {
 			this.targetSize = Vector.create(128, 128);
-			this.fade = Math.max(this.fade - 0.05, 0);
+			this.fade = Math.max(this.fade - 0.01, 0);
 		}
 
 		if (closest) {
@@ -180,16 +179,17 @@ export class Broadcast {
 			ctx.globalAlpha *= this.fade;
 
 			// Compute grayscale level based on how late the frame is.
-			const lag = Math.min(Math.max((closest.lag - 1000) / (5000 - 1000), 0), 1);
+			const lag = Math.min(Math.max((closest.lag - 2000) / (5000 - 2000), 0), 1);
 			if (lag > 0) {
 				ctx.filter = `grayscale(${lag})`;
 			}
 
+			ctx.imageSmoothingEnabled = true;
 			ctx.drawImage(closest.frame, 0, 0, bounds.size.x, bounds.size.y);
 			ctx.restore();
 
 			if (lag > 0) {
-				const spinnerSize = 32;
+				const spinnerSize = 32 * this.scale;
 				const spinnerX = bounds.size.x / 2 - spinnerSize / 2;
 				const spinnerY = bounds.size.y / 2 - spinnerSize / 2;
 				const angle = (now % 1000) / 1000 * 2 * Math.PI;
@@ -200,7 +200,7 @@ export class Broadcast {
 
 				ctx.beginPath();
 				ctx.arc(0, 0, spinnerSize / 2 - 2, 0, Math.PI * 1.5); // crude 3/4 arc
-				ctx.lineWidth = 4;
+				ctx.lineWidth = 4 * this.scale;
 				ctx.strokeStyle = `hsla(290, 80%, 40%, ${lag})`;
 				ctx.stroke();
 
@@ -215,37 +215,39 @@ export class Broadcast {
 			ctx.restore();
 		}
 
-		if (modifiers.hovering) {
-			/*
-			this.#ctx.lineWidth = 2;
-			this.#ctx.strokeStyle = "white";
-			this.#ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
-			*/
-		}
+		//if (modifiers.hovering) {
+		//ctx.lineWidth = 2 * this.scale;
+		//ctx.strokeStyle = "white";
+		//ctx.strokeRect(0, 0, bounds.size.x, bounds.size.y);
+		//}
 
-		ctx.font = "12px sans-serif";
-		ctx.lineWidth = 3;
+		ctx.font = `${24 * this.scale}px sans-serif`;
+		ctx.lineWidth = 3 * this.scale;
 		ctx.strokeStyle = "black";
-		ctx.strokeText(this.name, 6, 16);
+		ctx.strokeText(this.name, 12 * this.scale, 32* this.scale);
 
 		ctx.fillStyle = "white";
-		ctx.fillText(this.name, 6, 16);
+		ctx.fillText(this.name, 12 * this.scale, 32* this.scale);
 
 		ctx.restore();
 
 		// Draw target for debugging
 		/*
-		this.#ctx.beginPath();
-		this.#ctx.arc(
-			broadcast.targetPosition.x * this.#ctx.canvas.width,
-			broadcast.targetPosition.y * this.#ctx.canvas.height,
-			4,
+		ctx.beginPath();
+		ctx.arc(
+			this.targetPosition.x * ctx.canvas.width,
+			this.targetPosition.y * ctx.canvas.height,
+			4 * this.scale,
 			0,
 			2 * Math.PI,
 		);
-		this.#ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
-		this.#ctx.fill();
+		ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+		ctx.fill();
 		*/
+	}
+
+	rip() {
+		this.targetPosition = Vector.create(Math.random(), Math.random());
 	}
 
 	close() {
@@ -253,5 +255,6 @@ export class Broadcast {
 		this.watch.close();
 		this.video.close();
 		this.audio.close();
+		this.audioEmitter.close();
 	}
 }

@@ -39,6 +39,8 @@ export class Publisher {
 				// Wait until the broadcast is closed, then remove it from the lookup.
 				await broadcast.closed();
 			} finally {
+				broadcast.close();
+
 				console.debug(`announce: broadcast=${broadcast.path} active=false`);
 				this.#broadcasts.delete(broadcast.path);
 
