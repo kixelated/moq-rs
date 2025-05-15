@@ -1,5 +1,5 @@
 <p align="center">
-	<img height="128px" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg" alt="Media over QUIC">
+	<img height="128px" src="https://github.com/kixelated/moq/blob/main/.github/logo.svg" alt="Media over QUIC">
 </p>
 
 Media over QUIC (MoQ) is a live (media) delivery protocol utilizing QUIC.
@@ -62,13 +62,23 @@ They have a similar API but of course there are language differences.
 - [hang](rs/hang): Media-specific components built on top of MoQ.
 - [hang-cli](rs/hang-cli): A CLI for publishing and subscribing to media.
 - [hang-gst](rs/hang-gst): A gstreamer plugin for publishing and subscribing to media.
-- [hang-web](rs/hang-wasm): A web client written in Rust and using WASM.
-- [web-transport](https://github.com/kixelated/web-transport-rs): A Rust implementation of the WebTransport API powered by [Quinn](https://github.com/quinn-rs/quinn) (or WASM).
+- [hang-wasm](rs/hang-wasm): A web client written in Rust and using WASM. (*unmaintained*)
+- [web-transport](https://github.com/kixelated/web-transport-rs): A Rust implementation of the WebTransport API powered by [Quinn](https://github.com/quinn-rs/quinn).
+
+The [hang-wasm](rs/hang-wasm) crate is currently unmaintained and depends on some other [unmaintained crates](https://github.com/kixelated/web-rs) that I've made. Notably:
+- [web-transport-wasm](https://github.com/kixelated/web-transport-rs/tree/main/web-transport-wasm): A wrapper around the WebTransport API.
+- [web-codecs](https://docs.rs/web-codecs/latest/web_codecs/): A wrapper around the WebCodecs API.
+- [web-streams](https://docs.rs/web-streams/latest/web_streams/): A wrapper around the WebStreams API.
+- You get the idea; it's all wrappers.
 
 
 ### Typescript (Web)
-- [moq](js/moq): The underlying pub/sub protocol providing real-time latency and scale. This is a simplified fork of the IETF [moq-transport draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) called `moq-lite`.
-- [hang](js/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a WebComponent.
+- [moq](js/moq): The underlying pub/sub protocol providing real-time latency and scale. Available as [@kixelated/moq](https://www.npmjs.com/package/@kixelated/moq)
+- [hang](js/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a WebComponent. Available as [@kixelated/hang](https://www.npmjs.com/package/@kixelated/hang)
+
+Check out the [demo](js/hang/src/demo) for an example of how to use the library.
+Documentation is sparse as the API is still a work in progress.
+The provided Web Components (`Watch` and `Publish`) are unlikely to change dramatically.
 
 
 # Usage

@@ -20,5 +20,5 @@ pub use video::*;
 
 pub mod cmaf;
 
-// export the moq-transfork version in use
+// export the moq-lite version in use
 pub use moq_lite;

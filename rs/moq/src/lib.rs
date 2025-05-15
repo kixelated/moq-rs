@@ -3,7 +3,7 @@
 //! MoQ Transfork is a pub/sub protocol over QUIC.
 //! While originally designed for live media, MoQ Transfork is generic and can be used for other live applications.
 //! The specification is a work in progress and will change.
-//! See the [specification](https://datatracker.ietf.org/doc/draft-lcurley-moq-transfork/) and [github](https://github.com/kixelated/moq-drafts) for any updates.
+//! See the [specification](https://datatracker.ietf.org/doc/draft-lcurley-moq-lite/) and [github](https://github.com/kixelated/moq-drafts) for any updates.
 //!
 //! The core of this crate is [Session], established with [Session::connect] (client) or [Session::accept] (server).
 //! Once you have a session, you can [Session::publish] or [Session::subscribe].

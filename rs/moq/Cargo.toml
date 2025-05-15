@@ -2,7 +2,7 @@
 name = "moq-lite"
 description = "Media over QUIC - Transport (Lite)"
 authors = ["Luke Curley"]
-repository = "https://github.com/kixelated/moq-rs"
+repository = "https://github.com/kixelated/moq"
 license = "MIT OR Apache-2.0"
 
 version = "0.1.0"
