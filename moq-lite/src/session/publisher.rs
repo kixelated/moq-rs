@@ -20,9 +20,13 @@ impl Publisher {
 		}
 	}
 
-	/// Publish a broadcast, returning the previous instance if it already exists.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
-		self.broadcasts.publish(broadcast)
+	/// Publish a broadcast.
+	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
+		self.broadcasts.publish(broadcast);
+	}
+
+	pub fn unpublish(&mut self, broadcast: &Broadcast) {
+		self.broadcasts.unpublish(broadcast);
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -32,14 +36,19 @@ impl Publisher {
 		tracing::debug!(%prefix, "announce started");
 
 		let res = self.run_announce(stream, &prefix).await;
-
-		if let Err(err) = &res {
-			tracing::warn!(?err, %prefix, "announce error");
-		} else {
-			tracing::debug!(%prefix, "announce complete");
+		match res {
+			Err(Error::Cancel) => {
+				tracing::debug!(%prefix, "announce cancelled");
+			}
+			Err(err) => {
+				tracing::warn!(?err, %prefix, "announce error");
+			}
+			_ => {
+				tracing::debug!(%prefix, "announce complete");
+			}
 		}
 
-		res
+		Ok(())
 	}
 
 	async fn run_announce(&mut self, stream: &mut Stream, prefix: &str) -> Result<(), Error> {
@@ -83,13 +92,19 @@ impl Publisher {
 
 		let res = self.run_subscribe(stream, &mut subscribe).await;
 
-		if let Err(err) = &res {
-			tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe error");
-		} else {
-			tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe complete");
+		match res {
+			Err(Error::Cancel) => {
+				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe cancelled");
+			}
+			Err(err) => {
+				tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe error");
+			}
+			_ => {
+				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe complete");
+			}
 		}
 
-		res
+		Ok(())
 	}
 
 	async fn run_subscribe(&mut self, stream: &mut Stream, subscribe: &mut message::Subscribe) -> Result<(), Error> {
@@ -149,14 +164,22 @@ impl Publisher {
 						tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group");
 
 						let res = Self::serve_group(&mut stream, msg, &mut group).await;
-						if let Err(err) = &res {
-							tracing::warn!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
-							stream.abort(&err);
-						} else {
-							tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group complete");
+
+						match res {
+							Err(Error::Cancel) => {
+								tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group cancelled");
+								stream.abort(&Error::Cancel);
+							}
+							Err(err) => {
+								tracing::warn!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
+								stream.abort(&err);
+							}
+							_ => {
+								tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group complete");
+							}
 						}
 
-						res
+						Ok::<(), Error>(())
 					}));
 
 					if new_group.is_none() {

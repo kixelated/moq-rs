@@ -141,7 +141,6 @@ export class Broadcast {
 		const catalog = this.#catalog.get();
 		if (!catalog) return;
 
-		console.log("catalog", catalog);
 		this.audio.available.set(catalog.audio);
 		this.video.tracks.set(catalog.video);
 

@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use tokio::sync::mpsc;
 use web_async::{Lock, LockWeak};
 
@@ -14,9 +14,13 @@ pub enum Announced {
 
 impl Announced {
 	pub fn path(&self) -> &str {
+		&self.broadcast().path
+	}
+
+	pub fn broadcast(&self) -> &Broadcast {
 		match self {
-			Announced::Start(broadcast) => &broadcast.path,
-			Announced::End(broadcast) => &broadcast.path,
+			Announced::Start(broadcast) => &broadcast,
+			Announced::End(broadcast) => &broadcast,
 		}
 	}
 }
@@ -40,19 +44,20 @@ impl Announced {
 
 #[derive(Default)]
 struct ProducerState {
-	active: HashSet<Broadcast>,
+	// A BTreeSet just for ordering so the unit tests are deterministic.
+	active: BTreeSet<Broadcast>,
 	consumers: Vec<(Lock<ConsumerState>, mpsc::Sender<()>)>,
 }
 
 impl ProducerState {
 	fn insert(&mut self, broadcast: Broadcast) -> bool {
-		let existing = self.active.insert(broadcast.clone());
-		if existing {
+		let unique = self.active.insert(broadcast.clone());
+		if !unique {
 			self.update(Announced::End(broadcast.clone()));
 		}
 
 		self.update(Announced::Start(broadcast.clone()));
-		existing
+		unique
 	}
 
 	fn remove(&mut self, broadcast: &Broadcast) -> bool {
@@ -101,9 +106,8 @@ impl ProducerState {
 impl Drop for ProducerState {
 	fn drop(&mut self) {
 		// Collect because I'm lazy and don't want to deal with the borrow checker.
-		let broadcasts = self.active.drain().collect::<Vec<_>>();
-		for broadcast in broadcasts {
-			self.update(Announced::End(broadcast));
+		while let Some(broadcast) = self.active.pop_first() {
+			self.update(Announced::End(broadcast.clone()));
 		}
 	}
 }
@@ -324,12 +328,14 @@ mod test {
 		// Duplicate announcement.
 		assert!(!producer.insert(ab2.clone()));
 
-		assert!(producer.remove(&ab));
-		assert!(!producer.contains(&ab));
-		assert!(!producer.contains(&ab2));
-
+		// Automatically insert an end/start pair.
 		consumer.assert_ended(&ab);
-		consumer.assert_wait();
+		consumer.assert_active(&ab2);
+
+		drop(producer);
+
+		consumer.assert_ended(&ab2);
+		consumer.assert_done();
 	}
 
 	#[test]
@@ -433,7 +439,9 @@ mod test {
 		assert!(producer.remove(&ab));
 		assert!(!producer.contains(&ab));
 
-		// We missed it.
+		// We missed it, but we still get a start/stop pair.
+		consumer.assert_active(&ab);
+		consumer.assert_ended(&ab);
 		consumer.assert_wait();
 	}
 
@@ -449,17 +457,17 @@ mod test {
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
 
-		producer.insert(ab.clone());
 		consumer.assert_active(&ab);
-		producer.insert(ac.clone());
 		consumer.assert_active(&ac);
 
 		// Don't consume "d/e" before dropping.
 		producer.insert(de.clone());
 		drop(producer);
 
+		consumer.assert_active(&de);
 		consumer.assert_ended(&ab);
 		consumer.assert_ended(&ac);
+		consumer.assert_ended(&de);
 		consumer.assert_done();
 	}
 

@@ -57,10 +57,16 @@ impl Subscriber {
 			res = self.run_announce(&prefix, producer) => res,
 		};
 
-		if let Err(err) = res {
-			tracing::warn!(?err, %prefix, "announced error");
-		} else {
-			tracing::debug!(%prefix, "announced complete");
+		match res {
+			Err(Error::Cancel) => {
+				tracing::debug!(%prefix, "announced cancelled");
+			}
+			Err(err) => {
+				tracing::warn!(?err, %prefix, "announced error");
+			}
+			_ => {
+				tracing::debug!(%prefix, "announced complete");
+			}
 		}
 	}
 
@@ -82,7 +88,7 @@ impl Subscriber {
 						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
 					};
 
-					tracing::debug!(broadcast = %broadcast.path, "received announced");
+					tracing::debug!(broadcast = %broadcast.path, "received announce");
 
 					if !announced.insert(broadcast) {
 						return Err(Error::Duplicate);
@@ -94,7 +100,7 @@ impl Subscriber {
 						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
 					};
 
-					tracing::debug!(broadcast = %broadcast.path, "received unannounced");
+					tracing::debug!(broadcast = %broadcast.path, "received unannounce");
 
 					if !announced.remove(&broadcast) {
 						return Err(Error::NotFound);
@@ -158,12 +164,19 @@ impl Subscriber {
 			res = self.run_track(msg) => res,
 		};
 
-		if let Err(err) = res {
-			tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription error");
-			track.abort(err);
-		} else {
-			tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription complete");
-			track.finish();
+		match res {
+			Err(Error::Cancel) => {
+				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription cancelled");
+				track.abort(Error::Cancel);
+			}
+			Err(err) => {
+				tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription error");
+				track.abort(err);
+			}
+			_ => {
+				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription complete");
+				track.finish();
+			}
 		}
 
 		self.subscribes.lock().remove(&id);
@@ -213,14 +226,20 @@ impl Subscriber {
 			res = self.run_group(stream, group.clone()) => res,
 		};
 
-		if let Err(err) = res {
-			tracing::warn!(?err, group = %group.info.sequence, "group error");
-
-			group.abort(err.clone());
-			return Err(err);
+		match res {
+			Err(Error::Cancel) => {
+				tracing::trace!(group = %group.info.sequence, "group cancelled");
+				group.abort(Error::Cancel);
+			}
+			Err(err) => {
+				tracing::warn!(?err, group = %group.info.sequence, "group error");
+				group.abort(err);
+			}
+			_ => {
+				tracing::trace!(group = %group.info.sequence, "group complete");
+				group.finish();
+			}
 		}
-
-		tracing::trace!(group = %group.info.sequence, "group complete");
 
 		Ok(())
 	}

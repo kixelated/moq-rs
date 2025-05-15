@@ -174,13 +174,3 @@ impl BroadcastConsumer {
 		self.closed.clone().changed().await.ok();
 	}
 }
-
-/// Returns true if both consumers are for the same *instance* of a broadcast.
-///
-/// Two broadcasts with the same name may NOT be equal if they are different instances.
-// This is pretty gross.
-impl PartialEq for BroadcastConsumer {
-	fn eq(&self, other: &Self) -> bool {
-		Arc::ptr_eq(&self.state, &other.state)
-	}
-}

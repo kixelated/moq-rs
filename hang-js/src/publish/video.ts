@@ -75,8 +75,6 @@ export class Video {
 		if (!track) return;
 
 		const settings = media.getSettings() as VideoTrackSettings;
-		console.log("settings:", settings);
-
 		const processor = new MediaStreamTrackProcessor({ track: media });
 		const reader = processor.readable.getReader();
 

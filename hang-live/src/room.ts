@@ -231,8 +231,6 @@ export class Room {
 	}
 
 	#stopBroadcast(path: string) {
-		console.log("stopping broadcast", path);
-		console.log(this.#broadcasts);
 		const broadcast = this.#broadcasts.get(path);
 
 		// TODO Fix the relay so it doesn't do this.

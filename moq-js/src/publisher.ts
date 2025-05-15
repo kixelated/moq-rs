@@ -55,17 +55,12 @@ export class Publisher {
 
 		for (;;) {
 			const announcement = await reader.next();
-			console.log("next announce", announcement);
 			if (!announcement) break;
 
 			if (announcement.broadcast.startsWith(msg.prefix)) {
-				console.log("encoding", announcement);
-
 				const suffix = announcement.broadcast.slice(msg.prefix.length);
 				const wire = new Wire.Announce(suffix, announcement.active);
 				await wire.encode(stream.writer);
-			} else {
-				console.log("skipping");
 			}
 		}
 	}

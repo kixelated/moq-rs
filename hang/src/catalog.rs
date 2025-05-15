@@ -193,7 +193,8 @@ mod test {
 						"width": 1280,
 						"height": 720
 					},
-					"bitrate": 6000000
+					"bitrate": 6000000,
+					"framerate": 30.0
 				}
 			],
 			"audio": [
@@ -206,7 +207,6 @@ mod test {
 					"sample_rate": 48000,
 					"channel_count": 2,
 					"bitrate": 128000
-					"framerate": 30,
 				}
 			]
 		}"#

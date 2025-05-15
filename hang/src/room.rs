@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use moq_lite::Broadcast;
+use moq_lite::{Announced, Broadcast};
 use web_async::Lock;
 
 use crate::{BroadcastConsumer, BroadcastProducer};
@@ -42,15 +42,19 @@ impl Room {
 		producer.into()
 	}
 
-	pub async fn joined(&mut self) -> Option<BroadcastConsumer> {
+	pub async fn update(&mut self) -> Option<Announced> {
 		loop {
-			let broadcast = self.announced.active().await?;
-			if self.ourselves.lock().contains(&broadcast) {
+			let announced = self.announced.next().await?;
+			if self.ourselves.lock().contains(announced.broadcast()) {
 				continue;
 			}
 
-			let consumer = self.session.consume(&broadcast);
-			return Some(consumer.into());
+			return Some(announced);
 		}
+	}
+
+	pub fn watch(&mut self, broadcast: &Broadcast) -> BroadcastConsumer {
+		let consumer = self.session.consume(broadcast);
+		return consumer.into();
 	}
 }

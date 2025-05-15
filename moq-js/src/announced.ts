@@ -37,7 +37,6 @@ export class AnnouncedWriter {
 	write(announcement: Announcement) {
 		this.#queue.update((announcements) => {
 			announcements.push(announcement);
-			console.log("updated announcements", announcements);
 			return announcements;
 		});
 	}
@@ -68,7 +67,6 @@ export class AnnouncedReader {
 
 	async next(): Promise<Announcement | undefined> {
 		const queue = await this.#queue.when((v) => v.length > this.#index);
-		console.log("next queue", queue);
 		return queue?.at(this.#index++);
 	}
 
