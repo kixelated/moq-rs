@@ -21,17 +21,17 @@
 		"@kixelated/moq": "link:../moq",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",
-		"zod": "^3.24.4",
-		"solid-js": "^1.9.5"
+		"solid-js": "^1.9.6",
+		"zod": "^3.24.4"
 	},
 	"devDependencies": {
-		"@tailwindcss/postcss": "^4.1.5",
+		"@tailwindcss/postcss": "^4.1.7",
 		"@tailwindcss/typography": "^0.5.16",
 		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/lodash": "^4.17.16",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.231",
+		"@typescript/lib-dom": "npm:@types/web@^0.0.234",
 		"highlight.js": "^11.11.1",
-		"tailwindcss": "^4.1.5",
+		"tailwindcss": "^4.1.7",
 		"vite": "^6.3.5",
 		"vite-plugin-html": "^3.2.2"
 	}

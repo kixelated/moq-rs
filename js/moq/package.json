@@ -15,7 +15,7 @@
 		"test": "tsx --test"
 	},
 	"devDependencies": {
-		"@typescript/lib-dom": "npm:@types/web@^0.0.231",
+		"@typescript/lib-dom": "npm:@types/web@^0.0.234",
 		"tsx": "^4.19.4",
 		"vite": "^6.3.5",
 		"vite-plugin-html": "^3.2.2"

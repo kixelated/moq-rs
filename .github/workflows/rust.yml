@@ -1,4 +1,4 @@
-name: PR
+name: Rust CI
 
 on:
   pull_request:
@@ -9,8 +9,12 @@ env:
 
 jobs:
   check:
-    name: Check
+    name: Rust Check
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./rs
 
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +27,6 @@ jobs:
 
       # Install Just to run CI scripts
       - uses: extractions/setup-just@v3
-
-      # Install Node for hang-web
-      - uses: actions/setup-node@v4
 
       # Cargo binstall is used to install tools faster than compiling them from source.
       - uses: cargo-bins/cargo-binstall@main

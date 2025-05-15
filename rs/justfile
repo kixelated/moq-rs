@@ -164,9 +164,6 @@ test:
 
 # Upgrade any tooling
 upgrade:
-	# Upgrade the Rust toolchain... I guess.
-	rustup upgrade
-
 	# Update any patch versions
 	cargo update
 

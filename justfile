@@ -15,9 +15,6 @@ default:
 setup:
 	just --justfile rs/justfile setup
 
-setup-tools:
-	just --justfile rs/justfile setup-tools
-
 # Run the relay, web server, and publish bbb.
 all: build
 	# Then run the relay with a slight head start.

@@ -24,8 +24,8 @@ check:
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit
 
-	# Beta: Check for unused imports
-	pnpm exec knip --no-exit-code
+	# TODO: Check for unused imports (fix the false positives)
+	# pnpm exec knip --no-exit-code
 
 # Automatically fix some issues.
 fix:

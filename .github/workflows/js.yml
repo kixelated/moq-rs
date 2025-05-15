@@ -1,0 +1,32 @@
+name: Javascript CI
+
+on:
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Javascript Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./js
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Just to run CI scripts
+      - uses: extractions/setup-just@v3
+
+      # Install Node
+      - uses: actions/setup-node@v4
+        with:
+          cache: 'pnpm'
+
+      # Make sure u guys don't write bad code
+      - run: just check
+      - run: just test
