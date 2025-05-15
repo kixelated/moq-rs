@@ -159,8 +159,8 @@ fix flags="":
 	cargo update
 
 # Run any CI tests
-test:
-	cargo test
+test flags="":
+	cargo test {{flags}}
 
 # Upgrade any tooling
 upgrade:
