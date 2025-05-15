@@ -60,3 +60,8 @@ doc: build
 	# Currently bugged for hang
 	pnpm --dir moq exec api-extractor run --local --verbose
 	pnpm exec api-documenter markdown --input api --output doc
+
+# Run pnpm link
+link:
+	pnpm -c hang link
+	pnpm -c moq link
