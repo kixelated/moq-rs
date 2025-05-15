@@ -10,7 +10,7 @@ export default defineConfig({
 		target: "esnext",
 		rollupOptions: {
 			input: {
-				watch: resolve(__dirname, "src/demo/watch.html"),
+				watch: resolve(__dirname, "src/demo/index.html"),
 				publish: resolve(__dirname, "src/demo/publish.html"),
 			},
 		},

@@ -54,3 +54,7 @@ upgrade:
 build:
 	pnpm -r i
 	pnpm -r run build
+
+# Generate documentation
+doc: build
+	pnpm -r exec api-extractor run --local --verbose

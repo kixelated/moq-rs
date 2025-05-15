@@ -1,7 +1,6 @@
 packages:
   - moq
   - hang
-  - hang-live
 onlyBuiltDependencies:
   - core-js
   - esbuild
