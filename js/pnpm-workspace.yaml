@@ -1,0 +1,11 @@
+packages:
+  - moq
+  - hang
+  - hang-live
+onlyBuiltDependencies:
+  - core-js
+  - esbuild
+  - wasm-pack
+overrides:
+  axios@>=0.8.1 <0.28.0: '>=0.28.0'
+  axios@<0.30.0: '>=0.30.0'

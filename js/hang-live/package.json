@@ -1,0 +1,24 @@
+{
+	"name": "hang-live",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite --open",
+		"build": "tsc -b && vite build",
+		"preview": "vite preview",
+		"check": "tsc --noEmit && biome check",
+		"fix": "biome check --write --unsafe"
+	},
+	"dependencies": {
+		"@kixelated/hang": "link:../hang",
+		"@kixelated/moq": "link:../moq",
+		"solid-js": "^1.9.5",
+		"buffer": "^6.0.3"
+	},
+	"devDependencies": {
+		"typescript": "~5.8.3",
+		"vite": "^6.3.5",
+		"@types/dom-mediacapture-transform": "^0.1.11",
+		"@typescript/lib-dom": "npm:@types/web@^0.0.231"
+	}
+}

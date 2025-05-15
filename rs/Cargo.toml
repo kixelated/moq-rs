@@ -1,0 +1,39 @@
+[workspace]
+members = [
+	"hang",
+	"hang-cli",
+	"hang-gst",
+	"hang-wasm",
+	"moq",
+	"moq-clock",
+	"moq-native",
+	"moq-relay",
+]
+# without hang-gst because it requires gstreamer to be installed
+default-members = [
+	"hang",
+	"hang-cli",
+	"hang-wasm",
+	"moq",
+	"moq-clock",
+	"moq-native",
+	"moq-relay",
+]
+resolver = "2"
+
+[workspace.dependencies]
+web-transport = { path = "../../web-transport-rs/web-transport" }
+#web-transport = "0.8"
+web-async = { path = "../../web-rs/web-async", version = "0.1", features = [
+	"tracing",
+] }
+tokio = "1.44"
+serde = { version = "1", features = ["derive"] }
+
+hang = { version = "0.1", path = "hang" }
+moq-lite = { version = "0.1", path = "moq" }
+moq-native = { version = "0.6", path = "moq-native" }
+
+[profile.release.package.hang-wasm]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
