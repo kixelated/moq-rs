@@ -53,6 +53,8 @@ class State {
 
 /**
  * Handles writing and managing tracks in a broadcast.
+ *
+ * @public
  */
 export class BroadcastProducer {
 	/** The path identifier for this broadcast */

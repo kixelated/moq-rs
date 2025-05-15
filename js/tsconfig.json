@@ -5,9 +5,10 @@
 		"module": "esnext",
 		"moduleResolution": "bundler",
 
-		"isolatedModules": true,
 		"declaration": true,
 		"declarationMap": true,
+		"sourceMap": true,
+		"isolatedModules": true,
 
 		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
 		"allowUnreachableCode": false,
@@ -32,6 +33,9 @@
 		"useUnknownInCatchVariables": true,
 
 		// Disable enums and weird Typescript features.
-		"erasableSyntaxOnly": true
+		"erasableSyntaxOnly": true,
+
+		// Avoids a bug with the dom-mediacapture-transform types.
+		"skipLibCheck": true
 	}
 }

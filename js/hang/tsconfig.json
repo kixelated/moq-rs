@@ -3,17 +3,6 @@
 	"include": ["src"],
 	"exclude": ["node_modules", "dist"],
 	"compilerOptions": {
-		"lib": ["esnext", "dom"],
-		"target": "esnext",
-		"module": "esnext",
-		"moduleResolution": "bundler",
-
-		"outDir": "dist",
-		"declaration": true,
-		"sourceMap": true,
-		"isolatedModules": true,
-
-		// Avoids a bug with the dom-mediacapture-transform types.
-		"skipLibCheck": true
+		"outDir": "dist"
 	}
 }

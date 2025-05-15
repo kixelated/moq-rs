@@ -12,6 +12,8 @@ export type Announce = {
 
 /**
  * A Writer/Reader pair for producing and consuming announcements.
+ *
+ * @public
  */
 export class Announced {
 	/** The prefix for all announcements managed by this instance */
