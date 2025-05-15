@@ -33,14 +33,14 @@ cluster:
 
 # Download the video and convert it to a fragmented MP4 that we can stream
 download name:
-	mkdir -p dev
+	@mkdir -p dev
 
 	if [ ! -f dev/{{name}}.mp4 ]; then \
-		wget $(just download-url {{name}}) -O dev/{{name}}.mp4; \
+		wget -q $(just download-url {{name}}) -O dev/{{name}}.mp4; \
 	fi
 
 	if [ ! -f dev/{{name}}.fmp4 ]; then \
-		ffmpeg -i dev/{{name}}.mp4 \
+		ffmpeg -loglevel error -i dev/{{name}}.mp4 \
 			-c:v copy \
 			-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
 			dev/{{name}}.fmp4; \

@@ -1,3 +1,5 @@
+// This is just to fix biome, because the VSCode plugin assumes the configuration is in the root.
+// oof
 {
 	"folders": [
 		{
