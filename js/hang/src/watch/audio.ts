@@ -1,18 +1,19 @@
 import * as Moq from "@kixelated/moq";
-import * as Media from "../media";
+import * as Catalog from "../catalog";
+import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type AudioProps = {
 	broadcast?: Moq.BroadcastConsumer;
-	available?: Media.Audio[];
+	available?: Catalog.Audio[];
 	enabled?: boolean;
 };
 
 export class Audio {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
-	available: Signal<Media.Audio[]>;
+	available: Signal<Catalog.Audio[]>;
 	enabled: Signal<boolean>;
-	selected: Derived<Media.Audio | undefined>;
+	selected: Derived<Catalog.Audio | undefined>;
 
 	samples: ReadableStream<AudioData>;
 	#writer: WritableStreamDefaultWriter<AudioData>;
@@ -56,7 +57,7 @@ export class Audio {
 			numberOfChannels: selected.channel_count,
 		});
 
-		const media = new Media.Reader(sub);
+		const media = new Container.Decoder(sub);
 
 		(async () => {
 			for (;;) {

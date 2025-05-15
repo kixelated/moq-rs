@@ -1,11 +1,11 @@
 import * as Moq from "@kixelated/moq";
 import { Frame } from "./frame";
 
-export class Reader {
+export class Decoder {
 	#track: Moq.TrackConsumer;
-	#group?: Moq.GroupReader;
+	#group?: Moq.GroupConsumer;
 
-	#nextGroup?: Promise<Moq.GroupReader | undefined>;
+	#nextGroup?: Promise<Moq.GroupConsumer | undefined>;
 	#nextFrame?: Promise<Frame | undefined>;
 
 	constructor(track: Moq.TrackConsumer) {
@@ -18,7 +18,7 @@ export class Reader {
 			if (this.#nextGroup && this.#nextFrame) {
 				// Figure out if nextFrame or nextGroup wins the race.
 				// TODO support variable latency
-				const next: { frame: Frame | undefined } | { group: Moq.GroupReader | undefined } = await Promise.race([
+				const next: { frame: Frame | undefined } | { group: Moq.GroupConsumer | undefined } = await Promise.race([
 					this.#nextFrame.then((frame) => ({ frame })),
 					this.#nextGroup.then((group) => ({ group })),
 				]);

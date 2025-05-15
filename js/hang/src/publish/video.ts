@@ -1,6 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import { Buffer } from "buffer";
-import * as Media from "../media";
+import * as Catalog from "../catalog";
+import * as Container from "../container";
 import { Signal, Signals, signal } from "../signals";
 import { VideoTrackSettings } from "../util/settings";
 
@@ -24,7 +25,7 @@ export class Video {
 	readonly media: Signal<MediaStreamVideoTrack | undefined>;
 	readonly constraints: Signal<VideoTrackConstraints | boolean | undefined>;
 
-	#catalog = signal<Media.Video | undefined>(undefined);
+	#catalog = signal<Catalog.Video | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
 	#track = signal<Moq.Track | undefined>(undefined);
@@ -33,7 +34,7 @@ export class Video {
 	#encoderConfig = signal<VideoEncoderConfig | undefined>(undefined);
 	#decoderConfig = signal<VideoDecoderConfig | undefined>(undefined);
 
-	#group?: Moq.GroupWriter;
+	#group?: Moq.GroupProducer;
 	#groupTimestamp = 0;
 
 	#signals = new Signals();
@@ -81,7 +82,7 @@ export class Video {
 				if (frame.type === "key") {
 					this.#groupTimestamp = frame.timestamp;
 					this.#group?.close();
-					this.#group = track.writer.appendGroup();
+					this.#group = track.producer.appendGroup();
 				} else if (!this.#group) {
 					throw new Error("no keyframe");
 				}
@@ -89,14 +90,14 @@ export class Video {
 				const buffer = new Uint8Array(frame.byteLength);
 				frame.copyTo(buffer);
 
-				const container = new Media.Frame(frame.type === "key", frame.timestamp, buffer);
+				const container = new Container.Frame(frame.type === "key", frame.timestamp, buffer);
 				container.encode(this.#group);
 			},
 			error: (err: Error) => {
 				this.#group?.abort(err);
 				this.#group = undefined;
 
-				track.writer.abort(err);
+				track.producer.abort(err);
 			},
 		});
 
@@ -291,7 +292,7 @@ export class Video {
 			? Buffer.from(decoderConfig.description as Uint8Array).toString("hex")
 			: undefined;
 
-		const catalog: Media.Video = {
+		const catalog: Catalog.Video = {
 			track: {
 				name: track.name,
 				priority: track.priority,

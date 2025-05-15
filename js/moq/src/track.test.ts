@@ -4,7 +4,7 @@ import { Track } from "./track";
 
 test("track clone", async () => {
 	const track = new Track("test", 0);
-	const writer= track.producer;
+	const writer = track.producer;
 
 	// Clone the reader before we append any groups
 	const readerA = track.consumer;

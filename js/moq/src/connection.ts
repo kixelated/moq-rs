@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { AnnouncedConsumer as AnnouncedConsumer } from "./announced";
+import { AnnouncedConsumer } from "./announced";
 import { BroadcastConsumer } from "./broadcast";
 import { Publisher } from "./publisher";
 import { Subscriber } from "./subscriber";

@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
+import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import * as Media from "../media";
 import { Derived, Signal, Signals, signal } from "../signals";
 import { Audio, AudioTrackConstraints } from "./audio";
 import { Video, VideoTrackConstraints } from "./video";
@@ -29,7 +29,7 @@ export class Broadcast {
 
 	audio: Audio;
 	video: Video;
-	catalog: Derived<Media.Catalog>;
+	catalog: Derived<Catalog.Broadcast>;
 	device: Signal<Device | undefined>;
 
 	#broadcast = signal<Moq.Broadcast | undefined>(undefined);
@@ -54,12 +54,12 @@ export class Broadcast {
 			if (!connection) return;
 
 			const broadcast = new Moq.Broadcast(name);
-			broadcast.writer.insertTrack(this.#catalog.reader.clone());
+			broadcast.producer.insertTrack(this.#catalog.consumer.clone());
 
 			this.#broadcast.set(broadcast);
 
 			// Publish the broadcast to the connection.
-			connection.publish(broadcast.reader.clone());
+			connection.publish(broadcast.consumer.clone());
 
 			return () => {
 				broadcast.close();
@@ -74,9 +74,9 @@ export class Broadcast {
 			const track = this.video.track.get();
 			if (!track) return;
 
-			broadcast.writer.insertTrack(track.reader.clone());
+			broadcast.producer.insertTrack(track.consumer.clone());
 			return () => {
-				broadcast.writer.removeTrack(track.name);
+				broadcast.producer.removeTrack(track.name);
 			};
 		});
 
@@ -87,9 +87,9 @@ export class Broadcast {
 			const track = this.audio.track.get();
 			if (!track) return;
 
-			broadcast.writer.insertTrack(track.reader.clone());
+			broadcast.producer.insertTrack(track.consumer.clone());
 			return () => {
-				broadcast.writer.removeTrack(track.name);
+				broadcast.producer.removeTrack(track.name);
 			};
 		});
 
@@ -199,12 +199,12 @@ export class Broadcast {
 		};
 	}
 
-	#runCatalog(): Media.Catalog {
+	#runCatalog(): Catalog.Broadcast {
 		const audio = this.audio.catalog.get();
 		const video = this.video.catalog.get();
 
 		// Create the new catalog.
-		const catalog = new Media.Catalog();
+		const catalog = new Catalog.Broadcast();
 
 		// We need to wait for the encoder to fully initialize with a few frames.
 		if (audio) {
@@ -217,7 +217,7 @@ export class Broadcast {
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
-		const catalogGroup = this.#catalog.writer.appendGroup();
+		const catalogGroup = this.#catalog.producer.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
 

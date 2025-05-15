@@ -1,5 +1,5 @@
-import type { GroupReader, GroupWriter } from "@kixelated/moq";
-import { getVint53, setVint53 } from "../util/vint";
+import type { GroupConsumer, GroupProducer } from "@kixelated/moq";
+import { getVint53, setVint53 } from "./vint";
 
 export class Frame {
 	keyframe: boolean;
@@ -12,7 +12,7 @@ export class Frame {
 		this.data = data;
 	}
 
-	static async decode(group: GroupReader, keyframe: boolean): Promise<Frame | undefined> {
+	static async decode(group: GroupConsumer, keyframe: boolean): Promise<Frame | undefined> {
 		const payload = await group.readFrame();
 		if (!payload) {
 			return undefined;
@@ -22,7 +22,7 @@ export class Frame {
 		return new Frame(keyframe, timestamp, data);
 	}
 
-	encode(group: GroupWriter) {
+	encode(group: GroupProducer) {
 		let frame = new Uint8Array(8 + this.data.byteLength);
 		const size = setVint53(frame, this.timestamp).byteLength;
 		frame.set(this.data, size);

@@ -2,7 +2,7 @@
  * Config file for API Extractor.  For more info, please visit: https://api-extractor.com
  */
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
-  "extends": "../api-extractor.json",
-  "mainEntryPointFilePath": "dist/index.d.ts"
+	"$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+	"extends": "../api-extractor.json",
+	"mainEntryPointFilePath": "dist/index.d.ts"
 }

@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import * as Media from "../media";
-import { Frame } from "../media/frame";
+import * as Catalog from "../catalog";
+import { Frame } from "../container/frame";
 import { Signal, Signals, signal } from "../signals";
 import { AudioTrackSettings } from "../util/settings";
 
@@ -21,13 +21,13 @@ export class Audio {
 	readonly media: Signal<MediaStreamAudioTrack | undefined>;
 	readonly constraints: Signal<AudioTrackConstraints | boolean | undefined>;
 
-	#catalog = signal<Media.Audio | undefined>(undefined);
+	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
 	#track = signal<Moq.Track | undefined>(undefined);
 	readonly track = this.#track.readonly();
 
-	#group?: Moq.GroupWriter;
+	#group?: Moq.GroupProducer;
 	#groupTimestamp = 0;
 
 	#id = 0;
@@ -89,7 +89,7 @@ export class Audio {
 
 				if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
 					this.#group?.close();
-					this.#group = track.writer.appendGroup();
+					this.#group = track.producer.appendGroup();
 					this.#groupTimestamp = frame.timestamp;
 				}
 
@@ -103,7 +103,7 @@ export class Audio {
 				this.#group?.abort(err);
 				this.#group = undefined;
 
-				track.writer.abort(err);
+				track.producer.abort(err);
 			},
 		});
 

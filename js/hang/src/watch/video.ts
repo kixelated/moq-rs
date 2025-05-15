@@ -1,12 +1,13 @@
 import * as Moq from "@kixelated/moq";
 import { Buffer } from "buffer";
 import { isEqual } from "lodash";
-import * as Media from "../media";
+import * as Catalog from "../catalog";
+import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type VideoProps = {
 	broadcast?: Moq.BroadcastConsumer;
-	available?: Media.Video[];
+	available?: Catalog.Video[];
 	enabled?: boolean;
 	latency?: number;
 };
@@ -20,9 +21,9 @@ export class Video {
 	// The larger the value, the more tolerance we have for network jitter.
 	// This should be at least 1 frame for smoother playback.
 	latency: Signal<number>;
-	tracks: Signal<Media.Video[]>;
+	tracks: Signal<Catalog.Video[]>;
 
-	selected: Derived<Media.Video | undefined>;
+	selected: Derived<Catalog.Video | undefined>;
 
 	#frames: VideoFrame[] = [];
 
@@ -62,7 +63,7 @@ export class Video {
 
 		// We don't clear previous frames so we can seamlessly switch tracks.
 		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
-		const media = new Media.Reader(sub);
+		const media = new Container.Decoder(sub);
 
 		const decoder = new VideoDecoder({
 			output: (frame) => {

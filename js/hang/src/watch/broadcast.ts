@@ -1,6 +1,6 @@
 import * as Moq from "@kixelated/moq";
+import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import * as Media from "../media";
 import { Signal, Signals, signal } from "../signals";
 import { Audio } from "./audio";
 import { Video } from "./video";
@@ -25,7 +25,7 @@ export class Broadcast {
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
-	#catalog = signal<Media.Catalog | undefined>(undefined);
+	#catalog = signal<Catalog.Broadcast | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
 	#active = signal(false);
@@ -115,7 +115,7 @@ export class Broadcast {
 		(async () => {
 			try {
 				for (;;) {
-					const update = await Media.Catalog.fetch(catalog);
+					const update = await Catalog.Broadcast.fetch(catalog);
 					if (!update) break;
 
 					this.#catalog.set(update);
