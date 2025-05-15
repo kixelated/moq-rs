@@ -3,7 +3,7 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 /**
  * Represents a group of frames with a writer/reader pair.
  *
- * @beta
+ * @public
  */
 export class Group {
 	/** The unique identifier for this group */
@@ -16,8 +16,6 @@ export class Group {
 	/**
 	 * Creates a new Group instance with the specified ID.
 	 * @param id - The unique identifier for the group
-	 *
-	 * @beta
 	 */
 	constructor(id: number) {
 		this.id = id;
@@ -30,8 +28,6 @@ export class Group {
 
 	/**
 	 * Closes both the writer and reader components.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.producer.close();
@@ -47,7 +43,7 @@ export class Group {
 /**
  * Handles writing frames to a group.
  *
- * @beta
+ * @public
  */
 export class GroupProducer {
 	/** The unique identifier for this writer */
@@ -71,8 +67,6 @@ export class GroupProducer {
 	/**
 	 * Writes a frame to the group.
 	 * @param frame - The frame to write
-	 *
-	 * @beta
 	 */
 	writeFrame(frame: Uint8Array) {
 		this.#frames.update((frames) => [...frames, frame]);
@@ -80,8 +74,6 @@ export class GroupProducer {
 
 	/**
 	 * Closes the writer.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.#frames.close();
@@ -90,8 +82,6 @@ export class GroupProducer {
 	/**
 	 * Returns a promise that resolves when the writer is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#frames.closed();
@@ -100,8 +90,6 @@ export class GroupProducer {
 	/**
 	 * Aborts the writer with an error.
 	 * @param reason - The error reason for aborting
-	 *
-	 * @beta
 	 */
 	abort(reason: Error) {
 		this.#frames.abort(reason);
@@ -111,7 +99,7 @@ export class GroupProducer {
 /**
  * Handles reading frames from a group.
  *
- * @beta
+ * @public
  */
 export class GroupConsumer {
 	/** The unique identifier for this reader */
@@ -135,8 +123,6 @@ export class GroupConsumer {
 	/**
 	 * Reads the next frame from the group.
 	 * @returns A promise that resolves to the next frame or undefined
-	 *
-	 * @beta
 	 */
 	async readFrame(): Promise<Uint8Array | undefined> {
 		const frames = await this.#frames.when((frames) => frames.length > this.#index);
@@ -145,8 +131,6 @@ export class GroupConsumer {
 
 	/**
 	 * Closes the reader.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.#frames.close();
@@ -155,8 +139,6 @@ export class GroupConsumer {
 	/**
 	 * Creates a new instance of the reader using the same frames consumer.
 	 * @returns A new GroupConsumer instance
-	 *
-	 * @beta
 	 */
 	clone(): GroupConsumer {
 		return new GroupConsumer(this.id, this.#frames.clone());

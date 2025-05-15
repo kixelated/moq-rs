@@ -139,7 +139,7 @@
 		 *
 		 * DEFAULT VALUE: [ "complete" ]
 		 */
-		// "reportVariants": ["public", "beta"],
+		"reportVariants": ["public"],
 
 		/**
 		 * Specifies the folder where the API report file is written.  The file name portion is determined by
@@ -154,7 +154,7 @@
 		 * SUPPORTED TOKENS: <projectFolder>, <packageName>, <unscopedPackageName>
 		 * DEFAULT VALUE: "<projectFolder>/etc/"
 		 */
-		"reportFolder": "./doc"
+		"reportFolder": "./doc",
 
 		/**
 		 * Specifies the folder where the temporary report file is written.  The file name portion is determined by
@@ -169,7 +169,7 @@
 		 * SUPPORTED TOKENS: <projectFolder>, <packageName>, <unscopedPackageName>
 		 * DEFAULT VALUE: "<projectFolder>/temp/"
 		 */
-		// "reportTempFolder": "<projectFolder>/temp/",
+		"reportTempFolder": "<projectFolder>/dist/"
 
 		/**
 		 * Whether "forgotten exports" should be included in the API report file. Forgotten exports are declarations
@@ -311,7 +311,7 @@
 		 *
 		 * DEFAULT VALUE: true
 		 */
-		// "enabled": true,
+		"enabled": false
 		/**
 		 * Specifies where the TSDoc metadata file should be written.
 		 *
@@ -359,7 +359,7 @@
 				 *
 				 * DEFAULT VALUE: "warning"
 				 */
-				"logLevel": "warning"
+				"logLevel": "error"
 
 				/**
 				 * When addToApiReportFile is true:  If API Extractor is configured to write an API report file (.api.md),
@@ -388,7 +388,7 @@
 		 */
 		"extractorMessageReporting": {
 			"default": {
-				"logLevel": "warning"
+				"logLevel": "error"
 				// "addToApiReportFile": false
 			}
 
@@ -409,7 +409,7 @@
 		 */
 		"tsdocMessageReporting": {
 			"default": {
-				"logLevel": "warning"
+				"logLevel": "error"
 				// "addToApiReportFile": false
 			}
 

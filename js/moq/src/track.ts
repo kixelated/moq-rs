@@ -4,7 +4,7 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 /**
  * Represents a track with a publisher/consumer pair for managing groups.
  *
- * @beta
+ * @public
  */
 export class Track {
 	/** The name of the track */
@@ -21,8 +21,6 @@ export class Track {
 	 * Creates a new Track instance with the specified name and priority.
 	 * @param name - The name of the track
 	 * @param priority - The priority level
-	 *
-	 * @beta
 	 */
 	constructor(name: string, priority: number) {
 		this.name = name;
@@ -35,8 +33,6 @@ export class Track {
 
 	/**
 	 * Closes both the publisher and consumer components.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.producer.close();
@@ -52,7 +48,7 @@ export class Track {
 /**
  * Handles writing and managing groups in a track.
  *
- * @beta
+ * @public
  */
 export class TrackProducer {
 	/** The name of the track */
@@ -80,8 +76,6 @@ export class TrackProducer {
 	/**
 	 * Appends a new group to the track.
 	 * @returns A GroupProducer for the new group
-	 *
-	 * @beta
 	 */
 	appendGroup(): GroupProducer {
 		const group = new Group(this.#next ?? 0);
@@ -98,8 +92,6 @@ export class TrackProducer {
 	/**
 	 * Inserts an existing group into the track.
 	 * @param group - The group to insert
-	 *
-	 * @beta
 	 */
 	insertGroup(group: GroupConsumer) {
 		if (group.id < (this.#next ?? 0)) {
@@ -116,8 +108,6 @@ export class TrackProducer {
 
 	/**
 	 * Closes the publisher and all associated groups.
-	 *
-	 * @beta
 	 */
 	close() {
 		try {
@@ -133,8 +123,6 @@ export class TrackProducer {
 	/**
 	 * Returns a promise that resolves when the publisher is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#latest.closed();
@@ -143,8 +131,6 @@ export class TrackProducer {
 	/**
 	 * Aborts the publisher with an error.
 	 * @param reason - The error reason for aborting
-	 *
-	 * @beta
 	 */
 	abort(reason: Error) {
 		try {
@@ -160,7 +146,7 @@ export class TrackProducer {
 /**
  * Handles reading groups from a track.
  *
- * @beta
+ * @public
  */
 export class TrackConsumer {
 	/** The name of the track */
@@ -187,8 +173,6 @@ export class TrackConsumer {
 	/**
 	 * Gets the next group from the track.
 	 * @returns A promise that resolves to the next group or undefined
-	 *
-	 * @beta
 	 */
 	async nextGroup(): Promise<GroupConsumer | undefined> {
 		const group = await this.#groups.next((group) => !!group);
@@ -198,8 +182,6 @@ export class TrackConsumer {
 	/**
 	 * Creates a new instance of the consumer using the same groups consumer.
 	 * @returns A new TrackConsumer instance
-	 *
-	 * @beta
 	 */
 	clone(): TrackConsumer {
 		return new TrackConsumer(this.name, this.priority, this.#groups.clone());
@@ -207,8 +189,6 @@ export class TrackConsumer {
 
 	/**
 	 * Closes the consumer.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.#groups.close();
@@ -217,8 +197,6 @@ export class TrackConsumer {
 	/**
 	 * Returns a promise that resolves when the consumer is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#groups.closed();

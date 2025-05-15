@@ -3,7 +3,7 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
 /**
  * The availability of a broadcast.
  *
- * @beta
+ * @public
  */
 export type Announce = {
 	broadcast: string;
@@ -12,8 +12,6 @@ export type Announce = {
 
 /**
  * A Writer/Reader pair for producing and consuming announcements.
- *
- * @beta
  */
 export class Announced {
 	/** The prefix for all announcements managed by this instance */
@@ -26,8 +24,6 @@ export class Announced {
 	/**
 	 * Creates a new Announced instance with the specified prefix.
 	 * @param prefix - The string prefix.
-	 *
-	 * @beta
 	 */
 	constructor(prefix: string) {
 		this.prefix = prefix;
@@ -40,8 +36,6 @@ export class Announced {
 
 	/**
 	 * Closes both the writer and reader components.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.producer.close();
@@ -57,7 +51,7 @@ export class Announced {
 /**
  * Handles writing announcements to the announcement queue.
  *
- * @beta
+ * @public
  */
 export class AnnouncedProducer {
 	/** The broadcast identifier for this writer */
@@ -80,7 +74,6 @@ export class AnnouncedProducer {
 	/**
 	 * Writes an announcement to the queue.
 	 * @param announcement - The announcement to write
-	 * @beta
 	 */
 	write(announcement: Announce) {
 		this.#queue.update((announcements) => {
@@ -92,7 +85,6 @@ export class AnnouncedProducer {
 	/**
 	 * Aborts the writer with an error.
 	 * @param reason - The error reason for aborting
-	 * @beta
 	 */
 	abort(reason: Error) {
 		this.#queue.abort(reason);
@@ -100,7 +92,6 @@ export class AnnouncedProducer {
 
 	/**
 	 * Closes the writer.
-	 * @beta
 	 */
 	close() {
 		this.#queue.close();
@@ -109,7 +100,6 @@ export class AnnouncedProducer {
 	/**
 	 * Returns a promise that resolves when the writer is closed.
 	 * @returns A promise that resolves when closed
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#queue.closed();
@@ -118,7 +108,8 @@ export class AnnouncedProducer {
 
 /**
  * Handles reading announcements from the announcement queue.
- * @beta
+ *
+ * @public
  */
 export class AnnouncedConsumer {
 	/** The prefix for this reader */
@@ -142,7 +133,6 @@ export class AnnouncedConsumer {
 	/**
 	 * Returns the next announcement from the queue.
 	 * @returns A promise that resolves to the next announcement or undefined
-	 * @beta
 	 */
 	async next(): Promise<Announce | undefined> {
 		const queue = await this.#queue.when((v) => v.length > this.#index);
@@ -151,7 +141,6 @@ export class AnnouncedConsumer {
 
 	/**
 	 * Closes the reader.
-	 * @beta
 	 */
 	close() {
 		this.#queue.close();
@@ -160,7 +149,6 @@ export class AnnouncedConsumer {
 	/**
 	 * Returns a promise that resolves when the reader is closed.
 	 * @returns A promise that resolves when closed
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#queue.closed();
@@ -169,7 +157,6 @@ export class AnnouncedConsumer {
 	/**
 	 * Creates a new instance of the reader using the same queue.
 	 * @returns A new AnnounceConsumer instance
-	 * @beta
 	 */
 	clone(): AnnouncedConsumer {
 		return new AnnouncedConsumer(this.prefix, this.#queue.clone());

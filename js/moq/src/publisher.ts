@@ -8,7 +8,7 @@ import * as Wire from "./wire";
 /**
  * Handles publishing broadcasts and managing their lifecycle.
  *
- * @beta
+ * @internal
  */
 export class Publisher {
 	#quic: WebTransport;
@@ -34,8 +34,6 @@ export class Publisher {
 	 * Gets a broadcast reader for the specified broadcast.
 	 * @param broadcast - The name of the broadcast to consume
 	 * @returns A BroadcastConsumer instance or undefined if not found
-	 *
-	 * @beta
 	 */
 	consume(broadcast: string): BroadcastConsumer | undefined {
 		return this.#broadcasts.get(broadcast)?.clone();
@@ -44,8 +42,6 @@ export class Publisher {
 	/**
 	 * Publishes a broadcast with any associated tracks.
 	 * @param broadcast - The broadcast to publish
-	 *
-	 * @beta
 	 */
 	publish(broadcast: BroadcastConsumer) {
 		this.#broadcasts.set(broadcast.path, broadcast);

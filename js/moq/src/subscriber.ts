@@ -8,7 +8,7 @@ import * as Wire from "./wire";
 /**
  * Handles subscribing to broadcasts and managing their lifecycle.
  *
- * @beta
+ * @internal
  */
 export class Subscriber {
 	#quic: WebTransport;
@@ -34,8 +34,6 @@ export class Subscriber {
 	 * Gets an announced reader for the specified prefix.
 	 * @param prefix - The prefix for announcements
 	 * @returns An AnnounceConsumer instance
-	 *
-	 * @beta
 	 */
 	announced(prefix = ""): AnnouncedConsumer {
 		const pair = new Announced(prefix);
@@ -85,8 +83,6 @@ export class Subscriber {
 	 * Consumes a broadcast from the connection.
 	 * @param broadcast - The name of the broadcast to consume
 	 * @returns A BroadcastConsumer instance
-	 *
-	 * @beta
 	 */
 	consume(broadcast: string): BroadcastConsumer {
 		const existing = this.#broadcasts.get(broadcast);

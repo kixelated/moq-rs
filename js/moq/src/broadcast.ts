@@ -6,7 +6,7 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
  * A producer can use the writer to create tracks by name.
  * Any number of consumers (via clone) can request tracks by name.
  *
- * @beta
+ * @public
  */
 export class Broadcast {
 	/** The identifier for this broadcast */
@@ -20,8 +20,6 @@ export class Broadcast {
 	/**
 	 * Creates a new Broadcast instance with the specified path.
 	 * @param path - The path identifier for the broadcast
-	 *
-	 * @beta
 	 */
 	constructor(path: string) {
 		this.path = path;
@@ -33,8 +31,6 @@ export class Broadcast {
 
 	/**
 	 * Closes both the writer and reader components.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.producer.close();
@@ -57,8 +53,6 @@ class State {
 
 /**
  * Handles writing and managing tracks in a broadcast.
- *
- * @beta
  */
 export class BroadcastProducer {
 	/** The path identifier for this broadcast */
@@ -81,8 +75,6 @@ export class BroadcastProducer {
 	 * Creates a new track with the specified name.
 	 * @param name - The name of the track to create
 	 * @returns A TrackProducer for the new track
-	 *
-	 * @beta
 	 */
 	createTrack(name: string): TrackProducer {
 		const track = new Track(name, 0);
@@ -93,8 +85,6 @@ export class BroadcastProducer {
 	/**
 	 * Inserts an existing track into the broadcast.
 	 * @param track - The track reader to insert
-	 *
-	 * @beta
 	 */
 	insertTrack(track: TrackConsumer) {
 		this.#state.update((state) => {
@@ -108,8 +98,6 @@ export class BroadcastProducer {
 	/**
 	 * Removes a track from the broadcast.
 	 * @param name - The name of the track to remove
-	 *
-	 * @beta
 	 */
 	removeTrack(name: string) {
 		try {
@@ -129,8 +117,6 @@ export class BroadcastProducer {
 	 * If not specified, unknown tracks will be closed with a "not found" error.
 	 *
 	 * @param fn - The callback function to handle unknown tracks
-	 *
-	 * @beta
 	 */
 	unknownTrack(fn?: (track: Track) => void) {
 		this.#state.update((state) => {
@@ -142,8 +128,6 @@ export class BroadcastProducer {
 	/**
 	 * Returns a promise that resolves when the writer is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		return this.#state.closed();
@@ -152,8 +136,6 @@ export class BroadcastProducer {
 	/**
 	 * Aborts the writer with an error.
 	 * @param reason - The error reason for aborting
-	 *
-	 * @beta
 	 */
 	abort(reason: Error) {
 		this.#state.abort(reason);
@@ -161,8 +143,6 @@ export class BroadcastProducer {
 
 	/**
 	 * Closes the writer and all associated tracks.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.#state.update((state) => {
@@ -181,7 +161,7 @@ export class BroadcastProducer {
  *
  * @remarks `clone()` can be used to create multiple consumers, just remember to `close()` them.
  *
- * @beta
+ * @public
  */
 export class BroadcastConsumer {
 	/** The path identifier for this reader */
@@ -206,8 +186,6 @@ export class BroadcastConsumer {
 	 * @param track - The name of the track to subscribe to
 	 * @param priority - The priority level for the subscription
 	 * @returns A TrackConsumer for the subscribed track
-	 *
-	 * @beta
 	 */
 	subscribe(track: string, priority: number): TrackConsumer {
 		const state = this.#state.value();
@@ -231,8 +209,6 @@ export class BroadcastConsumer {
 	/**
 	 * Returns a promise that resolves when the reader is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		return this.#state.closed();
@@ -240,8 +216,6 @@ export class BroadcastConsumer {
 
 	/**
 	 * Closes the reader.
-	 *
-	 * @beta
 	 */
 	close() {
 		this.#state.close();
@@ -250,8 +224,6 @@ export class BroadcastConsumer {
 	/**
 	 * Creates a new instance of the reader using the same state.
 	 * @returns A new BroadcastConsumer instance
-	 *
-	 * @beta
 	 */
 	clone(): BroadcastConsumer {
 		return new BroadcastConsumer(this.path, this.#state.clone());

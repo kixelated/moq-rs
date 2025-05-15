@@ -8,11 +8,11 @@ import * as Wire from "./wire";
 /**
  * Represents a connection to a MoQ server.
  *
- * @beta
+ * @public
  */
 export class Connection {
 	// The URL of the connection.
-	#url: URL;
+	readonly url: URL;
 
 	// The established WebTransport session.
 	#quic: WebTransport;
@@ -34,8 +34,8 @@ export class Connection {
 	 *
 	 * @internal
 	 */
-	constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
-		this.#url = url;
+	private constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
+		this.url = url;
 		this.#quic = quic;
 		this.#session = session;
 
@@ -50,8 +50,6 @@ export class Connection {
 	 *
 	 * @param url - The URL of the server to connect to
 	 * @returns A promise that resolves to a Connection instance
-	 *
-	 * @beta
 	 */
 	static async connect(url: URL): Promise<Connection> {
 		const options: WebTransportOptions = {
@@ -106,19 +104,7 @@ export class Connection {
 	}
 
 	/**
-	 * Gets the URL of the connection.
-	 * @returns The URL of the connection
-	 *
-	 * @beta
-	 */
-	get url(): URL {
-		return this.#url;
-	}
-
-	/**
 	 * Closes the connection.
-	 *
-	 * @beta
 	 */
 	close() {
 		try {
@@ -137,8 +123,6 @@ export class Connection {
 	/**
 	 * Publishes a broadcast to the connection.
 	 * @param broadcast - The broadcast to publish
-	 *
-	 * @beta
 	 */
 	publish(broadcast: BroadcastConsumer) {
 		this.#publisher.publish(broadcast);
@@ -148,8 +132,6 @@ export class Connection {
 	 * Gets an announced reader for the specified prefix.
 	 * @param prefix - The prefix for announcements
 	 * @returns An AnnounceConsumer instance
-	 *
-	 * @beta
 	 */
 	announced(prefix = ""): AnnouncedConsumer {
 		return this.#subscriber.announced(prefix);
@@ -163,8 +145,6 @@ export class Connection {
 	 *
 	 * @param broadcast - The name of the broadcast to consume
 	 * @returns A BroadcastConsumer instance
-	 *
-	 * @beta
 	 */
 	consume(broadcast: string): BroadcastConsumer {
 		// To avoid downloading the a broadcast we're publishing, check the publisher first.
@@ -183,11 +163,6 @@ export class Connection {
 		}
 	}
 
-	/**
-	 * Runs the bidirectional stream loop.
-	 *
-	 * @internal
-	 */
 	async #runBidis() {
 		for (;;) {
 			const next = await Wire.Stream.accept(this.#quic);
@@ -202,13 +177,6 @@ export class Connection {
 		}
 	}
 
-	/**
-	 * Handles a bidirectional stream message.
-	 * @param msg - The message to handle
-	 * @param stream - The stream to handle
-	 *
-	 * @internal
-	 */
 	async #runBidi(msg: Wire.StreamBi, stream: Wire.Stream) {
 		if (msg instanceof Wire.SessionClient) {
 			throw new Error("duplicate session stream");
@@ -233,11 +201,6 @@ export class Connection {
 		throw new Error("unknown message: ", msg);
 	}
 
-	/**
-	 * Runs the unidirectional stream loop.
-	 *
-	 * @internal
-	 */
 	async #runUnis() {
 		for (;;) {
 			const next = await Wire.Reader.accept(this.#quic);
@@ -252,13 +215,6 @@ export class Connection {
 		}
 	}
 
-	/**
-	 * Handles a unidirectional stream message.
-	 * @param msg - The message to handle
-	 * @param stream - The stream to handle
-	 *
-	 * @internal
-	 */
 	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
 		if (msg instanceof Wire.Group) {
 			if (!this.#subscriber) {
@@ -272,8 +228,6 @@ export class Connection {
 	/**
 	 * Returns a promise that resolves when the connection is closed.
 	 * @returns A promise that resolves when closed
-	 *
-	 * @beta
 	 */
 	async closed(): Promise<void> {
 		await this.#quic.closed;
