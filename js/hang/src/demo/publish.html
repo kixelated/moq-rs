@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" class="dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+
+	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+
+<body>
+	<!-- Use the included custom element to render a preview. -->
+	<hang-publish audio video url="http://localhost:4443/" broadcast="demo/me" id="publish">
+		<!-- Optionally provide a custom video element that we can style as needed -->
+		<video style="max-width: 100%; height: auto; border-radius: 4px;" muted autoplay></video>
+	</hang-publish>
+
+	<!-- Make some simple controls to demonstate the API. -->
+	<div style="display: flex; justify-content: space-around; gap: 16px; margin: 8px 0;">
+		<span id="status">🟡 Initializing...</span>
+
+		<span style="display: flex; gap: 16px;">
+			Device:
+			<button id="camera" title="Camera">🎥</button>
+			<button id="screen" title="Screen">🖥️</button>
+			<button id="none" title="Nothing">🚫</button>
+		</span>
+
+		<input type="text" id="broadcast" placeholder="demo/me" title="Broadcast name"></input>
+
+		<a target="_blank" id="watch" href="index.html?broadcast=demo/me">Watch</a>
+	</div>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="index.html">Watch a broadcast.</a></li>
+	</ul>
+
+	<h3>Tips:</h3>
+	<p>
+		This page creates a broadcast called `demo/me` by default.
+		You can watch it with the <a href="index.html?path=demo/me">watch demo</a>.
+		You can also use <a href="index.html?path=demo/notme">query parameters</a> to create a different broadcaster.
+	</p>
+	<p>
+		Reusing the same broadcast path means viewers will automatically reconnect to the new session.
+		Try reloading the page and broadcasting again; viewers will automatically reconnect!
+	</p>
+	<p>
+		Media only flows over the network when requested!
+		Connecting to a relay means the broadcast is advertised as available, but nothing is transferred until there's
+		at least one viewer per track.
+		If there's multiple viewers, the relay will fan out the media to all of them.
+		<b>TODO</b>: We still encode media even when there are no viewers, but somebody should improve this!
+	</p>
+	<p>
+		You can create a broadcaster via the provided <code class="language-html">&lt;hang-publish&gt;</code> <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
+		Either modify HTML attributes like <code class="language-html">&lt;moq-publish device="camera" /&gt;</code>
+		or access the element's Javascript API:
+	<pre><code class="language-typescript">const publish = document.getElementById("publish");
+publish.lib.device = "camera";</code></pre>
+
+	And of course you can use the Javascript API directly instead of the Web Component.
+	It's a bit more complicated and subject to change, but it gives you more control.
+	</p>
+</body>
+
+<script type="module" src="publish.ts"></script>
+
+</html>

@@ -1,0 +1,23 @@
+[package]
+name = "moq-clock"
+description = "CLOCK over QUIC"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq"
+license = "MIT OR Apache-2.0"
+
+version = "0.5.26"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { version = "1", features = ["backtrace"] }
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+moq-lite = { workspace = true }
+moq-native = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = "0.1"
+url = "2"

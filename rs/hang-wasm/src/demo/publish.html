@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" class="sl-theme-dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 16px;
+
+			background-color: black;
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+		}
+	</style>
+
+	<!-- Use shoelace for some basic styling. -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css" />
+	<script type="module"
+		src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
+</head>
+
+<body>
+	<!-- Include the custom element to make setup super easy! -->
+	<hang-publish url="http://localhost:4443/demo/me" id="publish"></hang-publish>
+
+	<!-- Make some simple controls to demonstate the API. -->
+	<div style="display: flex; justify-content: center; gap: 8px;">
+		<sl-radio-group>
+			<sl-tooltip content="Publish your webcam." placement="bottom">
+				<sl-radio-button id="camera">
+					<sl-icon slot="prefix" name="camera" label="Camera" />
+				</sl-radio-button>
+			</sl-tooltip>
+
+			<sl-tooltip content="Publish a screen or window." placement="bottom">
+				<sl-radio-button id="screen">
+					<sl-icon slot="prefix" name="display" label="Screen" />
+				</sl-radio-button>
+			</sl-tooltip>
+
+			<sl-tooltip content="Publish nothing." placement="bottom">
+				<sl-radio-button id="none">
+					<sl-icon slot="prefix" name="x" label="None" />
+				</sl-radio-button>
+			</sl-tooltip>
+		</sl-radio-group>
+	</div>
+
+	<h3>Tips:</h3>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="index.html">Watch a broadcast.</a></li>
+	</ul>
+</body>
+
+<script>
+	// Yes this is a terrible mess and not how we make websites in >current year<.
+	// But it's a demo, I'm lazy, and I don't want to require a build step.
+	const publish = document.getElementById("publish");
+	const camera = document.getElementById("camera");
+	const screen = document.getElementById("screen");
+	const none = document.getElementById("none");
+
+	camera.addEventListener("click", () => publish.lib.device = "camera");
+	screen.addEventListener("click", () => publish.lib.device = "screen");
+	none.addEventListener("click", () => publish.lib.device = null);
+</script>
+
+</html>

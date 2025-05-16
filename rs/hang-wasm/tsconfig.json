@@ -1,0 +1,17 @@
+{
+	"extends": "../tsconfig.json",
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", "pkg"],
+	"compilerOptions": {
+		"lib": ["es2022", "dom"],
+		"target": "es2022",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+
+		"outDir": "dist",
+		"declaration": true,
+		"sourceMap": true,
+		"isolatedModules": true,
+		"skipLibCheck": true // Avoids a bug with the audioworklet types.
+	}
+}

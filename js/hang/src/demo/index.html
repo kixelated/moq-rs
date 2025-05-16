@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en" class="dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+
+	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+
+<body>
+	<div id="container">
+		<!-- Include the custom element to set up the canvas. -->
+		<hang-watch url="http://localhost:4443/" broadcast="demo/bbb" muted id="watch">
+			<!-- Optionally provide a custom canvas element that we can style as needed -->
+			<canvas style="max-width: 100%; height: auto; border-radius: 4px;"></canvas>
+		</hang-watch>
+
+		<!-- Make some "simple" controls to demonstate the API. -->
+		<div style="justify-content: space-between; margin: 8px 0; gap: 8px; display: flex;">
+			<button id="pause" title="Pause">
+				⏸️
+			</button>
+
+			<span>
+				<button id="mute" title="Mute">🔇</button>
+				<input type="range" id="volume" min=0 max=1 step=0.01 value=0 title="Volume"></input>
+				<span id="volume-value">0%</span>
+			</span>
+
+			<span id="status">🟡 Initializing...</span>
+
+			<span id="broadcast-status">🟡 Initializing...</span>
+
+			<span title="Latency">
+				⏳
+				<input type="range" id="latency" min=0 max=4000 step=10 value=50></input>
+				<span id="latency-value">50ms</span>
+			</span>
+
+			<button id="fullscreen" title="Fullscreen">⛶</button>
+		</div>
+	</div>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="publish.html">Publish a broadcast.</a></li>
+	</ul>
+
+	<h3>Tips:</h3>
+	<p>
+		Click the video to enable audio.
+		This is not always necessary, but sometimes browsers require user interaction before autoplaying
+		audio. If using the library directly, call <code class="language-typescript">audio.enabled.set(true)</code> to
+		try
+		to reinitialize audio.
+		Audio is not being downloaded in the meantime.
+	</p>
+	<p>
+		That's because media only flows over the network when needed!
+		Video won't be downloaded either when the video is paused, minimized, not in the DOM, or scrolled out of view.
+	</p>
+	<p>
+		Try it!
+		Open up the console and look for <code>subscribe ok: broadcast=demo/bbb track=video1</code>.
+	</p>
+	<hr>
+	<p>
+		You can instanciate the player via the provided <code class="language-html">&lt;hang-watch&gt;</code> <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
+		Either modify HTML attributes like <code class="language-html">&lt;hang-watch paused&gt;</code> or use the
+		Javascript API.
+	</p>
+	<p>
+		You can provide your own canvas element and use CSS to modify it.
+		Unfortunately, you can't use the HTML width/height attributes because of how <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
+		works.
+		For example:
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; broadcast=&quot;demo/bbb&quot;&gt;
+	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
+	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
+&lt;/hang-watch&gt;</code></pre>
+	</p>
+	<p>
+		The Javascript API is far more powerful and you can access properties directly:
+
+	<pre><code class="language-typescript">const watch = document.getElementById("watch");
+watch.paused.set(true);
+</code></pre>
+	</p>
+
+	<p>
+		All of the properties are reactive using <a href="https://solidjs.com/">SolidJS</a> signals.
+		That means if you use SolidJS (try it, it's better than React), you can do things like this:
+
+	<pre><code class="language-typescript">
+import { createMemo } from "solid-js";
+import { Watch } from "@kixelated/hang/watch";
+
+function Volume(hang: Watch) {
+	// Compute the volume based on the watch's muted and volume signals.
+	const volume = createMemo(() => (hang.muted.get() ? 0 : hang.volume.get()));
+
+	// Return a div that displays the volume.
+	return &lt;div&gt;
+		Volume: {volume.get()}
+	&lt;/div&gt;
+}
+		</code></pre>
+	</p>
+
+	<p>
+		But the demo doesn't use SolidJS on purpose to show that it's not required.
+		You can use the handy <code class="language-typescript">subscribe()</code> method to trigger a callback instead:
+
+	<pre><code class="language-typescript">
+// There's also a `derived` method that is just a wrapper around SolidJS's `createMemo`.
+const volume = hang.muted.derived((muted) => (muted ? 0 : hang.volume.get()));
+
+const cleanup = volume.subscribe((volume) => {
+	// Update the volume display.
+	document.getElementById("volume-value").textContent = `${volume * 100}%`;
+});
+
+// Cleanup the subscription when no longer needed.
+cleanup();
+		</code></pre>
+	</p>
+	<hr>
+	<p>
+		The connection and broadcast are automatically reloaded.
+		Try running multiple terminals and kill the broadcast to see what happens.
+
+	<pre><code class="language-bash"># Run the relay and web server in another terminal or the background.
+just relay &
+just web &
+
+just pub bbb
+# Kill it with ctrl+C
+
+# Republish the same broadcast, the player will reconnect.
+just pub bbb
+		</code></pre>
+	</p>
+	<p>
+		If the Big Bunny is making you sick, you can use other inferior test videos or the <a
+			href="publish.html">publish demo</a>.
+		For example,
+		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
+			href="index.html?broadcast=demo/tos" target="_blank">watch robots bang</a>.
+	</p>
+</body>
+
+<script type="module" src="index.ts"></script>
+
+</html>

@@ -1,24 +1,84 @@
 <p align="center">
-	<img height="128px" src="https://github.com/kixelated/moq-rs/blob/main/.github/logo.svg" alt="Media over QUIC">
+	<img height="128px" src="https://github.com/kixelated/moq/blob/main/.github/logo.svg" alt="Media over QUIC">
 </p>
 
-Media over QUIC (MoQ) is a live media delivery protocol utilizing QUIC.
-It's a client-server model that is designed to scale to enormous viewership via clustered relay servers (aka a CDN).
-The application determines the trade-off between latency and quality, potentially on a per viewer-basis.
-
+Media over QUIC (MoQ) is a live (media) delivery protocol utilizing QUIC.
+It utilizes new browser technologies such as [WebTransport](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport_API) and [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) to provide WebRTC-like functionality.
+Despite the focus on media, the transport is generic and designed to scale to enormous viewership via clustered relay servers (aka a CDN).
 See [quic.video](https://quic.video) for more information.
-Note: this project is a [fork of the IETF draft](https://quic.video/blog/transfork) to speed up development.
-If you're curious about the protocol, check out the current [specification](https://github.com/kixelated/moq-drafts).
 
-The project is split into a few crates:
+**Note:** this project is a [fork](https://quic.video/blog/transfork) of the [IETF specification](https://datatracker.ietf.org/group/moq/documents/).
+The principles are the same but the implementation is exponentially simpler given a narrower focus (and no politics).
 
--   [moq-relay](moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
-- [moq-web](moq-web): A web client utilizing Rust and WASM. Supports both consuming and publishing media.
--   [moq-transfork](moq-transfork): The underlying network protocol. It can be used by live applications that need real-time and scale, even if they're not media.
-- [moq-karp](moq-karp): The underlying media protocol powered by moq-transfork. It includes a CLI for importing/exporting to other formats, for example integrating with ffmpeg.
--   [moq-clock](moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
--   [moq-native](moq-native): Helpers to configure the native MoQ tools.
+## Quick Start
+Too many words, here's a quick start:
 
+**Requirements:**
+- [Rustup](https://www.rust-lang.org/tools/install)
+- [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
+- [Node + NPM](https://nodejs.org/)
+
+```sh
+just setup
+just all
+```
+
+## Layers
+Now that those with ADHD have left, let's talk about the layers.
+Unlike WebRTC, MoQ is purposely split into multiple layers to allow for maximum flexibility.
+For more information, see [the blog](https://quic.video/blog/moq-onion).
+
+- **QUIC**: The network layer, providing a semi-reliable transport over UDP.
+- **WebTransport**: QUIC but with a HTTP/3 handshake for browser compatibility.
+- **moq-lite**: A pub/sub protocol used to serve "broadcasts", "tracks", "groups", and "frames".
+- **hang**: Media-specific encoding based on the [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API). It's designed primarily for real-time conferencing.
+- **application**: Any stuff you want to build on top of moq/hang.
+
+If you're curious about the underlying protocols, check out the [specification](https://github.com/kixelated/moq-drafts).
+If you want to argue about anything, participate in the [IETF](https://datatracker.ietf.org/group/moq/documents/) or bad-mouth `@kixelated` on [Discord](https://discord.gg/FCYF3p99mr).
+
+
+## Environments
+Originally, this repository was called `moq-rs` with the aim of targetting all platforms.
+The reality is that the `moq` and `hang` are relatively simple while everything else is platform specific.
+
+For example, a MoQ web player MUST use browser APIs for networking, encoding, decoding, rendering, capture, etc.
+The low level hardware and syscalls otherwise necessary are not exposed to the application (Javascript and WASM alike).
+You can use [wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/) and [web-sys](https://rustwasm.github.io/wasm-bindgen/api/web_sys/) shims, and you can see an example in [hang-wasm](rs/hang-wasm), but it's a lot of boilerplate and type juggling.
+
+Instead, this repository is split based on the language and environment:
+- [rs](rs): Rust libraries for native platforms. (and WASM)
+- [js](js): Typescript libraries for web only. (not node)
+
+Unfortunately, this means that there are two implementations of `moq` and `hang`.
+They have a similar API but of course there are language differences.
+
+### Rust (Native)
+
+- [moq](rs/moq): The underlying pub/sub protocol providing real-time latency and scale. This is a simplified fork of the IETF [moq-transport draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) called `moq-lite`.
+- [moq-relay](rs/moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
+- [moq-clock](rs/moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
+- [moq-native](rs/moq-native): Helpers to configure QUIC on native platforms.
+- [hang](rs/hang): Media-specific components built on top of MoQ.
+- [hang-cli](rs/hang-cli): A CLI for publishing and subscribing to media.
+- [hang-gst](rs/hang-gst): A gstreamer plugin for publishing and subscribing to media.
+- [hang-wasm](rs/hang-wasm): A web client written in Rust and using WASM. (*unmaintained*)
+- [web-transport](https://github.com/kixelated/web-transport-rs): A Rust implementation of the WebTransport API powered by [Quinn](https://github.com/quinn-rs/quinn).
+
+The [hang-wasm](rs/hang-wasm) crate is currently unmaintained and depends on some other [unmaintained crates](https://github.com/kixelated/web-rs) that I've made. Notably:
+- [web-transport-wasm](https://github.com/kixelated/web-transport-rs/tree/main/web-transport-wasm): A wrapper around the WebTransport API.
+- [web-codecs](https://docs.rs/web-codecs/latest/web_codecs/): A wrapper around the WebCodecs API.
+- [web-streams](https://docs.rs/web-streams/latest/web_streams/): A wrapper around the WebStreams API.
+- You get the idea; it's all wrappers.
+
+
+### Typescript (Web)
+- [moq](js/moq): The underlying pub/sub protocol providing real-time latency and scale. Available as [@kixelated/moq](https://www.npmjs.com/package/@kixelated/moq)
+- [hang](js/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a WebComponent. Available as [@kixelated/hang](https://www.npmjs.com/package/@kixelated/hang)
+
+Check out the [demo](js/hang/src/demo) for an example of how to use the library.
+Documentation is sparse as the API is still a work in progress.
+The provided Web Components (`Watch` and `Publish`) are unlikely to change dramatically.
 
 
 # Usage
@@ -27,7 +87,8 @@ The project is split into a few crates:
 - [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
 - [Node + NPM](https://nodejs.org/)
 
-## Setup
+## Development
+### Setup
 We use `just` to simplify the development process.
 Check out the [Justfile](justfile) or run `just` to see the available commands.
 
@@ -36,7 +97,7 @@ Install any other required tools:
 just setup
 ```
 
-## Development
+### Building
 
 ```sh
 # Run the relay, a demo movie, and web server:
@@ -44,74 +105,23 @@ just all
 
 # Or run each individually in separate terminals:
 just relay
-just bbb
+just pub bbb
 just web
 ```
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
+There are a lot more commands; check out the [Justfile](justfile) and individual README files.
+
+### Contributing
 When you're ready to submit a PR, make sure the tests pass or face the wrath of CI:
 ```sh
 just check
 just test
+
+# Optional: Automatically fix easy lint issues.
+just fix
 ```
-
-# Components
-## moq-relay
-
-[moq-relay](moq-relay) is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
-It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
-
-This listens for WebTransport connections on `UDP https://localhost:4443` by default.
-You need a client to connect to that address, to both publish and consume media.
-
-## moq-web
-
-[moq-web](moq-web) is a web client that can consume media (and soon publish).
-It's available [on NPM](https://www.npmjs.com/package/@kixelated/moq) as both a JS library and web component.
-
-For example:
-
-```html
-<script type="module">
-	import '@kixelated/moq/watch'
-</script>
-
-<moq-watch url="https://relay.quic.video/demo/bbb"></moq-watch>
-```
-
-
-See the [moq-web README](moq-web/README.md) for more information.
-
-## moq-karp
-
-[moq-karp](moq-karp) is a simple media layer on top of MoQ.
-The crate includes a binary that accepts fMP4 with a few restrictions:
-
--   `separate_moof`: Each fragment must contain a single track.
--   `frag_keyframe`: A keyframe must be at the start of each keyframe.
--   `fragment_per_frame`: (optional) Each frame should be a separate fragment to minimize latency.
-
-This can be used in conjunction with ffmpeg to publish media to a MoQ relay.
-See the [Justfile](./justfile) for the required ffmpeg flags.
-
-Alternatively, see [moq-gst](https://github.com/kixelated/moq-gst) for a gstreamer plugin.
-
-## moq-transfork
-
-A media-agnostic library used by [moq-relay](moq-relay) and [moq-karp](moq-karp) to serve the underlying subscriptions.
-It has caching/deduplication built-in, so your application is oblivious to the number of connections under the hood.
-
-See the published [crate](https://crates.io/crates/moq-transfork) and [documentation](https://docs.rs/moq-transfork/latest/moq_transfork/).
-
-## moq-clock
-
-[moq-clock](moq-clock) is a simple client that can publish or subscribe to the current time.
-It's meant to demonstrate that [moq-transfork](moq-transfork) can be used for more than just media.
-
-## nix/nixos
-
-moq also has nix support see [`nix/README.md`](nix/README.md)
 
 
 # License
