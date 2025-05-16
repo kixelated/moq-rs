@@ -1,5 +1,5 @@
+import { Match, Show, Switch, createEffect, createSignal } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
-import { createEffect, createSignal, Match, Show, Switch } from "solid-js";
 import { Watch } from "./watch";
 
 // A simple set of controls mostly for the demo.

@@ -1,7 +1,7 @@
+import { Match, Switch, createSelector } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
-import { Publish } from "./publish";
 import { Device } from "./broadcast";
-import { Switch, Match, createSelector } from "solid-js";
+import { Publish } from "./publish";
 
 export function Controls(props: { lib: Publish }): JSX.Element {
 	return (
@@ -58,13 +58,31 @@ function Select(props: { lib: Publish }): JSX.Element {
 	return (
 		<div style={{ display: "flex", gap: "16px" }}>
 			Device:
-			<button id="camera" title="Camera" type="button" onClick={() => setDevice("camera")} style={buttonStyle("camera")}>
+			<button
+				id="camera"
+				title="Camera"
+				type="button"
+				onClick={() => setDevice("camera")}
+				style={buttonStyle("camera")}
+			>
 				🎥
 			</button>
-			<button id="screen" title="Screen" type="button" onClick={() => setDevice("screen")} style={buttonStyle("screen")}>
+			<button
+				id="screen"
+				title="Screen"
+				type="button"
+				onClick={() => setDevice("screen")}
+				style={buttonStyle("screen")}
+			>
 				🖥️
 			</button>
-			<button id="none" title="Nothing" type="button" onClick={() => setDevice(undefined)} style={buttonStyle(undefined)}>
+			<button
+				id="none"
+				title="Nothing"
+				type="button"
+				onClick={() => setDevice(undefined)}
+				style={buttonStyle(undefined)}
+			>
 				🚫
 			</button>
 		</div>

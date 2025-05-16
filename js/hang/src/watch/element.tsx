@@ -1,7 +1,7 @@
-import { render, Show } from "solid-js/web";
-import { Watch } from "./watch";
-import { Controls } from "./controls";
+import { Show, render } from "solid-js/web";
 import { signal } from "../signals";
+import { Controls } from "./controls";
+import { Watch } from "./watch";
 
 // An optional web component that wraps a <canvas>
 export class WatchElement extends HTMLElement {

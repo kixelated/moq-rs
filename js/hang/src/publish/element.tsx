@@ -1,8 +1,8 @@
-import { render, Show } from "solid-js/web";
+import { Show, render } from "solid-js/web";
 import { signal } from "../signals";
 import { Device } from "./broadcast";
-import { Publish } from "./publish";
 import { Controls } from "./controls";
+import { Publish } from "./publish";
 
 export class PublishElement extends HTMLElement {
 	static observedAttributes = ["url", "broadcast", "device", "audio", "video", "controls"];
