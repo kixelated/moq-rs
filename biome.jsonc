@@ -1,8 +1,8 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.0.0-beta.2/schema.json",
+	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
-		// For some reason, biome is too dumb to use our .gitignore.
-		"includes": ["**", "!**/node_modules", "!**/dist"]
+		// Biome is too dumb to use our .gitignore.
+		"ignore": ["**/node_modules", "**/dist"]
 	},
 	"vcs": {
 		"enabled": true,
@@ -10,11 +10,12 @@
 		"useIgnoreFile": true
 	},
 	"formatter": {
-		"indentStyle": "tab",
-		"lineWidth": 120,
+		"enabled": true,
 		"useEditorconfig": true
 	},
+	"organizeImports": { "enabled": true },
 	"linter": {
+		"enabled": true,
 		"rules": {
 			"a11y": {
 				"useMediaCaption": "off"

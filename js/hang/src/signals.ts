@@ -1,14 +1,14 @@
 // A wrapper around solid-js signals to provide a more ergonomic API.
 
 import {
+	Owner,
+	SignalOptions,
 	createEffect,
 	createRoot,
 	createSignal,
 	getOwner,
-	Owner,
 	onCleanup,
 	runWithOwner,
-	SignalOptions,
 	untrack,
 } from "solid-js";
 
@@ -101,7 +101,10 @@ export class Signals {
 		}
 
 		[this.#dispose, this.#owner] = createRoot((dispose) => {
-			return [dispose, getOwner()!];
+			const owner = getOwner();
+			if (!owner) throw new Error("no owner");
+
+			return [dispose, owner];
 		});
 	}
 

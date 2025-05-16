@@ -1,5 +1,5 @@
-import * as Moq from "@kixelated/moq";
 import { Buffer } from "buffer";
+import * as Moq from "@kixelated/moq";
 import { isEqual } from "lodash";
 import * as Catalog from "../catalog";
 import * as Container from "../container";

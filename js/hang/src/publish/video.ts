@@ -1,5 +1,5 @@
-import * as Moq from "@kixelated/moq";
 import { Buffer } from "buffer";
+import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 import { Signal, Signals, signal } from "../signals";

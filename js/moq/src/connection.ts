@@ -58,6 +58,8 @@ export class Connection {
 			requireUnreliable: true,
 		};
 
+		let adjustedUrl = url;
+
 		if (url.protocol === "http:") {
 			const fingerprintUrl = new URL(url);
 			fingerprintUrl.pathname = "/certificate.sha256";
@@ -73,11 +75,11 @@ export class Connection {
 				},
 			];
 
-			url = new URL(url);
-			url.protocol = "https:";
+			adjustedUrl = new URL(url);
+			adjustedUrl.protocol = "https:";
 		}
 
-		const quic = new WebTransport(url, options);
+		const quic = new WebTransport(adjustedUrl, options);
 		await quic.ready;
 
 		const client = new Wire.SessionClient([Wire.Version.FORK_04]);
@@ -88,13 +90,13 @@ export class Connection {
 			throw new Error(`unsupported server version: ${server.version}`);
 		}
 
-		const conn = new Connection(url, quic, stream);
+		const conn = new Connection(adjustedUrl, quic, stream);
 
 		const cleanup = () => {
 			conn.close();
 		};
 
-		// Close the connection when the window is closed.
+		// Attempt to close the connection when the window is closed.
 		document.addEventListener("pagehide", cleanup);
 		conn.closed().then(() => {
 			document.removeEventListener("pagehide", cleanup);

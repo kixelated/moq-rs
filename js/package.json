@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"devDependencies": {
-		"@biomejs/biome": "2.0.0-beta.2",
+		"@biomejs/biome": "^1.9.4",
 		"@microsoft/api-documenter": "^7.26.27",
 		"@microsoft/api-extractor": "^7.52.8",
 		"@types/node": "^22.15.18",
