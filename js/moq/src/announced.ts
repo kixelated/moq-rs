@@ -5,10 +5,10 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
  *
  * @public
  */
-export type Announce = {
+export interface Announce {
 	broadcast: string;
 	active: boolean;
-};
+}
 
 /**
  * A Writer/Reader pair for producing and consuming announcements.

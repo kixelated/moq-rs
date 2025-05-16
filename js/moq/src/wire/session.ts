@@ -52,7 +52,7 @@ export class Extensions {
 			const value = await r.read(size);
 
 			if (params.entries.has(id)) {
-				throw new Error(`duplicate parameter id: ${id}`);
+				throw new Error(`duplicate parameter id: ${id.toString()}`);
 			}
 
 			params.entries.set(id, value);

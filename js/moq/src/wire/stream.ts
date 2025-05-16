@@ -25,7 +25,8 @@ export class Stream {
 	}
 
 	static async accept(quic: WebTransport): Promise<[StreamBi, Stream] | undefined> {
-		const reader = quic.incomingBidirectionalStreams.getReader();
+		const reader =
+			quic.incomingBidirectionalStreams.getReader() as ReadableStreamDefaultReader<WebTransportBidirectionalStream>;
 		const next = await reader.read();
 		reader.releaseLock();
 
@@ -41,7 +42,7 @@ export class Stream {
 		} else if (typ === Wire.Subscribe.StreamID) {
 			msg = await Wire.Subscribe.decode(stream.reader);
 		} else {
-			throw new Error(`unknown stream type: ${typ}`);
+			throw new Error(`unknown stream type: ${typ.toString()}`);
 		}
 
 		return [msg, stream];
@@ -57,8 +58,6 @@ export class Stream {
 		} else if (msg instanceof Wire.Subscribe) {
 			await stream.writer.u8(Wire.Subscribe.StreamID);
 		} else {
-			// Make sure we're not missing any types.
-			msg as never;
 			throw new Error("invalid message type");
 		}
 
@@ -137,14 +136,16 @@ export class Reader {
 	}
 
 	async readAll(): Promise<Uint8Array> {
-		while (await this.#fill()) {}
+		while (await this.#fill()) {
+			// keep going
+		}
 		return this.#slice(this.#buffer.byteLength);
 	}
 
 	async string(maxLength?: number): Promise<string> {
 		const length = await this.u53();
 		if (maxLength !== undefined && length > maxLength) {
-			throw new Error(`string length ${length} exceeds max length ${maxLength}`);
+			throw new Error(`string length ${length.toString()} exceeds max length ${maxLength.toString()}`);
 		}
 
 		const buffer = await this.read(length);
@@ -202,8 +203,8 @@ export class Reader {
 		return !(await this.#fill());
 	}
 
-	stop(reason: Error) {
-		this.#reader.cancel(reason).catch(() => {});
+	stop(reason: unknown) {
+		this.#reader.cancel(reason).catch(() => void 0);
 	}
 
 	async closed() {
@@ -211,7 +212,9 @@ export class Reader {
 	}
 
 	static async accept(quic: WebTransport): Promise<[StreamUni, Reader] | undefined> {
-		const reader = quic.incomingUnidirectionalStreams.getReader();
+		const reader = quic.incomingUnidirectionalStreams.getReader() as ReadableStreamDefaultReader<
+			ReadableStream<Uint8Array>
+		>;
 		const next = await reader.read();
 		reader.releaseLock();
 
@@ -223,7 +226,7 @@ export class Reader {
 		if (typ === Wire.Group.StreamID) {
 			msg = await Wire.Group.decode(stream);
 		} else {
-			throw new Error(`unknown stream type: ${typ}`);
+			throw new Error(`unknown stream type: ${typ.toString()}`);
 		}
 
 		return [msg, stream];
@@ -248,7 +251,7 @@ export class Writer {
 
 	async i32(v: number) {
 		if (Math.abs(v) > MAX_U31) {
-			throw new Error(`overflow, value larger than 32-bits: ${v}`);
+			throw new Error(`overflow, value larger than 32-bits: ${v.toString()}`);
 		}
 
 		// We don't use a VarInt, so it always takes 4 bytes.
@@ -258,10 +261,10 @@ export class Writer {
 
 	async u53(v: number) {
 		if (v < 0) {
-			throw new Error(`underflow, value is negative: ${v}`);
+			throw new Error(`underflow, value is negative: ${v.toString()}`);
 		}
 		if (v > MAX_U53) {
-			throw new Error(`overflow, value larger than 53-bits: ${v}`);
+			throw new Error(`overflow, value larger than 53-bits: ${v.toString()}`);
 		}
 
 		await this.write(setVint53(this.#scratch, v));
@@ -269,7 +272,7 @@ export class Writer {
 
 	async u62(v: bigint) {
 		if (v < 0) {
-			throw new Error(`underflow, value is negative: ${v}`);
+			throw new Error(`underflow, value is negative: ${v.toString()}`);
 		}
 		/*
 		if (v >= MAX_U62) {
@@ -298,18 +301,17 @@ export class Writer {
 		await this.#writer.closed;
 	}
 
-	reset(reason: Error) {
+	reset(reason: unknown) {
 		this.#writer.abort(reason).catch(() => void 0);
 	}
 
 	static async open(quic: WebTransport, msg: StreamUni): Promise<Writer> {
-		const stream = new Writer(await quic.createUnidirectionalStream());
+		const writable = (await quic.createUnidirectionalStream()) as WritableStream<Uint8Array>;
+		const stream = new Writer(writable);
 
 		if (msg instanceof Wire.Group) {
 			await stream.u8(Wire.Group.StreamID);
 		} else {
-			// Make sure we're not missing any types.
-			msg as never;
 			throw new Error("invalid message type");
 		}
 
@@ -358,7 +360,7 @@ export function setVint53(dst: Uint8Array, v: number): Uint8Array {
 	if (v <= MAX_U53) {
 		return setUint64(dst, BigInt(v) | 0xc000000000000000n);
 	}
-	throw new Error(`overflow, value larger than 53-bits: ${v}`);
+	throw new Error(`overflow, value larger than 53-bits: ${v.toString()}`);
 }
 
 export function setVint62(dst: Uint8Array, v: bigint): Uint8Array {

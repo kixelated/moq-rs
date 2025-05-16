@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // A wrapper around solid-js signals to provide a more ergonomic API.
 
 import {
@@ -28,7 +30,9 @@ export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
 		peek: () => untrack(get),
 		subscribe(fn) {
 			const temp = new Signals();
-			temp.effect(() => fn(get()));
+			temp.effect(() => {
+				fn(get());
+			});
 			return temp.close.bind(temp);
 		},
 		derived(fn) {
@@ -40,7 +44,9 @@ export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
 				peek: () => untrack(get),
 				subscribe(fn) {
 					const temp = new Signals();
-					temp.effect(() => fn(get()));
+					temp.effect(() => {
+						fn(get());
+					});
 					return temp.close.bind(temp);
 				},
 			};
@@ -54,7 +60,7 @@ export function cleanup(fn: () => void) {
 
 export type Dispose = () => void;
 
-// biome-ignore lint/suspicious/noConfusingVoidType: pls
+// biome-ignore lint/suspicious/noConfusingVoidType: it's required to make the callback optional
 export type MaybeDispose = (() => void) | void;
 
 export interface Derived<T> {
@@ -73,7 +79,7 @@ export function derived<T>(fn: () => T, options?: SignalOptions<T>): Derived<T> 
 }
 
 export function effect(fn: () => MaybeDispose) {
-	return createEffect(() => {
+	createEffect(() => {
 		const res = fn();
 		if (res) {
 			onCleanup(res);
@@ -86,7 +92,6 @@ export class Signals {
 	#dispose: Dispose;
 	#owner: Owner;
 
-	// @ts-ignore depends on the bundler
 	static dev = import.meta.env?.MODE !== "production";
 
 	// Sanity check to make sure roots are being disposed on dev.

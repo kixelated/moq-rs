@@ -45,30 +45,34 @@ export class Publisher {
 	 */
 	publish(broadcast: BroadcastConsumer) {
 		this.#broadcasts.set(broadcast.path, broadcast);
+		void this.#runPublish(broadcast);
+	}
 
-		(async () => {
-			try {
-				this.#announced.producer.write({
-					broadcast: broadcast.path,
-					active: true,
-				});
+	async #runPublish(broadcast: BroadcastConsumer) {
+		try {
+			this.#announced.producer.write({
+				broadcast: broadcast.path,
+				active: true,
+			});
 
-				console.debug(`announce: broadcast=${broadcast.path} active=true`);
+			console.debug(`announce: broadcast=${broadcast.path} active=true`);
 
-				// Wait until the broadcast is closed, then remove it from the lookup.
-				await broadcast.closed();
-			} finally {
-				broadcast.close();
+			// Wait until the broadcast is closed, then remove it from the lookup.
+			await broadcast.closed();
 
-				console.debug(`announce: broadcast=${broadcast.path} active=false`);
-				this.#broadcasts.delete(broadcast.path);
+			console.debug(`announce: broadcast=${broadcast.path} active=false`);
+		} catch (err: unknown) {
+			console.warn(`announce: broadcast=${broadcast.path} error=${error(err)}`);
+		} finally {
+			broadcast.close();
 
-				this.#announced.producer.write({
-					broadcast: broadcast.path,
-					active: false,
-				});
-			}
-		})();
+			this.#broadcasts.delete(broadcast.path);
+
+			this.#announced.producer.write({
+				broadcast: broadcast.path,
+				active: false,
+			});
+		}
 	}
 
 	/**
@@ -150,14 +154,15 @@ export class Publisher {
 					ok = true;
 				}
 
-				this.#runGroup(sub, group);
+				void this.#runGroup(sub, group);
 			}
 
 			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
 			stream.close();
-		} catch (err) {
-			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${err}`);
-			stream.reset(error(err));
+		} catch (err: unknown) {
+			const e = error(err);
+			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${e}`);
+			stream.reset(e);
 		} finally {
 			track.close();
 		}
@@ -172,19 +177,21 @@ export class Publisher {
 	 */
 	async #runGroup(sub: bigint, group: GroupConsumer) {
 		const msg = new Wire.Group(sub, group.id);
-		const stream = await Wire.Writer.open(this.#quic, msg);
 		try {
-			for (;;) {
-				const frame = await Promise.race([group.readFrame(), stream.closed()]);
-				if (!frame) break;
+			const stream = await Wire.Writer.open(this.#quic, msg);
+			try {
+				for (;;) {
+					const frame = await Promise.race([group.readFrame(), stream.closed()]);
+					if (!frame) break;
 
-				await stream.u53(frame.byteLength);
-				await stream.write(frame);
+					await stream.u53(frame.byteLength);
+					await stream.write(frame);
+				}
+
+				stream.close();
+			} catch (err: unknown) {
+				stream.reset(error(err));
 			}
-
-			stream.close();
-		} catch (err: unknown) {
-			stream.reset(error(err));
 		} finally {
 			group.close();
 		}

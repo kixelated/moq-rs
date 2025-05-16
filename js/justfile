@@ -15,11 +15,11 @@ web:
 check:
 	pnpm -r i
 
-	# Format the JS packages
-	pnpm -r exec biome check --config-path ../../biome.jsonc
-
 	# Make sure Typescript compiles
 	pnpm -r run check
+
+	# Format/lint the JS packages
+	pnpm -r exec biome check --config-path ../../biome.jsonc
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit

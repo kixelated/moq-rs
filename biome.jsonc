@@ -21,7 +21,8 @@
 				"useMediaCaption": "off"
 			},
 			"style": {
-				"useImportType": "off"
+				"useImportType": "off",
+				"useNodejsImportProtocol": "off"
 			}
 		}
 	},

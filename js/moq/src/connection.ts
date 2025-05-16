@@ -42,7 +42,9 @@ export class Connection {
 		this.#publisher = new Publisher(this.#quic);
 		this.#subscriber = new Subscriber(this.#quic);
 
-		this.#run().catch((err) => console.error("failed to run connection: ", err));
+		this.#run().catch((err: unknown) => {
+			console.error("failed to run connection: ", err);
+		});
 	}
 
 	/**
@@ -87,7 +89,7 @@ export class Connection {
 
 		const server = await Wire.SessionServer.decode(stream.reader);
 		if (server.version !== Wire.Version.FORK_04) {
-			throw new Error(`unsupported server version: ${server.version}`);
+			throw new Error(`unsupported server version: ${server.version.toString()}`);
 		}
 
 		const conn = new Connection(adjustedUrl, quic, stream);
@@ -98,7 +100,7 @@ export class Connection {
 
 		// Attempt to close the connection when the window is closed.
 		document.addEventListener("pagehide", cleanup);
-		conn.closed().then(() => {
+		void conn.closed().then(() => {
 			document.removeEventListener("pagehide", cleanup);
 		});
 
@@ -111,7 +113,9 @@ export class Connection {
 	close() {
 		try {
 			this.#quic.close();
-		} catch {}
+		} catch {
+			// ignore
+		}
 	}
 
 	async #run(): Promise<void> {
@@ -174,8 +178,12 @@ export class Connection {
 
 			const [msg, stream] = next;
 			this.#runBidi(msg, stream)
-				.catch((err) => stream.writer.reset(err))
-				.finally(() => stream.writer.close());
+				.catch((err: unknown) => {
+					stream.writer.reset(err);
+				})
+				.finally(() => {
+					stream.writer.close();
+				});
 		}
 	}
 
@@ -185,19 +193,13 @@ export class Connection {
 		}
 
 		if (msg instanceof Wire.AnnounceInterest) {
-			if (!this.#subscriber) {
-				throw new Error("not a subscriber");
-			}
-
-			return await this.#publisher.runAnnounce(msg, stream);
+			await this.#publisher.runAnnounce(msg, stream);
+			return;
 		}
 
 		if (msg instanceof Wire.Subscribe) {
-			if (!this.#publisher) {
-				throw new Error("not a publisher");
-			}
-
-			return await this.#publisher.runSubscribe(msg, stream);
+			await this.#publisher.runSubscribe(msg, stream);
+			return;
 		}
 
 		throw new Error("unknown message: ", msg);
@@ -212,17 +214,17 @@ export class Connection {
 
 			const [msg, stream] = next;
 			this.#runUni(msg, stream)
-				.then(() => stream.stop(new Error("cancel")))
-				.catch((err: Error) => stream.stop(err));
+				.then(() => {
+					stream.stop(new Error("cancel"));
+				})
+				.catch((err: unknown) => {
+					stream.stop(err);
+				});
 		}
 	}
 
 	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
 		if (msg instanceof Wire.Group) {
-			if (!this.#subscriber) {
-				throw new Error("not a subscriber");
-			}
-
 			await this.#subscriber.runGroup(msg, stream);
 		}
 	}
