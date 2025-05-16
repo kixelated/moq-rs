@@ -32,6 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           cache: 'pnpm'
+          cache-dependency-path: js/pnpm-lock.yaml
 
       # Make sure u guys don't write bad code
       - run: just check
