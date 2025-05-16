@@ -20,9 +20,7 @@ export class Watch extends HTMLElement {
 	paused = signal(false);
 	muted = signal(false);
 	volume = signal(0.5);
-
-	// TODO this is pretty high because the BBB audio stutters; fix that.
-	latency = signal(100);
+	latency = signal(50);
 
 	// Detect when the element is no longer visible.
 	#visible = signal(true);

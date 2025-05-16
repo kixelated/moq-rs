@@ -117,16 +117,16 @@ export class Video {
 	// Includes the latency offset to determine how timely the frame is.
 	frame(nowMs: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {
 		const now = nowMs * 1000;
-		const maxLatency = this.latency.peek() * 1000;
-
-		if (this.#frames.length === 0) {
-			return;
-		}
+		const maxLatency = this.#maxLatencyUs();
 
 		// Advance the reference timestamp if we need to.
 		// We want the newest frame (last) to be be scheduled at most maxLatency in the future.
 		// NOTE: This never goes backwards, so clock drift will cause issues.
-		const last = this.#frames[this.#frames.length - 1];
+		const last = this.#frames.at(-1);
+		if (!last) {
+			return;
+		}
+
 		if (!this.#ref || last.timestamp - this.#ref - now > maxLatency) {
 			const newRef = last.timestamp - now - maxLatency;
 			this.#ref = newRef;
@@ -157,22 +157,35 @@ export class Video {
 		return { frame: last, lag: (goal - last.timestamp) / 1000 };
 	}
 
+	#maxLatencyUs() {
+		let maxLatency = this.latency.peek() * 1000;
+		const first = this.#frames.at(0);
+		const last = this.#frames.at(-1);
+
+		if (first && last) {
+			// Compute the average duration of a frame
+			const duration = (last.timestamp - first.timestamp) / this.#frames.length;
+			maxLatency += duration;
+		}
+
+		return maxLatency;
+	}
+
 	#prune() {
-		const maxLatency = this.latency.peek() * 1000;
+		const maxLatency = this.#maxLatencyUs();
 
-		while (this.#frames.length > 1) {
-			const first = this.#frames[0];
-			const last = this.#frames[this.#frames.length - 1];
+		let first = this.#frames.at(0);
+		const last = this.#frames.at(-1);
 
-			// Compute the average duration of a frame, minus one so there's some wiggle room.
-			const duration = (last.timestamp - first.timestamp) / (this.#frames.length - 1);
-
-			if (last.timestamp - first.timestamp <= maxLatency + duration) {
+		while (first && last) {
+			if (last.timestamp - first.timestamp <= maxLatency) {
 				break;
 			}
 
 			const frame = this.#frames.shift();
 			frame?.close();
+
+			first = this.#frames.at(0);
 		}
 	}
 

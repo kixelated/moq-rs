@@ -105,10 +105,10 @@ export class AudioEmitter {
 	volume: Signal<number>;
 	paused: Signal<boolean>;
 
-	// The maximum latency in seconds.
+	// The maximum latency in milliseconds.
 	// The larger the value, the more tolerance we have for network jitter.
 	// Audio gaps are more noticable so a larger buffer is recommended.
-	latency: Signal<number>;
+	latency: Signal<DOMHighResTimeStamp>;
 
 	#context = signal<Context | undefined>(undefined);
 	readonly context = this.#context.readonly();
@@ -118,7 +118,7 @@ export class AudioEmitter {
 
 	// Reusable audio buffers.
 	#buffers: AudioBuffer[] = [];
-	#active: AudioBufferSourceNode[] = [];
+	#active: { node: AudioBufferSourceNode; timestamp: number }[] = [];
 
 	// Used to convert from timestamp units to AudioContext units.
 	#ref?: number;
@@ -139,23 +139,21 @@ export class AudioEmitter {
 
 			if (volume === 0) {
 				for (const active of this.#active) {
-					active.stop();
+					active.node.stop();
 				}
 			}
 		});
 
-		// Update the ref when the latency changes.
+		// Update the ref when the latency/enabled changes.
 		this.#signals.effect(() => {
 			this.latency.get();
-			this.#ref = undefined;
-		});
+			this.source.enabled.get();
 
-		this.#signals.effect(() => {
-			if (!this.paused.get()) return;
+			this.#ref = undefined;
 
 			// Cancel any active samples.
 			for (const active of this.#active) {
-				active.stop();
+				active.node.stop();
 			}
 		});
 
@@ -195,13 +193,17 @@ export class AudioEmitter {
 		this.#sampleRate.set(sample.sampleRate);
 
 		const context = this.#context.get();
-		if (!context) return;
-
-		if (this.paused.get()) return;
+		const paused = this.paused.get();
+		if (!context || paused) {
+			sample.close();
+			return;
+		}
 
 		// Convert from microseconds to seconds.
 		const timestamp = sample.timestamp / 1_000_000;
-		const maxLatency = this.latency.get() / 1000;
+
+		// The maximum latency in seconds, including a full frame size.
+		const maxLatency = this.latency.get() / 1000 + sample.numberOfFrames / sample.sampleRate;
 
 		if (!this.#ref) {
 			this.#ref = timestamp - context.root.currentTime - maxLatency;
@@ -209,39 +211,29 @@ export class AudioEmitter {
 
 		// Determine when the sample should be played in AudioContext units.
 		let when = timestamp - this.#ref;
-
-		// Don't play samples in the past u nerd.
-		// TODO This indicates a bug in the latency calculation TBH.
-		if (when < 0) {
-			this.#ref = timestamp;
-			when = 0;
+		const latency = when - context.root.currentTime;
+		if (latency < 0) {
+			// Can't play in the past.
+			sample.close();
+			return;
 		}
 
-		const latency = when - context.root.currentTime;
-
 		if (latency > maxLatency) {
-			// Cancel any active samples.
+			// We went over the max latency, so we need a new ref.
+			this.#ref = timestamp - context.root.currentTime - maxLatency;
+
+			// Cancel any active samples and let them reschedule themselves if needed.
 			for (const active of this.#active) {
-				active.stop();
+				active.node.stop();
 			}
 
-			// Skip this sample if it's too far in the future.
-			this.#ref += sample.numberOfFrames / sample.sampleRate;
+			// Schedule the sample to play at the max latency.
+			when = context.root.currentTime + maxLatency;
 		}
 
 		// Create an audio buffer for this sample.
 		const buffer = this.#createBuffer(sample, context.root);
-
-		const source = context.root.createBufferSource();
-		source.buffer = buffer;
-		source.connect(context.gain);
-		source.onended = () => {
-			this.#buffers.push(buffer);
-			this.#active.shift();
-		};
-		source.start(when);
-
-		this.#active.push(source);
+		this.#scheduleBuffer(context, buffer, timestamp, when);
 	}
 
 	#createBuffer(sample: AudioData, context: AudioContext): AudioBuffer {
@@ -273,6 +265,32 @@ export class AudioEmitter {
 		sample.close();
 
 		return buffer;
+	}
+
+	#scheduleBuffer(context: Context, buffer: AudioBuffer, timestamp: number, when: number) {
+		const source = context.root.createBufferSource();
+		source.buffer = buffer;
+		source.connect(context.gain);
+		source.onended = () => {
+			// Remove ourselves from the active list.
+			// This is super gross and probably wrong, but yolo.
+			this.#active.shift();
+
+			// Check if we need to reschedule this sample because it was cancelled.
+			if (this.#ref) {
+				const newWhen = timestamp - this.#ref;
+				if (newWhen > context.root.currentTime) {
+					// Reschedule the sample to play at the new time.
+					this.#scheduleBuffer(context, buffer, timestamp, newWhen);
+					return;
+				}
+			}
+
+			this.#buffers.push(buffer);
+		};
+		source.start(when);
+
+		this.#active.push({ node: source, timestamp });
 	}
 
 	close() {
