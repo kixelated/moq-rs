@@ -6,6 +6,125 @@ import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
 export type VideoProps = {
+	canvas?: HTMLCanvasElement;
+	paused?: boolean;
+	latency?: number;
+};
+
+// An component to render a video to a canvas.
+export class Video {
+	// The source of video frames, also responsible for switching between video tracks.
+	source: VideoSource;
+
+	// The canvas to render the video to.
+	canvas: Signal<HTMLCanvasElement | undefined>;
+
+	// Whether the video is paused.
+	paused: Signal<boolean>;
+
+	// The latency in milliseconds.
+	latency: Signal<number>;
+
+	#animate?: number;
+
+	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
+	#signals = new Signals();
+
+	constructor(source: VideoSource, props?: VideoProps) {
+		this.source = source;
+		this.canvas = signal(props?.canvas);
+		this.paused = signal(props?.paused ?? false);
+		this.latency = signal(props?.latency ?? 50);
+
+		this.#ctx = this.#signals.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
+		this.#signals.effect(() => this.#schedule());
+		this.#signals.effect(() => this.#runEnabled());
+
+		// Proxy the latency signal.
+		this.#signals.effect(() => {
+			this.source.latency.set(this.latency.get());
+		});
+	}
+
+	// Detect when video should be downloaded.
+	#runEnabled() {
+		const canvas = this.canvas.get();
+		if (!canvas) return;
+
+		const paused = this.paused.get();
+		if (paused) return;
+
+		// Detect when the canvas is not visible.
+		const observer = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					this.source.enabled.set(entry.isIntersecting);
+				}
+			},
+			{
+				// fire when even a small part is visible
+				threshold: 0.01,
+			},
+		);
+
+		observer.observe(canvas);
+
+		return () => {
+			observer.disconnect();
+			this.source.enabled.set(false);
+		};
+	}
+
+	// (re)schedule a render maybe.
+	#schedule() {
+		if (this.#ctx.get() && !this.paused.get()) {
+			if (!this.#animate) {
+				this.#animate = requestAnimationFrame(this.#render.bind(this));
+			}
+		} else {
+			if (this.#animate) {
+				cancelAnimationFrame(this.#animate);
+				this.#animate = undefined;
+			}
+		}
+	}
+
+	#render(now: DOMHighResTimeStamp) {
+		// Schedule the next render.
+		this.#animate = undefined;
+		this.#schedule();
+
+		const ctx = this.#ctx.get();
+		if (!ctx) {
+			throw new Error("scheduled without a canvas");
+		}
+
+		ctx.save();
+		ctx.fillStyle = "#000";
+		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+		const closest = this.source.frame(now);
+		if (closest) {
+			ctx.canvas.width = closest.frame.displayWidth;
+			ctx.canvas.height = closest.frame.displayHeight;
+			ctx.drawImage(closest.frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
+		}
+
+		ctx.restore();
+	}
+
+	// Close the track and all associated resources.
+	close() {
+		this.#signals.close();
+
+		if (this.#animate) {
+			cancelAnimationFrame(this.#animate);
+			this.#animate = undefined;
+		}
+	}
+}
+
+export type VideoSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Video[];
 	enabled?: boolean;
@@ -13,7 +132,7 @@ export type VideoProps = {
 };
 
 // Responsible for switching between video tracks and buffering frames.
-export class Video {
+export class VideoSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	enabled: Signal<boolean>; // Don't download any longer
 
@@ -32,7 +151,7 @@ export class Video {
 
 	#signals = new Signals();
 
-	constructor(props?: VideoProps) {
+	constructor(props?: VideoSourceProps) {
 		this.broadcast = signal(props?.broadcast);
 		this.tracks = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);
@@ -204,81 +323,5 @@ export class Video {
 
 		this.#frames.length = 0;
 		this.#signals.close();
-	}
-}
-
-export type VideoRendererProps = {
-	source: Video;
-	canvas?: HTMLCanvasElement;
-	paused?: boolean;
-};
-
-// An component to render a video to a canvas.
-export class VideoRenderer {
-	source: Video;
-
-	canvas: Signal<HTMLCanvasElement | undefined>;
-	paused: Signal<boolean>;
-
-	#animate?: number;
-
-	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
-	#signals = new Signals();
-
-	constructor(props: VideoRendererProps) {
-		this.source = props.source;
-		this.canvas = signal(props.canvas);
-		this.paused = signal(props.paused ?? false);
-
-		this.#ctx = this.#signals.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
-		this.#signals.effect(() => this.#schedule());
-	}
-
-	// (re)schedule a render maybe.
-	#schedule() {
-		if (this.#ctx.get() && !this.paused.get()) {
-			if (!this.#animate) {
-				this.#animate = requestAnimationFrame(this.#render.bind(this));
-			}
-		} else {
-			if (this.#animate) {
-				cancelAnimationFrame(this.#animate);
-				this.#animate = undefined;
-			}
-		}
-	}
-
-	#render(now: DOMHighResTimeStamp) {
-		// Schedule the next render.
-		this.#animate = undefined;
-		this.#schedule();
-
-		const ctx = this.#ctx.get();
-		if (!ctx) {
-			throw new Error("scheduled without a canvas");
-		}
-
-		ctx.save();
-		ctx.fillStyle = "#000";
-		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-		const closest = this.source.frame(now);
-		if (closest) {
-			ctx.canvas.width = closest.frame.displayWidth;
-			ctx.canvas.height = closest.frame.displayHeight;
-			ctx.drawImage(closest.frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
-		}
-
-		ctx.restore();
-	}
-
-	// Close the track and all associated resources.
-	close() {
-		this.#signals.close();
-
-		if (this.#animate) {
-			cancelAnimationFrame(this.#animate);
-			this.#animate = undefined;
-		}
 	}
 }

@@ -8,7 +8,6 @@ import { Video, VideoTrackConstraints } from "./video";
 export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
-	connection: Connection;
 	publish?: boolean;
 	path?: string;
 	audio?: AudioTrackConstraints | boolean;
@@ -36,13 +35,13 @@ export class Broadcast {
 	#catalog = new Moq.Track("catalog.json", 0);
 	#signals = new Signals();
 
-	constructor(props: BroadcastProps) {
-		this.connection = props.connection;
-		this.publish = signal(props.publish ?? true);
-		this.path = signal(props.path);
-		this.audio = new Audio({ constraints: props.audio });
-		this.video = new Video({ constraints: props.video });
-		this.device = signal(props.device);
+	constructor(connection: Connection, props?: BroadcastProps) {
+		this.connection = connection;
+		this.publish = signal(props?.publish ?? true);
+		this.path = signal(props?.path);
+		this.audio = new Audio({ constraints: props?.audio });
+		this.video = new Video({ constraints: props?.video });
+		this.device = signal(props?.device);
 
 		this.#signals.effect(() => {
 			if (!this.publish.get()) return;

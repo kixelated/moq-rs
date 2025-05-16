@@ -11,31 +11,16 @@
 </head>
 
 <body>
-	<!-- Use the included custom element to render a preview. -->
-	<hang-publish audio video url="http://localhost:4443/" broadcast="demo/me" id="publish">
-		<!-- Optionally provide a custom video element that we can style as needed -->
-		<video style="max-width: 100%; height: auto; border-radius: 4px;" muted autoplay></video>
+	<!-- Use the included Web Component to render a preview and simple controls. -->
+	<hang-publish audio video url="http://localhost:4443/" broadcast="demo/me" controls>
+		<!-- It's optional to provide a video element to preview the outgoing media. -->
+		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
 	</hang-publish>
-
-	<!-- Make some simple controls to demonstate the API. -->
-	<div style="display: flex; justify-content: space-around; gap: 16px; margin: 8px 0;">
-		<span id="status">🟡 Initializing...</span>
-
-		<span style="display: flex; gap: 16px;">
-			Device:
-			<button id="camera" title="Camera">🎥</button>
-			<button id="screen" title="Screen">🖥️</button>
-			<button id="none" title="Nothing">🚫</button>
-		</span>
-
-		<input type="text" id="broadcast" placeholder="demo/me" title="Broadcast name"></input>
-
-		<a target="_blank" id="watch" href="index.html?broadcast=demo/me">Watch</a>
-	</div>
 
 	<h3>Other demos:</h3>
 	<ul>
-		<li><a href="index.html">Watch a broadcast.</a></li>
+		<li><a href="index.html" target="_blank" rel="noreferrer" id="watch">Watch your broadcast: <span
+					id="watch-name"></span></a></li>
 	</ul>
 
 	<h3>Tips:</h3>

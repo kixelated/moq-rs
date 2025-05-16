@@ -3,105 +3,20 @@ import * as Catalog from "../catalog";
 import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
-export type AudioProps = {
-	broadcast?: Moq.BroadcastConsumer;
-	available?: Catalog.Audio[];
-	enabled?: boolean;
-};
-
-export class Audio {
-	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
-	available: Signal<Catalog.Audio[]>;
-	enabled: Signal<boolean>;
-	selected: Derived<Catalog.Audio | undefined>;
-
-	samples: ReadableStream<AudioData>;
-	#writer: WritableStreamDefaultWriter<AudioData>;
-
-	// TODO add max bitrate/resolution/etc.
-
-	#signals = new Signals();
-
-	constructor(props?: AudioProps) {
-		this.broadcast = signal(props?.broadcast);
-		this.available = signal(props?.available ?? []);
-		this.enabled = signal(props?.enabled ?? false);
-
-		const queue = new TransformStream<AudioData, AudioData>();
-		this.#writer = queue.writable.getWriter();
-		this.samples = queue.readable;
-
-		this.selected = this.#signals.derived(() => this.available.get().at(0));
-		this.#signals.effect(() => this.#init());
-	}
-
-	#init() {
-		if (!this.enabled.get()) return;
-
-		const selected = this.selected.get();
-		if (!selected) return;
-
-		const broadcast = this.broadcast.get();
-		if (!broadcast) return;
-
-		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
-
-		const decoder = new AudioDecoder({
-			output: (data) => this.#writer.write(data),
-			error: (error) => console.error(error),
-		});
-
-		decoder.configure({
-			codec: selected.codec,
-			sampleRate: selected.sample_rate,
-			numberOfChannels: selected.channel_count,
-		});
-
-		const media = new Container.Decoder(sub);
-
-		(async () => {
-			for (;;) {
-				const frame = await media.readFrame();
-				if (!frame) break;
-
-				const chunk = new EncodedAudioChunk({
-					type: "key",
-					data: frame.data,
-					timestamp: frame.timestamp,
-				});
-
-				decoder.decode(chunk);
-			}
-		})();
-
-		return () => {
-			sub.close();
-			media.close();
-			decoder.close();
-		};
-	}
-
-	close() {
-		this.#signals.close();
-		this.#writer.close().catch(() => void 0);
-	}
-}
-
 // A pair of AudioContext and GainNode.
 export type Context = {
 	root: AudioContext;
 	gain: GainNode;
 };
 
-export type AudioEmitterProps = {
-	source: Audio;
+export type AudioProps = {
 	volume?: number;
 	latency?: number;
 	paused?: boolean;
 };
 
-export class AudioEmitter {
-	source: Audio;
+export class Audio {
+	source: AudioSource;
 	volume: Signal<number>;
 	paused: Signal<boolean>;
 
@@ -124,11 +39,11 @@ export class AudioEmitter {
 	#ref?: number;
 	#signals = new Signals();
 
-	constructor(props: AudioEmitterProps) {
-		this.source = props.source;
-		this.volume = signal(props.volume ?? 0.5);
-		this.latency = signal(props.latency ?? 50);
-		this.paused = signal(props.paused ?? false);
+	constructor(source: AudioSource, props?: AudioProps) {
+		this.source = source;
+		this.volume = signal(props?.volume ?? 0.5);
+		this.latency = signal(props?.latency ?? 50);
+		this.paused = signal(props?.paused ?? false);
 
 		this.#signals.effect(() => {
 			const ctx = this.#context.get();
@@ -295,5 +210,89 @@ export class AudioEmitter {
 
 	close() {
 		this.#signals.close();
+	}
+}
+
+export type AudioSourceProps = {
+	broadcast?: Moq.BroadcastConsumer;
+	available?: Catalog.Audio[];
+	enabled?: boolean;
+};
+
+export class AudioSource {
+	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
+	available: Signal<Catalog.Audio[]>;
+	enabled: Signal<boolean>;
+	selected: Derived<Catalog.Audio | undefined>;
+
+	samples: ReadableStream<AudioData>;
+	#writer: WritableStreamDefaultWriter<AudioData>;
+
+	// TODO add max bitrate/resolution/etc.
+
+	#signals = new Signals();
+
+	constructor(props?: AudioSourceProps) {
+		this.broadcast = signal(props?.broadcast);
+		this.available = signal(props?.available ?? []);
+		this.enabled = signal(props?.enabled ?? false);
+
+		const queue = new TransformStream<AudioData, AudioData>();
+		this.#writer = queue.writable.getWriter();
+		this.samples = queue.readable;
+
+		this.selected = this.#signals.derived(() => this.available.get().at(0));
+		this.#signals.effect(() => this.#init());
+	}
+
+	#init() {
+		if (!this.enabled.get()) return;
+
+		const selected = this.selected.get();
+		if (!selected) return;
+
+		const broadcast = this.broadcast.get();
+		if (!broadcast) return;
+
+		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
+
+		const decoder = new AudioDecoder({
+			output: (data) => this.#writer.write(data),
+			error: (error) => console.error(error),
+		});
+
+		decoder.configure({
+			codec: selected.codec,
+			sampleRate: selected.sample_rate,
+			numberOfChannels: selected.channel_count,
+		});
+
+		const media = new Container.Decoder(sub);
+
+		(async () => {
+			for (;;) {
+				const frame = await media.readFrame();
+				if (!frame) break;
+
+				const chunk = new EncodedAudioChunk({
+					type: "key",
+					data: frame.data,
+					timestamp: frame.timestamp,
+				});
+
+				decoder.decode(chunk);
+			}
+		})();
+
+		return () => {
+			sub.close();
+			media.close();
+			decoder.close();
+		};
+	}
+
+	close() {
+		this.#signals.close();
+		this.#writer.close().catch(() => void 0);
 	}
 }
