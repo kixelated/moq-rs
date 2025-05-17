@@ -1,7 +1,7 @@
 import "./index.css";
 import "./highlight";
 
-import { PublishElement } from "../publish";
+import { PublishElement } from "../publish/element";
 export { PublishElement };
 
 const publish = document.querySelector("hang-publish") as PublishElement;
@@ -18,6 +18,6 @@ const watchName = document.getElementById("watch-name") as HTMLSpanElement;
 
 // An example of how you don't need to use SolidJS and can still get updates.
 publish.lib.broadcast.path.subscribe((path) => {
-	watch.href = "index.html?broadcast=" + path;
+	watch.href = `index.html?broadcast=${path}`;
 	watchName.textContent = path ?? "";
 });

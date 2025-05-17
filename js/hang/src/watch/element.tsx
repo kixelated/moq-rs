@@ -1,6 +1,6 @@
 import { Show, render } from "solid-js/web";
 import { signal } from "../signals";
-import { Controls } from "./controls";
+import { WatchControls } from "./controls";
 import { Watch } from "./watch";
 
 // An optional web component that wraps a <canvas>
@@ -24,7 +24,7 @@ export class WatchElement extends HTMLElement {
 		render(
 			() => (
 				<Show when={this.#controls.get()}>
-					<Controls lib={this.lib} root={this} />
+					<WatchControls lib={this.lib} root={this} />
 				</Show>
 			),
 			controls,

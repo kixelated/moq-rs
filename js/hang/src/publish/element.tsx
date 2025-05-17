@@ -1,7 +1,7 @@
 import { Show, render } from "solid-js/web";
 import { signal } from "../signals";
 import { Device } from "./broadcast";
-import { Controls } from "./controls";
+import { PublishControls } from "./controls";
 import { Publish } from "./publish";
 
 export class PublishElement extends HTMLElement {
@@ -15,7 +15,6 @@ export class PublishElement extends HTMLElement {
 		super();
 
 		const preview = this.querySelector("video") as HTMLVideoElement | undefined;
-		console.log(preview);
 		this.lib = new Publish({ preview });
 
 		// Create an element for controls if they want them.
@@ -25,7 +24,7 @@ export class PublishElement extends HTMLElement {
 		render(
 			() => (
 				<Show when={this.#controls.get()}>
-					<Controls lib={this.lib} />
+					<PublishControls lib={this.lib} />
 				</Show>
 			),
 			controls,

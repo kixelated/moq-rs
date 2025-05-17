@@ -3,13 +3,21 @@ import { JSX } from "solid-js/jsx-runtime";
 import { Watch } from "./watch";
 
 // A simple set of controls mostly for the demo.
-// You don't have to use SolidJS to implement your own controls.
-export function Controls(props: { lib: Watch; root: HTMLElement }): JSX.Element {
+// You don't have to use SolidJS to implement your own controls; use the .subscribe() API instead.
+export function WatchControls(props: { lib: Watch; root: HTMLElement }): JSX.Element {
 	const lib = props.lib;
 	const root = props.root;
 
 	return (
-		<div style={{ display: "flex", "justify-content": "space-between", margin: "8px 0", gap: "8px" }}>
+		<div
+			style={{
+				display: "flex",
+				"justify-content": "space-around",
+				margin: "8px 0",
+				gap: "8px",
+				"align-content": "center",
+			}}
+		>
 			<Pause lib={lib} />
 			<Volume lib={lib} />
 			<Connection lib={lib} />
@@ -31,40 +39,43 @@ function Pause(props: { lib: Watch }): JSX.Element {
 	const togglePause = () => setPaused((p) => !p);
 	return (
 		<button title="Pause" type="button" onClick={togglePause}>
-			<Show when={paused()} fallback={<>▶️</>}>
-				⏸️
+			<Show when={paused()} fallback={<>⏸️</>}>
+				▶️
 			</Show>
 		</button>
 	);
 }
 
 function Volume(props: { lib: Watch }): JSX.Element {
-	const [volume, setVolume] = createSignal(0.5);
-	const [muted, setMuted] = createSignal(false);
+	const volume = props.lib.audio.volume;
+
+	// Keep track of the last non-zero volume for the unmute button.
+	let unmuteVolume = volume.peek() || 0.5;
 
 	const changeVolume = (str: string) => {
 		const v = Number.parseFloat(str);
-		if (v === 0) {
-			setMuted(true);
+		volume.set(v);
+		if (v > 0) {
+			unmuteVolume = v;
 		} else {
-			setMuted(false);
-			setVolume(v);
+			unmuteVolume = 0.5;
 		}
 	};
 
-	const actualVolume = () => (muted() ? 0 : volume());
+	const toggleMute = () => {
+		if (volume.get() === 0) {
+			volume.set(unmuteVolume);
+		} else {
+			volume.set(0);
+		}
+	};
 
-	createEffect(() => {
-		props.lib.audio.volume.set(actualVolume());
-	});
-
-	const toggleMute = () => setMuted((m) => !m);
-	const rounded = () => Math.round(actualVolume() * 100);
+	const rounded = () => Math.round(volume.get() * 100);
 
 	return (
 		<div style={{ display: "flex", "align-items": "center", gap: "0.25rem" }}>
 			<button title="Mute" type="button" onClick={toggleMute}>
-				<Show when={muted()} fallback={<>🔊</>}>
+				<Show when={volume.get() === 0} fallback={<>🔊</>}>
 					🔇
 				</Show>
 			</button>
@@ -73,10 +84,10 @@ function Volume(props: { lib: Watch }): JSX.Element {
 				min="0"
 				max="1"
 				step="0.01"
-				value={actualVolume()}
+				value={volume.get()}
 				onInput={(e) => changeVolume(e.currentTarget.value)}
 			/>
-			<span>{rounded()}%</span>
+			<span style={{ display: "inline-block", width: "2em", "text-align": "right" }}>{rounded()}%</span>
 		</div>
 	);
 }
@@ -131,7 +142,7 @@ function Latency(props: { lib: Watch }): JSX.Element {
 				value={props.lib.video.latency.get()}
 				onInput={(e) => setLatency(e.currentTarget.value)}
 			/>
-			<span>{ms()}</span>
+			<span style={{ width: "3em", "text-align": "right", display: "inline-block" }}>{ms()}</span>
 		</div>
 	);
 }

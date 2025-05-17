@@ -3,9 +3,17 @@ import { JSX } from "solid-js/jsx-runtime";
 import { Device } from "./broadcast";
 import { Publish } from "./publish";
 
-export function Controls(props: { lib: Publish }): JSX.Element {
+export function PublishControls(props: { lib: Publish }): JSX.Element {
 	return (
-		<div style={{ display: "flex", "justify-content": "space-around", gap: "16px", margin: "8px 0" }}>
+		<div
+			style={{
+				display: "flex",
+				"justify-content": "space-around",
+				gap: "16px",
+				margin: "8px 0",
+				"align-content": "center",
+			}}
+		>
 			<Select lib={props.lib} />
 			<Connection lib={props.lib} />
 			<Publishing lib={props.lib} />
@@ -28,13 +36,15 @@ function Connection(props: { lib: Publish }): JSX.Element {
 }
 
 function Publishing(props: { lib: Publish }): JSX.Element {
+	const broadcast = props.lib.broadcast.path.get;
 	const audio = props.lib.broadcast.audio.catalog.get;
 	const video = props.lib.broadcast.video.catalog.get;
 
 	return (
 		<div>
 			<Switch>
-				<Match when={audio() && video()}>🟢&nbsp;Publishing</Match>
+				<Match when={!broadcast()}>🔴&nbsp;Choose Name</Match>
+				<Match when={audio() && video()}>🟢&nbsp;Live</Match>
 				<Match when={audio() && !video()}>🟡&nbsp;Audio Only</Match>
 				<Match when={!audio() && video()}>🟡&nbsp;Video Only</Match>
 				<Match when={!audio() && !video()}>🔴&nbsp;Select Device</Match>

@@ -78,7 +78,6 @@ export class Audio {
 
 			const root = new AudioContext({ latencyHint: "interactive", sampleRate });
 			const gain = new GainNode(root, { gain: this.volume.peek() });
-
 			gain.connect(root.destination);
 
 			this.#context.set({ root, gain });
@@ -87,6 +86,11 @@ export class Audio {
 				gain.disconnect();
 				root.close();
 			};
+		});
+
+		this.#signals.effect(() => {
+			const volume = this.volume.get();
+			this.source.enabled.set(volume > 0);
 		});
 
 		this.#run();
@@ -113,6 +117,8 @@ export class Audio {
 			sample.close();
 			return;
 		}
+
+		context.root.resume();
 
 		// Convert from microseconds to seconds.
 		const timestamp = sample.timestamp / 1_000_000;
