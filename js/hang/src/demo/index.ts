@@ -2,7 +2,9 @@ import "./index.css";
 import "./highlight";
 
 import { WatchElement } from "../watch/element";
-export { WatchElement };
+import { SupportElement } from "../support/element";
+
+export { WatchElement, SupportElement };
 
 const watch = document.querySelector("hang-watch") as WatchElement;
 

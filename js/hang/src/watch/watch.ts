@@ -30,4 +30,21 @@ export class Watch {
 		this.audio.close();
 		this.video.close();
 	}
+
+	static isSupported() {
+		const quic = typeof WebTransport !== "undefined";
+		const audio = typeof AudioDecoder !== "undefined";
+		const video = typeof VideoDecoder !== "undefined";
+		const streams = typeof WritableStream !== "undefined";
+
+		const supported = {
+			all: quic && audio && video && streams,
+			quic,
+			audio,
+			video,
+			streams,
+		};
+
+		return supported;
+	}
 }

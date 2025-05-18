@@ -38,4 +38,10 @@ export class Publish {
 			this.broadcast.publish.set(!!audio || !!video);
 		});
 	}
+
+	close() {
+		this.#signals.close();
+		this.broadcast.close();
+		this.connection.close();
+	}
 }

@@ -15,5 +15,5 @@ button {
 
 body {
 	/* We're using Tailwind for the prose styles. */
-	@apply prose bg-neutral-950 text-white dark:prose-invert lg:prose-xl p-8 mx-auto;
+	@apply prose bg-neutral-950 text-white dark:prose-invert lg:prose-xl mx-auto;
 }

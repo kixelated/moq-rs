@@ -48,8 +48,8 @@ export class Stream {
 		return [msg, stream];
 	}
 
-	static async open(quic: WebTransport, msg: StreamBi): Promise<Stream> {
-		const stream = new Stream(await quic.createBidirectionalStream());
+	static async open(quic: WebTransport, msg: StreamBi, priority?: number): Promise<Stream> {
+		const stream = new Stream(await quic.createBidirectionalStream({ sendOrder: priority }));
 
 		if (msg instanceof Wire.SessionClient) {
 			await stream.writer.u8(Wire.SessionClient.StreamID);

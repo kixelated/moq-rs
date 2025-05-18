@@ -2,7 +2,8 @@ import "./index.css";
 import "./highlight";
 
 import { PublishElement } from "../publish/element";
-export { PublishElement };
+import { SupportElement } from "../support/element";
+export { PublishElement, SupportElement };
 
 const publish = document.querySelector("hang-publish") as PublishElement;
 

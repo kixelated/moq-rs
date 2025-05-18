@@ -8,12 +8,16 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./publish": "./src/publish/index.ts",
+		"./publish/element": "./src/publish/element.tsx",
 		"./watch": "./src/watch/index.ts",
+		"./watch/element": "./src/watch/element.tsx",
+		"./support": "./src/support/index.ts",
+		"./support/element": "./src/support/element.tsx",
 		"./media": "./src/media/index.ts",
 		"./connection": "./src/connection.ts",
 		"./signals": "./src/signals.ts"
 	},
-	"sideEffects": ["./src/publish/element.tsx", "./src/watch/element.tsx"],
+	"sideEffects": ["./src/publish/element.tsx", "./src/watch/element.tsx", "./src/support/element.tsx"],
 	"scripts": {
 		"build": "vite build && tsc -b && cp ../../LICENSE* ./dist",
 		"dev": "vite --open",
@@ -37,6 +41,7 @@
 		"tailwindcss": "^4.1.7",
 		"typescript": "^5.8.3",
 		"vite": "^6.3.5",
-		"vite-plugin-html": "^3.2.2"
+		"vite-plugin-html": "^3.2.2",
+		"vite-plugin-solid": "^2.11.6"
 	}
 }
