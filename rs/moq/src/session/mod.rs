@@ -1,4 +1,4 @@
-use crate::{message, Announced, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Origin};
+use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Origin};
 
 use web_async::spawn;
 
@@ -44,7 +44,7 @@ impl Session {
 			};
 
 			if let Err(err) = res {
-				tracing::warn!(?err, "session terminated");
+				tracing::info!(?err, "session terminated");
 				session.close(err.to_code(), &err.to_string());
 			}
 		});
@@ -69,7 +69,7 @@ impl Session {
 		setup.writer.encode(&client).await?;
 		let server: message::ServerSetup = setup.reader.decode().await?;
 
-		tracing::info!(version = ?server.version, "connected");
+		tracing::debug!(version = ?server.version, "connected");
 
 		Ok(())
 	}
@@ -102,7 +102,7 @@ impl Session {
 
 		control.writer.encode(&server).await?;
 
-		tracing::info!(version = ?server.version, "connected");
+		tracing::debug!(version = ?server.version, "connected");
 
 		Ok(())
 	}
@@ -169,11 +169,6 @@ impl Session {
 		self.publisher.publish(broadcast);
 	}
 
-	/// Unpublish a broadcast, returning the previous instance.
-	pub fn unpublish(&mut self, broadcast: &Broadcast) {
-		self.publisher.unpublish(broadcast);
-	}
-
 	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
 	///
 	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
@@ -200,16 +195,9 @@ impl Session {
 	pub async fn publish_to(&mut self, mut origin: Origin, prefix: &str) {
 		let mut announced = self.announced(prefix);
 
-		while let Some(announced) = announced.next().await {
-			match announced {
-				Announced::Start(broadcast) => {
-					let broadcast = self.consume(&broadcast);
-					origin.publish(broadcast);
-				}
-				Announced::End(broadcast) => {
-					origin.unpublish(&broadcast);
-				}
-			}
+		while let Some(broadcast) = announced.active().await {
+			let broadcast = self.consume(&broadcast);
+			origin.publish(broadcast);
 		}
 	}
 
@@ -217,16 +205,9 @@ impl Session {
 	pub async fn consume_from(&mut self, origin: Origin, prefix: &str) {
 		let mut remotes = origin.announced(prefix);
 
-		while let Some(announced) = remotes.next().await {
-			match announced {
-				Announced::Start(broadcast) => {
-					if let Some(upstream) = origin.consume(&broadcast) {
-						self.publish(upstream);
-					}
-				}
-				Announced::End(broadcast) => {
-					self.unpublish(&broadcast);
-				}
+		while let Some(broadcast) = remotes.active().await {
+			if let Some(upstream) = origin.consume(&broadcast) {
+				self.publish(upstream);
 			}
 		}
 	}

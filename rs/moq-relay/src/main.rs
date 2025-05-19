@@ -70,10 +70,7 @@ async fn main() -> anyhow::Result<()> {
 	while let Some(conn) = server.accept().await {
 		let session = Connection::new(conn_id, conn.into(), cluster.clone());
 		conn_id += 1;
-
-		tokio::spawn(async move {
-			session.run().await.ok();
-		});
+		tokio::spawn(session.run());
 	}
 
 	Ok(())

@@ -169,4 +169,11 @@ impl BroadcastConsumer {
 	pub async fn closed(&self) {
 		self.closed.clone().changed().await.ok();
 	}
+
+	/// Check if this is the exact same instance of a broadcast.
+	///
+	/// Duplicate names are allowed in the case of resumption.
+	pub fn ptr_eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.state, &other.state)
+	}
 }

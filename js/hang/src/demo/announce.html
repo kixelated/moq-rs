@@ -30,6 +30,12 @@
 		These internal tracks won't be discoverable once authentication is implemented.
 	</p>
 	<p>
+		If you abrubtly kill a broadcast, it can take a few seconds for a connection to fail the keep-alive
+		check.
+		The current configuration is a 10 second timeout, then a broadcast will be considered dead.
+		Kill a broadcast and watch it get removed after a few seconds.
+	</p>
+	<p>
 		The <span style="font-style: italic; color: grey">0s ago</span> is based on the client.
 		There's no timestamp that gets serialized over the wire; this is just to demonstate that these announcements are
 		live.

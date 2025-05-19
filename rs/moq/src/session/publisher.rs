@@ -25,10 +25,6 @@ impl Publisher {
 		self.broadcasts.publish(broadcast);
 	}
 
-	pub fn unpublish(&mut self, broadcast: &Broadcast) {
-		self.broadcasts.unpublish(broadcast);
-	}
-
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let interest = stream.reader.decode::<message::AnnounceRequest>().await?;
 		let prefix = interest.prefix;
@@ -38,13 +34,13 @@ impl Publisher {
 		let res = self.run_announce(stream, &prefix).await;
 		match res {
 			Err(Error::Cancel) => {
-				tracing::debug!(%prefix, "announce cancelled");
+				tracing::trace!(%prefix, "announce cancelled");
 			}
 			Err(err) => {
-				tracing::warn!(?err, %prefix, "announce error");
+				tracing::trace!(?err, %prefix, "announce error");
 			}
 			_ => {
-				tracing::debug!(%prefix, "announce complete");
+				tracing::trace!(%prefix, "announce complete");
 			}
 		}
 
@@ -88,19 +84,19 @@ impl Publisher {
 	pub async fn recv_subscribe(&mut self, stream: &mut Stream) -> Result<(), Error> {
 		let mut subscribe = stream.reader.decode::<message::Subscribe>().await?;
 
-		tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe started");
+		tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed started");
 
 		let res = self.run_subscribe(stream, &mut subscribe).await;
 
 		match res {
 			Err(Error::Cancel) => {
-				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe cancelled");
+				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed cancelled");
 			}
 			Err(err) => {
-				tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe error");
+				tracing::debug!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
 			}
 			_ => {
-				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribe complete");
+				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed complete");
 			}
 		}
 
@@ -173,7 +169,7 @@ impl Publisher {
 								stream.abort(&Error::Cancel);
 							}
 							Err(err) => {
-								tracing::warn!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
+								tracing::trace!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
 								stream.abort(&err);
 							}
 							_ => {

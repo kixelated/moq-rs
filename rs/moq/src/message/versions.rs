@@ -37,7 +37,9 @@ impl Version {
 	/// Unpublished: <https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html>
 	pub const FORK_04: Version = Version(0xff0bad04);
 
-	pub const CURRENT: Version = Version::FORK_04;
+	pub const LITE_00: Version = Version(0xff0dad00);
+
+	pub const CURRENT: Version = Version::LITE_00;
 }
 
 impl From<u64> for Version {

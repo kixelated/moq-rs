@@ -59,13 +59,13 @@ impl Subscriber {
 
 		match res {
 			Err(Error::Cancel) => {
-				tracing::debug!(%prefix, "announced cancelled");
+				tracing::trace!(%prefix, "announced cancelled");
 			}
 			Err(err) => {
-				tracing::warn!(?err, %prefix, "announced error");
+				tracing::trace!(?err, %prefix, "announced error");
 			}
 			_ => {
-				tracing::debug!(%prefix, "announced complete");
+				tracing::trace!(%prefix, "announced complete");
 			}
 		}
 	}
@@ -161,7 +161,7 @@ impl Subscriber {
 			priority: track.info.priority,
 		};
 
-		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription started");
+		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe started");
 
 		let res = tokio::select! {
 			_ = track.unused() => Err(Error::Cancel),
@@ -170,15 +170,15 @@ impl Subscriber {
 
 		match res {
 			Err(Error::Cancel) => {
-				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription cancelled");
+				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe cancelled");
 				track.abort(Error::Cancel);
 			}
 			Err(err) => {
-				tracing::warn!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription error");
+				tracing::info!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe error");
 				track.abort(err);
 			}
 			_ => {
-				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscription complete");
+				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe complete");
 				track.finish();
 			}
 		}
@@ -236,7 +236,7 @@ impl Subscriber {
 				group.abort(Error::Cancel);
 			}
 			Err(err) => {
-				tracing::warn!(?err, group = %group.info.sequence, "group error");
+				tracing::trace!(?err, group = %group.info.sequence, "group error");
 				group.abort(err);
 			}
 			_ => {

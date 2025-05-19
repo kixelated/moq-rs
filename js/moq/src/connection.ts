@@ -84,11 +84,11 @@ export class Connection {
 		const quic = new WebTransport(adjustedUrl, options);
 		await quic.ready;
 
-		const client = new Wire.SessionClient([Wire.Version.FORK_04]);
+		const client = new Wire.SessionClient([Wire.CURRENT_VERSION]);
 		const stream = await Wire.Stream.open(quic, client);
 
 		const server = await Wire.SessionServer.decode(stream.reader);
-		if (server.version !== Wire.Version.FORK_04) {
+		if (server.version !== Wire.CURRENT_VERSION) {
 			throw new Error(`unsupported server version: ${server.version.toString()}`);
 		}
 

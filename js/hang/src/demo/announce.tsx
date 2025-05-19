@@ -48,7 +48,7 @@ function Announcements(): JSX.Element {
 			setAnnounces((prev) => {
 				const copy = new Map(prev);
 				copy.set(announce.broadcast, {
-					active: true,
+					active: announce.active,
 					when: performance.now(),
 				});
 				return copy;
@@ -72,7 +72,7 @@ function Announcements(): JSX.Element {
 
 	const active = createMemo(() => {
 		return Array.from(announces().entries())
-			.filter(([_, value]) => value.active)
+			.filter(([_, props]) => props.active)
 			.map(([broadcast, props]) => {
 				return {
 					name: broadcast,
