@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" class="dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+
+	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+
+<body>
+	<!-- Show if this browser supports everything we need. -->
+	<hang-support role="core"></hang-support>
+
+	<!-- See announce.tsx for how this is populated. -->
+	<div id="root"></div>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="index.html">Watch a broadcast.</a></li>
+		<li><a href="publish.html">Publish a broadcast.</a></li>
+	</ul>
+
+	<h3>Tips:</h3>
+	<p>
+		The <code>internal/origins/hostname</code> broadcasts are used by the clustering mechanism.
+		That's right, MoQ relays use MoQ to discover other nodes!
+		These internal tracks won't be discoverable once authentication is implemented.
+	</p>
+	<p>
+		The <span style="font-style: italic; color: grey">0s ago</span> is based on the client.
+		There's no timestamp that gets serialized over the wire; this is just to demonstate that these announcements are
+		live.
+	</p>
+	<p>
+		Try creating a new broadcast!
+		The updates are fully live (no polling) so any changes are reflected immediately.
+		For example, try: <code class="language-bash">just pub tos</code>
+	</p>
+</body>
+
+<script type="module" src="announce.tsx"></script>
+
+</html>

@@ -23,6 +23,8 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 #[derive(Default, Clone)]
 struct Settings {
 	pub url: Option<String>,
+	pub room: Option<String>,
+	pub broadcast: Option<String>,
 	pub tls_disable_verify: bool,
 }
 
@@ -56,6 +58,14 @@ impl ObjectImpl for HangSink {
 					.nick("Source URL")
 					.blurb("Connect to the given URL")
 					.build(),
+				glib::ParamSpecString::builder("room")
+					.nick("Room")
+					.blurb("The room to broadcast to")
+					.build(),
+				glib::ParamSpecString::builder("broadcast")
+					.nick("Broadcast")
+					.blurb("The broadcast to publish")
+					.build(),
 				glib::ParamSpecBoolean::builder("tls-disable-verify")
 					.nick("TLS disable verify")
 					.blurb("Disable TLS verification")
@@ -70,7 +80,9 @@ impl ObjectImpl for HangSink {
 		let mut settings = self.settings.lock().unwrap();
 
 		match pspec.name() {
-			"url" => settings.url = Some(value.get().unwrap()),
+			"url" => settings.url = value.get().unwrap(),
+			"room" => settings.room = value.get().unwrap(),
+			"broadcast" => settings.broadcast = value.get().unwrap(),
 			"tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
 			_ => unimplemented!(),
 		}
@@ -81,6 +93,8 @@ impl ObjectImpl for HangSink {
 
 		match pspec.name() {
 			"url" => settings.url.to_value(),
+			"room" => settings.room.to_value(),
+			"broadcast" => settings.broadcast.to_value(),
 			"tls-disable-verify" => settings.tls_disable_verify.to_value(),
 			_ => unimplemented!(),
 		}
@@ -147,8 +161,14 @@ impl BaseSinkImpl for HangSink {
 impl HangSink {
 	fn setup(&self) -> anyhow::Result<()> {
 		let settings = self.settings.lock().unwrap();
-		let url = settings.url.clone().context("missing url")?;
-		let url = Url::parse(&url).context("invalid URL")?;
+
+		let url = settings.url.as_ref().expect("url is required");
+		let url = Url::parse(url).context("invalid URL")?;
+
+		let broadcast = hang::Broadcast {
+			room: settings.room.clone().expect("room is required"),
+			name: settings.broadcast.clone().expect("broadcast is required"),
+		};
 
 		// TODO support TLS certs and other options
 		let config = quic::Args {
@@ -165,12 +185,10 @@ impl HangSink {
 			let session = client.connect(url.clone()).await.expect("failed to connect");
 			let mut session = moq_lite::Session::connect(session).await.expect("failed to connect");
 
-			let broadcast = format!("{}.hang", url.path().strip_prefix('/').unwrap()).into();
+			let broadcast = hang::BroadcastProducer::new(broadcast);
+			session.publish(broadcast.inner.consume());
 
-			let broadcast = moq_lite::BroadcastProducer::new(broadcast);
-			session.publish(broadcast.consume());
-
-			let media = hang::cmaf::Import::new(hang::BroadcastProducer::new(broadcast));
+			let media = hang::cmaf::Import::new(broadcast);
 
 			let mut state = self.state.lock().unwrap();
 			state.media = Some(media);

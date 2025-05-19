@@ -295,7 +295,7 @@ mod test {
 	fn simple() {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("");
-		let ab = Broadcast::new("a/b");
+		let ab = "a/b".into();
 
 		assert!(!producer.contains(&ab));
 		assert!(producer.insert(ab.clone()));
@@ -315,8 +315,8 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("");
 
-		let ab = Broadcast::new("a/b");
-		let ab2 = Broadcast::new("a/b");
+		let ab: Broadcast = "a/b".into();
+		let ab2: Broadcast = "a/b".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.contains(&ab));
@@ -343,9 +343,9 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("");
 
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
-		let de = Broadcast::new("d/e");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
+		let de: Broadcast = "d/e".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
@@ -361,10 +361,10 @@ mod test {
 	#[test]
 	fn late() {
 		let mut producer = AnnouncedProducer::new();
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
-		let de = Broadcast::new("d/e");
-		let dd = Broadcast::new("d/d");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
+		let de: Broadcast = "d/e".into();
+		let dd: Broadcast = "d/d".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
@@ -388,9 +388,9 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("a/");
 
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
-		let de = Broadcast::new("d/e");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
+		let de: Broadcast = "d/e".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
@@ -406,9 +406,9 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("a/");
 
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
-		let de = Broadcast::new("d/e");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
+		let de: Broadcast = "d/e".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
@@ -431,7 +431,7 @@ mod test {
 	fn flicker() {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("");
-		let ab = Broadcast::new("a/b");
+		let ab: Broadcast = "a/b".into();
 
 		assert!(!producer.contains(&ab));
 		assert!(producer.insert(ab.clone()));
@@ -450,9 +450,9 @@ mod test {
 		let mut producer = AnnouncedProducer::new();
 		let mut consumer = producer.consume("");
 
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
-		let de = Broadcast::new("d/e");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
+		let de: Broadcast = "d/e".into();
 
 		assert!(producer.insert(ab.clone()));
 		assert!(producer.insert(ac.clone()));
@@ -479,8 +479,8 @@ mod test {
 		let mut consumer = producer.consume("");
 
 		tokio::spawn(async move {
-			let ab = Broadcast::new("a/b");
-			let ac = Broadcast::new("a/c");
+			let ab: Broadcast = "a/b".into();
+			let ac: Broadcast = "a/c".into();
 
 			tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 			producer.insert(ab.clone());
@@ -493,8 +493,8 @@ mod test {
 			drop(producer);
 		});
 
-		let ab = Broadcast::new("a/b");
-		let ac = Broadcast::new("a/c");
+		let ab: Broadcast = "a/b".into();
+		let ac: Broadcast = "a/c".into();
 
 		consumer.next().await.unwrap().assert_active(&ab);
 		consumer.next().await.unwrap().assert_active(&ac);

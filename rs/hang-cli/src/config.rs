@@ -19,6 +19,14 @@ pub struct Config {
 	/// If we're publishing or subscribing.
 	#[command(subcommand)]
 	pub command: Command,
+
+	/// The name of the room to join.
+	#[arg(long)]
+	pub room: String,
+
+	/// The name of the broadcast within the room.
+	#[arg(long)]
+	pub name: String,
 }
 
 #[derive(Subcommand, Clone)]

@@ -34,8 +34,8 @@ pub-gst name:
 	just --justfile rs/justfile pub-gst {{name}}
 
 # Subscribe to a video using gstreamer
-sub name:
-	just --justfile rs/justfile sub {{name}}
+sub-gst name:
+	just --justfile rs/justfile sub-gst {{name}}
 
 # Publish a video using ffmpeg directly from hang to the localhost
 serve name:

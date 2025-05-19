@@ -21,9 +21,6 @@ pub struct ServerConfig {
 	/// Optionally serve any HTML files in the given directory.
 	#[arg(long)]
 	dir: Option<PathBuf>,
-
-	/// The path of the broadcast to serve.
-	path: String,
 }
 
 pub struct Server {
@@ -53,8 +50,12 @@ impl Server {
 	}
 
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		let broadcast: hang::Broadcast = self.server_config.path.clone().into();
-		let producer = BroadcastProducer::new(broadcast.into());
+		let broadcast = hang::Broadcast {
+			room: self.config.room.clone(),
+			name: self.config.name.clone(),
+		};
+
+		let producer = BroadcastProducer::new(broadcast);
 		let consumer = producer.consume();
 
 		tokio::select! {
@@ -88,9 +89,9 @@ impl Server {
 					.await
 					.expect("failed to accept session");
 
-				session.publish(consumer.inner);
-
 				tracing::info!(?id, "accepted session");
+
+				session.publish(consumer.inner);
 			});
 		}
 
@@ -104,6 +105,9 @@ impl Server {
 			.init_from(input)
 			.await
 			.context("failed to initialize cmaf from input")?;
+
+		tracing::info!("initialized");
+		tracing::info!(room = %self.config.room, name = %self.config.name, "publishing");
 
 		import.read_from(input).await?;
 

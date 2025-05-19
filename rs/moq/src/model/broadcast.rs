@@ -15,10 +15,6 @@ pub struct Broadcast {
 }
 
 impl Broadcast {
-	pub fn new<T: ToString>(path: T) -> Self {
-		Self { path: path.to_string() }
-	}
-
 	pub fn produce(self) -> BroadcastProducer {
 		BroadcastProducer::new(self)
 	}
@@ -26,7 +22,7 @@ impl Broadcast {
 
 impl<T: ToString> From<T> for Broadcast {
 	fn from(path: T) -> Self {
-		Self::new(path)
+		Self { path: path.to_string() }
 	}
 }
 

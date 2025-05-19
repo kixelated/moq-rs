@@ -21,10 +21,6 @@ pub struct Group {
 }
 
 impl Group {
-	pub fn new(sequence: u64) -> Self {
-		Self { sequence }
-	}
-
 	pub fn produce(self) -> GroupProducer {
 		GroupProducer::new(self)
 	}
@@ -32,25 +28,31 @@ impl Group {
 
 impl From<usize> for Group {
 	fn from(sequence: usize) -> Self {
-		Self::new(sequence as u64)
+		Self {
+			sequence: sequence as u64,
+		}
 	}
 }
 
 impl From<u64> for Group {
 	fn from(sequence: u64) -> Self {
-		Self::new(sequence)
+		Self { sequence }
 	}
 }
 
 impl From<u32> for Group {
 	fn from(sequence: u32) -> Self {
-		Self::new(sequence as u64)
+		Self {
+			sequence: sequence as u64,
+		}
 	}
 }
 
 impl From<u16> for Group {
 	fn from(sequence: u16) -> Self {
-		Self::new(sequence as u64)
+		Self {
+			sequence: sequence as u64,
+		}
 	}
 }
 
@@ -87,7 +89,9 @@ impl GroupProducer {
 	/// But an upfront size is required.
 	pub fn write_frame<B: Into<Bytes>>(&mut self, frame: B) {
 		let data = frame.into();
-		let frame = Frame::new(data.len() as u64);
+		let frame = Frame {
+			size: data.len() as u64,
+		};
 		let mut frame = self.create_frame(frame);
 		frame.write(data);
 		frame.finish();

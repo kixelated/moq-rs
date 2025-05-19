@@ -1,10 +1,10 @@
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { Support } from "./";
+import { Support, SupportRole, SupportShow } from "./";
 
 export class SupportElement extends HTMLElement {
-	#role = createSignal<"watch" | "publish" | "both">("both");
-	#show = createSignal<"full" | "partial" | "none">("full");
+	#role = createSignal<SupportRole>("all");
+	#show = createSignal<SupportShow>("full");
 
 	static get observedAttributes() {
 		return ["role", "show"];
@@ -12,9 +12,9 @@ export class SupportElement extends HTMLElement {
 
 	attributeChangedCallback(name: string, _oldValue?: string, newValue?: string) {
 		if (name === "role") {
-			const role = newValue ?? "both";
+			const role = newValue ?? "all";
 
-			if (role === "watch" || role === "publish" || role === "both") {
+			if (role === "core" || role === "watch" || role === "publish" || role === "all") {
 				this.#role[1](role);
 			} else {
 				throw new Error(`Invalid role: ${role}`);

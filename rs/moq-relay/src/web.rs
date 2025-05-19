@@ -107,7 +107,7 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 	let track = path.pop().unwrap().to_string();
 	let broadcast = path.join("/");
 
-	let broadcast = moq_lite::Broadcast::new(broadcast);
+	let broadcast = moq_lite::Broadcast { path: broadcast };
 	let track = moq_lite::Track {
 		name: track,
 		priority: 0,

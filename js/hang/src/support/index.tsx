@@ -1,5 +1,8 @@
 import { JSX, Match, Show, Switch, createMemo, createSelector, createSignal } from "solid-js";
 
+export type SupportRole = "core" | "watch" | "publish" | "all";
+export type SupportShow = "full" | "partial" | "none";
+
 export type SupportAudio = {
 	aac: boolean;
 	opus: boolean;
@@ -160,11 +163,11 @@ export async function isSupported(): Promise<Support> {
 	};
 }
 
-export function Support(props: { role: "watch" | "publish" | "both"; show: "full" | "partial" | "none" }) {
+export function Support(props: { role: SupportRole; show: SupportShow }) {
 	const [support, setSupport] = createSignal<Support | undefined>();
 	isSupported().then(setSupport);
 
-	const base = createMemo<"full" | "none" | undefined>(() => {
+	const core = createMemo<"full" | "none" | undefined>(() => {
 		const s = support();
 		if (!s) return;
 
@@ -206,8 +209,8 @@ export function Support(props: { role: "watch" | "publish" | "both"; show: "full
 	});
 
 	const final = createMemo<"full" | "partial" | "none" | undefined>(() => {
-		const b = base();
-		if (b === "none") return "none";
+		const b = core();
+		if (b === "none" || props.role === "core") return b;
 
 		if (props.role === "watch") {
 			return watch();
@@ -268,7 +271,7 @@ export function Support(props: { role: "watch" | "publish" | "both"; show: "full
 	);
 }
 
-const SupportDetails = (props: { support: Support | undefined; role: "watch" | "publish" | "both" }) => {
+const SupportDetails = (props: { support: Support | undefined; role: "core" | "watch" | "publish" | "all" }) => {
 	const support = props.support;
 	if (!support) return null;
 
@@ -306,39 +309,41 @@ const SupportDetails = (props: { support: Support | undefined; role: "watch" | "
 		>
 			<div style={c1}>WebTransport</div>
 			<div style={c3}>{binary(support.webtransport)}</div>
-			<Show when={props.role !== "watch"}>
-				<div style={c1}>Encoding</div>
-				<div style={c2}>Opus</div>
-				<div style={c3}>{binary(support.audio.encoding?.opus)}</div>
-				<div style={c2}>AAC</div>
-				<div style={c3}>{binary(support.audio.encoding?.aac)}</div>
-				<div style={c2}>AV1</div>
-				<div style={c3}>{hardware(support.video.encoding?.av1)}</div>
-				<div style={c2}>H.265</div>
-				<div style={c3}>{hardware(support.video.encoding?.h265)}</div>
-				<div style={c2}>H.264</div>
-				<div style={c3}>{hardware(support.video.encoding?.h264)}</div>
-				<div style={c2}>VP9</div>
-				<div style={c3}>{hardware(support.video.encoding?.vp9)}</div>
-				<div style={c2}>VP8</div>
-				<div style={c3}>{hardware(support.video.encoding?.vp8)}</div>
-			</Show>
-			<Show when={props.role !== "publish"}>
-				<div style={c1}>Decoding</div>
-				<div style={c2}>Opus</div>
-				<div style={c3}>{binary(support.audio.decoding?.opus)}</div>
-				<div style={c2}>AAC</div>
-				<div style={c3}>{binary(support.audio.decoding?.aac)}</div>
-				<div style={c2}>AV1</div>
-				<div style={c3}>{hardware(support.video.decoding?.av1)}</div>
-				<div style={c2}>H.265</div>
-				<div style={c3}>{hardware(support.video.decoding?.h265)}</div>
-				<div style={c2}>H.264</div>
-				<div style={c3}>{hardware(support.video.decoding?.h264)}</div>
-				<div style={c2}>VP9</div>
-				<div style={c3}>{hardware(support.video.decoding?.vp9)}</div>
-				<div style={c2}>VP8</div>
-				<div style={c3}>{hardware(support.video.decoding?.vp8)}</div>
+			<Show when={props.role !== "core"}>
+				<Show when={props.role !== "watch"}>
+					<div style={c1}>Encoding</div>
+					<div style={c2}>Opus</div>
+					<div style={c3}>{binary(support.audio.encoding?.opus)}</div>
+					<div style={c2}>AAC</div>
+					<div style={c3}>{binary(support.audio.encoding?.aac)}</div>
+					<div style={c2}>AV1</div>
+					<div style={c3}>{hardware(support.video.encoding?.av1)}</div>
+					<div style={c2}>H.265</div>
+					<div style={c3}>{hardware(support.video.encoding?.h265)}</div>
+					<div style={c2}>H.264</div>
+					<div style={c3}>{hardware(support.video.encoding?.h264)}</div>
+					<div style={c2}>VP9</div>
+					<div style={c3}>{hardware(support.video.encoding?.vp9)}</div>
+					<div style={c2}>VP8</div>
+					<div style={c3}>{hardware(support.video.encoding?.vp8)}</div>
+				</Show>
+				<Show when={props.role !== "publish"}>
+					<div style={c1}>Decoding</div>
+					<div style={c2}>Opus</div>
+					<div style={c3}>{binary(support.audio.decoding?.opus)}</div>
+					<div style={c2}>AAC</div>
+					<div style={c3}>{binary(support.audio.decoding?.aac)}</div>
+					<div style={c2}>AV1</div>
+					<div style={c3}>{hardware(support.video.decoding?.av1)}</div>
+					<div style={c2}>H.265</div>
+					<div style={c3}>{hardware(support.video.decoding?.h265)}</div>
+					<div style={c2}>H.264</div>
+					<div style={c3}>{hardware(support.video.decoding?.h264)}</div>
+					<div style={c2}>VP9</div>
+					<div style={c3}>{hardware(support.video.decoding?.vp9)}</div>
+					<div style={c2}>VP8</div>
+					<div style={c3}>{hardware(support.video.decoding?.vp8)}</div>
+				</Show>
 			</Show>
 		</div>
 	);

@@ -23,6 +23,7 @@
 	<h3>Other demos:</h3>
 	<ul>
 		<li><a href="publish.html">Publish a broadcast.</a></li>
+		<li><a href="announce.html">List all active broadcasts.</a></li>
 	</ul>
 
 	<h3>Tips:</h3>
@@ -127,6 +128,17 @@ just pub bbb
 		For example,
 		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
 			href="index.html?name=demo/tos" target="_blank">watch robots bang</a>.
+		This command uses ffmpeg to produce a fragmented MP4 file piped over stdout and then sent over the network.
+		Yeah it's pretty gross.
+	</p>
+	<p>
+		If you want to do things more efficiently, you can use the <i>alpha</i> gstreamer plugin via:
+		<code class="language-bash">just pub-gst tos</code>.
+		It's pretty crude and doesn't handle all pipeline events; contributions welcome!
+	</p>
+	<p>
+		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
+		via gstreamer.
 	</p>
 </body>
 

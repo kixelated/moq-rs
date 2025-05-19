@@ -15,6 +15,7 @@ export default defineConfig({
 			input: {
 				watch: resolve(__dirname, "src/demo/index.html"),
 				publish: resolve(__dirname, "src/demo/publish.html"),
+				announce: resolve(__dirname, "src/demo/announce.html"),
 			},
 		},
 	},

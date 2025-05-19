@@ -10,10 +10,6 @@ pub struct Frame {
 }
 
 impl Frame {
-	pub fn new(size: u64) -> Self {
-		Self { size }
-	}
-
 	pub fn produce(self) -> FrameProducer {
 		FrameProducer::new(self)
 	}
@@ -21,25 +17,25 @@ impl Frame {
 
 impl From<usize> for Frame {
 	fn from(size: usize) -> Self {
-		Self::new(size as u64)
+		Self { size: size as u64 }
 	}
 }
 
 impl From<u64> for Frame {
 	fn from(size: u64) -> Self {
-		Self::new(size)
+		Self { size }
 	}
 }
 
 impl From<u32> for Frame {
 	fn from(size: u32) -> Self {
-		Self::new(size as u64)
+		Self { size: size as u64 }
 	}
 }
 
 impl From<u16> for Frame {
 	fn from(size: u16) -> Self {
-		Self::new(size as u64)
+		Self { size: size as u64 }
 	}
 }
 

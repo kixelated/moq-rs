@@ -13,8 +13,9 @@ use super::Config;
 /// Publish a video stream to the provided URL.
 #[derive(Args, Clone)]
 pub struct ClientConfig {
-	/// The URL must start with `https://` or `http://`.
+	/// The URL of the MoQ server.
 	///
+	/// The URL must start with `https://` or `http://`.
 	/// - If `http` is used, a HTTP fetch to "/certificate.sha256" is first made to get the TLS certificiate fingerprint (insecure).
 	///   The URL is then upgraded to `https`.
 	///
@@ -37,10 +38,12 @@ impl Client {
 	}
 
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		let path = self.url.path().trim_start_matches('/').to_string();
-		let broadcast = hang::Broadcast::new(path);
+		let broadcast = hang::Broadcast {
+			room: self.config.room.clone(),
+			name: self.config.name.clone(),
+		};
 
-		let producer = BroadcastProducer::new(broadcast.into());
+		let producer = BroadcastProducer::new(broadcast);
 		let consumer = producer.consume();
 
 		// Connect to the remote and start parsing stdin in parallel.
@@ -64,6 +67,8 @@ impl Client {
 
 		session.publish(consumer.inner.clone());
 
+		tracing::info!(room = %self.config.room, name = %self.config.name, "publishing");
+
 		tokio::select! {
 			// On ctrl-c, close the session and exit.
 			_ = tokio::signal::ctrl_c() => {
@@ -86,6 +91,8 @@ impl Client {
 			.init_from(input)
 			.await
 			.context("failed to initialize cmaf from input")?;
+
+		tracing::info!("initialized");
 
 		import.read_from(input).await?;
 

@@ -66,7 +66,7 @@ export class Broadcast {
 				// We're donezo.
 				if (!update) break;
 
-				// Require full equality plus the `.hang` suffix.
+				// Require full equality
 				if (update.broadcast !== `${announced.prefix}.hang`) {
 					console.warn("ignoring broadcast", update.broadcast);
 					continue;
@@ -90,7 +90,7 @@ export class Broadcast {
 
 		if (!this.#active.get()) return;
 
-		const broadcast = conn.consume(name);
+		const broadcast = conn.consume(`${name}.hang`);
 		this.#broadcast.set(broadcast);
 
 		this.audio.broadcast.set(broadcast);

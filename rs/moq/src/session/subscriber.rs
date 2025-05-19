@@ -84,8 +84,10 @@ impl Subscriber {
 			match announce {
 				message::Announce::Active { suffix } => {
 					let broadcast = match prefix {
-						"" => Broadcast::new(suffix),
-						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
+						"" => Broadcast { path: suffix },
+						prefix => Broadcast {
+							path: format!("{}{}", prefix, suffix),
+						},
 					};
 
 					tracing::debug!(broadcast = %broadcast.path, "received announce");
@@ -96,8 +98,10 @@ impl Subscriber {
 				}
 				message::Announce::Ended { suffix } => {
 					let broadcast = match prefix {
-						"" => Broadcast::new(suffix),
-						prefix => Broadcast::new(format!("{}{}", prefix, suffix)),
+						"" => Broadcast { path: suffix },
+						prefix => Broadcast {
+							path: format!("{}{}", prefix, suffix),
+						},
 					};
 
 					tracing::debug!(broadcast = %broadcast.path, "received unannounce");

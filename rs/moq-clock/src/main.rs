@@ -58,8 +58,11 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(config.url).await?;
 	let mut session = moq_lite::Session::connect(session).await?;
 
-	let broadcast = Broadcast::new(config.broadcast);
-	let track = Track::new(config.track, 0);
+	let broadcast = Broadcast { path: config.broadcast };
+	let track = Track {
+		name: config.track,
+		priority: 0,
+	};
 
 	match config.role {
 		Command::Publish => {

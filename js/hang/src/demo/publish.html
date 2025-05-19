@@ -24,18 +24,21 @@
 	<ul>
 		<li><a href="index.html" target="_blank" rel="noreferrer" id="watch">Watch your broadcast: <span
 					id="watch-name"></span></a></li>
+		<li><a href="index.html">Watch the handsome bunny instead.</a></li>
+		<li><a href="announce.html">List all active broadcasts.</a></li>
 	</ul>
 
 	<h3>Tips:</h3>
 	<p>
 		This page creates a broadcast called `demo/me` by default.
-		You can watch it with the <a href="index.html?name=demo/me">watch demo</a>.
-		You can also use <a href="index.html?name=demo/notme">query parameters</a> to create a different broadcaster.
+		You can use <a href="index.html?name=demo/notme">query parameters</a> to use a different name or create multiple
+		broadcasts.
 	</p>
 	<p>
 		Reusing the same broadcast name means viewers will automatically reconnect to the new session.
 		Try reloading the page and broadcasting again; viewers will automatically reconnect!
 	</p>
+	<hr />
 	<p>
 		Media only flows over the network when requested!
 		Connecting to a relay means the broadcast is advertised as available, but nothing is transferred until there's
@@ -46,13 +49,30 @@
 	<p>
 		You can create a broadcaster via the provided <code class="language-html">&lt;hang-publish&gt;</code> <a
 			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
-		Either modify HTML attributes like <code class="language-html">&lt;moq-publish device="camera" /&gt;</code>
+		Either modify HTML attributes like <code class="language-html">&lt;hang-publish device="camera" /&gt;</code>
 		or access the element's Javascript API:
 	<pre><code class="language-typescript">const publish = document.getElementById("publish");
 publish.lib.device = "camera";</code></pre>
 
 	And of course you can use the Javascript API directly instead of the Web Component.
 	It's a bit more complicated and subject to change, but it gives you more control.
+	</p>
+	<hr>
+	<p>
+		You're not limited to web publishing either.
+		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
+			href="index.html?name=demo/tos" target="_blank">watch robots bang</a>.
+		This uses ffmpeg to produce a fragmented MP4 file piped over stdout then sent over the network.
+		Yeah it's pretty gross.
+	</p>
+	<p>
+		If you want to do things more efficiently, you can use the <i>alpha</i> gstreamer plugin via:
+		<code class="language-bash">just pub-gst tos</code>.
+		It's pretty crude and doesn't handle all pipeline events; contributions welcome!
+	</p>
+	<p>
+		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
+		via gstreamer.
 	</p>
 </body>
 

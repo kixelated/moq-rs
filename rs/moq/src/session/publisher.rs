@@ -108,7 +108,9 @@ impl Publisher {
 	}
 
 	async fn run_subscribe(&mut self, stream: &mut Stream, subscribe: &mut message::Subscribe) -> Result<(), Error> {
-		let broadcast = Broadcast::new(subscribe.broadcast.clone());
+		let broadcast = Broadcast {
+			path: subscribe.broadcast.clone(),
+		};
 		let track = Track {
 			name: subscribe.track.clone(),
 			priority: subscribe.priority,
