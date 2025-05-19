@@ -9,7 +9,7 @@ export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
 	publish?: boolean;
-	path?: string;
+	name?: string;
 	audio?: AudioTrackConstraints | boolean;
 	video?: VideoTrackConstraints | boolean;
 	device?: Device;
@@ -21,10 +21,7 @@ export type BroadcastProps = {
 export class Broadcast {
 	connection: Connection;
 	publish: Signal<boolean>;
-	path: Signal<string | undefined>;
-
-	//#media = signal<MediaStream | undefined>(undefined);
-	//media = this.#media.readonly();
+	name: Signal<string | undefined>;
 
 	audio: Audio;
 	video: Video;
@@ -38,7 +35,7 @@ export class Broadcast {
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
 		this.publish = signal(props?.publish ?? true);
-		this.path = signal(props?.path);
+		this.name = signal(props?.name);
 		this.audio = new Audio({ constraints: props?.audio });
 		this.video = new Video({ constraints: props?.video });
 		this.device = signal(props?.device);
@@ -46,13 +43,14 @@ export class Broadcast {
 		this.#signals.effect(() => {
 			if (!this.publish.get()) return;
 
-			const name = this.path.get();
+			const name = this.name.get();
 			if (!name) return;
 
 			const connection = this.connection.established.get();
 			if (!connection) return;
 
-			const broadcast = new Moq.Broadcast(name);
+			// Create the broadcast ending with `.hang` to indicate that it's a Hang broadcast.
+			const broadcast = new Moq.Broadcast(`${name}.hang`);
 			broadcast.producer.insertTrack(this.#catalog.consumer.clone());
 
 			this.#broadcast.set(broadcast);

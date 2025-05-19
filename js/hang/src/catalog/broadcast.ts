@@ -1,20 +1,17 @@
 import * as Moq from "@kixelated/moq";
-import { z } from "zod";
+import { z } from "zod/v4-mini";
 
 import { type Audio, AudioSchema } from "./audio";
-import { type Location, LocationSchema } from "./location";
 import { type Video, VideoSchema } from "./video";
 
 export const BroadcastSchema = z.object({
-	video: z.array(VideoSchema).optional(),
-	audio: z.array(AudioSchema).optional(),
-	location: LocationSchema.optional(),
+	video: z.optional(z.array(VideoSchema)),
+	audio: z.optional(z.array(AudioSchema)),
 });
 
 export class Broadcast {
 	video: Video[] = [];
 	audio: Audio[] = [];
-	location?: Location;
 
 	encode() {
 		return JSON.stringify(this);
@@ -29,7 +26,6 @@ export class Broadcast {
 		const broadcast = new Broadcast();
 		broadcast.video = parsed.video ?? [];
 		broadcast.audio = parsed.audio ?? [];
-		broadcast.location = parsed.location;
 
 		return broadcast;
 	}

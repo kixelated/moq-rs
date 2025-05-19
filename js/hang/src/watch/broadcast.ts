@@ -6,7 +6,7 @@ import { AudioSource } from "./audio";
 import { VideoSource } from "./video";
 
 export type BroadcastProps = {
-	path?: string;
+	name?: string;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
@@ -15,7 +15,7 @@ export type BroadcastProps = {
 // A broadcast that (optionally) reloads automatically when live/offline.
 export class Broadcast {
 	connection: Connection;
-	path: Signal<string | undefined>;
+	name: Signal<string | undefined>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
 	audio: AudioSource = new AudioSource();
@@ -34,7 +34,7 @@ export class Broadcast {
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
-		this.path = signal(props?.path);
+		this.name = signal(props?.name);
 		this.#reload = props?.reload ?? true;
 
 		this.#signals.effect(() => this.#runActive());
@@ -55,7 +55,7 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.path.get();
+		const name = this.name.get();
 		if (!name) return;
 
 		const announced = conn.announced(name);
@@ -66,8 +66,11 @@ export class Broadcast {
 				// We're donezo.
 				if (!update) break;
 
-				// Require full equality.
-				if (update.broadcast !== announced.prefix) continue;
+				// Require full equality plus the `.hang` suffix.
+				if (update.broadcast !== `${announced.prefix}.hang`) {
+					console.warn("ignoring broadcast", update.broadcast);
+					continue;
+				}
 
 				this.#active.set(update.active);
 			}
@@ -82,7 +85,7 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.path.get();
+		const name = this.name.get();
 		if (!name) return;
 
 		if (!this.#active.get()) return;

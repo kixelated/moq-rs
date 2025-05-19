@@ -72,8 +72,8 @@ impl Watch {
 			}
 		};
 
-		let broadcast = session.consume(&broadcast.into());
-		self.broadcast = Some(broadcast.into());
+		let broadcast = session.consume(&format!("{}.hang", broadcast).into());
+		self.broadcast = Some(hang::BroadcastConsumer::new(broadcast));
 
 		Bridge::send(ConnectionStatus::Connected.into());
 	}

@@ -268,9 +268,8 @@ export class AudioSource {
 		});
 
 		decoder.configure({
-			codec: selected.codec,
-			sampleRate: selected.sample_rate,
-			numberOfChannels: selected.channel_count,
+			...selected,
+			description: selected.description ? Buffer.from(selected.description, "hex") : undefined,
 		});
 
 		const media = new Container.Decoder(sub);

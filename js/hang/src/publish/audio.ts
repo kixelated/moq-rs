@@ -55,10 +55,12 @@ export class Audio {
 				name: track.name,
 				priority: track.priority,
 			},
+			// TODO get codec and description from decoderConfig
 			codec: "Opus",
-			sample_rate: settings.sampleRate,
-			channel_count: settings.channelCount,
-			bitrate: 64_000, // TODO support higher bitrates
+			sampleRate: settings.sampleRate,
+			numberOfChannels: settings.channelCount,
+			// TODO configurable
+			bitrate: 64_000,
 		};
 
 		this.#catalog.set(catalog);
@@ -109,8 +111,8 @@ export class Audio {
 
 		encoder.configure({
 			codec: catalog.codec,
-			numberOfChannels: catalog.channel_count,
-			sampleRate: catalog.sample_rate,
+			numberOfChannels: catalog.numberOfChannels,
+			sampleRate: catalog.sampleRate,
 			bitrate: catalog.bitrate,
 		});
 

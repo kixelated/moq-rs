@@ -16,7 +16,7 @@
 
 	<!-- There's a simple, web component to set up the provided canvas, including some basic controls. -->
 	<!-- If you don't want video, don't provide a canvas! -->
-	<hang-watch url="http://localhost:4443/" broadcast="demo/bbb" muted controls>
+	<hang-watch url="http://localhost:4443/" name="demo/bbb" muted controls>
 		<canvas style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;"></canvas>
 	</hang-watch>
 
@@ -55,7 +55,7 @@
 			href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
 		works.
 		For example:
-	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; broadcast=&quot;demo/bbb&quot;&gt;
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; name=&quot;demo/bbb&quot;&gt;
 	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
 	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
 &lt;/hang-watch&gt;</code></pre>
@@ -126,7 +126,7 @@ just pub bbb
 			href="publish.html">publish demo</a>.
 		For example,
 		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
-			href="index.html?broadcast=demo/tos" target="_blank">watch robots bang</a>.
+			href="index.html?name=demo/tos" target="_blank">watch robots bang</a>.
 	</p>
 </body>
 

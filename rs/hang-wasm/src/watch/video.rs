@@ -4,7 +4,6 @@ use crate::Result;
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
 
-use hang::Dimensions;
 use wasm_bindgen::{prelude::*, JsCast};
 use web_codecs::{Timestamp, VideoFrame};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -49,7 +48,7 @@ impl Video {
 		let broadcast = self.broadcast.as_ref()?;
 		let catalog = self.catalog.as_ref()?;
 
-		let mut render = self.render.borrow_mut();
+		let render = self.render.borrow_mut();
 		if render.canvas.is_none() || !render.visible {
 			return Some(());
 		}
@@ -68,9 +67,6 @@ impl Video {
 
 		// TODO handle the error instead of ignoring it.
 		let video = VideoTrack::new(track, video.clone()).ok()?;
-		if let Some(resolution) = video.info.resolution {
-			render.set_resolution(resolution);
-		}
 
 		tracing::info!(info = ?video.info, "loaded video track");
 		self.track = Some(video);
@@ -149,9 +145,9 @@ impl VideoTrack {
 		let (decoder, decoded) = web_codecs::VideoDecoderConfig {
 			codec: info.codec.to_string(),
 			description: info.description.clone(),
-			resolution: info.resolution.map(|r| web_codecs::Dimensions {
-				width: r.width,
-				height: r.height,
+			resolution: info.dimensions.map(|d| web_codecs::Dimensions {
+				width: d.width,
+				height: d.height,
 			}),
 			latency_optimized: Some(true),
 			..Default::default()
@@ -198,7 +194,7 @@ enum RendererStatus {
 struct Render {
 	state: RendererStatus,
 	scheduled: bool,
-	resolution: Dimensions,
+	resolution: Option<web_codecs::Dimensions>,
 
 	// Used to determine which frame to render next.
 	latency: Duration,
@@ -261,6 +257,7 @@ impl Render {
 		let now = Instant::now();
 
 		let mut frame = self.queue.pop_front().expect("rendered with no frames");
+		self.set_resolution(Some(frame.dimensions()));
 
 		if let Some((wall_ref, pts_ref)) = self.latency_ref {
 			let wall_elapsed = now - wall_ref;
@@ -374,20 +371,17 @@ impl Render {
 		};
 	}
 
-	pub fn set_resolution(&mut self, resolution: Dimensions) {
+	pub fn set_resolution(&mut self, resolution: Option<web_codecs::Dimensions>) {
 		self.resolution = resolution;
 
-		if let Some(canvas) = self.canvas.as_mut() {
-			canvas.set_width(resolution.width);
-			canvas.set_height(resolution.height);
-		}
-
-		if resolution == Default::default() {
-			self.set_state(RendererStatus::Idle);
-			self.queue.clear();
-		} else {
-			self.set_state(RendererStatus::Buffering);
-			self.schedule();
+		if let Some(resolution) = resolution {
+			if let Some(canvas) = self.canvas.as_mut() {
+				canvas.set_width(resolution.width);
+				canvas.set_height(resolution.height);
+			}
+		} else if let Some(canvas) = self.canvas.as_mut() {
+			canvas.set_width(0);
+			canvas.set_height(0);
 		}
 	}
 

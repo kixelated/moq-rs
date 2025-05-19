@@ -124,7 +124,7 @@ impl PublishVideo {
 
 	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let resolution = config.resolution.map(|r| hang::Dimensions {
+			let dimensions = config.resolution.map(|r| hang::Dimensions {
 				width: r.width,
 				height: r.height,
 			});
@@ -133,9 +133,13 @@ impl PublishVideo {
 				track: self.track.inner.info.clone(),
 				codec: config.codec.into(),
 				description: config.description,
-				resolution,
+				dimensions,
 				bitrate: self.config.bitrate.map(|b| b as _),
 				framerate: self.config.framerate.map(|f| f as _),
+				display_ratio: None,
+				rotation: None,
+				flip: None,
+				optimize_for_latency: None,
 			};
 
 			broadcast.add_video(self.track.consume(), info);

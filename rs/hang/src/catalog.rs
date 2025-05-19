@@ -189,7 +189,7 @@ mod test {
 						"priority": 2
 					},
 					"codec": "avc1.64001f",
-					"resolution": {
+					"dimensions": {
 						"width": 1280,
 						"height": 720
 					},
@@ -204,8 +204,8 @@ mod test {
 						"priority": 1
 					},
 					"codec": "opus",
-					"sample_rate": 48000,
-					"channel_count": 2,
+					"sampleRate": 48000,
+					"numberOfChannels": 2,
 					"bitrate": 128000
 				}
 			]
@@ -227,12 +227,16 @@ mod test {
 				}
 				.into(),
 				description: None,
-				resolution: Some(Dimensions {
+				dimensions: Some(Dimensions {
 					width: 1280,
 					height: 720,
 				}),
+				display_ratio: None,
 				bitrate: Some(6_000_000),
 				framerate: Some(30.0),
+				optimize_for_latency: None,
+				rotation: None,
+				flip: None,
 			}],
 			audio: vec![Audio {
 				track: Track {

@@ -124,8 +124,7 @@ impl Import {
 
 				Video {
 					track,
-					// TODO: factor in pixel aspect ratio
-					resolution: Some(Dimensions {
+					dimensions: Some(Dimensions {
 						width: avc1.visual.width as _,
 						height: avc1.visual.height as _,
 					}),
@@ -136,8 +135,13 @@ impl Import {
 					}
 					.into(),
 					description: Some(description.freeze()),
-					bitrate: None,
+					// TODO: populate these fields
 					framerate: None,
+					bitrate: None,
+					rotation: None,
+					flip: None,
+					display_ratio: None,
+					optimize_for_latency: None,
 				}
 			}
 			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
@@ -146,13 +150,17 @@ impl Import {
 				track,
 				codec: VideoCodec::VP8,
 				description: Default::default(),
-				// TODO: factor in pixel aspect ratio
-				resolution: Some(Dimensions {
+				dimensions: Some(Dimensions {
 					width: vp08.visual.width as _,
 					height: vp08.visual.height as _,
 				}),
-				bitrate: None,
+				// TODO: populate these fields
 				framerate: None,
+				bitrate: None,
+				rotation: None,
+				flip: None,
+				display_ratio: None,
+				optimize_for_latency: None,
 			},
 			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
@@ -172,11 +180,15 @@ impl Import {
 					}
 					.into(),
 					description: Default::default(),
-					// TODO: factor in pixel aspect ratio
-					resolution: Some(Dimensions {
+					dimensions: Some(Dimensions {
 						width: vp09.visual.width as _,
 						height: vp09.visual.height as _,
 					}),
+					// TODO: populate these fields
+					display_ratio: None,
+					rotation: None,
+					flip: None,
+					optimize_for_latency: None,
 					bitrate: None,
 					framerate: None,
 				}
@@ -205,11 +217,15 @@ impl Import {
 					}
 					.into(),
 					description: Default::default(),
-					// TODO: factor in pixel aspect ratio
-					resolution: Some(Dimensions {
+					dimensions: Some(Dimensions {
 						width: av01.visual.width as _,
 						height: av01.visual.height as _,
 					}),
+					// TODO: populate these fields
+					display_ratio: None,
+					rotation: None,
+					flip: None,
+					optimize_for_latency: None,
 					bitrate: None,
 					framerate: None,
 				}
@@ -239,13 +255,17 @@ impl Import {
 			}
 			.into(),
 			description: Some(description.freeze()),
-			// TODO: factor in pixel aspect ratio
-			resolution: Some(Dimensions {
+			dimensions: Some(Dimensions {
 				width: visual.width as _,
 				height: visual.height as _,
 			}),
+			// TODO: populate these fields
 			bitrate: None,
 			framerate: None,
+			display_ratio: None,
+			rotation: None,
+			flip: None,
+			optimize_for_latency: None,
 		})
 	}
 
@@ -270,7 +290,7 @@ impl Import {
 					return Err(Error::UnsupportedCodec("MPEG2".to_string()));
 				}
 
-				let bitrate = desc.avg_bitrate.max(desc.max_bitrate) as u64;
+				let bitrate = desc.avg_bitrate.max(desc.max_bitrate);
 
 				Audio {
 					track,
@@ -280,7 +300,7 @@ impl Import {
 					.into(),
 					sample_rate: mp4a.audio.sample_rate.integer() as _,
 					channel_count: mp4a.audio.channel_count as _,
-					bitrate: Some(bitrate),
+					bitrate: Some(bitrate.into()),
 					description: None, // TODO?
 				}
 			}

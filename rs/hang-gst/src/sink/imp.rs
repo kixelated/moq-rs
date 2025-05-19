@@ -165,12 +165,12 @@ impl HangSink {
 			let session = client.connect(url.clone()).await.expect("failed to connect");
 			let mut session = moq_lite::Session::connect(session).await.expect("failed to connect");
 
-			let broadcast = url.path().strip_prefix('/').unwrap().into();
+			let broadcast = format!("{}.hang", url.path().strip_prefix('/').unwrap()).into();
 
 			let broadcast = moq_lite::BroadcastProducer::new(broadcast);
 			session.publish(broadcast.consume());
 
-			let media = hang::cmaf::Import::new(broadcast.into());
+			let media = hang::cmaf::Import::new(hang::BroadcastProducer::new(broadcast));
 
 			let mut state = self.state.lock().unwrap();
 			state.media = Some(media);

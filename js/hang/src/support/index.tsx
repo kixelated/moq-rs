@@ -1,4 +1,4 @@
-import { createMemo, createSelector, createSignal, JSX, Match, Show, Switch } from "solid-js";
+import { JSX, Match, Show, Switch, createMemo, createSelector, createSignal } from "solid-js";
 
 export type SupportAudio = {
 	aac: boolean;
@@ -160,7 +160,7 @@ export async function isSupported(): Promise<Support> {
 	};
 }
 
-export function Support(props: { role: "watch" | "publish" | "both" }) {
+export function Support(props: { role: "watch" | "publish" | "both"; show: "full" | "partial" | "none" }) {
 	const [support, setSupport] = createSignal<Support | undefined>();
 	isSupported().then(setSupport);
 
@@ -229,33 +229,42 @@ export function Support(props: { role: "watch" | "publish" | "both" }) {
 	const isFinal = createSelector(final);
 	const [showDetails, setShowDetails] = createSignal<boolean>(false);
 
+	// Only render based on the result.
+	const shouldShow = () => {
+		if (props.show === "full") return true;
+		if (props.show === "partial") return isFinal("partial") || isFinal("none");
+		return isFinal("none");
+	};
+
 	return (
-		<div style={{ margin: "0 auto", "max-width": "28rem", padding: "1rem" }}>
-			<div
-				style={{
-					display: "flex",
-					"flex-direction": "row",
-					gap: "1rem",
-					"flex-wrap": "wrap",
-					"justify-content": "space-between",
-					"align-items": "center",
-				}}
-			>
-				<div style={{ "font-weight": "bold" }}>
-					<Switch>
-						<Match when={isFinal("full")}>🟢 Full Support</Match>
-						<Match when={isFinal("partial")}>🟡 Partial Support</Match>
-						<Match when={isFinal("none")}>🔴 No Support</Match>
-					</Switch>
+		<Show when={shouldShow()}>
+			<div style={{ margin: "0 auto", "max-width": "28rem", padding: "1rem" }}>
+				<div
+					style={{
+						display: "flex",
+						"flex-direction": "row",
+						gap: "1rem",
+						"flex-wrap": "wrap",
+						"justify-content": "space-between",
+						"align-items": "center",
+					}}
+				>
+					<div style={{ "font-weight": "bold" }}>
+						<Switch>
+							<Match when={isFinal("full")}>🟢 Full Browser Support</Match>
+							<Match when={isFinal("partial")}>🟡 Partial Browser Support</Match>
+							<Match when={isFinal("none")}>🔴 No Browser Support</Match>
+						</Switch>
+					</div>
+					<button type="button" onClick={() => setShowDetails((d) => !d)} style={{ "font-size": "14px" }}>
+						{showDetails() ? "Hide Details ➖" : "Show Details ➕"}
+					</button>
 				</div>
-				<button type="button" onClick={() => setShowDetails((d) => !d)} style={{ "font-size": "14px" }}>
-					{showDetails() ? "Hide Details ➖" : "Show Details ➕"}
-				</button>
+				<Show when={showDetails()}>
+					<SupportDetails support={support()} role={props.role} />
+				</Show>
 			</div>
-			<Show when={showDetails()}>
-				<SupportDetails support={support()} role={props.role} />
-			</Show>
-		</div>
+		</Show>
 	);
 }
 

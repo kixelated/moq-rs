@@ -147,10 +147,10 @@ impl ElementImpl for HangSrc {
 
 impl HangSrc {
 	async fn setup(&self) -> anyhow::Result<()> {
-		let (quic, url, broadcast) = {
+		let (quic, url, name) = {
 			let settings = self.settings.lock().unwrap();
 			let url = url::Url::parse(&settings.url)?;
-			let broadcast = url.path().strip_prefix("/").unwrap().to_string();
+			let name = format!("{}.hang", url.path().strip_prefix("/").unwrap());
 
 			// TODO support TLS certs and other options
 			let quic = quic::Args {
@@ -161,7 +161,7 @@ impl HangSrc {
 				},
 			};
 
-			(quic, url, broadcast)
+			(quic, url, name)
 		};
 
 		let quic = quic.load()?;
@@ -169,7 +169,8 @@ impl HangSrc {
 
 		let session = client.connect(url).await?;
 		let session = moq_lite::Session::connect(session).await?;
-		let broadcast = session.consume(&broadcast.into());
+
+		let broadcast = session.consume(&name.into());
 		let mut broadcast = hang::BroadcastConsumer::new(broadcast);
 
 		// TODO handle catalog updates

@@ -297,14 +297,23 @@ export class Video {
 				name: track.name,
 				priority: track.priority,
 			},
+			// Important: decoderConfig contains the fully resolved codec unlike encoderConfig.
 			codec: decoderConfig.codec,
 			description,
-			resolution: {
+			dimensions: {
 				width: encoderConfig.width,
 				height: encoderConfig.height,
 			},
+			displayRatio:
+				decoderConfig.displayAspectHeight && decoderConfig.displayAspectWidth
+					? {
+							width: decoderConfig.displayAspectWidth,
+							height: decoderConfig.displayAspectHeight,
+						}
+					: undefined,
 			framerate: encoderConfig.framerate,
-			bitrate: encoderConfig.bitrate,
+			optimizeForLatency: decoderConfig.optimizeForLatency ?? true,
+			// TODO rotation and flip
 		};
 
 		this.#catalog.set(catalog);

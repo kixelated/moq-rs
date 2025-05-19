@@ -5,7 +5,7 @@ import { PublishControls } from "./controls";
 import { Publish } from "./publish";
 
 export class PublishElement extends HTMLElement {
-	static observedAttributes = ["url", "broadcast", "device", "audio", "video", "controls"];
+	static observedAttributes = ["url", "name", "device", "audio", "video", "controls"];
 
 	#controls = signal(false);
 
@@ -36,8 +36,8 @@ export class PublishElement extends HTMLElement {
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
-		} else if (name === "broadcast") {
-			this.lib.broadcast.path.set(newValue);
+		} else if (name === "name") {
+			this.lib.broadcast.name.set(newValue);
 		} else if (name === "device") {
 			this.lib.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {

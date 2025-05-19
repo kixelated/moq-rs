@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use moq_lite::{Announced, Broadcast};
+use moq_lite::Broadcast;
 use web_async::Lock;
 
 use crate::{BroadcastConsumer, BroadcastProducer};
@@ -13,6 +13,11 @@ pub struct Room {
 	ourselves: Lock<HashSet<Broadcast>>,
 }
 
+pub enum Action {
+	Join(String),
+	Leave(String),
+}
+
 impl Room {
 	pub fn new(session: moq_lite::Session, path: String) -> Self {
 		Self {
@@ -23,8 +28,9 @@ impl Room {
 		}
 	}
 
+	// Joins the room and returns a producer for the broadcast.
 	pub fn join(&mut self, name: String) -> BroadcastProducer {
-		let broadcast = Broadcast::new(format!("{}/{}", self.path, name));
+		let broadcast = Broadcast::new(format!("{}/{}.hang", self.path, name));
 		let ourselves = self.ourselves.clone();
 
 		ourselves.lock().insert(broadcast.clone());
@@ -39,22 +45,30 @@ impl Room {
 			ourselves.lock().remove(&broadcast);
 		});
 
-		producer.into()
+		BroadcastProducer::new(producer)
 	}
 
-	pub async fn update(&mut self) -> Option<Announced> {
+	/// Returns the next room action.
+	pub async fn update(&mut self) -> Option<Action> {
 		loop {
 			let announced = self.announced.next().await?;
 			if self.ourselves.lock().contains(announced.broadcast()) {
 				continue;
 			}
 
-			return Some(announced);
+			let name = announced.path().strip_prefix(&self.path).unwrap().to_string();
+
+			return match announced {
+				moq_lite::Announced::Start(_) => Some(Action::Join(name)),
+				moq_lite::Announced::End(_) => Some(Action::Leave(name)),
+			};
 		}
 	}
 
-	pub fn watch(&mut self, broadcast: &Broadcast) -> BroadcastConsumer {
-		let consumer = self.session.consume(broadcast);
-		consumer.into()
+	// Takes the name of the broadcast to watch within the room.
+	pub fn watch(&mut self, name: &str) -> BroadcastConsumer {
+		let broadcast = format!("{}/{}.hang", self.path, name);
+		let consumer = self.session.consume(&broadcast.into());
+		BroadcastConsumer::new(consumer)
 	}
 }

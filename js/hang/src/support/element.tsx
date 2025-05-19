@@ -1,12 +1,13 @@
+import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { Support } from "./";
-import { createSignal } from "solid-js";
 
 export class SupportElement extends HTMLElement {
 	#role = createSignal<"watch" | "publish" | "both">("both");
+	#show = createSignal<"full" | "partial" | "none">("full");
 
 	static get observedAttributes() {
-		return ["role"];
+		return ["role", "show"];
 	}
 
 	attributeChangedCallback(name: string, _oldValue?: string, newValue?: string) {
@@ -18,12 +19,19 @@ export class SupportElement extends HTMLElement {
 			} else {
 				throw new Error(`Invalid role: ${role}`);
 			}
+		} else if (name === "show") {
+			const show = newValue ?? "full";
+			if (show === "full" || show === "partial" || show === "none") {
+				this.#show[1](show);
+			} else {
+				throw new Error(`Invalid show: ${show}`);
+			}
 		}
 	}
 
 	connectedCallback() {
 		const root = this.appendChild(document.createElement("div"));
-		render(() => <Support role={this.#role[0]()} />, root);
+		render(() => <Support role={this.#role[0]()} show={this.#show[0]()} />, root);
 	}
 }
 

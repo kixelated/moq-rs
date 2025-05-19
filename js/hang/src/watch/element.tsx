@@ -5,7 +5,7 @@ import { Watch } from "./watch";
 
 // An optional web component that wraps a <canvas>
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url", "broadcast", "paused", "volume", "latency", "controls"];
+	static observedAttributes = ["url", "name", "paused", "volume", "latency", "controls"];
 
 	#controls = signal(false);
 
@@ -40,8 +40,8 @@ export class WatchElement extends HTMLElement {
 
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
-		} else if (name === "broadcast") {
-			this.lib.broadcast.path.set(newValue);
+		} else if (name === "name") {
+			this.lib.broadcast.name.set(newValue);
 		} else if (name === "paused") {
 			this.lib.video.paused.set(newValue !== undefined);
 			this.lib.audio.paused.set(newValue !== undefined);

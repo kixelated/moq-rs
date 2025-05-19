@@ -26,7 +26,7 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 wasm-tracing = "2.0"
 web-async = { workspace = true }
-web-codecs = "0.3.6"
+web-codecs = "0.3.7"
 web-message = { version = "0.0.2", features = [
 	"Url",
 	"OffscreenCanvas",

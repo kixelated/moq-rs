@@ -197,11 +197,13 @@ export class VideoSource {
 		});
 
 		decoder.configure({
-			codec: selected.codec,
-			//codedHeight: info.resolution.height,
-			//codedWidth: info.resolution.width,
+			...selected,
+			codedHeight: selected.dimensions?.height,
+			codedWidth: selected.dimensions?.width,
+			displayAspectHeight: selected.displayRatio?.height,
+			displayAspectWidth: selected.displayRatio?.width,
 			description: selected.description ? Buffer.from(selected.description, "hex") : undefined,
-			optimizeForLatency: true,
+			optimizeForLatency: selected.optimizeForLatency ?? true,
 		});
 
 		(async () => {

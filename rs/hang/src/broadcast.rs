@@ -20,7 +20,7 @@ impl BroadcastProducer {
 	}
 
 	pub fn consume(&self) -> BroadcastConsumer {
-		self.producer.consume().into()
+		BroadcastConsumer::new(self.producer.consume())
 	}
 
 	pub fn path(&self) -> &str {
@@ -70,11 +70,13 @@ impl BroadcastProducer {
 	}
 }
 
+/*
 impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
 	fn from(inner: moq_lite::BroadcastProducer) -> Self {
 		Self::new(inner)
 	}
 }
+*/
 
 #[derive(Clone)]
 pub struct BroadcastConsumer {
@@ -99,8 +101,10 @@ impl BroadcastConsumer {
 	}
 }
 
+/* Disabled so it's more clear that we're wrapping a moq_lite::BroadcastConsumer.
 impl From<moq_lite::BroadcastConsumer> for BroadcastConsumer {
 	fn from(inner: moq_lite::BroadcastConsumer) -> Self {
 		Self::new(inner)
 	}
 }
+*/
