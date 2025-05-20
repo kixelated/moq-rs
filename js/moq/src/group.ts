@@ -1,44 +1,4 @@
-import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
-
-/**
- * Represents a group of frames with a writer/reader pair.
- *
- * @public
- */
-export class Group {
-	/** The unique identifier for this group */
-	readonly id: number;
-	/** The writer component for adding frames to the group */
-	readonly producer: GroupProducer;
-	/** The reader component for consuming frames from the group */
-	readonly consumer: GroupConsumer;
-
-	/**
-	 * Creates a new Group instance with the specified ID.
-	 * @param id - The unique identifier for the group
-	 */
-	constructor(id: number) {
-		this.id = id;
-
-		const watch = new Watch<Uint8Array[]>([]);
-
-		this.producer = new GroupProducer(id, watch.producer);
-		this.consumer = new GroupConsumer(id, watch.consumer);
-	}
-
-	/**
-	 * Closes both the writer and reader components.
-	 */
-	close() {
-		this.producer.close();
-		this.consumer.close();
-	}
-
-	abort(reason: Error) {
-		this.producer.abort(reason);
-		this.consumer.close();
-	}
-}
+import { WatchConsumer, WatchProducer } from "./util/watch";
 
 /**
  * Handles writing frames to a group.
@@ -50,18 +10,16 @@ export class GroupProducer {
 	readonly id: number;
 
 	// A stream of frames.
-	#frames: WatchProducer<Uint8Array[]>;
+	#frames = new WatchProducer<Uint8Array[]>([]);
 
 	/**
 	 * Creates a new GroupProducer with the specified ID and frames producer.
 	 * @param id - The unique identifier
-	 * @param frames - The frames producer
 	 *
 	 * @internal
 	 */
-	constructor(id: number, frames: WatchProducer<Uint8Array[]>) {
+	constructor(id: number) {
 		this.id = id;
-		this.#frames = frames;
 	}
 
 	/**
@@ -80,11 +38,11 @@ export class GroupProducer {
 	}
 
 	/**
-	 * Returns a promise that resolves when the writer is closed.
-	 * @returns A promise that resolves when closed
+	 * Returns a promise that resolves when the writer is unused.
+	 * @returns A promise that resolves when unused
 	 */
-	async closed(): Promise<void> {
-		await this.#frames.closed();
+	async unused(): Promise<void> {
+		await this.#frames.unused();
 	}
 
 	/**
@@ -93,6 +51,10 @@ export class GroupProducer {
 	 */
 	abort(reason: Error) {
 		this.#frames.abort(reason);
+	}
+
+	consume(): GroupConsumer {
+		return new GroupConsumer(this.#frames.consume(), this.id);
 	}
 }
 
@@ -115,7 +77,7 @@ export class GroupConsumer {
 	 *
 	 * @internal
 	 */
-	constructor(id: number, frames: WatchConsumer<Uint8Array[]>) {
+	constructor(frames: WatchConsumer<Uint8Array[]>, id: number) {
 		this.id = id;
 		this.#frames = frames;
 	}
@@ -141,6 +103,6 @@ export class GroupConsumer {
 	 * @returns A new GroupConsumer instance
 	 */
 	clone(): GroupConsumer {
-		return new GroupConsumer(this.id, this.#frames.clone());
+		return new GroupConsumer(this.#frames.clone(), this.id);
 	}
 }

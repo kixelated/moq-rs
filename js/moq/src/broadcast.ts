@@ -1,54 +1,12 @@
-import { Track, TrackConsumer, TrackProducer } from "./track";
-import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
-
-/**
- * A broadcast contains a path and multiple (live) tracks.
- * A producer can use the writer to create tracks by name.
- * Any number of consumers (via clone) can request tracks by name.
- *
- * @public
- */
-export class Broadcast {
-	/** The identifier for this broadcast */
-	readonly path: string;
-
-	/** The writer for creating and managing tracks */
-	readonly producer: BroadcastProducer;
-	/** The reader for consuming tracks */
-	readonly consumer: BroadcastConsumer;
-
-	/**
-	 * Creates a new Broadcast instance with the specified path.
-	 * @param path - The path identifier for the broadcast
-	 */
-	constructor(path: string) {
-		this.path = path;
-
-		const watch = new Watch(new State());
-		this.producer = new BroadcastProducer(path, watch.producer);
-		this.consumer = new BroadcastConsumer(path, watch.consumer);
-	}
-
-	/**
-	 * Closes both the writer and reader components.
-	 */
-	close() {
-		this.producer.close();
-		this.consumer.close();
-	}
-
-	abort(reason: Error) {
-		this.producer.abort(reason);
-		this.consumer.close();
-	}
-}
+import { TrackConsumer, TrackProducer } from "./track";
+import { WatchConsumer, WatchProducer } from "./util/watch";
 
 class State {
 	tracks = new Map<string, TrackConsumer>();
 
 	// Called when a track is not found.
 	// The receiver is responsible for producing the track.
-	onUnknown?: (track: Track) => void;
+	onUnknown?: (track: TrackProducer) => void;
 }
 
 /**
@@ -68,9 +26,9 @@ export class BroadcastProducer {
 	 *
 	 * @internal
 	 */
-	constructor(path: string, state: WatchProducer<State>) {
+	constructor(path: string) {
 		this.path = path;
-		this.#state = state;
+		this.#state = new WatchProducer<State>(new State());
 	}
 
 	/**
@@ -79,9 +37,9 @@ export class BroadcastProducer {
 	 * @returns A TrackProducer for the new track
 	 */
 	createTrack(name: string): TrackProducer {
-		const track = new Track(name, 0);
-		this.insertTrack(track.consumer);
-		return track.producer;
+		const track = new TrackProducer(name, 0);
+		this.insertTrack(track.consume());
+		return track;
 	}
 
 	/**
@@ -120,19 +78,11 @@ export class BroadcastProducer {
 	 *
 	 * @param fn - The callback function to handle unknown tracks
 	 */
-	unknownTrack(fn?: (track: Track) => void) {
+	unknownTrack(fn?: (track: TrackProducer) => void) {
 		this.#state.update((state) => {
 			state.onUnknown = fn;
 			return state;
 		});
-	}
-
-	/**
-	 * Returns a promise that resolves when the writer is closed.
-	 * @returns A promise that resolves when closed
-	 */
-	async closed(): Promise<void> {
-		return this.#state.closed();
 	}
 
 	/**
@@ -156,6 +106,17 @@ export class BroadcastProducer {
 		});
 		this.#state.close();
 	}
+
+	/**
+	 * Returns a promise that resolves when the writer is unused.
+	 */
+	async unused(): Promise<void> {
+		return this.#state.unused();
+	}
+
+	consume(): BroadcastConsumer {
+		return new BroadcastConsumer(this.#state.consume(), this.path);
+	}
 }
 
 /**
@@ -178,7 +139,7 @@ export class BroadcastConsumer {
 	 *
 	 * @internal
 	 */
-	constructor(path: string, state: WatchConsumer<State>) {
+	constructor(state: WatchConsumer<State>, path: string) {
 		this.path = path;
 		this.#state = state;
 	}
@@ -197,15 +158,16 @@ export class BroadcastConsumer {
 			return existing.clone();
 		}
 
-		const pair = new Track(track, priority);
+		const producer = new TrackProducer(track, priority);
+		const consumer = producer.consume();
 
 		if (state.onUnknown) {
-			state.onUnknown(pair);
+			state.onUnknown(producer);
 		} else {
-			pair.producer.abort(new Error("not found"));
+			producer.abort(new Error("not found"));
 		}
 
-		return pair.consumer;
+		return consumer;
 	}
 
 	/**
@@ -228,6 +190,6 @@ export class BroadcastConsumer {
 	 * @returns A new BroadcastConsumer instance
 	 */
 	clone(): BroadcastConsumer {
-		return new BroadcastConsumer(this.path, this.#state.clone());
+		return new BroadcastConsumer(this.#state.clone(), this.path);
 	}
 }

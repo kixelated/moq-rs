@@ -47,7 +47,7 @@ function Announcements(): JSX.Element {
 
 			setAnnounces((prev) => {
 				const copy = new Map(prev);
-				copy.set(announce.broadcast, {
+				copy.set(announce.path, {
 					active: announce.active,
 					when: performance.now(),
 				});

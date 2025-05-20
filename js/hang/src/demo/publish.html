@@ -14,15 +14,19 @@
 	<!-- Show if this browser supports everything we need. -->
 	<hang-support role="publish"></hang-support>
 
-	<!-- Use the included Web Component to render a preview and simple controls. -->
-	<hang-publish audio video url="http://localhost:4443/demo/me.hang" controls>
+	<!--
+		Use the included Web Component to render a preview and simple controls.
+		You can set the url in publish.ts based on query parameters.
+		That's optional of course, you could instead add: url="http://localhost:4443/demo/me.hang"
+	-->
+	<hang-publish audio video controls>
 		<!-- It's optional to provide a video element to preview the outgoing media. -->
 		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
 	</hang-publish>
 
 	<h3>Other demos:</h3>
 	<ul>
-		<li><a href="index.html" target="_blank" rel="noreferrer" id="watch">Watch your broadcast: <span
+		<li><a href="index.html?name=demo/me" target="_blank" rel="noreferrer" id="watch">Watch your broadcast: <span
 					id="watch-name"></span></a></li>
 		<li><a href="index.html">Watch the handsome bunny instead.</a></li>
 		<li><a href="announce.html">List all active broadcasts.</a></li>
@@ -31,7 +35,7 @@
 	<h3>Tips:</h3>
 	<p>
 		This page creates a broadcast called `demo/me` by default.
-		You can use <a href="index.html?&name=notme">query parameters</a> to use a different name or create
+		You can use <a href="index.html?&name=demo/notme">query parameters</a> to use a different name and create
 		multiple broadcasts.
 	</p>
 	<p>

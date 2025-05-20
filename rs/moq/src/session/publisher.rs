@@ -27,7 +27,7 @@ impl Publisher {
 		let interest = stream.reader.decode::<message::AnnounceRequest>().await?;
 		let prefix = interest.prefix;
 
-		tracing::debug!(%prefix, "announce started");
+		tracing::trace!(%prefix, "announce started");
 
 		let res = self.run_announce(stream, &prefix).await;
 		match res {
@@ -55,7 +55,10 @@ impl Publisher {
 				res = stream.reader.finished() => return res,
 				announced = announced.next() => {
 					match announced {
-						Some(msg) => stream.writer.encode(&msg).await?,
+						Some(msg) => {
+							tracing::debug!(?msg, "announce");
+							stream.writer.encode(&msg).await?;
+						},
 						None => break,
 					}
 				}

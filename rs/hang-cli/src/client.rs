@@ -37,7 +37,6 @@ impl Client {
 		}
 	}
 
-	#[tracing::instrument(skip_all, fields(url = %self.url))]
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
 		let producer = BroadcastProducer::new();
 		let consumer = producer.consume();
@@ -56,7 +55,7 @@ impl Client {
 			tls,
 		})?;
 
-		tracing::info!("connecting");
+		tracing::info!(url = ?self.url, "connecting");
 
 		let session = quic.client.connect(self.url.clone()).await?;
 		let mut session = Session::connect(session).await?;

@@ -1,4 +1,4 @@
-import { Announced } from "./announced";
+import { AnnouncedProducer } from "./announced";
 import { BroadcastConsumer } from "./broadcast";
 import type { GroupConsumer } from "./group";
 import type { TrackConsumer } from "./track";
@@ -15,7 +15,7 @@ export class Publisher {
 
 	// TODO this will store every announce/unannounce message, which will grow unbounded.
 	// We should remove any cached announcements on unannounce, etc.
-	#announced = new Announced("");
+	#announced = new AnnouncedProducer();
 
 	// Our published broadcasts.
 	#broadcasts = new Map<string, BroadcastConsumer>();
@@ -50,8 +50,8 @@ export class Publisher {
 
 	async #runPublish(broadcast: BroadcastConsumer) {
 		try {
-			this.#announced.producer.write({
-				broadcast: broadcast.path,
+			this.#announced.write({
+				path: broadcast.path,
 				active: true,
 			});
 
@@ -68,8 +68,8 @@ export class Publisher {
 
 			this.#broadcasts.delete(broadcast.path);
 
-			this.#announced.producer.write({
-				broadcast: broadcast.path,
+			this.#announced.write({
+				path: broadcast.path,
 				active: false,
 			});
 		}
@@ -83,17 +83,14 @@ export class Publisher {
 	 * @internal
 	 */
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		const reader = this.#announced.consumer.clone();
+		const consumer = this.#announced.consume(msg.prefix);
 
 		for (;;) {
-			const announcement = await reader.next();
+			const announcement = await consumer.next();
 			if (!announcement) break;
 
-			if (announcement.broadcast.startsWith(msg.prefix)) {
-				const suffix = announcement.broadcast.slice(msg.prefix.length);
-				const wire = new Wire.Announce(suffix, announcement.active);
-				await wire.encode(stream.writer);
-			}
+			const wire = new Wire.Announce(announcement.path, announcement.active);
+			await wire.encode(stream.writer);
 		}
 	}
 

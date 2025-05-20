@@ -28,7 +28,7 @@ export class Video {
 	#catalog = signal<Catalog.Video | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
-	#track = signal<Moq.Track | undefined>(undefined);
+	#track = signal<Moq.TrackProducer | undefined>(undefined);
 	readonly track = this.#track.readonly();
 
 	#encoderConfig = signal<VideoEncoderConfig | undefined>(undefined);
@@ -53,11 +53,11 @@ export class Video {
 		const media = this.media.get();
 		if (!media) return;
 
-		const track = new Moq.Track(`video-${this.#id++}`, 1);
-		this.#track.set(track);
+		const producer = new Moq.TrackProducer(`video-${this.#id++}`, 1);
+		this.#track.set(producer);
 
 		return () => {
-			track.close();
+			producer.close();
 			this.#track.set(undefined);
 		};
 	}
@@ -82,7 +82,7 @@ export class Video {
 				if (frame.type === "key") {
 					this.#groupTimestamp = frame.timestamp;
 					this.#group?.close();
-					this.#group = track.producer.appendGroup();
+					this.#group = track.appendGroup();
 				} else if (!this.#group) {
 					throw new Error("no keyframe");
 				}
@@ -97,7 +97,7 @@ export class Video {
 				this.#group?.abort(err);
 				this.#group = undefined;
 
-				track.producer.abort(err);
+				track.abort(err);
 			},
 		});
 

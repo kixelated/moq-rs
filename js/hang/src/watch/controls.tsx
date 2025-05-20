@@ -93,11 +93,13 @@ function Volume(props: { lib: Watch }): JSX.Element {
 }
 
 function Connection(props: { lib: Watch }): JSX.Element {
+	const url = props.lib.connection.url.get;
 	const status = props.lib.connection.status.get;
 
 	return (
 		<div>
 			<Switch>
+				<Match when={!url()}>🔴&nbsp;Missing URL</Match>
 				<Match when={status() === "connected"}>🟢&nbsp;Connected</Match>
 				<Match when={status() === "connecting"}>🟡&nbsp;Connecting...</Match>
 				<Match when={status() === "disconnected"}>🔴&nbsp;Disconnected</Match>

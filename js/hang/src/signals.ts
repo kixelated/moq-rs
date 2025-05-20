@@ -88,7 +88,6 @@ export function effect(fn: () => MaybeDispose) {
 }
 
 export class Signals {
-	#id = Symbol();
 	#dispose: Dispose;
 	#owner: Owner;
 

@@ -65,6 +65,10 @@ export class Connection {
 		if (url.protocol === "http:") {
 			const fingerprintUrl = new URL(url);
 			fingerprintUrl.pathname = "/certificate.sha256";
+			console.warn(
+				fingerprintUrl.toString(),
+				"performing an insecure fingerprint fetch; use https:// in production",
+			);
 
 			// Fetch the fingerprint from the server.
 			const fingerprint = await fetch(fingerprintUrl);

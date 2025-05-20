@@ -49,7 +49,6 @@ impl Server {
 		})
 	}
 
-	#[tracing::instrument(skip_all, fields(addr = %self.config.bind))]
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
 		let producer = BroadcastProducer::new();
 		let consumer = producer.consume();
@@ -70,6 +69,8 @@ impl Server {
 		let mut quic = quic.server.context("missing TLS certificate")?;
 
 		let mut conn_id = 0;
+
+		tracing::info!(bind = ?self.config.bind, "listening");
 
 		while let Some(session) = quic.accept().await {
 			let id = conn_id;

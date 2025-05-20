@@ -21,24 +21,13 @@ export class Deferred<T> {
 // @ts-ignore depends on the bundler
 const dev = import.meta.env?.MODE !== "production";
 
-export class Watch<T> {
-	readonly producer: WatchProducer<T>;
-	readonly consumer: WatchConsumer<T>;
-
-	constructor(init: T) {
-		this.producer = new WatchProducer<T>(init);
-		this.consumer = this.producer.subscribe();
-	}
-}
-
 export class WatchProducer<T> {
 	#current: T;
 	#next = new Deferred<T>();
 	#closed = new Deferred<undefined>();
+	#unused = new Deferred<undefined>();
 	#epoch = 0;
-
 	#consumers = 0;
-	#id = Symbol();
 
 	// Sanity check to make sure `close()` or `abort()` is being called.
 	private static finalizer = new FinalizationRegistry<string>((debugInfo) => {
@@ -47,6 +36,8 @@ export class WatchProducer<T> {
 
 	constructor(init: T) {
 		this.#current = init;
+		this.#unused.resolve(undefined);
+
 		if (dev) {
 			const debugInfo = new Error("Created here").stack ?? "No stack";
 			WatchProducer.finalizer.register(this, debugInfo, this);
@@ -82,6 +73,8 @@ export class WatchProducer<T> {
 
 	close() {
 		this.#closed.resolve(undefined);
+		this.#unused.resolve(undefined);
+
 		if (dev) {
 			WatchProducer.finalizer.unregister(this);
 		}
@@ -89,6 +82,8 @@ export class WatchProducer<T> {
 
 	abort(reason: Error) {
 		this.#closed.reject(reason);
+		this.#unused.reject(reason);
+
 		if (dev) {
 			WatchProducer.finalizer.unregister(this);
 		}
@@ -98,15 +93,24 @@ export class WatchProducer<T> {
 		await this.#closed.promise;
 	}
 
-	subscribe(): WatchConsumer<T> {
+	async unused(): Promise<void> {
+		await this.#unused.promise;
+	}
+
+	consume(): WatchConsumer<T> {
+		if (this.#consumers === 0) {
+			this.#unused = new Deferred<undefined>();
+		}
+
 		this.#consumers++;
 		return new WatchConsumer(this);
 	}
 
 	unsubscribe() {
 		this.#consumers--;
+
 		if (this.#consumers === 0) {
-			this.close();
+			this.#unused.resolve(undefined);
 		}
 	}
 
@@ -123,8 +127,6 @@ export class WatchConsumer<T> {
 
 	// Whether our specific consumer is closed.
 	#closed = new Deferred<undefined>();
-
-	#id = Symbol();
 
 	// Sanity check to make sure `resolve()` or `reject()` is being called.
 	private static finalizer = new FinalizationRegistry<string>((debugInfo) => {
@@ -199,7 +201,7 @@ export class WatchConsumer<T> {
 	}
 
 	clone(): WatchConsumer<T> {
-		return this.#watch.subscribe();
+		return this.#watch.consume();
 	}
 
 	close() {

@@ -24,7 +24,7 @@ export class Audio {
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
-	#track = signal<Moq.Track | undefined>(undefined);
+	#track = signal<Moq.TrackProducer | undefined>(undefined);
 	readonly track = this.#track.readonly();
 
 	#group?: Moq.GroupProducer;
@@ -45,7 +45,7 @@ export class Audio {
 		const media = this.media.get();
 		if (!media) return;
 
-		const track = new Moq.Track(`audio-${this.#id++}`, 1);
+		const track = new Moq.TrackProducer(`audio-${this.#id++}`, 1);
 		this.#track.set(track);
 
 		const settings = media.getSettings() as AudioTrackSettings;
@@ -91,7 +91,7 @@ export class Audio {
 
 				if (!this.#group || frame.timestamp - this.#groupTimestamp >= 1000 * 1000 * GOP_DURATION) {
 					this.#group?.close();
-					this.#group = track.producer.appendGroup();
+					this.#group = track.appendGroup();
 					this.#groupTimestamp = frame.timestamp;
 				}
 
@@ -105,7 +105,7 @@ export class Audio {
 				this.#group?.abort(err);
 				this.#group = undefined;
 
-				track.producer.abort(err);
+				track.abort(err);
 			},
 		});
 

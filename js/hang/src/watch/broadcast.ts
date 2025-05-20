@@ -61,6 +61,8 @@ export class Broadcast {
 		const path = this.path.get();
 		if (path === undefined) return;
 
+		console.log("watching", path);
+
 		const announced = conn.announced(path);
 		(async () => {
 			for (;;) {
@@ -70,8 +72,8 @@ export class Broadcast {
 				if (!update) break;
 
 				// Require full equality
-				if (update.broadcast !== path) {
-					console.warn("ignoring broadcast", update.broadcast);
+				if (update.path !== "") {
+					console.warn("ignoring suffix", update.path);
 					continue;
 				}
 

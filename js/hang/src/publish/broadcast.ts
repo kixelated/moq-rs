@@ -21,7 +21,7 @@ export type BroadcastProps = {
 export class Broadcast {
 	connection: Connection;
 	publish: Signal<boolean>;
-	path: Signal<string | undefined>;
+	path: Signal<string>;
 
 	audio: Audio;
 	video: Video;
@@ -29,14 +29,14 @@ export class Broadcast {
 	catalog: Derived<Catalog.Broadcast>;
 	device: Signal<Device | undefined>;
 
-	#broadcast = signal<Moq.Broadcast | undefined>(undefined);
-	#catalog = new Moq.Track("catalog.json", 0);
+	#broadcast = signal<Moq.BroadcastProducer | undefined>(undefined);
+	#catalog = new Moq.TrackProducer("catalog.json", 0);
 	#signals = new Signals();
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
 		this.publish = signal(props?.publish ?? true);
-		this.path = signal(props?.path);
+		this.path = signal(props?.path ?? "");
 		this.audio = new Audio({ constraints: props?.audio });
 		this.video = new Video({ constraints: props?.video });
 		this.device = signal(props?.device);
@@ -44,19 +44,16 @@ export class Broadcast {
 		this.#signals.effect(() => {
 			if (!this.publish.get()) return;
 
-			const path = this.path.get();
-			if (path === undefined) return;
-
 			const connection = this.connection.established.get();
 			if (!connection) return;
 
-			const broadcast = new Moq.Broadcast(path);
-			broadcast.producer.insertTrack(this.#catalog.consumer.clone());
+			const broadcast = new Moq.BroadcastProducer(this.path.get());
+			broadcast.insertTrack(this.#catalog.consume());
 
 			this.#broadcast.set(broadcast);
 
 			// Publish the broadcast to the connection.
-			connection.publish(broadcast.consumer.clone());
+			connection.publish(broadcast.consume());
 
 			return () => {
 				broadcast.close();
@@ -71,9 +68,9 @@ export class Broadcast {
 			const track = this.video.track.get();
 			if (!track) return;
 
-			broadcast.producer.insertTrack(track.consumer.clone());
+			broadcast.insertTrack(track.consume());
 			return () => {
-				broadcast.producer.removeTrack(track.name);
+				broadcast.removeTrack(track.name);
 			};
 		});
 
@@ -84,9 +81,9 @@ export class Broadcast {
 			const track = this.audio.track.get();
 			if (!track) return;
 
-			broadcast.producer.insertTrack(track.consumer.clone());
+			broadcast.insertTrack(track.consume());
 			return () => {
-				broadcast.producer.removeTrack(track.name);
+				broadcast.removeTrack(track.name);
 			};
 		});
 
@@ -214,7 +211,7 @@ export class Broadcast {
 
 		const encoder = new TextEncoder();
 		const encoded = encoder.encode(catalog.encode());
-		const catalogGroup = this.#catalog.producer.appendGroup();
+		const catalogGroup = this.#catalog.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
 

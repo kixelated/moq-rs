@@ -22,11 +22,13 @@ export function PublishControls(props: { lib: Publish }): JSX.Element {
 }
 
 function Connection(props: { lib: Publish }): JSX.Element {
+	const url = props.lib.connection.url.get;
 	const status = props.lib.connection.status.get;
 
 	return (
 		<div>
 			<Switch>
+				<Match when={!url()}>🔴&nbsp;Missing URL</Match>
 				<Match when={status() === "connected"}>🟢&nbsp;Connected</Match>
 				<Match when={status() === "connecting"}>🟡&nbsp;Connecting...</Match>
 				<Match when={status() === "disconnected"}>🔴&nbsp;Disconnected</Match>
@@ -36,14 +38,12 @@ function Connection(props: { lib: Publish }): JSX.Element {
 }
 
 function Publishing(props: { lib: Publish }): JSX.Element {
-	const broadcast = props.lib.broadcast.path.get;
 	const audio = props.lib.broadcast.audio.catalog.get;
 	const video = props.lib.broadcast.video.catalog.get;
 
 	return (
 		<div>
 			<Switch>
-				<Match when={!broadcast()}>🔴&nbsp;Choose Name</Match>
 				<Match when={audio() && video()}>🟢&nbsp;Live</Match>
 				<Match when={audio() && !video()}>🟡&nbsp;Audio Only</Match>
 				<Match when={!audio() && video()}>🟡&nbsp;Video Only</Match>

@@ -1,4 +1,4 @@
-import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
+import { WatchConsumer, WatchProducer } from "./util/watch";
 
 /**
  * The availability of a broadcast.
@@ -6,48 +6,8 @@ import { Watch, WatchConsumer, WatchProducer } from "./util/watch";
  * @public
  */
 export interface Announce {
-	broadcast: string;
+	path: string;
 	active: boolean;
-}
-
-/**
- * A Writer/Reader pair for producing and consuming announcements.
- *
- * @public
- */
-export class Announced {
-	/** The prefix for all announcements managed by this instance */
-	readonly prefix: string;
-	/** The writer component for creating announcements */
-	readonly producer: AnnouncedProducer;
-	/** The reader component for consuming announcements */
-	readonly consumer: AnnouncedConsumer;
-
-	/**
-	 * Creates a new Announced instance with the specified prefix.
-	 * @param prefix - The string prefix.
-	 */
-	constructor(prefix: string) {
-		this.prefix = prefix;
-
-		// TODO This grows unbounded. We should remove ended broadcasts.
-		const queue = new Watch<Announce[]>([]);
-		this.producer = new AnnouncedProducer(prefix, queue.producer);
-		this.consumer = new AnnouncedConsumer(prefix, queue.consumer);
-	}
-
-	/**
-	 * Closes both the writer and reader components.
-	 */
-	close() {
-		this.producer.close();
-		this.consumer.close();
-	}
-
-	abort(reason: Error) {
-		this.producer.abort(reason);
-		this.consumer.close();
-	}
 }
 
 /**
@@ -56,22 +16,7 @@ export class Announced {
  * @public
  */
 export class AnnouncedProducer {
-	/** The broadcast identifier for this writer */
-	readonly broadcast: string;
-	#queue: WatchProducer<Announce[]>;
-
-	/**
-	 * Creates a new AnnounceProducer with the specified broadcast and queue.
-	 *
-	 * @param broadcast - The broadcast identifier
-	 * @param queue - The queue to write announcements to
-	 *
-	 * @internal
-	 */
-	constructor(broadcast: string, queue: WatchProducer<Announce[]>) {
-		this.broadcast = broadcast;
-		this.#queue = queue;
-	}
+	#queue = new WatchProducer<Announce[]>([]);
 
 	/**
 	 * Writes an announcement to the queue.
@@ -106,6 +51,15 @@ export class AnnouncedProducer {
 	async closed(): Promise<void> {
 		await this.#queue.closed();
 	}
+
+	/**
+	 * Creates a new AnnouncedConsumer that only returns the announcements for the specified prefix.
+	 * @param prefix - The prefix for the consumer
+	 * @returns A new AnnouncedConsumer instance
+	 */
+	consume(prefix = ""): AnnouncedConsumer {
+		return new AnnouncedConsumer(this.#queue.consume(), prefix);
+	}
 }
 
 /**
@@ -127,9 +81,9 @@ export class AnnouncedConsumer {
 	 *
 	 * @internal
 	 */
-	constructor(prefix: string, queue: WatchConsumer<Announce[]>) {
-		this.prefix = prefix;
+	constructor(queue: WatchConsumer<Announce[]>, prefix = "") {
 		this.#queue = queue;
+		this.prefix = prefix;
 	}
 
 	/**
@@ -137,8 +91,21 @@ export class AnnouncedConsumer {
 	 * @returns A promise that resolves to the next announcement or undefined
 	 */
 	async next(): Promise<Announce | undefined> {
-		const queue = await this.#queue.when((v) => v.length > this.#index);
-		return queue?.at(this.#index++);
+		for (;;) {
+			const queue = await this.#queue.when((v) => v.length > this.#index);
+			if (!queue) return undefined;
+
+			while (this.#index < queue.length) {
+				const announce = queue.at(this.#index++);
+				if (!announce?.path.startsWith(this.prefix)) continue;
+
+				// We have to remove the prefix so we only return our suffix.
+				return {
+					path: announce.path.slice(this.prefix.length),
+					active: announce.active,
+				};
+			}
+		}
 	}
 
 	/**
@@ -157,10 +124,11 @@ export class AnnouncedConsumer {
 	}
 
 	/**
-	 * Creates a new instance of the reader using the same queue.
+	 * Creates a new instance of the reader using the same queue and prefix.
+	 *
 	 * @returns A new AnnounceConsumer instance
 	 */
 	clone(): AnnouncedConsumer {
-		return new AnnouncedConsumer(this.prefix, this.#queue.clone());
+		return new AnnouncedConsumer(this.#queue.clone(), this.prefix);
 	}
 }

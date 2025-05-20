@@ -70,7 +70,7 @@ pub name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | RUST_LOG=debug cargo run --bin hang -- --room "demo" --name "{{name}}" publish "http://localhost:4443/"
+		- | RUST_LOG=debug cargo run --bin hang -- publish "http://localhost:4443/demo/{{name}}.hang"
 
 # Publish a video using gstreamer to the localhost relay server
 pub-gst name:
@@ -83,7 +83,7 @@ pub-gst name:
 	# Run gstreamer and pipe the output to our plugin
 	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
 	gst-launch-1.0 -v -e multifilesrc location="dev/{{name}}.fmp4" loop=true ! qtdemux name=demux \
-		demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! hangsink url="http://localhost:4443/" room="demo" broadcast="{{name}}" tls-disable-verify=true \
+		demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! hangsink url="http://localhost:4443/demo/{{name}}.hang" tls-disable-verify=true \
 		demux.audio_0 ! aacparse ! queue ! mux.
 
 # Subscribe to a video using gstreamer
@@ -94,7 +94,7 @@ sub-gst name:
 	# Run gstreamer and pipe the output to our plugin
 	# This will render the video to the screen
 	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
-	gst-launch-1.0 -v -e hangsrc url="http://localhost:4443/" room="demo" broadcast="{{name}}" tls-disable-verify=true ! decodebin ! videoconvert ! autovideosink
+	gst-launch-1.0 -v -e hangsrc url="http://localhost:4443/demo/{{name}}.hang" tls-disable-verify=true ! decodebin ! videoconvert ! autovideosink
 
 # Publish a video using ffmpeg directly from hang to the localhost
 serve name:
@@ -110,7 +110,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify --room "demo" --name "{{name}}" serve
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
