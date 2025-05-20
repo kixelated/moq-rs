@@ -20,7 +20,7 @@ pub enum Action {
 impl Room {
 	pub fn new(session: moq_lite::Session, path: String) -> Self {
 		Self {
-			announced: session.announced(format!("{}/", path)),
+			announced: session.announced(path.clone()),
 			path,
 			session,
 			ourselves: Lock::new(HashSet::new()),
@@ -30,24 +30,24 @@ impl Room {
 	// Joins the room and returns a producer for the broadcast.
 	pub fn join(&mut self, name: String) -> BroadcastProducer {
 		let broadcast = Broadcast {
-			room: self.path.clone(),
-			name: name.clone(),
+			path: format!("{}{}", self.path, name),
 		};
+
 		let ourselves = self.ourselves.clone();
 
 		ourselves.lock().insert(name.clone());
 
-		let producer = broadcast.clone().produce();
-		self.session.publish(producer.inner.consume());
+		let producer = broadcast.produce();
+		self.session.publish(producer.consume());
 
 		let consumer = producer.consume();
 
 		web_async::spawn(async move {
-			consumer.inner.closed().await;
+			consumer.closed().await;
 			ourselves.lock().remove(&name);
 		});
 
-		producer
+		producer.into()
 	}
 
 	/// Returns the next room action.
@@ -69,10 +69,10 @@ impl Room {
 	// Takes the name of the broadcast to watch within the room.
 	pub fn watch(&mut self, name: &str) -> BroadcastConsumer {
 		let info = Broadcast {
-			room: self.path.clone(),
-			name: name.to_string(),
+			path: format!("{}{}", self.path, name),
 		};
 
-		BroadcastConsumer::subscribe(&self.session, info)
+		let broadcast = self.session.consume(&info);
+		broadcast.into()
 	}
 }

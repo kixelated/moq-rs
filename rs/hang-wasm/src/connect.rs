@@ -49,11 +49,6 @@ impl Connect {
 	pub fn new(mut addr: Url) -> Self {
 		let path = addr.path().to_string();
 
-		// Connect using the base of the URL.
-		addr.set_fragment(None);
-		addr.set_query(None);
-		addr.set_path("");
-
 		// Use a global cache to share sessions between elements.
 		let pending = POOL.with(|cache| {
 			let mut cache = cache.borrow_mut();

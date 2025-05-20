@@ -3,56 +3,29 @@ use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, Vid
 use moq_lite::Track;
 use web_async::spawn;
 
-/// A wrapper around [moq_lite::Broadcast], with a room and name.
-/// .hang is appended to the end when publishing.
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Broadcast {
-	pub room: String,
-	pub name: String,
-}
+/// A hang::Broadcast ends with .hang by convention, otherwise it's the same as a moq_lite::Broadcast.
+pub use moq_lite::Broadcast;
 
-impl Broadcast {
-	pub fn produce(self) -> BroadcastProducer {
-		BroadcastProducer::new(self)
-	}
-}
-
-// Convert to a moq_lite::Broadcast.
-impl From<Broadcast> for moq_lite::Broadcast {
-	fn from(broadcast: Broadcast) -> Self {
-		moq_lite::Broadcast {
-			path: format!("{}/{}.hang", broadcast.room, broadcast.name),
-		}
-	}
-}
-
+/// A wrapper around a moq_lite::BroadcastProducer that produces a `catalog.json` track.
 #[derive(Clone)]
 pub struct BroadcastProducer {
-	pub info: Broadcast,
 	pub catalog: CatalogProducer,
-	pub inner: moq_lite::BroadcastProducer,
+	inner: moq_lite::BroadcastProducer,
 }
 
 impl BroadcastProducer {
-	pub fn new(info: Broadcast) -> Self {
+	pub fn new(inner: moq_lite::BroadcastProducer) -> Self {
 		let catalog = Catalog::default().produce();
-
-		let inner = moq_lite::BroadcastProducer::new(info.clone().into());
 		inner.insert(catalog.consume().track);
 
-		Self { info, catalog, inner }
+		Self { catalog, inner }
 	}
 
 	pub fn consume(&self) -> BroadcastConsumer {
 		BroadcastConsumer {
-			info: self.info.clone(),
 			catalog: self.catalog.consume(),
 			inner: self.inner.consume(),
 		}
-	}
-
-	pub fn name(&self) -> &str {
-		&self.info.name
 	}
 
 	/// Add a video track to the broadcast.
@@ -98,30 +71,77 @@ impl BroadcastProducer {
 	}
 }
 
+impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
+	fn from(producer: moq_lite::BroadcastProducer) -> Self {
+		BroadcastProducer::new(producer)
+	}
+}
+
+impl From<BroadcastProducer> for moq_lite::BroadcastProducer {
+	fn from(producer: BroadcastProducer) -> Self {
+		producer.inner
+	}
+}
+
+impl std::ops::Deref for BroadcastProducer {
+	type Target = moq_lite::BroadcastProducer;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl std::ops::DerefMut for BroadcastProducer {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.inner
+	}
+}
+
+/// A wrapper around a moq_lite::BroadcastConsumer that consumes a `catalog.json` track.
 #[derive(Clone)]
 pub struct BroadcastConsumer {
-	pub info: Broadcast,
 	pub catalog: CatalogConsumer,
-	pub inner: moq_lite::BroadcastConsumer,
+	inner: moq_lite::BroadcastConsumer,
 }
 
 impl BroadcastConsumer {
-	pub fn track(&self, track: &Track) -> TrackConsumer {
-		self.inner.subscribe(track).into()
-	}
-
-	pub fn subscribe(session: &moq_lite::Session, info: Broadcast) -> BroadcastConsumer {
-		let consumer = session.consume(&info.clone().into());
+	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
 		let catalog = Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
 			priority: 0,
 		};
-		let catalog = consumer.subscribe(&catalog);
+		let catalog = inner.subscribe(&catalog).into();
 
-		BroadcastConsumer {
-			info,
-			catalog: catalog.into(),
-			inner: consumer,
-		}
+		Self { catalog, inner }
+	}
+
+	pub fn track(&self, track: &Track) -> TrackConsumer {
+		self.inner.subscribe(track).into()
+	}
+}
+
+impl From<moq_lite::BroadcastConsumer> for BroadcastConsumer {
+	fn from(consumer: moq_lite::BroadcastConsumer) -> Self {
+		BroadcastConsumer::new(consumer)
+	}
+}
+
+impl From<BroadcastConsumer> for moq_lite::BroadcastConsumer {
+	fn from(consumer: BroadcastConsumer) -> Self {
+		consumer.inner
+	}
+}
+
+impl std::ops::Deref for BroadcastConsumer {
+	type Target = moq_lite::BroadcastConsumer;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl std::ops::DerefMut for BroadcastConsumer {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.inner
 	}
 }

@@ -6,7 +6,9 @@ import { AudioSource } from "./audio";
 import { VideoSource } from "./video";
 
 export type BroadcastProps = {
-	name?: string;
+	// The broadcast path relative to the connection URL.
+	// It can be "" if you want to watch the connection's default broadcast.
+	path?: string;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
@@ -15,7 +17,8 @@ export type BroadcastProps = {
 // A broadcast that (optionally) reloads automatically when live/offline.
 export class Broadcast {
 	connection: Connection;
-	name: Signal<string | undefined>;
+
+	path: Signal<string | undefined>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
 	audio: AudioSource = new AudioSource();
@@ -34,7 +37,7 @@ export class Broadcast {
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
-		this.name = signal(props?.name);
+		this.path = signal(props?.path);
 		this.#reload = props?.reload ?? true;
 
 		this.#signals.effect(() => this.#runActive());
@@ -55,10 +58,10 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.name.get();
-		if (!name) return;
+		const path = this.path.get();
+		if (path === undefined) return;
 
-		const announced = conn.announced(name);
+		const announced = conn.announced(path);
 		(async () => {
 			for (;;) {
 				const update = await announced.next();
@@ -67,7 +70,7 @@ export class Broadcast {
 				if (!update) break;
 
 				// Require full equality
-				if (update.broadcast !== `${announced.prefix}.hang`) {
+				if (update.broadcast !== path) {
 					console.warn("ignoring broadcast", update.broadcast);
 					continue;
 				}
@@ -85,12 +88,12 @@ export class Broadcast {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
-		const name = this.name.get();
-		if (!name) return;
+		const path = this.path.get();
+		if (path === undefined) return;
 
 		if (!this.#active.get()) return;
 
-		const broadcast = conn.consume(`${name}.hang`);
+		const broadcast = conn.consume(path);
 		this.#broadcast.set(broadcast);
 
 		this.audio.broadcast.set(broadcast);

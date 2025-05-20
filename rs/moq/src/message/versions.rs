@@ -4,7 +4,7 @@ use std::{fmt, ops::Deref};
 
 /// A version number negotiated during the setup.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version(u64);
+pub struct Version(pub u64);
 
 impl Version {
 	/// <https://www.ietf.org/archive/id/draft-ietf-moq-transport-00.html>
@@ -40,6 +40,15 @@ impl Version {
 	pub const LITE_00: Version = Version(0xff0dad00);
 
 	pub const CURRENT: Version = Version::LITE_00;
+}
+
+/// A version number negotiated during the setup.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Alpn(pub &'static str);
+
+impl Alpn {
+	pub const LITE_00: Alpn = Alpn("moql-00");
+	pub const CURRENT: Alpn = Alpn::LITE_00;
 }
 
 impl From<u64> for Version {

@@ -49,7 +49,7 @@ export class WatchProducer<T> {
 		this.#current = init;
 		if (dev) {
 			const debugInfo = new Error("Created here").stack ?? "No stack";
-			WatchProducer.finalizer.register(this.#id, debugInfo, this.#id);
+			WatchProducer.finalizer.register(this, debugInfo, this);
 		}
 	}
 
@@ -83,14 +83,14 @@ export class WatchProducer<T> {
 	close() {
 		this.#closed.resolve(undefined);
 		if (dev) {
-			WatchProducer.finalizer.unregister(this.#id);
+			WatchProducer.finalizer.unregister(this);
 		}
 	}
 
 	abort(reason: Error) {
 		this.#closed.reject(reason);
 		if (dev) {
-			WatchProducer.finalizer.unregister(this.#id);
+			WatchProducer.finalizer.unregister(this);
 		}
 	}
 
@@ -136,7 +136,7 @@ export class WatchConsumer<T> {
 
 		if (dev) {
 			const debugInfo = new Error("Created here").stack ?? "No stack";
-			WatchConsumer.finalizer.register(this.#id, debugInfo, this.#id);
+			WatchConsumer.finalizer.register(this, debugInfo, this);
 		}
 	}
 
@@ -206,7 +206,7 @@ export class WatchConsumer<T> {
 		this.#closed.resolve(undefined);
 		this.#watch.unsubscribe();
 		if (dev) {
-			WatchConsumer.finalizer.unregister(this.#id);
+			WatchConsumer.finalizer.unregister(this);
 		}
 	}
 

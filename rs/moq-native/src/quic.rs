@@ -62,7 +62,10 @@ impl Endpoint {
 		let mut server_config = None;
 
 		if let Some(mut config) = config.tls.server {
-			config.alpn_protocols = vec![web_transport::quinn::ALPN.to_vec(), moq_lite::ALPN.to_vec()];
+			config.alpn_protocols = vec![
+				web_transport::quinn::ALPN.as_bytes().to_vec(),
+				moq_lite::ALPN.as_bytes().to_vec(),
+			];
 			config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 			let config: quinn::crypto::rustls::QuicServerConfig = config.try_into()?;
@@ -146,7 +149,7 @@ impl Server {
 		let span = tracing::Span::current();
 		span.record("id", conn.stable_id()); // TODO can we get this earlier?
 
-		let session = match alpn.as_bytes() {
+		let session = match alpn.as_str() {
 			web_transport::quinn::ALPN => {
 				// Wait for the CONNECT request.
 				let request = web_transport::quinn::Request::accept(conn)
@@ -160,7 +163,11 @@ impl Server {
 					.context("failed to respond to WebTransport request")?
 			}
 			// A bit of a hack to pretend like we're a WebTransport session
-			moq_lite::ALPN => conn.into(),
+			moq_lite::ALPN => {
+				// Fake a URL to so we can treat it like a WebTransport session.
+				let url = Url::parse(format!("moql://{}", host).as_str()).unwrap();
+				web_transport::quinn::Session::raw(conn, url)
+			}
 			_ => anyhow::bail!("unsupported ALPN: {}", alpn),
 		};
 
@@ -221,26 +228,26 @@ impl Client {
 
 		let alpn = match url.scheme() {
 			"https" => web_transport::quinn::ALPN,
-			"moqf" => moq_lite::ALPN,
-			_ => anyhow::bail!("url scheme must be 'http', 'https', or 'moqf'"),
+			"moql" => moq_lite::ALPN,
+			_ => anyhow::bail!("url scheme must be 'http', 'https', or 'moql'"),
 		};
 
 		// TODO support connecting to both ALPNs at the same time
-		config.alpn_protocols = vec![alpn.to_vec()];
+		config.alpn_protocols = vec![alpn.as_bytes().to_vec()];
 		config.key_log = Arc::new(rustls::KeyLogFile::new());
 
 		let config: quinn::crypto::rustls::QuicClientConfig = config.try_into()?;
 		let mut config = quinn::ClientConfig::new(Arc::new(config));
 		config.transport_config(self.transport.clone());
 
-		tracing::debug!(%url, %ip, alpn = %String::from_utf8_lossy(alpn), "connecting");
+		tracing::debug!(%url, %ip, %alpn, "connecting");
 
 		let connection = self.quic.connect_with(config, ip, &host)?.await?;
 		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
 			"https" => web_transport::quinn::Session::connect(connection, &url).await?,
-			"moqf" => connection.into(),
+			moq_lite::ALPN => web_transport::quinn::Session::raw(connection, url),
 			_ => unreachable!(),
 		};
 

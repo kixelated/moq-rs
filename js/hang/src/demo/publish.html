@@ -15,7 +15,7 @@
 	<hang-support role="publish"></hang-support>
 
 	<!-- Use the included Web Component to render a preview and simple controls. -->
-	<hang-publish audio video url="http://localhost:4443/" name="demo/me" controls>
+	<hang-publish audio video url="http://localhost:4443/demo/me.hang" controls>
 		<!-- It's optional to provide a video element to preview the outgoing media. -->
 		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
 	</hang-publish>
@@ -31,8 +31,8 @@
 	<h3>Tips:</h3>
 	<p>
 		This page creates a broadcast called `demo/me` by default.
-		You can use <a href="index.html?name=demo/notme">query parameters</a> to use a different name or create multiple
-		broadcasts.
+		You can use <a href="index.html?&name=notme">query parameters</a> to use a different name or create
+		multiple broadcasts.
 	</p>
 	<p>
 		Reusing the same broadcast name means viewers will automatically reconnect to the new session.
@@ -44,7 +44,7 @@
 		Connecting to a relay means the broadcast is advertised as available, but nothing is transferred until there's
 		at least one viewer per track.
 		If there's multiple viewers, the relay will fan out the media to all of them.
-		<b>TODO</b>: We still encode media even when there are no viewers, but somebody should improve this!
+		<b>TODO</b>: We still encode media even when there are no viewers, but somebody should improve this.
 	</p>
 	<p>
 		You can create a broadcaster via the provided <code class="language-html">&lt;hang-publish&gt;</code> <a
@@ -61,7 +61,7 @@ publish.lib.device = "camera";</code></pre>
 	<p>
 		You're not limited to web publishing either.
 		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
-			href="index.html?name=demo/tos" target="_blank">watch robots bang</a>.
+			href="index.html?name=tos" target="_blank">watch robots bang</a>.
 		This uses ffmpeg to produce a fragmented MP4 file piped over stdout then sent over the network.
 		Yeah it's pretty gross.
 	</p>
@@ -73,6 +73,12 @@ publish.lib.device = "camera";</code></pre>
 	<p>
 		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
 		via gstreamer.
+	</p>
+	<hr />
+	<p>
+		This demo uses `http://` so it's not secure.
+		It works by fetching the certificate hash (via HTTP) and providing that to WebTransport, which requires HTTPS.
+		To run this in production, you'll need a valid certificate (ex. letsencrypt) and to use `https://`.
 	</p>
 </body>
 

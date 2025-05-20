@@ -5,7 +5,7 @@ import { Watch } from "./watch";
 
 // An optional web component that wraps a <canvas>
 export class WatchElement extends HTMLElement {
-	static observedAttributes = ["url", "name", "paused", "volume", "latency", "controls"];
+	static observedAttributes = ["url", "paused", "volume", "latency", "controls"];
 
 	#controls = signal(false);
 
@@ -15,7 +15,9 @@ export class WatchElement extends HTMLElement {
 		super();
 
 		const canvas = this.querySelector("canvas") as HTMLCanvasElement | undefined;
-		this.lib = new Watch({ video: { canvas } });
+
+		// The broadcast path is relative to the connection URL.
+		this.lib = new Watch({ video: { canvas }, broadcast: { path: "" } });
 
 		// Create an element for controls if they want them.
 		const controls = document.createElement("div");
@@ -40,8 +42,6 @@ export class WatchElement extends HTMLElement {
 
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
-		} else if (name === "name") {
-			this.lib.broadcast.name.set(newValue);
 		} else if (name === "paused") {
 			this.lib.video.paused.set(newValue !== undefined);
 			this.lib.audio.paused.set(newValue !== undefined);

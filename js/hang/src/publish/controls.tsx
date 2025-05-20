@@ -36,7 +36,7 @@ function Connection(props: { lib: Publish }): JSX.Element {
 }
 
 function Publishing(props: { lib: Publish }): JSX.Element {
-	const broadcast = props.lib.broadcast.name.get;
+	const broadcast = props.lib.broadcast.path.get;
 	const audio = props.lib.broadcast.audio.catalog.get;
 	const video = props.lib.broadcast.video.catalog.get;
 

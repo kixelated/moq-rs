@@ -12,5 +12,5 @@ const watch = document.querySelector("hang-watch") as WatchElement;
 const urlParams = new URLSearchParams(window.location.search);
 const name = urlParams.get("name");
 if (name) {
-	watch.setAttribute("name", name);
+	watch.setAttribute("url", `https://localhost:4443/demo/${name}.hang`);
 }

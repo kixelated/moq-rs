@@ -15,8 +15,7 @@
 	<hang-support role="watch"></hang-support>
 
 	<!-- There's a simple, web component to set up the provided canvas, including some basic controls. -->
-	<!-- If you don't want video, don't provide a canvas! -->
-	<hang-watch url="http://localhost:4443/" name="demo/bbb" muted controls>
+	<hang-watch url="http://localhost:4443/demo/bbb.hang" muted controls>
 		<canvas style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;"></canvas>
 	</hang-watch>
 
@@ -27,23 +26,6 @@
 	</ul>
 
 	<h3>Tips:</h3>
-	<p>
-		Click the video to enable audio.
-		This is not always necessary, but sometimes browsers require user interaction before autoplaying
-		audio. If using the library directly, call <code class="language-typescript">audio.enabled.set(true)</code> to
-		try
-		to reinitialize audio.
-		Audio is not being downloaded in the meantime.
-	</p>
-	<p>
-		That's because media only flows over the network when needed!
-		Video won't be downloaded either when the video is paused, minimized, not in the DOM, or scrolled out of view.
-	</p>
-	<p>
-		Try it!
-		Open up the console and look for <code>subscribe ok: broadcast=demo/bbb track=video1</code>.
-	</p>
-	<hr>
 	<p>
 		You can instanciate the player via the provided <code class="language-html">&lt;hang-watch&gt;</code> <a
 			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
@@ -56,11 +38,25 @@
 			href="https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas">OffscreenCanvas</a>
 		works.
 		For example:
-	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; name=&quot;demo/bbb&quot;&gt;
+	<pre><code class="language-html">&lt;hang-watch url=&quot;http://localhost:4443/&quot; room=&quot;demo&quot; name=&quot;bbb&quot;&gt;
 	&lt;!-- Optionally provide a custom canvas element that we can style as needed --&gt;
 	&lt;canvas style=&quot;max-width: 100%; height: auto; border-radius: 4px;&quot;&gt;&lt;/canvas&gt;
 &lt;/hang-watch&gt;</code></pre>
 	</p>
+	<p>
+		Don't want video? Don't provide a canvas!
+		It won't be downloaded, decoded, or rendered.
+		This includes when the video is paused, minimized, not in the DOM, or scrolled out of view.
+		wowee the bandwidth savings!
+	</p>
+	<p>
+		Audio may start muted because the browser can require user interaction before autoplaying.
+		You can unmute it by changing the volume or calling <code
+			class="language-typescript">watch.audio.enabled.set(true)</code> via the Javascript API.
+		And of course, nothing is downloaded while it's muted.
+	</p>
+	<hr>
+	<hr />
 	<p>
 		The Javascript API is far more powerful and you can access properties directly:
 
@@ -75,7 +71,7 @@ watch.paused.set(true);
 
 	<pre><code class="language-typescript">
 import { createMemo } from "solid-js";
-import { Watch } from "@kixelated/hang/watch";
+import { Watch } from "@kixelated/hang";
 
 function Volume(hang: Watch) {
 	// Compute the volume based on the watch's muted and volume signals.
@@ -139,6 +135,12 @@ just pub bbb
 	<p>
 		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
 		via gstreamer.
+	</p>
+	<hr />
+	<p>
+		This demo uses `http://` so it's not secure.
+		It works by fetching the certificate hash (via HTTP) and providing that to WebTransport, which requires HTTPS.
+		To run this in production, you'll need a valid certificate (ex. letsencrypt) and to use `https://`.
 	</p>
 </body>
 

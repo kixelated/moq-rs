@@ -102,7 +102,7 @@ export class Signals {
 	constructor() {
 		if (Signals.dev) {
 			const debug = new Error("created here:").stack ?? "No stack";
-			Signals.#finalizer.register(this.#id, debug, this.#id);
+			Signals.#finalizer.register(this, debug, this);
 		}
 
 		[this.#dispose, this.#owner] = createRoot((dispose) => {
@@ -146,7 +146,7 @@ export class Signals {
 	close(): void {
 		this.#dispose();
 		if (Signals.dev) {
-			Signals.#finalizer.unregister(this.#id);
+			Signals.#finalizer.unregister(this);
 		}
 	}
 }

@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{http::Method, routing::get, Router};
 use clap::Args;
-use hang::{cmaf, moq_lite};
+use hang::{cmaf, moq_lite, Broadcast};
 use hang::{BroadcastConsumer, BroadcastProducer};
 use moq_lite::web_transport;
 use moq_native::quic;
@@ -49,13 +49,11 @@ impl Server {
 		})
 	}
 
+	#[tracing::instrument(skip_all, fields(addr = %self.config.bind))]
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		let broadcast = hang::Broadcast {
-			room: self.config.room.clone(),
-			name: self.config.name.clone(),
-		};
-
-		let producer = BroadcastProducer::new(broadcast);
+		// We only publish one broadcast with an empty path.
+		let broadcast = Broadcast { path: "".to_string() };
+		let producer = BroadcastProducer::new(broadcast.produce());
 		let consumer = producer.consume();
 
 		tokio::select! {
@@ -72,7 +70,6 @@ impl Server {
 		})?;
 
 		let mut quic = quic.server.context("missing TLS certificate")?;
-		tracing::info!(addr = %self.config.bind, "listening");
 
 		let mut conn_id = 0;
 
@@ -91,7 +88,7 @@ impl Server {
 
 				tracing::info!(?id, "accepted session");
 
-				session.publish(consumer.inner);
+				session.publish(consumer.into());
 			});
 		}
 
@@ -107,7 +104,6 @@ impl Server {
 			.context("failed to initialize cmaf from input")?;
 
 		tracing::info!("initialized");
-		tracing::info!(room = %self.config.room, name = %self.config.name, "publishing");
 
 		import.read_from(input).await?;
 
