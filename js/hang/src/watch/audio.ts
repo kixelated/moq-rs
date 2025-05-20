@@ -3,6 +3,9 @@ import * as Catalog from "../catalog";
 import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
+// An annoying hack, but there's stuttering that we need to fix.
+const LATENCY = 50;
+
 // A pair of AudioContext and GainNode.
 export type Context = {
 	root: AudioContext;
@@ -11,7 +14,6 @@ export type Context = {
 
 export type AudioProps = {
 	volume?: number;
-	latency?: number;
 	paused?: boolean;
 };
 
@@ -19,11 +21,6 @@ export class Audio {
 	source: AudioSource;
 	volume: Signal<number>;
 	paused: Signal<boolean>;
-
-	// The maximum latency in milliseconds.
-	// The larger the value, the more tolerance we have for network jitter.
-	// Audio gaps are more noticable so a larger buffer is recommended.
-	latency: Signal<DOMHighResTimeStamp>;
 
 	#context = signal<Context | undefined>(undefined);
 	readonly context = this.#context.readonly();
@@ -42,7 +39,6 @@ export class Audio {
 	constructor(source: AudioSource, props?: AudioProps) {
 		this.source = source;
 		this.volume = signal(props?.volume ?? 0.5);
-		this.latency = signal(props?.latency ?? 50);
 		this.paused = signal(props?.paused ?? false);
 
 		this.#signals.effect(() => {
@@ -56,19 +52,6 @@ export class Audio {
 				for (const active of this.#active) {
 					active.node.stop();
 				}
-			}
-		});
-
-		// Update the ref when the latency/enabled changes.
-		this.#signals.effect(() => {
-			this.latency.get();
-			this.source.enabled.get();
-
-			this.#ref = undefined;
-
-			// Cancel any active samples.
-			for (const active of this.#active) {
-				active.node.stop();
 			}
 		});
 
@@ -118,13 +101,11 @@ export class Audio {
 			return;
 		}
 
-		context.root.resume();
-
 		// Convert from microseconds to seconds.
 		const timestamp = sample.timestamp / 1_000_000;
 
 		// The maximum latency in seconds, including a full frame size.
-		const maxLatency = this.latency.get() / 1000 + sample.numberOfFrames / sample.sampleRate;
+		const maxLatency = sample.numberOfFrames / sample.sampleRate + LATENCY / 1000;
 
 		if (!this.#ref) {
 			this.#ref = timestamp - context.root.currentTime - maxLatency;

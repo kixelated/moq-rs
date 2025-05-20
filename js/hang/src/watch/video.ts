@@ -8,7 +8,6 @@ import { Derived, Signal, Signals, signal } from "../signals";
 export type VideoProps = {
 	canvas?: HTMLCanvasElement;
 	paused?: boolean;
-	latency?: number;
 };
 
 // An component to render a video to a canvas.
@@ -22,9 +21,6 @@ export class Video {
 	// Whether the video is paused.
 	paused: Signal<boolean>;
 
-	// The latency in milliseconds.
-	latency: Signal<number>;
-
 	#animate?: number;
 
 	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
@@ -34,16 +30,10 @@ export class Video {
 		this.source = source;
 		this.canvas = signal(props?.canvas);
 		this.paused = signal(props?.paused ?? false);
-		this.latency = signal(props?.latency ?? 50);
 
 		this.#ctx = this.#signals.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
 		this.#signals.effect(() => this.#schedule());
 		this.#signals.effect(() => this.#runEnabled());
-
-		// Proxy the latency signal.
-		this.#signals.effect(() => {
-			this.source.latency.set(this.latency.get());
-		});
 	}
 
 	// Detect when video should be downloaded.
@@ -89,7 +79,7 @@ export class Video {
 		}
 	}
 
-	#render(now: DOMHighResTimeStamp) {
+	#render() {
 		// Schedule the next render.
 		this.#animate = undefined;
 		this.#schedule();
@@ -103,11 +93,11 @@ export class Video {
 		ctx.fillStyle = "#000";
 		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-		const closest = this.source.frame(now);
-		if (closest) {
-			ctx.canvas.width = closest.frame.displayWidth;
-			ctx.canvas.height = closest.frame.displayHeight;
-			ctx.drawImage(closest.frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
+		const frame = this.source.frame;
+		if (frame) {
+			ctx.canvas.width = frame.displayWidth;
+			ctx.canvas.height = frame.displayHeight;
+			ctx.drawImage(frame, 0, 0, ctx.canvas.width, ctx.canvas.height);
 		}
 
 		ctx.restore();
@@ -128,26 +118,22 @@ export type VideoSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Video[];
 	enabled?: boolean;
-	latency?: number;
 };
 
 // Responsible for switching between video tracks and buffering frames.
 export class VideoSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	enabled: Signal<boolean>; // Don't download any longer
-
-	// The maximum latency in milliseconds.
-	// The larger the value, the more tolerance we have for network jitter.
-	// This should be at least 1 frame for smoother playback.
-	latency: Signal<number>;
 	tracks: Signal<Catalog.Video[]>;
-
 	selected: Derived<Catalog.Video | undefined>;
 
-	#frames: VideoFrame[] = [];
+	// Unfortunately, browsers don't let us hold on to multiple VideoFrames.
+	// TODO To support higher latencies, keep around the encoded data and decode on demand.
+	// ex. Firefox only allows 2 outstanding VideoFrames at a time.
+	frame?: VideoFrame;
 
-	// The difference between the wall clock units and the timestamp units, in seconds.
-	#ref?: number;
+	// We hold a second frame buffered as a crude way to introduce latency to sync with audio.
+	#next?: VideoFrame;
 
 	#signals = new Signals();
 
@@ -155,19 +141,11 @@ export class VideoSource {
 		this.broadcast = signal(props?.broadcast);
 		this.tracks = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);
-		this.latency = signal(props?.latency ?? 50);
 
 		this.selected = this.#signals.derived(() => this.tracks.get().at(0), {
 			equals: (a, b) => isEqual(a, b),
 		});
 		this.#signals.effect(() => this.#init());
-
-		// Update the ref when the latency changes.
-		this.#signals.effect(() => {
-			this.latency.get();
-			this.#prune();
-			this.#ref = undefined;
-		});
 	}
 
 	#init() {
@@ -186,8 +164,15 @@ export class VideoSource {
 
 		const decoder = new VideoDecoder({
 			output: (frame) => {
-				this.#frames.push(frame);
-				this.#prune();
+				if (!this.frame) {
+					this.frame = frame;
+				} else if (!this.#next) {
+					this.#next = frame;
+				} else {
+					this.frame?.close();
+					this.frame = this.#next;
+					this.#next = frame;
+				}
 			},
 			// TODO bubble up error
 			error: (error) => {
@@ -234,96 +219,11 @@ export class VideoSource {
 		};
 	}
 
-	// Returns the frame that should be rendered at the given timestamp.
-	// Includes the latency offset to determine how timely the frame is.
-	frame(nowMs: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {
-		const now = nowMs * 1000;
-		const maxLatency = this.#maxLatencyUs();
-
-		// Advance the reference timestamp if we need to.
-		// We want the newest frame (last) to be be scheduled at most maxLatency in the future.
-		// NOTE: This never goes backwards, so clock drift will cause issues.
-		const last = this.#frames.at(-1);
-		if (!last) {
-			return;
-		}
-
-		if (!this.#ref || last.timestamp - this.#ref - now > maxLatency) {
-			const newRef = last.timestamp - now - maxLatency;
-			this.#ref = newRef;
-		}
-
-		const goal = this.#ref + now;
-
-		// Find the frame that is the closest to the desired timestamp.
-		for (let i = 1; i < this.#frames.length; i++) {
-			const frame = this.#frames[i];
-			const diff = frame.timestamp - goal;
-
-			if (diff < 0) {
-				// This frame was in the past; find one in the future.
-				continue;
-			}
-
-			if (diff > goal - this.#frames[i - 1].timestamp) {
-				// The previous frame is closer to the goal; use it instead.
-				// This should smooth out the video a little bit.
-				return { frame: this.#frames[i - 1], lag: (this.#frames[i - 1].timestamp - goal) / 1000 };
-			}
-
-			return { frame, lag: diff / 1000 };
-		}
-
-		// Render the most recent frame if they're all scheduled in the past.
-		return { frame: last, lag: (goal - last.timestamp) / 1000 };
-	}
-
-	#maxLatencyUs() {
-		let maxLatency = this.latency.peek() * 1000;
-		const first = this.#frames.at(0);
-		const last = this.#frames.at(-1);
-
-		if (first && last) {
-			// Compute the average duration of a frame
-			const duration = (last.timestamp - first.timestamp) / this.#frames.length;
-			maxLatency += duration;
-		}
-
-		return maxLatency;
-	}
-
-	#prune() {
-		const maxLatency = this.#maxLatencyUs();
-
-		let first = this.#frames.at(0);
-		const last = this.#frames.at(-1);
-
-		while (first && last) {
-			if (last.timestamp - first.timestamp <= maxLatency) {
-				break;
-			}
-
-			const frame = this.#frames.shift();
-			frame?.close();
-
-			first = this.#frames.at(0);
-		}
-	}
-
-	clear() {
-		for (const frame of this.#frames) {
-			frame.close();
-		}
-
-		this.#frames.length = 0;
-	}
-
 	close() {
-		for (const frame of this.#frames) {
-			frame.close();
-		}
-
-		this.#frames.length = 0;
+		this.frame?.close();
+		this.frame = undefined;
+		this.#next?.close();
+		this.#next = undefined;
 		this.#signals.close();
 	}
 }

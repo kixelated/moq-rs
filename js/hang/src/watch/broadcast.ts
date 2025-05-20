@@ -61,8 +61,6 @@ export class Broadcast {
 		const path = this.path.get();
 		if (path === undefined) return;
 
-		console.log("watching", path);
-
 		const announced = conn.announced(path);
 		(async () => {
 			for (;;) {

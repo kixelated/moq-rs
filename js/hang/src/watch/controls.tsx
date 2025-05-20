@@ -22,7 +22,6 @@ export function WatchControls(props: { lib: Watch; root: HTMLElement }): JSX.Ele
 			<Volume lib={lib} />
 			<Connection lib={lib} />
 			<Broadcast lib={lib} />
-			<Latency lib={lib} />
 			<Fullscreen lib={lib} root={root} />
 		</div>
 	);
@@ -118,33 +117,6 @@ function Broadcast(props: { lib: Watch }): JSX.Element {
 				<Match when={status() === "loading"}>🟡&nbsp;Loading...</Match>
 				<Match when={status() === "offline"}>🔴&nbsp;Offline</Match>
 			</Switch>
-		</div>
-	);
-}
-
-function Latency(props: { lib: Watch }): JSX.Element {
-	const setLatency = (str: string) => {
-		const v = Number.parseInt(str);
-		props.lib.video.latency.set(v);
-		props.lib.audio.latency.set(v);
-	};
-
-	const ms = () => {
-		return `${props.lib.video.latency.get()}ms`;
-	};
-
-	return (
-		<div style={{ display: "flex", "align-items": "center", gap: "0.25rem" }} title="Latency">
-			⏳
-			<input
-				type="range"
-				min="0"
-				max="1000"
-				step="10"
-				value={props.lib.video.latency.get()}
-				onInput={(e) => setLatency(e.currentTarget.value)}
-			/>
-			<span style={{ width: "3em", "text-align": "right", display: "inline-block" }}>{ms()}</span>
 		</div>
 	);
 }
