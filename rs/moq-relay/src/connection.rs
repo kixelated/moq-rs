@@ -13,6 +13,9 @@ impl Connection {
 
 	#[tracing::instrument("session", skip_all, fields(id = self.id))]
 	pub async fn run(self) {
+		// Scope everything to the session URL path.
+		// ex. if somebody connects with `/foo/bar/` then SUBSCRIBE "baz" will return `/foo/bar/baz`.
+		// This will soon be tied to authentication.
 		let prefix = self.session.url().path().strip_prefix("/").unwrap_or("").to_string();
 
 		let session = match moq_lite::Session::accept(self.session).await {

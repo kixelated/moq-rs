@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Args;
 use hang::cmaf::Import;
-use hang::{moq_lite, Broadcast};
+use hang::moq_lite;
 use hang::{BroadcastConsumer, BroadcastProducer};
 use moq_lite::Session;
 use moq_native::quic;
@@ -39,9 +39,7 @@ impl Client {
 
 	#[tracing::instrument(skip_all, fields(url = %self.url))]
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		// The path is relative to the URL, so it's empty because we only publish one broadcast.
-		let broadcast = Broadcast { path: "".to_string() };
-		let producer = BroadcastProducer::new(broadcast.produce());
+		let producer = BroadcastProducer::new();
 		let consumer = producer.consume();
 
 		// Connect to the remote and start parsing stdin in parallel.
@@ -63,7 +61,8 @@ impl Client {
 		let session = quic.client.connect(self.url.clone()).await?;
 		let mut session = Session::connect(session).await?;
 
-		session.publish(consumer.into());
+		// The path is relative to the URL, so it's empty because we only publish one broadcast.
+		session.publish("", consumer.inner.clone());
 
 		tracing::info!("connected");
 

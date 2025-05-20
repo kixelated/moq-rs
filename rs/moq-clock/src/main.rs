@@ -58,7 +58,6 @@ async fn main() -> anyhow::Result<()> {
 	let session = quic.client.connect(config.url).await?;
 	let mut session = moq_lite::Session::connect(session).await?;
 
-	let broadcast = Broadcast { path: config.broadcast };
 	let track = Track {
 		name: config.track,
 		priority: 0,
@@ -66,15 +65,15 @@ async fn main() -> anyhow::Result<()> {
 
 	match config.role {
 		Command::Publish => {
-			let broadcast = broadcast.produce();
+			let broadcast = BroadcastProducer::new();
 			let track = broadcast.create(track);
 			let clock = clock::Publisher::new(track);
 
-			session.publish(broadcast.consume());
+			session.publish(config.broadcast, broadcast.consume());
 			clock.run().await
 		}
 		Command::Subscribe => {
-			let broadcast = session.consume(&broadcast);
+			let broadcast = session.consume(&config.broadcast);
 			let track = broadcast.subscribe(&track);
 			let clock = clock::Subscriber::new(track);
 

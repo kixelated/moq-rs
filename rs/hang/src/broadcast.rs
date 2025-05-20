@@ -3,19 +3,23 @@ use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, Vid
 use moq_lite::Track;
 use web_async::spawn;
 
-/// A hang::Broadcast ends with .hang by convention, otherwise it's the same as a moq_lite::Broadcast.
-pub use moq_lite::Broadcast;
-
 /// A wrapper around a moq_lite::BroadcastProducer that produces a `catalog.json` track.
 #[derive(Clone)]
 pub struct BroadcastProducer {
 	pub catalog: CatalogProducer,
-	inner: moq_lite::BroadcastProducer,
+	pub inner: moq_lite::BroadcastProducer,
+}
+
+impl Default for BroadcastProducer {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl BroadcastProducer {
-	pub fn new(inner: moq_lite::BroadcastProducer) -> Self {
+	pub fn new() -> Self {
 		let catalog = Catalog::default().produce();
+		let inner = moq_lite::BroadcastProducer::new();
 		inner.insert(catalog.consume().track);
 
 		Self { catalog, inner }
@@ -71,18 +75,6 @@ impl BroadcastProducer {
 	}
 }
 
-impl From<moq_lite::BroadcastProducer> for BroadcastProducer {
-	fn from(producer: moq_lite::BroadcastProducer) -> Self {
-		BroadcastProducer::new(producer)
-	}
-}
-
-impl From<BroadcastProducer> for moq_lite::BroadcastProducer {
-	fn from(producer: BroadcastProducer) -> Self {
-		producer.inner
-	}
-}
-
 impl std::ops::Deref for BroadcastProducer {
 	type Target = moq_lite::BroadcastProducer;
 
@@ -101,7 +93,7 @@ impl std::ops::DerefMut for BroadcastProducer {
 #[derive(Clone)]
 pub struct BroadcastConsumer {
 	pub catalog: CatalogConsumer,
-	inner: moq_lite::BroadcastConsumer,
+	pub inner: moq_lite::BroadcastConsumer,
 }
 
 impl BroadcastConsumer {
@@ -117,18 +109,6 @@ impl BroadcastConsumer {
 
 	pub fn track(&self, track: &Track) -> TrackConsumer {
 		self.inner.subscribe(track).into()
-	}
-}
-
-impl From<moq_lite::BroadcastConsumer> for BroadcastConsumer {
-	fn from(consumer: moq_lite::BroadcastConsumer) -> Self {
-		BroadcastConsumer::new(consumer)
-	}
-}
-
-impl From<BroadcastConsumer> for moq_lite::BroadcastConsumer {
-	fn from(consumer: BroadcastConsumer) -> Self {
-		consumer.inner
 	}
 }
 

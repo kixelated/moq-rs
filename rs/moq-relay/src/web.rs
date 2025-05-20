@@ -80,21 +80,21 @@ async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl I
 	let mut local = cluster.locals.announced(&prefix);
 	let mut remote = cluster.remotes.announced(&prefix);
 
-	let mut tracks = Vec::new();
+	let mut broadcasts = Vec::new();
 
 	while let Some(Some(local)) = local.next().now_or_never() {
-		if let moq_lite::Announced::Start(broadcast) = local {
-			tracks.push(broadcast.path);
+		if let moq_lite::Announce::Active { suffix } = local {
+			broadcasts.push(suffix);
 		}
 	}
 
 	while let Some(Some(remote)) = remote.next().now_or_never() {
-		if let moq_lite::Announced::Start(broadcast) = remote {
-			tracks.push(broadcast.path);
+		if let moq_lite::Announce::Active { suffix } = remote {
+			broadcasts.push(suffix);
 		}
 	}
 
-	tracks.join("\n")
+	broadcasts.join("\n")
 }
 
 /// Serve the latest group for a given track
@@ -107,7 +107,6 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 	let track = path.pop().unwrap().to_string();
 	let broadcast = path.join("/");
 
-	let broadcast = moq_lite::Broadcast { path: broadcast };
 	let track = moq_lite::Track {
 		name: track,
 		priority: 0,

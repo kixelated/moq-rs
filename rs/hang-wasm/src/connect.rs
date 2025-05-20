@@ -46,7 +46,7 @@ pub struct Connect {
 }
 
 impl Connect {
-	pub fn new(mut addr: Url) -> Self {
+	pub fn new(addr: Url) -> Self {
 		let path = addr.path().to_string();
 
 		// Use a global cache to share sessions between elements.

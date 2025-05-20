@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{http::Method, routing::get, Router};
 use clap::Args;
-use hang::{cmaf, moq_lite, Broadcast};
+use hang::{cmaf, moq_lite};
 use hang::{BroadcastConsumer, BroadcastProducer};
 use moq_lite::web_transport;
 use moq_native::quic;
@@ -51,9 +51,7 @@ impl Server {
 
 	#[tracing::instrument(skip_all, fields(addr = %self.config.bind))]
 	pub async fn run<T: AsyncRead + Unpin>(self, input: &mut T) -> anyhow::Result<()> {
-		// We only publish one broadcast with an empty path.
-		let broadcast = Broadcast { path: "".to_string() };
-		let producer = BroadcastProducer::new(broadcast.produce());
+		let producer = BroadcastProducer::new();
 		let consumer = producer.consume();
 
 		tokio::select! {
@@ -88,7 +86,8 @@ impl Server {
 
 				tracing::info!(?id, "accepted session");
 
-				session.publish(consumer.into());
+				// The path is relative to the URL, so it's empty because we only publish one broadcast.
+				session.publish("", consumer.inner.clone());
 			});
 		}
 

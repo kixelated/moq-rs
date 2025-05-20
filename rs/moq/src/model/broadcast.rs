@@ -8,24 +8,6 @@ use tokio::sync::watch;
 
 use super::Track;
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Broadcast {
-	pub path: String,
-}
-
-impl Broadcast {
-	pub fn produce(self) -> BroadcastProducer {
-		BroadcastProducer::new(self)
-	}
-}
-
-impl<T: ToString> From<T> for Broadcast {
-	fn from(path: T) -> Self {
-		Self { path: path.to_string() }
-	}
-}
-
 struct State {
 	published: HashMap<String, TrackConsumer>,
 	requested: HashMap<String, TrackProducer>,
@@ -48,8 +30,6 @@ impl State {
 /// If you want an easier push-based producer, use [BroadcastProducer::map].
 #[derive(Clone)]
 pub struct BroadcastProducer {
-	pub info: Broadcast,
-
 	state: Arc<Mutex<State>>,
 	queue: async_channel::Receiver<TrackProducer>,
 
@@ -58,12 +38,17 @@ pub struct BroadcastProducer {
 	closed: watch::Sender<()>,
 }
 
+impl Default for BroadcastProducer {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl BroadcastProducer {
-	pub fn new(info: Broadcast) -> Self {
+	pub fn new() -> Self {
 		let (send, recv) = async_channel::bounded(32);
 
 		Self {
-			info,
 			state: Arc::new(Mutex::new(State::new(send))),
 			queue: recv,
 			closed: watch::Sender::default(),
@@ -95,7 +80,6 @@ impl BroadcastProducer {
 	// Try to create a new consumer.
 	pub fn consume(&self) -> BroadcastConsumer {
 		BroadcastConsumer {
-			info: self.info.clone(),
 			state: self.state.clone(),
 			closed: self.closed.subscribe(),
 		}
@@ -109,17 +93,9 @@ impl BroadcastProducer {
 	}
 }
 
-impl From<Broadcast> for BroadcastProducer {
-	fn from(info: Broadcast) -> Self {
-		BroadcastProducer::new(info)
-	}
-}
-
 /// Subscribe to abitrary broadcast/tracks.
 #[derive(Clone)]
 pub struct BroadcastConsumer {
-	pub info: Broadcast,
-
 	state: Arc<Mutex<State>>,
 
 	// Annoying, but we need to know when the above channel is closed without sending.

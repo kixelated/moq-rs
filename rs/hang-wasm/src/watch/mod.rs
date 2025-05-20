@@ -72,13 +72,8 @@ impl Watch {
 			}
 		};
 
-		// TODO WRONG
-		let info = hang::Broadcast {
-			room: broadcast.to_string(),
-			name: "".to_string(),
-		};
-
-		self.broadcast = Some(hang::BroadcastConsumer::subscribe(&session, info));
+		let consumer = session.consume(broadcast);
+		self.broadcast = Some(hang::BroadcastConsumer::new(consumer));
 
 		Bridge::send(ConnectionStatus::Connected.into());
 	}

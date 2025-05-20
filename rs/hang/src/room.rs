@@ -2,19 +2,14 @@ use std::collections::HashSet;
 
 use web_async::Lock;
 
-use crate::{Broadcast, BroadcastConsumer, BroadcastProducer};
+use crate::{BroadcastConsumer, BroadcastProducer};
 
 #[derive(Clone)]
 pub struct Room {
 	pub path: String,
-	announced: moq_lite::AnnouncedConsumer,
+	announced: moq_lite::AnnounceConsumer,
 	session: moq_lite::Session,
 	ourselves: Lock<HashSet<String>>,
-}
-
-pub enum Action {
-	Join(String),
-	Leave(String),
 }
 
 impl Room {
@@ -29,16 +24,12 @@ impl Room {
 
 	// Joins the room and returns a producer for the broadcast.
 	pub fn join(&mut self, name: String) -> BroadcastProducer {
-		let broadcast = Broadcast {
-			path: format!("{}{}", self.path, name),
-		};
-
+		let broadcast = format!("{}{}", self.path, name);
 		let ourselves = self.ourselves.clone();
+		ourselves.lock().insert(broadcast.clone());
 
-		ourselves.lock().insert(name.clone());
-
-		let producer = broadcast.produce();
-		self.session.publish(producer.consume());
+		let producer = BroadcastProducer::new();
+		self.session.publish(broadcast, producer.inner.consume());
 
 		let consumer = producer.consume();
 
@@ -47,32 +38,25 @@ impl Room {
 			ourselves.lock().remove(&name);
 		});
 
-		producer.into()
+		producer
 	}
 
 	/// Returns the next room action.
-	pub async fn update(&mut self) -> Option<Action> {
+	pub async fn update(&mut self) -> Option<moq_lite::Announce> {
 		loop {
 			let announced = self.announced.next().await?;
-			let name = announced.path().strip_prefix(&self.path).unwrap().to_string();
-			if self.ourselves.lock().contains(&name) {
+			if self.ourselves.lock().contains(announced.suffix()) {
 				continue;
 			}
 
-			return match announced {
-				moq_lite::Announced::Start(_) => Some(Action::Join(name)),
-				moq_lite::Announced::End(_) => Some(Action::Leave(name)),
-			};
+			return Some(announced);
 		}
 	}
 
 	// Takes the name of the broadcast to watch within the room.
 	pub fn watch(&mut self, name: &str) -> BroadcastConsumer {
-		let info = Broadcast {
-			path: format!("{}{}", self.path, name),
-		};
-
-		let broadcast = self.session.consume(&info);
-		broadcast.into()
+		let path = format!("{}{}", self.path, name);
+		let broadcast = self.session.consume(&path);
+		BroadcastConsumer::new(broadcast)
 	}
 }

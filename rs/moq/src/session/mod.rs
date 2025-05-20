@@ -1,4 +1,4 @@
-use crate::{message, AnnouncedConsumer, Broadcast, BroadcastConsumer, Error, Origin};
+use crate::{message, AnnounceConsumer, BroadcastConsumer, Error, Origin};
 
 use web_async::spawn;
 
@@ -165,19 +165,22 @@ impl Session {
 	}
 
 	/// Publish a broadcast, automatically announcing and serving it.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
-		self.publisher.publish(broadcast);
+	pub fn publish<T: ToString>(&mut self, path: T, broadcast: BroadcastConsumer) {
+		self.publisher.publish(path, broadcast);
 	}
 
 	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
 	///
 	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
-	pub fn consume(&self, broadcast: &Broadcast) -> BroadcastConsumer {
-		self.subscriber.consume(broadcast)
+	pub fn consume(&self, path: &str) -> BroadcastConsumer {
+		self.subscriber.consume(path)
 	}
 
 	/// Discover any broadcasts published by the remote matching a prefix.
-	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
+	///
+	/// There will be an event each time a broadcast starts and later ends.
+	/// The results contain the suffix only; you may need to re-apply the prefix.
+	pub fn announced<S: ToString>(&self, prefix: S) -> AnnounceConsumer {
 		self.subscriber.announced(prefix.to_string())
 	}
 
@@ -192,23 +195,46 @@ impl Session {
 	}
 
 	/// Publish all of our broadcasts to the given origin.
+	///
+	/// If an optional prefix is provided, the prefix will be applied when inserting into the origin.
 	pub async fn publish_to(&mut self, mut origin: Origin, prefix: &str) {
-		let mut announced = self.announced(prefix);
+		let mut announced = self.announced("");
 
-		while let Some(broadcast) = announced.active().await {
-			let broadcast = self.consume(&broadcast);
-			origin.publish(broadcast);
+		while let Some(suffix) = announced.active().await {
+			let broadcast = self.consume(&suffix);
+
+			// We can avoid a string copy if there's no prefix.
+			match prefix {
+				"" => origin.publish(suffix, broadcast),
+				prefix => origin.publish(format!("{}{}", prefix, suffix), broadcast),
+			};
 		}
 	}
 
 	/// Serve all broadcasts from the given origin.
+	///
+	/// If the prefix is provided, then only broadcasts matching the (stripped) prefix are served.
 	pub async fn consume_from(&mut self, origin: Origin, prefix: &str) {
 		let mut remotes = origin.announced(prefix);
 
-		while let Some(broadcast) = remotes.active().await {
-			if let Some(upstream) = origin.consume(&broadcast) {
-				self.publish(upstream);
-			}
+		while let Some(suffix) = remotes.active().await {
+			match prefix {
+				// If there's no prefix, we can avoid a string copy.
+				"" => {
+					if let Some(upstream) = origin.consume(&suffix) {
+						// If the broadcast exists (it should...) then we serve it.
+						self.publish(suffix, upstream);
+					}
+				}
+				// We need to re-apply the prefix to get the full path on the origin.
+				prefix => {
+					let path = format!("{}{}", prefix, suffix);
+					if let Some(upstream) = origin.consume(&path) {
+						// If the broadcast exists (it should...) then we serve it.
+						self.publish(path, upstream);
+					}
+				}
+			};
 		}
 	}
 }

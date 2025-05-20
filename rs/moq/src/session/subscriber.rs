@@ -6,12 +6,12 @@ use std::{
 use crate::{
 	message,
 	model::{BroadcastConsumer, BroadcastProducer},
-	AnnouncedProducer, Broadcast, Error, Frame, FrameProducer, Group, GroupProducer, TrackProducer,
+	AnnounceProducer, Error, Frame, FrameProducer, Group, GroupProducer, TrackProducer,
 };
 
 use web_async::{spawn, Lock};
 
-use super::{AnnouncedConsumer, Reader, Stream};
+use super::{AnnounceConsumer, Reader, Stream};
 
 #[derive(Clone)]
 pub(super) struct Subscriber {
@@ -34,10 +34,10 @@ impl Subscriber {
 	}
 
 	/// Discover any tracks matching a filter.
-	pub fn announced<S: ToString>(&self, prefix: S) -> AnnouncedConsumer {
+	pub fn announced<S: ToString>(&self, prefix: S) -> AnnounceConsumer {
 		let prefix = prefix.to_string();
 
-		let producer = AnnouncedProducer::default();
+		let producer = AnnounceProducer::default();
 		let consumer = producer.consume(prefix.clone());
 
 		web_async::spawn(self.clone().run_announced(prefix, producer));
@@ -45,7 +45,7 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_announced(mut self, prefix: String, producer: AnnouncedProducer) {
+	async fn run_announced(mut self, prefix: String, producer: AnnounceProducer) {
 		tracing::debug!(%prefix, "announced started");
 
 		// Keep running until we don't care about the producer anymore.
@@ -70,7 +70,7 @@ impl Subscriber {
 		}
 	}
 
-	async fn run_announce(&mut self, prefix: &str, mut announced: AnnouncedProducer) -> Result<(), Error> {
+	async fn run_announce(&mut self, prefix: &str, mut announced: AnnounceProducer) -> Result<(), Error> {
 		let mut stream = Stream::open(&mut self.session, message::ControlType::Announce).await?;
 
 		stream
@@ -84,13 +84,11 @@ impl Subscriber {
 			match announce {
 				message::Announce::Active { suffix } => {
 					let broadcast = match prefix {
-						"" => Broadcast { path: suffix },
-						prefix => Broadcast {
-							path: format!("{}{}", prefix, suffix),
-						},
+						"" => suffix,
+						prefix => format!("{}{}", prefix, suffix),
 					};
 
-					tracing::debug!(broadcast = %broadcast.path, "received announce");
+					tracing::debug!(%broadcast, "received announce");
 
 					if !announced.insert(broadcast) {
 						return Err(Error::Duplicate);
@@ -98,13 +96,11 @@ impl Subscriber {
 				}
 				message::Announce::Ended { suffix } => {
 					let broadcast = match prefix {
-						"" => Broadcast { path: suffix },
-						prefix => Broadcast {
-							path: format!("{}{}", prefix, suffix),
-						},
+						"" => suffix,
+						prefix => format!("{}{}", prefix, suffix),
 					};
 
-					tracing::debug!(broadcast = %broadcast.path, "received unannounce");
+					tracing::debug!(%broadcast, "received unannounce");
 
 					if !announced.remove(&broadcast) {
 						return Err(Error::NotFound);
@@ -118,50 +114,59 @@ impl Subscriber {
 	}
 
 	/// Subscribe to a given broadcast.
-	pub fn consume(&self, broadcast: &Broadcast) -> BroadcastConsumer {
-		if let Some(producer) = self.broadcasts.lock().get(&broadcast.path) {
+	pub fn consume(&self, path: &str) -> BroadcastConsumer {
+		if let Some(producer) = self.broadcasts.lock().get(path) {
 			return producer.consume();
 		}
 
-		let producer = broadcast.clone().produce();
+		let path = path.to_string();
+		let producer = BroadcastProducer::new();
 		let consumer = producer.consume();
 
 		// Run the broadcast in the background until all consumers are dropped.
-		spawn(self.clone().run_broadcast(producer));
+		spawn(self.clone().run_broadcast(path, producer));
 
 		consumer
 	}
 
-	async fn run_broadcast(self, broadcast: BroadcastProducer) {
+	async fn run_broadcast(self, path: String, broadcast: BroadcastProducer) {
 		// Actually start serving subscriptions.
 		loop {
 			// Keep serving requests until there are no more consumers.
 			// This way we'll clean up the task when the broadcast is no longer needed.
-			let producer = tokio::select! {
+			let mut track = tokio::select! {
 				producer = broadcast.requested() => producer,
 				_ = broadcast.unused() => break,
 				_ = self.session.closed() => break,
 			};
 
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
-			spawn(self.clone().run_subscribe(id, broadcast.clone(), producer));
+			let path = path.clone();
+			let mut this = self.clone();
+			let broadcast = broadcast.clone();
+
+			spawn(async move {
+				this.run_subscribe(id, path, &mut track).await;
+				this.subscribes.lock().remove(&id);
+				broadcast.remove(&track.info.name);
+			});
 		}
 
 		// Remove the broadcast from the lookup.
-		self.broadcasts.lock().remove(&broadcast.info.path);
+		self.broadcasts.lock().remove(&path);
 	}
 
-	async fn run_subscribe(mut self, id: u64, broadcast: BroadcastProducer, mut track: TrackProducer) {
+	async fn run_subscribe(&mut self, id: u64, broadcast: String, track: &mut TrackProducer) {
 		self.subscribes.lock().insert(id, track.clone());
 
 		let msg = message::Subscribe {
 			id,
-			broadcast: broadcast.info.path.clone(),
+			broadcast: broadcast.clone(),
 			track: track.info.name.clone(),
 			priority: track.info.priority,
 		};
 
-		tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe started");
+		tracing::info!(%broadcast, track = %track.info.name, id, "subscribe started");
 
 		let res = tokio::select! {
 			_ = track.unused() => Err(Error::Cancel),
@@ -170,21 +175,18 @@ impl Subscriber {
 
 		match res {
 			Err(Error::Cancel) => {
-				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe cancelled");
+				tracing::info!(broadcast = %broadcast, track = %track.info.name, id, "subscribe cancelled");
 				track.abort(Error::Cancel);
 			}
 			Err(err) => {
-				tracing::info!(?err, broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe error");
+				tracing::info!(?err, broadcast = %broadcast, track = %track.info.name, id, "subscribe error");
 				track.abort(err);
 			}
 			_ => {
-				tracing::info!(broadcast = %broadcast.info.path, track = %track.info.name, id, "subscribe complete");
+				tracing::info!(broadcast = %broadcast, track = %track.info.name, id, "subscribe complete");
 				track.finish();
 			}
 		}
-
-		self.subscribes.lock().remove(&id);
-		broadcast.remove(&track.info.name);
 	}
 
 	async fn run_track(&mut self, msg: message::Subscribe) -> Result<(), Error> {

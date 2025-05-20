@@ -1,8 +1,6 @@
 use web_async::FuturesExt;
 
-use crate::{
-	message, model::GroupConsumer, Announced, Broadcast, BroadcastConsumer, Error, Origin, Track, TrackConsumer,
-};
+use crate::{message, model::GroupConsumer, BroadcastConsumer, Error, Origin, Track, TrackConsumer};
 
 use super::{Stream, Writer};
 
@@ -21,8 +19,8 @@ impl Publisher {
 	}
 
 	/// Publish a broadcast.
-	pub fn publish(&mut self, broadcast: BroadcastConsumer) {
-		self.broadcasts.publish(broadcast);
+	pub fn publish<T: ToString>(&mut self, path: T, broadcast: BroadcastConsumer) {
+		self.broadcasts.publish(path, broadcast);
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -57,21 +55,7 @@ impl Publisher {
 				res = stream.reader.finished() => return res,
 				announced = announced.next() => {
 					match announced {
-						Some(Announced::Start(broadcast)) => {
-							let suffix = broadcast.path.strip_prefix(prefix).ok_or(Error::ProtocolViolation)?;
-
-							let msg = message::Announce::Active {
-								suffix: suffix.to_string(),
-							};
-							stream.writer.encode(&msg).await?;
-						}
-						Some(Announced::End(broadcast)) => {
-							let suffix = broadcast.path.strip_prefix(prefix).ok_or(Error::ProtocolViolation)?;
-							let msg = message::Announce::Ended {
-								suffix: suffix.to_string(),
-							};
-							stream.writer.encode(&msg).await?;
-						}
+						Some(msg) => stream.writer.encode(&msg).await?,
 						None => break,
 					}
 				}
@@ -104,9 +88,7 @@ impl Publisher {
 	}
 
 	async fn run_subscribe(&mut self, stream: &mut Stream, subscribe: &mut message::Subscribe) -> Result<(), Error> {
-		let broadcast = Broadcast {
-			path: subscribe.broadcast.clone(),
-		};
+		let broadcast = subscribe.broadcast.clone();
 		let track = Track {
 			name: subscribe.track.clone(),
 			priority: subscribe.priority,

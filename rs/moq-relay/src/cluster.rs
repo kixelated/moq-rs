@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use clap::Parser;
-use moq_lite::{Announced, Broadcast, BroadcastConsumer, Origin};
+use moq_lite::{Announce, BroadcastConsumer, BroadcastProducer, Origin};
 use moq_native::quic;
 use tracing::Instrument;
 use url::Url;
@@ -48,7 +48,7 @@ impl Cluster {
 		}
 	}
 
-	pub fn consume(&self, broadcast: &Broadcast) -> Option<BroadcastConsumer> {
+	pub fn consume(&self, broadcast: &str) -> Option<BroadcastConsumer> {
 		self.locals
 			.consume(broadcast)
 			.or_else(|| self.remotes.consume(broadcast))
@@ -60,16 +60,16 @@ impl Cluster {
 
 		tracing::info!(?root, ?node, "initializing cluster");
 
+		// Create a "broadcast" with no tracks to announce ourselves.
+		let noop = BroadcastProducer::new();
+
 		// If we're a node, then we need to announce ourselves as an origin.
 		// We do this by creating a "broadcast" with no tracks.
-		let myself = if let Some(node) = self.config.cluster_node.as_ref() {
-			let origin = format!("internal/origins/{}", node);
-			let broadcast = Broadcast { path: origin };
-			let producer = broadcast.produce();
-			Some(producer)
-		} else {
-			None
-		};
+		let myself = self
+			.config
+			.cluster_node
+			.as_ref()
+			.map(|node| format!("internal/origins/{}", node));
 
 		// If we're using a root node, then we have to connect to it.
 		let mut announced = match root.as_ref() {
@@ -86,7 +86,7 @@ impl Cluster {
 
 				// Announce ourselves as an origin to the root node.
 				if let Some(myself) = &myself {
-					root.publish(myself.consume());
+					root.publish(myself, noop.consume());
 				}
 
 				// Subscribe to available origins.
@@ -98,7 +98,7 @@ impl Cluster {
 				// Technically, we should only announce to cluster clients (not end users), but who cares.
 				let mut locals = self.locals.clone();
 				if let Some(myself) = &myself {
-					locals.publish(myself.consume());
+					locals.publish(myself, noop.consume());
 				}
 
 				// Subscribe to the available origins.
@@ -114,9 +114,7 @@ impl Cluster {
 		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
 		while let Some(announce) = announced.next().await {
 			match announce {
-				Announced::Start(broadcast) => {
-					let host = broadcast.path.strip_prefix(Self::ORIGINS).unwrap().to_string();
-
+				Announce::Active { suffix: host } => {
 					if Some(&host) == node.as_ref() {
 						// Skip ourselves.
 						continue;
@@ -143,10 +141,8 @@ impl Cluster {
 
 					remotes.insert(host, handle);
 				}
-				Announced::End(broadcast) => {
-					let host = broadcast.path.strip_prefix(Self::ORIGINS).unwrap();
-
-					if let Some(handle) = remotes.remove(host) {
+				Announce::Ended { suffix: host } => {
+					if let Some(handle) = remotes.remove(&host) {
 						tracing::warn!(?host, "terminating remote");
 						handle.abort();
 					}
