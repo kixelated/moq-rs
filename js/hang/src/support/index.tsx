@@ -1,7 +1,7 @@
 import { JSX, Match, Show, Switch, createMemo, createSelector, createSignal } from "solid-js";
 
 export type SupportRole = "core" | "watch" | "publish" | "all";
-export type SupportShow = "full" | "partial" | "none";
+export type SupportPartial = "full" | "partial" | "none";
 
 export type SupportAudio = {
 	aac: boolean;
@@ -24,12 +24,16 @@ export type SupportVideo = {
 export type Support = {
 	webtransport: boolean;
 	audio: {
+		capture: boolean;
 		encoding: SupportAudio | undefined;
 		decoding: SupportAudio | undefined;
+		render: boolean;
 	};
 	video: {
+		capture: SupportPartial;
 		encoding: SupportVideo | undefined;
 		decoding: SupportVideo | undefined;
+		render: boolean;
 	};
 };
 
@@ -123,6 +127,8 @@ export async function isSupported(): Promise<Support> {
 	return {
 		webtransport: typeof WebTransport !== "undefined",
 		audio: {
+			// We have a polyfill for when MediaStreamTrackProcessor is not supported.
+			capture: typeof MediaStreamTrackProcessor !== "undefined" || typeof AudioWorkletNode !== "undefined",
 			encoding:
 				typeof AudioEncoder !== "undefined"
 					? {
@@ -137,8 +143,16 @@ export async function isSupported(): Promise<Support> {
 							opus: await audioDecoderSupported("opus"),
 						}
 					: undefined,
+			render: typeof AudioContext !== "undefined" && typeof AudioBufferSourceNode !== "undefined",
 		},
 		video: {
+			capture:
+				// We have a fallback for MediaStreamTrackProcessor, but it's pretty gross so no full points.
+				typeof MediaStreamTrackProcessor !== "undefined"
+					? "full"
+					: typeof OffscreenCanvas !== "undefined"
+						? "partial"
+						: "none",
 			encoding:
 				typeof VideoEncoder !== "undefined"
 					? {
@@ -159,11 +173,12 @@ export async function isSupported(): Promise<Support> {
 							av1: await videoDecoderSupported("av1"),
 						}
 					: undefined,
+			render: typeof OffscreenCanvas !== "undefined" && typeof CanvasRenderingContext2D !== "undefined",
 		},
 	};
 }
 
-export function Support(props: { role: SupportRole; show: SupportShow }) {
+export function Support(props: { role: SupportRole; show: SupportPartial }) {
 	const [support, setSupport] = createSignal<Support | undefined>();
 	isSupported().then(setSupport);
 
@@ -180,6 +195,7 @@ export function Support(props: { role: SupportRole; show: SupportShow }) {
 		if (!s) return;
 
 		if (!s.audio.decoding || !s.video.decoding) return "none";
+		if (!s.audio.render || !s.video.render) return "none";
 
 		// Make sure we support decoding at least one codec of each type...
 		if (!Object.values(s.audio.decoding).some((v) => v)) return "none";
@@ -197,10 +213,14 @@ export function Support(props: { role: SupportRole; show: SupportShow }) {
 		if (!s) return;
 
 		if (!s.audio.encoding || !s.video.encoding) return "none";
+		if (!s.audio.capture) return "none";
 
 		// Make sure that we support encoding at least one codec of each type...
 		if (!Object.values(s.audio.encoding).some((v) => v)) return "none";
 		if (!Object.values(s.video.encoding).some((v) => v.software || v.hardware)) return "none";
+
+		// There's a polyfill for when MediaStreamTrackProcessor that is kinda gross.
+		if (s.video.capture === "partial") return "partial";
 
 		// Make sure we support encoding at least one codec with hardware acceleration.
 		if (!Object.values(s.video.encoding).some((v) => v.hardware)) return "partial";
@@ -293,6 +313,8 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 	const binary = (value: boolean | undefined) => (value ? "🟢 Yes" : "🔴 No");
 	const hardware = (codec: SupportCodec | undefined) =>
 		codec?.hardware ? "🟢 Hardware" : codec?.software ? "🟡 Software" : "🔴 No";
+	const partial = (value: SupportPartial | undefined) =>
+		value === "full" ? "🟢 Full" : value === "partial" ? "🟡 Partial" : "🔴 None";
 
 	return (
 		<div
@@ -311,6 +333,11 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 			<div style={c3}>{binary(support.webtransport)}</div>
 			<Show when={props.role !== "core"}>
 				<Show when={props.role !== "watch"}>
+					<div style={c1}>Capture</div>
+					<div style={c2}>Audio</div>
+					<div style={c3}>{binary(support.audio.capture)}</div>
+					<div style={c2}>Video</div>
+					<div style={c3}>{partial(support.video.capture)}</div>
 					<div style={c1}>Encoding</div>
 					<div style={c2}>Opus</div>
 					<div style={c3}>{binary(support.audio.encoding?.opus)}</div>
@@ -328,8 +355,13 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 					<div style={c3}>{hardware(support.video.encoding?.vp8)}</div>
 				</Show>
 				<Show when={props.role !== "publish"}>
+					<div style={c1}>Rendering</div>
+					<div style={c2}>Audio</div>
+					<div style={c3}>{binary(support.audio.render)}</div>
+					<div style={c2}>Video</div>
+					<div style={c3}>{binary(support.video.render)}</div>
 					<div style={c1}>Decoding</div>
-					<div style={c2}>Opus</div>
+					<div style={c2}>Audio</div>
 					<div style={c3}>{binary(support.audio.decoding?.opus)}</div>
 					<div style={c2}>AAC</div>
 					<div style={c3}>{binary(support.audio.decoding?.aac)}</div>

@@ -47,26 +47,15 @@ function Pause(props: { lib: Watch }): JSX.Element {
 
 function Volume(props: { lib: Watch }): JSX.Element {
 	const volume = props.lib.audio.volume;
-
-	// Keep track of the last non-zero volume for the unmute button.
-	let unmuteVolume = volume.peek() || 0.5;
+	const muted = props.lib.audio.muted;
 
 	const changeVolume = (str: string) => {
 		const v = Number.parseFloat(str);
 		volume.set(v);
-		if (v > 0) {
-			unmuteVolume = v;
-		} else {
-			unmuteVolume = 0.5;
-		}
 	};
 
 	const toggleMute = () => {
-		if (volume.get() === 0) {
-			volume.set(unmuteVolume);
-		} else {
-			volume.set(0);
-		}
+		muted.set((p) => !p);
 	};
 
 	const rounded = () => Math.round(volume.get() * 100);

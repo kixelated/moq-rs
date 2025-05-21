@@ -34,6 +34,10 @@ pub enum Error {
 	#[error("cancelled")]
 	Cancel,
 
+	/// It took too long to open or transmit a stream.
+	#[error("timeout")]
+	Timeout,
+
 	/// The group is older than the latest group and dropped.
 	#[error("old")]
 	Old,

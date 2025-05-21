@@ -70,8 +70,8 @@ export class Video {
 		if (!track) return;
 
 		const settings = media.getSettings() as VideoTrackSettings;
-		const processor = new MediaStreamTrackProcessor({ track: media });
-		const reader = processor.readable.getReader();
+		const processor = VideoTrackProcessor(media);
+		const reader = processor.getReader();
 
 		const encoder = new VideoEncoder({
 			output: (frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) => {
@@ -142,6 +142,13 @@ export class Video {
 	static async #bestEncoderConfig(settings: VideoTrackSettings, frame: VideoFrame): Promise<VideoEncoderConfig> {
 		const width = frame.codedWidth;
 		const height = frame.codedHeight;
+		const framerate = settings.frameRate;
+
+		console.debug("determining best encoder config for: ", {
+			width,
+			height,
+			framerate,
+		});
 
 		// TARGET BITRATE CALCULATION (h264)
 		// 480p@30 = 1.0mbps
@@ -155,7 +162,7 @@ export class Video {
 		// 30fps is the baseline, applying a multiplier for higher framerates.
 		// Framerate does not cause a multiplicative increase in bitrate because of delta encoding.
 		// TODO Make this better.
-		const framerateFactor = 30.0 + (settings.frameRate - 30) / 2;
+		const framerateFactor = 30.0 + (framerate - 30) / 2;
 		const bitrate = Math.round(pixels * 0.07 * framerateFactor);
 
 		// ACTUAL BITRATE CALCULATION
@@ -168,25 +175,31 @@ export class Video {
 
 		// A list of codecs to try, in order of preference.
 		const HARDWARE_CODECS = [
-			// AV1
-			"av01.0.08M.08",
-			"av01",
-
-			// HEVC (aka h.265)
-			"hev1.1.6.L93.B0",
-			"hev1", // Browser's choice
-
 			// VP9
+			// More likely to have hardware decoding, but hardware encoding is less likely.
 			"vp09.00.10.08",
 			"vp09", // Browser's choice
 
 			// H.264
+			// Almost always has hardware encoding and decoding.
 			"avc1.640028",
 			"avc1.4D401F",
 			"avc1.42E01E",
 			"avc1",
 
+			// AV1
+			// One day will get moved higher up the list, but hardware decoding is rare.
+			"av01.0.08M.08",
+			"av01",
+
+			// HEVC (aka h.265)
+			// More likely to have hardware encoding, but less likely to be supported (licensing issues).
+			// Unfortunately, Firefox doesn't support decoding so it's down here at the bottom.
+			"hev1.1.6.L93.B0",
+			"hev1", // Browser's choice
+
 			// VP8
+			// A terrible codec but it's easy.
 			"vp8",
 		];
 
@@ -223,21 +236,27 @@ export class Video {
 			height,
 			bitrate,
 			latencyMode: "realtime",
-			framerate: settings.frameRate,
+			framerate,
 		};
 
 		// Try hardware encoding first.
 		for (const codec of HARDWARE_CODECS) {
 			const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
-			const { supported } = await VideoEncoder.isConfigSupported(config);
-			if (supported) return config;
+			const { supported, config: hardwareConfig } = await VideoEncoder.isConfigSupported(config);
+			if (supported && hardwareConfig) {
+				console.debug("using hardware encoding: ", hardwareConfig);
+				return hardwareConfig;
+			}
 		}
 
 		// Try software encoding.
 		for (const codec of SOFTWARE_CODECS) {
 			const config = Video.#codecSpecific(baseConfig, codec, bitrate, false);
-			const { supported } = await VideoEncoder.isConfigSupported(config);
-			if (supported) return config;
+			const { supported, config: softwareConfig } = await VideoEncoder.isConfigSupported(config);
+			if (supported && softwareConfig) {
+				console.debug("using software encoding: ", softwareConfig);
+				return softwareConfig;
+			}
 		}
 
 		throw new Error("no supported codec");
@@ -326,4 +345,64 @@ export class Video {
 	close() {
 		this.#signals.close();
 	}
+}
+
+// Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
+// Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
+// Thanks Jan-Ivar
+function VideoTrackProcessor(track: MediaStreamVideoTrack): ReadableStream<VideoFrame> {
+	if (self.MediaStreamTrackProcessor) {
+		return new self.MediaStreamTrackProcessor({ track }).readable;
+	}
+
+	console.warn("Using MediaStreamTrackProcessor polyfill; performance might suffer.");
+
+	const settings = track.getSettings();
+	if (!settings) {
+		throw new Error("track has no settings");
+	}
+
+	let video: HTMLVideoElement;
+	let canvas: HTMLCanvasElement;
+	let ctx: CanvasRenderingContext2D;
+	let last: DOMHighResTimeStamp;
+
+	const frameRate = settings.frameRate ?? 30;
+
+	return new ReadableStream<VideoFrame>({
+		async start() {
+			video = document.createElement("video") as HTMLVideoElement;
+			video.srcObject = new MediaStream([track]);
+			await Promise.all([
+				video.play(),
+				new Promise((r) => {
+					video.onloadedmetadata = r;
+				}),
+			]);
+			// TODO use offscreen canvas
+			canvas = document.createElement("canvas");
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+
+			const c = canvas.getContext("2d", { desynchronized: true });
+			if (!c) {
+				throw new Error("failed to create canvas context");
+			}
+			ctx = c;
+			last = performance.now();
+		},
+		async pull(controller) {
+			while (true) {
+				const now = performance.now();
+				if (now - last < 1000 / frameRate) {
+					await new Promise((r) => requestAnimationFrame(r));
+					continue;
+				}
+
+				last = now;
+				ctx.drawImage(video, 0, 0);
+				controller.enqueue(new VideoFrame(canvas, { timestamp: last * 1000 }));
+			}
+		},
+	});
 }

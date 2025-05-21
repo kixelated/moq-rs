@@ -50,14 +50,24 @@ export class Audio {
 
 		const settings = media.getSettings() as AudioTrackSettings;
 
+		// TODO: This is a Firefox hack to get the sample rate.
+		const sampleRate =
+			settings.sampleRate ??
+			(() => {
+				const ctx = new AudioContext();
+				const rate = ctx.sampleRate;
+				ctx.close();
+				return rate;
+			})();
+
 		const catalog = {
 			track: {
 				name: track.name,
 				priority: track.priority,
 			},
 			// TODO get codec and description from decoderConfig
-			codec: "Opus",
-			sampleRate: settings.sampleRate,
+			codec: "opus",
+			sampleRate,
 			numberOfChannels: settings.channelCount,
 			// TODO configurable
 			bitrate: 64_000,
@@ -116,8 +126,8 @@ export class Audio {
 			bitrate: catalog.bitrate,
 		});
 
-		const input = new MediaStreamTrackProcessor({ track: media });
-		const reader = input.readable.getReader();
+		const processor = AudioTrackProcessor(media);
+		const reader = processor.getReader();
 
 		(async () => {
 			for (;;) {
@@ -146,4 +156,79 @@ export class Audio {
 	close() {
 		this.#signals.close();
 	}
+}
+
+// Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
+// Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
+// Thanks Jan-Ivar
+function AudioTrackProcessor(track: MediaStreamAudioTrack): ReadableStream<AudioData> {
+	if (self.MediaStreamTrackProcessor) {
+		return new self.MediaStreamTrackProcessor({ track }).readable;
+	}
+
+	const settings = track.getSettings();
+	if (!settings) {
+		throw new Error("track has no settings");
+	}
+
+	let ac: AudioContext;
+	let node: AudioWorkletNode;
+	const arrays: Float32Array[][] = [];
+
+	return new ReadableStream({
+		async start() {
+			ac = new AudioContext({
+				// If undefined (Firefox), defaults to the system sample rate.
+				sampleRate: settings.sampleRate,
+			});
+
+			function worklet() {
+				registerProcessor(
+					"mstp-shim",
+					class Processor extends AudioWorkletProcessor {
+						process(input: Float32Array[][]) {
+							this.port.postMessage(input[0]);
+							return true;
+						}
+					},
+				);
+			}
+			await ac.audioWorklet.addModule(`data:text/javascript,(${worklet.toString()})()`);
+			node = new AudioWorkletNode(ac, "mstp-shim");
+			ac.createMediaStreamSource(new MediaStream([track])).connect(node);
+			node.port.addEventListener("message", ({ data }: { data: Float32Array[] }) => {
+				if (data.length) arrays.push(data);
+			});
+		},
+		async pull(controller) {
+			let channels: Float32Array[] | undefined = arrays.shift();
+
+			while (!channels) {
+				await new Promise((r) => {
+					node.port.onmessage = r;
+				});
+				channels = arrays.shift();
+			}
+
+			const joinedLength = channels.reduce((a, b) => a + b.length, 0);
+			const joined = new Float32Array(joinedLength);
+
+			channels.reduce((offset: number, channel: Float32Array): number => {
+				joined.set(channel, offset);
+				return offset + channel.length;
+			}, 0);
+
+			controller.enqueue(
+				new AudioData({
+					format: "f32-planar",
+					sampleRate: ac.sampleRate,
+					numberOfFrames: channels[0].length,
+					numberOfChannels: channels.length,
+					timestamp: (ac.currentTime * 1e6) | 0,
+					data: joined,
+					transfer: [joined.buffer],
+				}),
+			);
+		},
+	});
 }

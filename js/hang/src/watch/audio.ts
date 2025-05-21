@@ -15,11 +15,13 @@ export type Context = {
 export type AudioProps = {
 	volume?: number;
 	paused?: boolean;
+	muted?: boolean;
 };
 
 export class Audio {
 	source: AudioSource;
 	volume: Signal<number>;
+	muted: Signal<boolean>;
 	paused: Signal<boolean>;
 
 	#context = signal<Context | undefined>(undefined);
@@ -36,9 +38,13 @@ export class Audio {
 	#ref?: number;
 	#signals = new Signals();
 
+	// The volume to use when unmuted.
+	#unmuteVolume = 0.5;
+
 	constructor(source: AudioSource, props?: AudioProps) {
 		this.source = source;
 		this.volume = signal(props?.volume ?? 0.5);
+		this.muted = signal(props?.muted ?? true); // default to true because autoplay restrictions
 		this.paused = signal(props?.paused ?? false);
 
 		this.#signals.effect(() => {
@@ -71,8 +77,23 @@ export class Audio {
 			};
 		});
 
+		// Set the volume to 0 when muted.
+		this.#signals.effect(() => {
+			const muted = this.muted.get();
+			if (muted) {
+				this.#unmuteVolume = this.volume.peek() || 0.5;
+				this.volume.set(0);
+			} else {
+				this.volume.set(this.#unmuteVolume);
+			}
+		});
+
+		// Set unmute when the volume is non-zero.
 		this.#signals.effect(() => {
 			const volume = this.volume.get();
+
+			// Only download audio when the volume is non-zero.
+			this.muted.set(volume === 0);
 			this.source.enabled.set(volume > 0);
 		});
 

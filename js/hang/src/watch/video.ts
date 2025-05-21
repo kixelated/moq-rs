@@ -31,7 +31,9 @@ export class Video {
 		this.canvas = signal(props?.canvas);
 		this.paused = signal(props?.paused ?? false);
 
-		this.#ctx = this.#signals.derived(() => this.canvas.get()?.getContext("2d") ?? undefined);
+		this.#ctx = this.#signals.derived(
+			() => this.canvas.get()?.getContext("2d", { desynchronized: true }) ?? undefined,
+		);
 		this.#signals.effect(() => this.#schedule());
 		this.#signals.effect(() => this.#runEnabled());
 	}

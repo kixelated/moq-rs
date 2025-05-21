@@ -217,11 +217,7 @@ impl Session {
 	pub async fn consume_from(&mut self, origin: Origin, prefix: &str) {
 		let mut remotes = origin.announced(prefix);
 
-		tracing::debug!(%prefix, "consuming from");
-
 		while let Some(suffix) = remotes.active().await {
-			tracing::debug!(%suffix, "consuming");
-
 			match prefix {
 				// If there's no prefix, we can avoid a string copy.
 				"" => {

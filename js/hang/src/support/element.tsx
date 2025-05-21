@@ -1,10 +1,10 @@
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { Support, SupportRole, SupportShow } from "./";
+import { Support, SupportRole, SupportPartial } from "./";
 
 export class SupportElement extends HTMLElement {
 	#role = createSignal<SupportRole>("all");
-	#show = createSignal<SupportShow>("full");
+	#show = createSignal<SupportPartial>("full");
 
 	static get observedAttributes() {
 		return ["role", "show"];

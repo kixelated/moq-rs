@@ -17,7 +17,11 @@
 		"./connection": "./src/connection.ts",
 		"./signals": "./src/signals.ts"
 	},
-	"sideEffects": ["./src/publish/element.tsx", "./src/watch/element.tsx", "./src/support/element.tsx"],
+	"sideEffects": [
+		"./src/publish/element.tsx",
+		"./src/watch/element.tsx",
+		"./src/support/element.tsx"
+	],
 	"scripts": {
 		"build": "vite build && tsc -b && cp ../../LICENSE* ./dist",
 		"dev": "vite --open",
@@ -25,6 +29,7 @@
 	},
 	"dependencies": {
 		"@kixelated/moq": "link:../moq",
+		"@types/audioworklet": "^0.0.75",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",
 		"solid-js": "^1.9.6",

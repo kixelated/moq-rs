@@ -35,7 +35,7 @@ impl Publisher {
 				tracing::trace!(%prefix, "announce cancelled");
 			}
 			Err(err) => {
-				tracing::trace!(?err, %prefix, "announce error");
+				tracing::debug!(?err, %prefix, "announce error");
 			}
 			_ => {
 				tracing::trace!(%prefix, "announce complete");
@@ -80,7 +80,7 @@ impl Publisher {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed cancelled");
 			}
 			Err(err) => {
-				tracing::debug!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
+				tracing::info!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
 			}
 			_ => {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed complete");
@@ -141,7 +141,16 @@ impl Publisher {
 
 					let future = Some(Box::pin(async move {
 						// TODO open streams in priority order to help with MAX_STREAMS flow control issues.
-						let mut stream = Writer::open(&mut session, message::DataType::Group).await?;
+
+						let mut stream = tokio::select! {
+							biased;
+							res = Writer::open(&mut session, message::DataType::Group) => res?,
+							// Add a timeout to detect when we're blocked by flow control.
+							_ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+								return Err(Error::Timeout);
+							}
+						};
+
 						stream.set_priority(priority);
 
 						tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group");
@@ -154,7 +163,7 @@ impl Publisher {
 								stream.abort(&Error::Cancel);
 							}
 							Err(err) => {
-								tracing::trace!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
+								tracing::debug!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
 								stream.abort(&err);
 							}
 							_ => {
