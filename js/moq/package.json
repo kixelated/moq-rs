@@ -5,15 +5,15 @@
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
-	"files": ["dist", "README.md"],
+	"files": ["./src", "README.md"],
 	"exports": {
-		".": "./dist/index.js"
+		".": "./src/index.js"
 	},
 	"scripts": {
 		"build": "tsc -b",
 		"check": "tsc --noEmit",
 		"test": "tsx --test",
-		"release": "pnpm build && pnpm check && pnpm test && pnpm publish"
+		"release": "tsx scripts/release.ts"
 	},
 	"devDependencies": {
 		"typescript": "^5.8.3",
