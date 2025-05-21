@@ -1,5 +1,5 @@
+import { Signals, signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
-import { Signals, signal } from "../signals";
 import { WatchControls } from "./controls";
 import { Watch } from "./watch";
 
