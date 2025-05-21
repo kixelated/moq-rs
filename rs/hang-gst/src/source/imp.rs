@@ -149,7 +149,7 @@ impl HangSrc {
 	async fn setup(&self) -> anyhow::Result<()> {
 		let (quic, url) = {
 			let settings = self.settings.lock().unwrap();
-			let url = url::Url::parse(&settings.url.as_ref().expect("url is required"))?;
+			let url = url::Url::parse(settings.url.as_ref().expect("url is required"))?;
 
 			// TODO support TLS certs and other options
 			let quic = quic::Args {
