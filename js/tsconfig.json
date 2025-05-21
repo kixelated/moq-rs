@@ -1,0 +1,39 @@
+{
+	"compilerOptions": {
+		"lib": ["esnext", "dom"],
+		"target": "esnext",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+
+		"declaration": true,
+		"isolatedModules": true,
+
+		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+		"alwaysStrict": true,
+		"exactOptionalPropertyTypes": false, // makes ? less usable
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitAny": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noImplicitThis": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noUncheckedIndexedAccess": false, // Allows [0] access to arrays
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"strict": true,
+		"strictBindCallApply": true,
+		"strictBuiltinIteratorReturn": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+		"useUnknownInCatchVariables": true,
+
+		// Disable enums and weird Typescript features.
+		"erasableSyntaxOnly": true,
+
+		// Avoids a bug with the dom-mediacapture-transform types.
+		"skipLibCheck": true
+	}
+}

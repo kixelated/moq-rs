@@ -2,8 +2,10 @@
 
 # Using Just: https://github.com/casey/just?tab=readme-ov-file#installation
 
-export RUST_BACKTRACE := "1"
-export RUST_LOG := "info"
+# These commands have been split into separate files for each language.
+# This is just a shim that uses the relevant file or calls both.
+
+set quiet
 
 # List all of the available commands.
 default:
@@ -11,147 +13,64 @@ default:
 
 # Install any required dependencies.
 setup:
-	# Upgrade Rust
-	rustup update
-
-	# Make sure the WASM target is installed.
-	rustup target add wasm32-unknown-unknown
-
-	# Make sure the right components are installed.
-	rustup component add rustfmt clippy
-
-	# Install cargo binstall if needed.
-	cargo install cargo-binstall
-
-	# Install cargo shear if needed.
-	cargo binstall --no-confirm cargo-shear
+	just --justfile rs/justfile setup
 
 # Run the relay, web server, and publish bbb.
-all:
-	npm i && npx concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just bbb" "sleep 2 && just web"
+all: build
+	# Then run the relay with a slight head start.
+	# It doesn't matter if the web beats BBB because we support automatic reloading.
+	js/node_modules/.bin/concurrently --kill-others --names srv,bbb,web --prefix-colors auto "just relay" "sleep 1 && just pub bbb" "sleep 1 && just web"
 
 # Run a localhost relay server
 relay:
-	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
-
-# Run a localhost leaf server, connecting to the relay server
-leaf:
-	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
-
-# Run a cluster of relay servers
-cluster:
-	npm i && npx concurrently --kill-others --names root,leaf,bbb,web --prefix-colors auto "just relay" "sleep 1 && just leaf" "sleep 2 && just bbb" "sleep 3 && just web"
-
-# Download and stream the Big Buck Bunny video to the localhost relay server
-bbb: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub "bbb")
-
-# Download and stream the Big Buck Bunny video to localhost directly
-bbb-serve: (download "bbb" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4") (pub-serve "bbb")
-
-# Download and stream the inferior Tears of Steel video
-tos: (download "tos" "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") (pub "tos")
-
-# Download and stream AV1 content:
-av1: (download "av1" "http://download.opencontent.netflix.com.s3.amazonaws.com/AV1/Sparks/Sparks-5994fps-AV1-10bit-1920x1080-2194kbps.mp4") (pub "av1")
-
-# Download and stream HEVC content:
-hevc: (download "hevc" "https://test-videos.co.uk/vids/jellyfish/mp4/h265/1080/Jellyfish_1080_10s_30MB.mp4") (pub "hevc")
-
-# Download the video and convert it to a fragmented MP4 that we can stream
-download name url:
-	if [ ! -f dev/{{name}}.mp4 ]; then \
-		wget {{url}} -O dev/{{name}}.mp4; \
-	fi
-
-	if [ ! -f dev/{{name}}.fmp4 ]; then \
-		ffmpeg -i dev/{{name}}.mp4 \
-			-c copy \
-			-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-			dev/{{name}}.fmp4; \
-	fi
+	just --justfile rs/justfile relay
 
 # Publish a video using ffmpeg to the localhost relay server
 pub name:
-	# Pre-build the binary so we don't queue media while compiling.
-	cargo build --bin moq-karp
+	just --justfile rs/justfile pub {{name}}
 
-	# Run ffmpeg and pipe the output to moq-karp
-	ffmpeg -hide_banner -v quiet \
-		-stream_loop -1 -re \
-		-i "dev/{{name}}.fmp4" \
-		-c copy \
-		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- publish "http://localhost:4443/demo/{{name}}"
+# Publish a video using gstreamer to the localhost relay server
+pub-gst name:
+	just --justfile rs/justfile pub-gst {{name}}
 
-# Publish a video using ffmpeg directly from moq-karp to the localhost
-pub-serve name:
-	# Pre-build the binary so we don't queue media while compiling.
-	cargo build --bin moq-karp
+# Subscribe to a video using gstreamer
+sub-gst name:
+	just --justfile rs/justfile sub-gst {{name}}
 
-	# Run ffmpeg and pipe the output to moq-karp
-	ffmpeg -hide_banner -v quiet \
-		-stream_loop -1 -re \
-		-i "dev/{{name}}.fmp4" \
-		-c copy \
-		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin moq-karp -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve "/demo/{{name}}"
+# Publish a video using ffmpeg directly from hang to the localhost
+serve name:
+	just --justfile rs/justfile serve {{name}}
 
 # Run the web server
 web:
-	npm i && npm run dev
+	just --justfile js/justfile web
 
 # Publish the clock broadcast
-clock-pub:
-	cargo run --bin moq-clock -- "http://localhost:4443" publish
-
-# Subscribe to the clock broadcast
-clock-sub:
-	cargo run --bin moq-clock -- "http://localhost:4443" subscribe
+# `action` is either `publish` or `subscribe`
+clock action:
+	just --justfile rs/justfile clock {{action}}
 
 # Run the CI checks
-check:
-	cargo check --all-targets --all-features
-	cargo check -p moq-web --target wasm32-unknown-unknown
-	cargo clippy --all-targets --all-features -- -D warnings
-	cargo clippy -p moq-web --target wasm32-unknown-unknown
-	cargo fmt -- --check
-	cargo shear # requires: cargo binstall cargo-shear
-	npm i && npm run check
-
-# Run any CI tests
-test:
-	cargo test
+check flags="":
+	just --justfile rs/justfile check {{flags}}
+	just --justfile js/justfile check
 
 # Automatically fix some issues.
-fix:
-	cargo fix --allow-staged --all-targets --all-features
-	cargo clippy --fix --allow-staged --all-targets --all-features
-	cargo clippy -p moq-web --target wasm32-unknown-unknown --fix --allow-staged --all-targets --all-features
-	cargo fmt --all
-	npm i && npm run fix
-	cargo shear --fix
+fix flags="":
+	just --justfile rs/justfile fix {{flags}}
+	just --justfile js/justfile fix
+
+# Run any CI tests
+test flags="":
+	just --justfile rs/justfile test {{flags}}
+	just --justfile js/justfile test
 
 # Upgrade any tooling
 upgrade:
-	rustup upgrade
+	just --justfile rs/justfile upgrade
+	just --justfile js/justfile upgrade
 
-	# Install cargo-upgrades if needed.
-	cargo install cargo-upgrades cargo-edit
-	cargo upgrade
-
-	# Update the NPM dependencies
-	npm update
-	npm outdated
-
-# Build the release NPM package
+# Build the packages
 build:
-	npm i && npm run build
-
-# Build and link the NPM package
-link:
-	npm i && npm run build:dev && npm run build:tsc
-	npm link
-
-# Delete any ephemeral build files
-clean:
-	rm -r dist
+	just --justfile rs/justfile build
+	just --justfile js/justfile build

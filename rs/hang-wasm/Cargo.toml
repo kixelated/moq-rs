@@ -1,0 +1,81 @@
+[package]
+name = "hang-wasm"
+authors = ["Luke Curley <kixelated@gmail.com>"]
+edition = "2021"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kixelated/moq"
+description = "Web implementation for MoQ utilizing WebAssembly+Typescript"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+console_error_panic_hook = "0.1"
+gloo-net = "0.6"
+hang = { workspace = true }
+hex = "0.4"
+js-sys = "0.3.77"
+rubato = "0.16"
+thiserror = "2"
+tokio = { workspace = true, features = ["sync"] }
+tracing = "0.1"
+ts-rs = { version = "10.1", features = ["url-impl"] }
+url = "2"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasm-tracing = "2.0"
+web-async = { workspace = true }
+web-codecs = "0.3.7"
+web-message = { version = "0.0.2", features = [
+	"Url",
+	"OffscreenCanvas",
+	"AudioData",
+	"MessagePort",
+	"VideoFrame",
+] }
+web-streams = "0.1.2"
+web-time = "1"
+
+[dependencies.web-sys]
+version = "0.3.77"
+features = [
+	# DOM
+	"Window",
+	"Document",
+	"HtmlElement",
+	"Node",
+	"Text",
+	"HtmlVideoElement",
+
+	# Custom elements
+	"HtmlSlotElement",
+	"AssignedNodesOptions",
+	"CustomEvent",
+	"CustomEventInit",
+	"Event",
+	"EventTarget",
+
+	# Canvas stuff
+	"CanvasRenderingContext2d",
+	"HtmlCanvasElement",
+	"HtmlImageElement",
+	"OffscreenCanvas",
+	"DedicatedWorkerGlobalScope",
+	"OffscreenCanvasRenderingContext2d",
+
+	# Capture
+	"MediaStream",
+	"MediaStreamTrack",
+	"MediaTrackSettings",
+	"MediaStreamTrackProcessor",
+	"MediaStreamTrackProcessorInit",
+	"ReadableStreamDefaultReader",
+
+	"MessagePort",
+
+	"console",
+
+	"AudioData",
+	"AudioDataCopyToOptions",
+]

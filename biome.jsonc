@@ -1,0 +1,34 @@
+{
+	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"files": {
+		// Biome is too dumb to use our .gitignore.
+		"ignore": ["**/node_modules", "**/dist"]
+	},
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"formatter": {
+		"enabled": true,
+		"useEditorconfig": true
+	},
+	"organizeImports": { "enabled": true },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"a11y": {
+				"useMediaCaption": "off"
+			},
+			"style": {
+				"useImportType": "off",
+				"useNodejsImportProtocol": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	}
+}

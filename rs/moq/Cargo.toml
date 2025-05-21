@@ -1,0 +1,32 @@
+[package]
+name = "moq-lite"
+description = "Media over QUIC - Transport (Lite)"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq"
+license = "MIT OR Apache-2.0"
+
+version = "0.1.0"
+edition = "2021"
+
+keywords = ["quic", "http3", "webtransport", "media", "live"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+async-channel = "2"
+bytes = "1"
+futures = "0.3"
+num_enum = "0.7"
+serde = { workspace = true, optional = true }
+thiserror = "2"
+tokio = { workspace = true, features = [
+	"macros",
+	"io-util",
+	"sync",
+	"test-util",
+] }
+tracing = "0.1"
+web-async = { workspace = true }
+web-transport = { workspace = true }

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en" class="dark">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MoQ Demo</title>
+
+	<link rel="stylesheet" href="index.css">
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+
+<body>
+	<!-- Show if this browser supports everything we need. -->
+	<hang-support role="publish"></hang-support>
+
+	<!--
+		Use the included Web Component to render a preview and simple controls.
+		You can set the url in publish.ts based on query parameters.
+		That's optional of course, you could instead add: url="http://localhost:4443/demo/me.hang"
+	-->
+	<hang-publish audio video controls>
+		<!-- It's optional to provide a video element to preview the outgoing media. -->
+		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
+	</hang-publish>
+
+	<h3>Other demos:</h3>
+	<ul>
+		<li><a href="index.html?name=demo/me" target="_blank" rel="noreferrer" id="watch">Watch your broadcast: <span
+					id="watch-name"></span></a></li>
+		<li><a href="index.html">Watch the handsome bunny instead.</a></li>
+		<li><a href="announce.html">List all active broadcasts.</a></li>
+	</ul>
+
+	<h3>Tips:</h3>
+	<p>
+		This page creates a broadcast called `demo/me` by default.
+		You can use <a href="index.html?&name=demo/notme">query parameters</a> to use a different name and create
+		multiple broadcasts.
+	</p>
+	<p>
+		Reusing the same broadcast name means viewers will automatically reconnect to the new session.
+		Try reloading the page and broadcasting again; viewers will automatically reconnect!
+	</p>
+	<hr />
+	<p>
+		Media only flows over the network when requested!
+		Connecting to a relay means the broadcast is advertised as available, but nothing is transferred until there's
+		at least one viewer per track.
+		If there's multiple viewers, the relay will fan out the media to all of them.
+		<b>TODO</b>: We still encode media even when there are no viewers, but somebody should improve this.
+	</p>
+	<p>
+		You can create a broadcaster via the provided <code class="language-html">&lt;hang-publish&gt;</code> <a
+			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
+		Either modify HTML attributes like <code class="language-html">&lt;hang-publish device="camera" /&gt;</code>
+		or access the element's Javascript API:
+	<pre><code class="language-typescript">const publish = document.getElementById("publish");
+publish.lib.device = "camera";</code></pre>
+
+	And of course you can use the Javascript API directly instead of the Web Component.
+	It's a bit more complicated and subject to change, but it gives you more control.
+	</p>
+	<hr>
+	<p>
+		You're not limited to web publishing either.
+		Try running <code class="language-bash">just pub tos</code> in a new terminal and then <a
+			href="index.html?name=tos" target="_blank">watch robots bang</a>.
+		This uses ffmpeg to produce a fragmented MP4 file piped over stdout then sent over the network.
+		Yeah it's pretty gross.
+	</p>
+	<p>
+		If you want to do things more efficiently, you can use the <i>alpha</i> gstreamer plugin via:
+		<code class="language-bash">just pub-gst tos</code>.
+		It's pretty crude and doesn't handle all pipeline events; contributions welcome!
+	</p>
+	<p>
+		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
+		via gstreamer.
+	</p>
+	<hr />
+	<p>
+		This demo uses `http://` so it's not secure.
+		It works by fetching the certificate hash (via HTTP) and providing that to WebTransport, which requires HTTPS.
+		To run this in production, you'll need a valid certificate (ex. letsencrypt) and to use `https://`.
+	</p>
+</body>
+
+<script type="module" src="publish.ts"></script>
+
+</html>
