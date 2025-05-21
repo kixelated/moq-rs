@@ -42,6 +42,8 @@ jobs:
         uses: MarcoIeni/release-plz-action@v0.5
         with:
           manifest_path: ./rs/Cargo.toml
+          config: ./rs/.release-plz.toml
+
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
