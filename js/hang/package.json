@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:^0.5.0",
+		"@kixelated/signals": "workspace:^0.1.0",
 		"@types/audioworklet": "^0.0.75",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",

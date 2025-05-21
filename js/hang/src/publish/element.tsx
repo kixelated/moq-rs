@@ -1,5 +1,5 @@
+import { signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
-import { signal } from "../signals";
 import { PublishDevice } from "./broadcast";
 import { PublishControls } from "./controls";
 import { Publish } from "./publish";

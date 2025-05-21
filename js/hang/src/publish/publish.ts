@@ -1,5 +1,5 @@
+import { Signal, Signals, signal } from "@kixelated/signals";
 import { Connection, ConnectionProps } from "../connection";
-import { Signal, Signals, signal } from "../signals";
 import { PublishBroadcast, PublishBroadcastProps } from "./broadcast";
 
 export interface PublishProps {

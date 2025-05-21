@@ -1,5 +1,3 @@
-/// <reference types="vite/client" />
-
 // A wrapper around solid-js signals to provide a more ergonomic API.
 
 import {
@@ -91,6 +89,7 @@ export class Signals {
 	#dispose: Dispose;
 	#owner: Owner;
 
+	// @ts-ignore
 	static dev = import.meta.env?.MODE !== "production";
 
 	// Sanity check to make sure roots are being disposed on dev.

@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
+import { Derived, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
-import { Derived, Signal, Signals, signal } from "../signals";
 
 // An annoying hack, but there's stuttering that we need to fix.
 const LATENCY = 50;

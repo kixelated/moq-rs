@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
+import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Frame } from "../container/frame";
-import { Signal, Signals, signal } from "../signals";
 import { AudioTrackSettings } from "../util/settings";
 
 // Create a group every half a second

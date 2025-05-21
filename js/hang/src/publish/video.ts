@@ -1,8 +1,8 @@
 import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
+import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
-import { Signal, Signals, signal } from "../signals";
 import { VideoTrackSettings } from "../util/settings";
 
 // Create a group every 2 seconds

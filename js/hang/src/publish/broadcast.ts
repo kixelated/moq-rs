@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
+import { Derived, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { Derived, Signal, Signals, signal } from "../signals";
 import { AudioTrackConstraints, PublishAudio } from "./audio";
 import { PublishVideo, VideoTrackConstraints } from "./video";
 
