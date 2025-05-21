@@ -38,6 +38,7 @@ impl Args {
 	}
 }
 
+#[derive(Clone)]
 pub struct Config {
 	pub bind: net::SocketAddr,
 	pub tls: tls::Config,
