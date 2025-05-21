@@ -37,8 +37,8 @@ importers:
   hang:
     dependencies:
       '@kixelated/moq':
-        specifier: link:../moq
-        version: link:../moq
+        specifier: ^0.5.0
+        version: 0.5.0
       '@types/audioworklet':
         specifier: ^0.0.75
         version: 0.0.75
@@ -437,6 +437,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.25':
     resolution: {integrity: sha512-vNk6aEwybGtawWmy/PzwnGDOjCkLWSD2wqvjGGAgOAwCGWySYXfYoxt00IJkTF+8Lb57DwOb3Aa0o9CApepiYQ==}
+
+  '@kixelated/moq@0.5.0':
+    resolution: {integrity: sha512-LUun0t7n3K2l+7F24bB2TgUeoW73X21f9Bf6N9l82BLKmKMU1QbuZTP9LBGPxHDnaUyz3a/Cc8kLrJzsZIqzRA==}
 
   '@microsoft/api-documenter@7.26.27':
     resolution: {integrity: sha512-POELaGjCyxYBHP0vGUS9SoyClEEA3+YLeGYwEShJ+ttbB/DzdkWDH1IK5pUGxwe/J2bJ7SuRbI7u17O16MrxCA==}
@@ -1948,6 +1951,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  '@kixelated/moq@0.5.0':
+    dependencies:
+      buffer: 6.0.3
 
   '@microsoft/api-documenter@7.26.27(@types/node@22.15.19)':
     dependencies:

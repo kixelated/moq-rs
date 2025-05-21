@@ -1,18 +1,19 @@
 {
 	"name": "@kixelated/moq",
 	"type": "module",
-	"version": "0.2.0",
+	"version": "0.5.0",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
+	"files": ["dist", "README.md"],
 	"exports": {
-		".": "./src/index.ts",
-		"./util": "./src/util/index.ts"
+		".": "./dist/index.js"
 	},
 	"scripts": {
-		"build": "tsc -b && cp ../../LICENSE* ./dist && cp ./README.md ./dist && cp ./package.json ./dist",
+		"build": "tsc -b",
 		"check": "tsc --noEmit",
-		"test": "tsx --test"
+		"test": "tsx --test",
+		"release": "pnpm build && pnpm check && pnpm test && pnpm publish"
 	},
 	"devDependencies": {
 		"typescript": "^5.8.3",

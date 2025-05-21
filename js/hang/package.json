@@ -1,7 +1,7 @@
 {
 	"name": "@kixelated/hang",
 	"type": "module",
-	"version": "0.2.0",
+	"version": "0.1.0",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
@@ -17,14 +17,16 @@
 		"./connection": "./src/connection.ts",
 		"./signals": "./src/signals.ts"
 	},
+	"files": ["./src", "README.md"],
 	"sideEffects": ["./src/publish/element.tsx", "./src/watch/element.tsx", "./src/support/element.tsx"],
 	"scripts": {
-		"build": "vite build && tsc -b && cp ../../LICENSE* ./dist",
+		"build": "vite build && tsc -b",
 		"dev": "vite --open",
-		"check": "tsc --noEmit"
+		"check": "tsc --noEmit",
+		"release": "tsx scripts/release.ts"
 	},
 	"dependencies": {
-		"@kixelated/moq": "link:../moq",
+		"@kixelated/moq": "^0.5.0",
 		"@types/audioworklet": "^0.0.75",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",

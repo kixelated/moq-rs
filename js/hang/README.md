@@ -11,43 +11,24 @@ See [quic.video](https://quic.video) for more information.
 The principles are the same but the implementation is exponentially simpler given a narrower focus (and no politics).
 
 # Usage
-This library contains just the generic transport.
-More documentation will be available later, until then refer to the code.
+This library contains a lot of media stuff.
+More documentation will be available later, until then refer to the code and especially the demos.
 
-```ts
-import * as Moq from "@kixelated/moq";
+```html
+    <!-- import "@kixelated/hang/publish/element" -->
+	<hang-publish url="http://localhost:4443/demo/me.hang" audio video controls>
+		<!-- It's optional to provide a video element to preview the outgoing media. -->
+		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
+	</hang-publish>
 
-const conn = await Moq.Connection.connect(new URL("http://localhost:4443/"));
-
-// Optional: Discover broadcasts matching a prefix.
-const announced = conn.announced("demo/");
-for (;;) {
-	const announce = await announced.next();
-	if (!announce) break;
-
-	console.log("discovered broadcast:", announce.path);
-
-	// NOTE: This code is untested and the API is subject to change.
-	const broadcast = conn.consume(`demo/${announce.path}`);
-	const track = broadcast.subscribe("catalog.json");
-
-	// A track can have multiple groups (unordered+unreliable).
-	const group = await track.nextGroup();
-
-	// A group can have multiple frames (ordered+reliable).
-	const frame = await group.nextFrame();
-
-	// This is a Uint8Array; but the contents are actually JSON.
-	console.log("received frame:", frame);
-
-	// Don't forget to close to release resources.
-	frame.close();
-	group.close();
-	track.close();
-	broadcast.close();
-}
+	<!-- import "@kixelated/hang/watch/element" -->
+	<hang-watch url="http://localhost:4443/demo/me.hang" muted controls>
+		<!-- It's optional to provide a canvas element to render the incoming media. -->
+		<canvas style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;"></canvas>
+	</hang-watch>
 ```
 
+The API is still evolving, so expect breaking changes.
 
 # License
 
