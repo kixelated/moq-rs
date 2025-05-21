@@ -380,8 +380,8 @@ mod test {
 		assert!(producer.insert(ac));
 		assert!(producer.insert(de));
 
-		consumer.assert_active(ab);
-		consumer.assert_active(ac);
+		consumer.assert_active("b");
+		consumer.assert_active("c");
 		consumer.assert_wait();
 	}
 
@@ -398,16 +398,16 @@ mod test {
 		assert!(producer.insert(ac));
 		assert!(producer.insert(de));
 
-		consumer.assert_active(ab);
-		consumer.assert_active(ac);
+		consumer.assert_active("b");
+		consumer.assert_active("c");
 		consumer.assert_wait();
 
 		assert!(producer.remove(de));
 		assert!(producer.remove(ac));
 		assert!(producer.remove(ab));
 
-		consumer.assert_ended(ac);
-		consumer.assert_ended(ab);
+		consumer.assert_ended("c");
+		consumer.assert_ended("b");
 		consumer.assert_wait();
 	}
 
