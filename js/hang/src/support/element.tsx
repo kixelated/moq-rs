@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { Support, SupportRole, SupportPartial } from "./";
+import { Support, SupportPartial, SupportRole } from "./";
 
 export class SupportElement extends HTMLElement {
 	#role = createSignal<SupportRole>("all");

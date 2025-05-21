@@ -240,13 +240,18 @@ export class Video {
 		};
 
 		// Try hardware encoding first.
-		for (const codec of HARDWARE_CODECS) {
-			const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
-			const { supported, config: hardwareConfig } = await VideoEncoder.isConfigSupported(config);
-			if (supported && hardwareConfig) {
-				console.debug("using hardware encoding: ", hardwareConfig);
-				return hardwareConfig;
+		// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
+		if (!navigator.userAgent.toLowerCase().includes("firefox")) {
+			for (const codec of HARDWARE_CODECS) {
+				const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
+				const { supported, config: hardwareConfig } = await VideoEncoder.isConfigSupported(config);
+				if (supported && hardwareConfig) {
+					console.debug("using hardware encoding: ", hardwareConfig);
+					return hardwareConfig;
+				}
 			}
+		} else {
+			console.warn("Cannot detect hardware encoding on Firefox.");
 		}
 
 		// Try software encoding.
@@ -272,7 +277,7 @@ export class Video {
 		const config: VideoEncoderConfig = {
 			...base,
 			codec,
-			hardwareAcceleration: hardware ? "prefer-hardware" : "prefer-software",
+			hardwareAcceleration: hardware ? "prefer-hardware" : undefined,
 		};
 
 		// We scale the bitrate for more efficient codecs.

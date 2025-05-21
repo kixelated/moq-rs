@@ -17,11 +17,7 @@
 		"./connection": "./src/connection.ts",
 		"./signals": "./src/signals.ts"
 	},
-	"sideEffects": [
-		"./src/publish/element.tsx",
-		"./src/watch/element.tsx",
-		"./src/support/element.tsx"
-	],
+	"sideEffects": ["./src/publish/element.tsx", "./src/watch/element.tsx", "./src/support/element.tsx"],
 	"scripts": {
 		"build": "vite build && tsc -b && cp ../../LICENSE* ./dist",
 		"dev": "vite --open",

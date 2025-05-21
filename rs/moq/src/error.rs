@@ -63,6 +63,7 @@ impl Error {
 			Self::Cancel => 0,
 			Self::RequiredExtension(_) => 1,
 			Self::Old => 2,
+			Self::Timeout => 3,
 			Self::WebTransport(_) => 4,
 			Self::Decode(_) => 5,
 			Self::Version(..) => 9,

@@ -1,5 +1,5 @@
 import { Show, render } from "solid-js/web";
-import { signal, Signals } from "../signals";
+import { Signals, signal } from "../signals";
 import { WatchControls } from "./controls";
 import { Watch } from "./watch";
 

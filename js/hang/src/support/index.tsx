@@ -3,13 +3,15 @@ import { JSX, Match, Show, Switch, createMemo, createSelector, createSignal } fr
 export type SupportRole = "core" | "watch" | "publish" | "all";
 export type SupportPartial = "full" | "partial" | "none";
 
+const FIREFOX = navigator.userAgent.toLowerCase().includes("firefox");
+
 export type SupportAudio = {
 	aac: boolean;
 	opus: boolean;
 };
 
 export type SupportCodec = {
-	hardware: boolean;
+	hardware?: boolean; // undefined on Firefox
 	software: boolean;
 };
 
@@ -82,7 +84,9 @@ async function videoDecoderSupported(codec: keyof typeof CODECS) {
 			})
 		).supported === true;
 
+	// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
 	const hardware =
+		!navigator.userAgent.toLowerCase().includes("firefox") &&
 		(
 			await VideoDecoder.isConfigSupported({
 				codec: CODECS[codec],
@@ -107,7 +111,9 @@ async function videoEncoderSupported(codec: keyof typeof CODECS) {
 			})
 		).supported === true;
 
+	// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
 	const hardware =
+		!navigator.userAgent.toLowerCase().includes("firefox") &&
 		(
 			await VideoEncoder.isConfigSupported({
 				codec: CODECS[codec],
@@ -312,7 +318,7 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 
 	const binary = (value: boolean | undefined) => (value ? "🟢 Yes" : "🔴 No");
 	const hardware = (codec: SupportCodec | undefined) =>
-		codec?.hardware ? "🟢 Hardware" : codec?.software ? "🟡 Software" : "🔴 No";
+		codec?.hardware ? "🟢 Hardware" : codec?.software ? `🟡 Software${FIREFOX ? "*" : ""}` : "🔴 No";
 	const partial = (value: SupportPartial | undefined) =>
 		value === "full" ? "🟢 Full" : value === "partial" ? "🟡 Partial" : "🔴 None";
 
@@ -375,6 +381,20 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 					<div style={c3}>{hardware(support.video.decoding?.vp9)}</div>
 					<div style={c2}>VP8</div>
 					<div style={c3}>{hardware(support.video.decoding?.vp8)}</div>
+				</Show>
+				<Show when={FIREFOX}>
+					<div
+						style={{
+							"grid-column-start": 1,
+							"grid-column-end": 4,
+							"text-align": "center",
+							"font-size": "0.875rem",
+							"font-style": "italic",
+						}}
+					>
+						* Hardware acceleration is{" "}
+						<a href="https://github.com/w3c/webcodecs/issues/896">undetectable</a> on Firefox.
+					</div>
 				</Show>
 			</Show>
 		</div>
