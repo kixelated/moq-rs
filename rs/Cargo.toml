@@ -22,8 +22,7 @@ default-members = [
 resolver = "2"
 
 [workspace.dependencies]
-web-transport = "0.8.3"
-#web-transport = { path = "../../web-transport-rs/web-transport" }
+web-transport = "0.9.0"
 web-async = { version = "0.1.1", features = ["tracing"] }
 tokio = "1.45"
 serde = { version = "1", features = ["derive"] }

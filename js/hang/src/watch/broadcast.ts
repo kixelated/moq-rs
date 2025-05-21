@@ -5,20 +5,20 @@ import { Signal, Signals, signal } from "../signals";
 import { AudioSource } from "./audio";
 import { VideoSource } from "./video";
 
-export type BroadcastProps = {
+export interface BroadcastProps {
 	// The broadcast path relative to the connection URL.
-	// It can be "" if you want to watch the connection's default broadcast.
+	// Defaults to ""
 	path?: string;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
-};
+}
 
 // A broadcast that (optionally) reloads automatically when live/offline.
 export class Broadcast {
 	connection: Connection;
 
-	path: Signal<string | undefined>;
+	path: Signal<string>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
 	audio: AudioSource = new AudioSource();
@@ -37,7 +37,7 @@ export class Broadcast {
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
-		this.path = signal(props?.path);
+		this.path = signal(props?.path ?? "");
 		this.#reload = props?.reload ?? true;
 
 		this.#signals.effect(() => this.#runActive());
@@ -59,7 +59,6 @@ export class Broadcast {
 		if (!conn) return;
 
 		const path = this.path.get();
-		if (path === undefined) return;
 
 		const announced = conn.announced(path);
 		(async () => {
@@ -68,6 +67,8 @@ export class Broadcast {
 
 				// We're donezo.
 				if (!update) break;
+
+				console.log("update", update);
 
 				// Require full equality
 				if (update.path !== "") {
@@ -89,8 +90,6 @@ export class Broadcast {
 		if (!conn) return;
 
 		const path = this.path.get();
-		if (path === undefined) return;
-
 		if (!this.#active.get()) return;
 
 		const broadcast = conn.consume(path);
