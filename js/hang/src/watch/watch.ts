@@ -1,6 +1,6 @@
 import { Connection, ConnectionProps } from "../connection";
 import { WatchAudio, WatchAudioProps } from "./audio";
-import { WatchBroadcast, BroadcastProps } from "./broadcast";
+import { BroadcastProps, WatchBroadcast } from "./broadcast";
 import { WatchVideo, WatchVideoProps } from "./video";
 
 export type WatchProps = {
