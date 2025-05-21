@@ -2,8 +2,8 @@ import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Signal, Signals, signal } from "../signals";
-import { AudioSource } from "./audio";
-import { VideoSource } from "./video";
+import { WatchAudioSource } from "./audio";
+import { WatchVideoSource } from "./video";
 
 export interface BroadcastProps {
 	// The broadcast path relative to the connection URL.
@@ -15,14 +15,14 @@ export interface BroadcastProps {
 }
 
 // A broadcast that (optionally) reloads automatically when live/offline.
-export class Broadcast {
+export class WatchBroadcast {
 	connection: Connection;
 
 	path: Signal<string>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
-	audio: AudioSource = new AudioSource();
-	video: VideoSource = new VideoSource();
+	audio: WatchAudioSource = new WatchAudioSource();
+	video: WatchVideoSource = new WatchVideoSource();
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 

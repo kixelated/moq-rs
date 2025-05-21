@@ -2,43 +2,43 @@ import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Derived, Signal, Signals, signal } from "../signals";
-import { Audio, AudioTrackConstraints } from "./audio";
-import { Video, VideoTrackConstraints } from "./video";
+import { PublishAudio, AudioTrackConstraints } from "./audio";
+import { PublishVideo, VideoTrackConstraints } from "./video";
 
-export type Device = "screen" | "camera";
+export type PublishDevice = "screen" | "camera";
 
-export type BroadcastProps = {
+export type PublishBroadcastProps = {
 	publish?: boolean;
 	path?: string;
 	audio?: AudioTrackConstraints | boolean;
 	video?: VideoTrackConstraints | boolean;
-	device?: Device;
+	device?: PublishDevice;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
 };
 
-export class Broadcast {
+export class PublishBroadcast {
 	connection: Connection;
 	publish: Signal<boolean>;
 	path: Signal<string>;
 
-	audio: Audio;
-	video: Video;
+	audio: PublishAudio;
+	video: PublishVideo;
 
 	catalog: Derived<Catalog.Broadcast>;
-	device: Signal<Device | undefined>;
+	device: Signal<PublishDevice | undefined>;
 
 	#broadcast = signal<Moq.BroadcastProducer | undefined>(undefined);
 	#catalog = new Moq.TrackProducer("catalog.json", 0);
 	#signals = new Signals();
 
-	constructor(connection: Connection, props?: BroadcastProps) {
+	constructor(connection: Connection, props?: PublishBroadcastProps) {
 		this.connection = connection;
 		this.publish = signal(props?.publish ?? true);
 		this.path = signal(props?.path ?? "");
-		this.audio = new Audio({ constraints: props?.audio });
-		this.video = new Video({ constraints: props?.video });
+		this.audio = new PublishAudio({ constraints: props?.audio });
+		this.video = new PublishVideo({ constraints: props?.video });
 		this.device = signal(props?.device);
 
 		this.#signals.effect(() => {

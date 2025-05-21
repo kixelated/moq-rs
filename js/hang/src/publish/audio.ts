@@ -12,12 +12,12 @@ export type AudioTrackConstraints = Omit<
 	"aspectRatio" | "backgroundBlur" | "displaySurface" | "facingMode" | "frameRate" | "height" | "width"
 >;
 
-export type AudioProps = {
+export type PublishAudioProps = {
 	media?: MediaStreamAudioTrack;
 	constraints?: AudioTrackConstraints | boolean;
 };
 
-export class Audio {
+export class PublishAudio {
 	readonly media: Signal<MediaStreamAudioTrack | undefined>;
 	readonly constraints: Signal<AudioTrackConstraints | boolean | undefined>;
 
@@ -33,7 +33,7 @@ export class Audio {
 	#id = 0;
 	#signals = new Signals();
 
-	constructor(props?: AudioProps) {
+	constructor(props?: PublishAudioProps) {
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 

@@ -1,6 +1,6 @@
 import { Show, render } from "solid-js/web";
 import { signal } from "../signals";
-import { Device } from "./broadcast";
+import { PublishDevice } from "./broadcast";
 import { PublishControls } from "./controls";
 import { Publish } from "./publish";
 
@@ -39,7 +39,7 @@ export class PublishElement extends HTMLElement {
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "device") {
-			this.lib.broadcast.device.set(newValue as Device);
+			this.lib.broadcast.device.set(newValue as PublishDevice);
 		} else if (name === "audio") {
 			this.lib.broadcast.audio.constraints.set(newValue !== undefined);
 		} else if (name === "video") {

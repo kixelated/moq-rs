@@ -1,23 +1,23 @@
 import { Connection, ConnectionProps } from "../connection";
 import { Signal, Signals, signal } from "../signals";
-import { Broadcast, BroadcastProps } from "./broadcast";
+import { PublishBroadcast, PublishBroadcastProps } from "./broadcast";
 
 export interface PublishProps {
 	connection?: ConnectionProps;
-	broadcast?: BroadcastProps;
+	broadcast?: PublishBroadcastProps;
 	preview?: HTMLVideoElement;
 }
 
 export class Publish {
 	connection: Connection;
-	broadcast: Broadcast;
+	broadcast: PublishBroadcast;
 	preview: Signal<HTMLVideoElement | undefined>;
 
 	#signals = new Signals();
 
 	constructor(props?: PublishProps) {
 		this.connection = new Connection(props?.connection);
-		this.broadcast = new Broadcast(this.connection, props?.broadcast);
+		this.broadcast = new PublishBroadcast(this.connection, props?.broadcast);
 		this.preview = signal<HTMLVideoElement | undefined>(props?.preview);
 
 		this.#signals.effect(() => {

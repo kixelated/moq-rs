@@ -7,7 +7,7 @@
 
 		"declaration": true,
 		"declarationMap": true,
-		"sourceMap": true,
+		"noEmit": true,
 		"isolatedModules": true,
 
 		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248

@@ -5,15 +5,15 @@ import * as Catalog from "../catalog";
 import * as Container from "../container";
 import { Derived, Signal, Signals, signal } from "../signals";
 
-export type VideoProps = {
+export type WatchVideoProps = {
 	canvas?: HTMLCanvasElement;
 	paused?: boolean;
 };
 
 // An component to render a video to a canvas.
-export class Video {
+export class WatchVideo {
 	// The source of video frames, also responsible for switching between video tracks.
-	source: VideoSource;
+	source: WatchVideoSource;
 
 	// The canvas to render the video to.
 	canvas: Signal<HTMLCanvasElement | undefined>;
@@ -26,7 +26,7 @@ export class Video {
 	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
 	#signals = new Signals();
 
-	constructor(source: VideoSource, props?: VideoProps) {
+	constructor(source: WatchVideoSource, props?: WatchVideoProps) {
 		this.source = source;
 		this.canvas = signal(props?.canvas);
 		this.paused = signal(props?.paused ?? false);
@@ -116,14 +116,14 @@ export class Video {
 	}
 }
 
-export type VideoSourceProps = {
+export type WatchVideoSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Video[];
 	enabled?: boolean;
 };
 
 // Responsible for switching between video tracks and buffering frames.
-export class VideoSource {
+export class WatchVideoSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	enabled: Signal<boolean>; // Don't download any longer
 	tracks: Signal<Catalog.Video[]>;
@@ -139,7 +139,7 @@ export class VideoSource {
 
 	#signals = new Signals();
 
-	constructor(props?: VideoSourceProps) {
+	constructor(props?: WatchVideoSourceProps) {
 		this.broadcast = signal(props?.broadcast);
 		this.tracks = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);

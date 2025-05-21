@@ -9,10 +9,7 @@ console.log("🧹 Cleaning dist/...");
 rmSync("dist", { recursive: true, force: true });
 
 console.log("🛠️  Building...");
-execSync("pnpm build", { stdio: "inherit" });
-
-console.log("🔍 Type-checking...");
-execSync("pnpm check", { stdio: "inherit" });
+execSync("pnpm i && pnpm build", { stdio: "inherit" });
 
 console.log("✍️  Rewriting package.json...");
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -60,6 +57,12 @@ writeFileSync("dist/package.json", JSON.stringify(pkg, null, 2));
 // Copy static files
 console.log("📄 Copying README.md...");
 copyFileSync("README.md", join("dist", "README.md"));
+
+console.log("🔍 Installing dependencies...");
+execSync("pnpm install", {
+	stdio: "inherit",
+	cwd: "dist",
+});
 
 console.log("🚀 Publishing...");
 execSync("pnpm publish --access=public", {

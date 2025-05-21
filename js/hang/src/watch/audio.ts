@@ -7,24 +7,24 @@ import { Derived, Signal, Signals, signal } from "../signals";
 const LATENCY = 50;
 
 // A pair of AudioContext and GainNode.
-export type Context = {
+export type WatchAudioContext = {
 	root: AudioContext;
 	gain: GainNode;
 };
 
-export type AudioProps = {
+export type WatchAudioProps = {
 	volume?: number;
 	paused?: boolean;
 	muted?: boolean;
 };
 
-export class Audio {
-	source: AudioSource;
+export class WatchAudio {
+	source: WatchAudioSource;
 	volume: Signal<number>;
 	muted: Signal<boolean>;
 	paused: Signal<boolean>;
 
-	#context = signal<Context | undefined>(undefined);
+	#context = signal<WatchAudioContext | undefined>(undefined);
 	readonly context = this.#context.readonly();
 
 	#sampleRate = signal<number | undefined>(undefined);
@@ -41,7 +41,7 @@ export class Audio {
 	// The volume to use when unmuted.
 	#unmuteVolume = 0.5;
 
-	constructor(source: AudioSource, props?: AudioProps) {
+	constructor(source: WatchAudioSource, props?: WatchAudioProps) {
 		this.source = source;
 		this.volume = signal(props?.volume ?? 0.5);
 		this.muted = signal(props?.muted ?? true); // default to true because autoplay restrictions
@@ -190,7 +190,7 @@ export class Audio {
 		return buffer;
 	}
 
-	#scheduleBuffer(context: Context, buffer: AudioBuffer, timestamp: number, when: number) {
+	#scheduleBuffer(context: WatchAudioContext, buffer: AudioBuffer, timestamp: number, when: number) {
 		const source = context.root.createBufferSource();
 		source.buffer = buffer;
 		source.connect(context.gain);
@@ -221,13 +221,13 @@ export class Audio {
 	}
 }
 
-export type AudioSourceProps = {
+export type WatchAudioSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Audio[];
 	enabled?: boolean;
 };
 
-export class AudioSource {
+export class WatchAudioSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	available: Signal<Catalog.Audio[]>;
 	enabled: Signal<boolean>;
@@ -240,7 +240,7 @@ export class AudioSource {
 
 	#signals = new Signals();
 
-	constructor(props?: AudioSourceProps) {
+	constructor(props?: WatchAudioSourceProps) {
 		this.broadcast = signal(props?.broadcast);
 		this.available = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);

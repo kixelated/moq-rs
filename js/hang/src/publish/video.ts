@@ -16,12 +16,12 @@ export type VideoTrackConstraints = Omit<
 	resizeMode?: "none" | "crop-and-scale";
 };
 
-export type VideoProps = {
+export type PublishVideoProps = {
 	media?: MediaStreamVideoTrack;
 	constraints?: VideoTrackConstraints | boolean;
 };
 
-export class Video {
+export class PublishVideo {
 	readonly media: Signal<MediaStreamVideoTrack | undefined>;
 	readonly constraints: Signal<VideoTrackConstraints | boolean | undefined>;
 
@@ -40,7 +40,7 @@ export class Video {
 	#signals = new Signals();
 	#id = 0;
 
-	constructor(props?: VideoProps) {
+	constructor(props?: PublishVideoProps) {
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 
@@ -108,7 +108,7 @@ export class Video {
 			let { value: frame } = await reader.read();
 			if (!frame) return;
 
-			const config = await Video.#bestEncoderConfig(settings, frame);
+			const config = await PublishVideo.#bestEncoderConfig(settings, frame);
 			encoder.configure(config);
 
 			this.#encoderConfig.set(config);
@@ -243,7 +243,7 @@ export class Video {
 		// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
 		if (!navigator.userAgent.toLowerCase().includes("firefox")) {
 			for (const codec of HARDWARE_CODECS) {
-				const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
+				const config = PublishVideo.#codecSpecific(baseConfig, codec, bitrate, true);
 				const { supported, config: hardwareConfig } = await VideoEncoder.isConfigSupported(config);
 				if (supported && hardwareConfig) {
 					console.debug("using hardware encoding: ", hardwareConfig);
@@ -256,7 +256,7 @@ export class Video {
 
 		// Try software encoding.
 		for (const codec of SOFTWARE_CODECS) {
-			const config = Video.#codecSpecific(baseConfig, codec, bitrate, false);
+			const config = PublishVideo.#codecSpecific(baseConfig, codec, bitrate, false);
 			const { supported, config: softwareConfig } = await VideoEncoder.isConfigSupported(config);
 			if (supported && softwareConfig) {
 				console.debug("using software encoding: ", softwareConfig);

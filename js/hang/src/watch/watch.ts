@@ -1,27 +1,27 @@
 import { Connection, ConnectionProps } from "../connection";
-import { Audio, AudioProps } from "./audio";
-import { Broadcast, BroadcastProps } from "./broadcast";
-import { Video, VideoProps } from "./video";
+import { WatchAudio, WatchAudioProps } from "./audio";
+import { WatchBroadcast, BroadcastProps } from "./broadcast";
+import { WatchVideo, WatchVideoProps } from "./video";
 
 export type WatchProps = {
 	connection?: ConnectionProps;
 	broadcast?: BroadcastProps;
-	video?: VideoProps;
-	audio?: AudioProps;
+	video?: WatchVideoProps;
+	audio?: WatchAudioProps;
 };
 
 export class Watch {
 	connection: Connection;
-	broadcast: Broadcast;
-	video: Video;
-	audio: Audio;
+	broadcast: WatchBroadcast;
+	video: WatchVideo;
+	audio: WatchAudio;
 
 	constructor(props?: WatchProps) {
 		this.connection = new Connection(props?.connection);
-		this.broadcast = new Broadcast(this.connection, props?.broadcast);
+		this.broadcast = new WatchBroadcast(this.connection, props?.broadcast);
 
-		this.video = new Video(this.broadcast.video, props?.video);
-		this.audio = new Audio(this.broadcast.audio, props?.audio);
+		this.video = new WatchVideo(this.broadcast.video, props?.video);
+		this.audio = new WatchAudio(this.broadcast.audio, props?.audio);
 	}
 
 	close() {
