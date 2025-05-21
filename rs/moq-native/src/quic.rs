@@ -247,7 +247,7 @@ impl Client {
 		tracing::Span::current().record("id", connection.stable_id());
 
 		let session = match url.scheme() {
-			"https" => web_transport::quinn::Session::connect(connection, &url).await?,
+			"https" => web_transport::quinn::Session::connect(connection, url).await?,
 			moq_lite::ALPN => web_transport::quinn::Session::raw(connection, url),
 			_ => unreachable!(),
 		};

@@ -10,10 +10,10 @@ members = [
 	"moq-relay",
 ]
 # without hang-gst because it requires gstreamer to be installed
+# and without hang-wasm because it's deprecated and weird
 default-members = [
 	"hang",
 	"hang-cli",
-	"hang-wasm",
 	"moq",
 	"moq-clock",
 	"moq-native",
@@ -22,7 +22,7 @@ default-members = [
 resolver = "2"
 
 [workspace.dependencies]
-web-transport = "0.9.0"
+web-transport = "0.9.2"
 web-async = { version = "0.1.1", features = ["tracing"] }
 tokio = "1.45"
 serde = { version = "1", features = ["derive"] }

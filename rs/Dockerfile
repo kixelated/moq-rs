@@ -13,24 +13,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
 	cargo build --release && cp /build/target/release/moq-* /usr/local/cargo/bin
 
-## build-wasm
-FROM rust:slim AS build-wasm
-WORKDIR /build
-
-RUN apt-get update && apt-get install -y ca-certificates curl build-essential nodejs pnpm
-
-# Install Rustup
-RUN rustup target add wasm32-unknown-unknown
-RUN cargo install -f wasm-bindgen-cli
-
-# Copy the rest
-COPY . ./
-
-# Build it
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/build/target \
-	npm run build
-
 # moq-clock
 FROM debian:bookworm-slim AS moq-clock
 COPY --from=build /usr/local/cargo/bin/moq-clock /usr/local/bin
@@ -39,7 +21,7 @@ ENTRYPOINT ["moq-clock"]
 ## hang (and hang-bbb)
 FROM debian:bookworm-slim AS hang
 RUN apt-get update && apt-get install -y ffmpeg wget
-COPY ./deploy/hang-bbb /usr/local/bin/hang-bbb
+COPY ./hang-bbb /usr/local/bin/hang-bbb
 COPY --from=build /usr/local/cargo/bin/hang /usr/local/bin
 ENTRYPOINT ["hang"]
 

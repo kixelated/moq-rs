@@ -65,7 +65,7 @@ impl Connect {
 
 		// Use a background task to make `connect` cancel safe.
 		spawn_local(async move {
-			let session = Self::run(&addr).await;
+			let session = Self::run(addr.clone()).await;
 			tx.send(Some(session.clone())).ok();
 
 			if let Ok(session) = session {
@@ -87,7 +87,7 @@ impl Connect {
 		rx
 	}
 
-	async fn run(addr: &Url) -> Result<moq_lite::Session, ConnectError> {
+	async fn run(addr: Url) -> Result<moq_lite::Session, ConnectError> {
 		let client =
 			web_transport::ClientBuilder::new().with_congestion_control(web_transport::CongestionControl::LowLatency);
 
@@ -95,13 +95,13 @@ impl Connect {
 			"http" => {
 				// TODO Unfortunately, WebTransport doesn't work correctly with self-signed certificates.
 				// Until that gets fixed, we need to perform a HTTP request to fetch the certificate hashes.
-				let fingerprint = Self::fingerprint(addr).await?;
+				let fingerprint = Self::fingerprint(&addr).await?;
 				let client = client.with_server_certificate_hashes(vec![fingerprint])?;
 
 				// Make a copy of the address, changing it from HTTP to HTTPS for WebTransport:
 				let mut addr = addr.clone();
 				let _ = addr.set_scheme("https");
-				client.connect(&addr).await?
+				client.connect(addr).await?
 			}
 			"https" => {
 				let client = client.with_system_roots()?;
