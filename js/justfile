@@ -18,6 +18,9 @@ check flags="":
 	# Make sure Typescript compiles
 	pnpm -r run check
 
+	# Run the JS tests via node.
+	pnpm -r test
+
 	# Format/lint the JS packages
 	pnpm -r exec biome check
 
@@ -37,13 +40,6 @@ fix flags="":
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix
-
-# Run any CI tests
-test flags="":
-	pnpm -r install {{flags}}
-
-	# Run the JS tests via node.
-	pnpm -r test
 
 # Upgrade any tooling
 upgrade:
