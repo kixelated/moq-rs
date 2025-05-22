@@ -2,7 +2,7 @@ import * as Moq from "@kixelated/moq";
 import { Derived, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { AudioConstraints, Audio } from "./audio";
+import { Audio, AudioConstraints } from "./audio";
 import { Video, VideoConstraints } from "./video";
 
 export type Device = "screen" | "camera";

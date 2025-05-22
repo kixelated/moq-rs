@@ -10,7 +10,6 @@ import { Show } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
 import { Switch } from "solid-js/web";
 
-
 const root = document.querySelector("#root") as HTMLDivElement;
 
 function Announcements(): JSX.Element {
