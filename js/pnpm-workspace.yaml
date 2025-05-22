@@ -1,6 +1,7 @@
 packages:
   - moq
   - hang
+  - hang-demo
   - signals
 onlyBuiltDependencies:
   - core-js

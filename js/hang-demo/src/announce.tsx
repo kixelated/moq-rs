@@ -1,5 +1,5 @@
 import "./index.css";
-import "./highlight";
+import "./demo/highlight";
 
 import { createMemo, createSelector, createSignal, onCleanup } from "solid-js";
 import { For, render } from "solid-js/web";
@@ -9,6 +9,7 @@ import { Match } from "solid-js";
 import { Show } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
 import { Switch } from "solid-js/web";
+
 
 const root = document.querySelector("#root") as HTMLDivElement;
 
