@@ -21,6 +21,7 @@ export class Broadcast {
 		const decoder = new TextDecoder();
 		const str = decoder.decode(raw);
 		const json = JSON.parse(str);
+		console.log("parsing:", json);
 		const parsed = BroadcastSchema.parse(json);
 
 		const broadcast = new Broadcast();

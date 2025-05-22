@@ -4,10 +4,7 @@ import { TrackSchema } from "./track";
 
 // Mirrors AudioDecoderConfig
 // https://w3c.github.io/webcodecs/#audio-decoder-config
-export const AudioSchema = z.object({
-	// The MoQ track information.
-	track: TrackSchema,
-
+export const AudioConfigSchema = z.object({
 	// See: https://w3c.github.io/webcodecs/codec_registry.html
 	codec: z.string(),
 
@@ -27,4 +24,14 @@ export const AudioSchema = z.object({
 	bitrate: z.optional(z.uint32()),
 });
 
+export const AudioSchema = z.object({
+	// The MoQ track information.
+	track: TrackSchema,
+
+	// The configuration of the audio track
+	config: AudioConfigSchema,
+});
+
+
 export type Audio = z.infer<typeof AudioSchema>;
+export type AudioConfig = z.infer<typeof AudioConfigSchema>;

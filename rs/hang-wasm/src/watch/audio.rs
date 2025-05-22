@@ -221,20 +221,22 @@ impl Audio {
 
 pub struct AudioTrack {
 	pub track: hang::TrackConsumer,
-	pub info: hang::Audio,
+	pub info: hang::AudioTrack,
 
 	decoder: web_codecs::AudioDecoder,
 	decoded: web_codecs::AudioDecoded,
 }
 
 impl AudioTrack {
-	pub fn new(track: hang::TrackConsumer, info: hang::Audio) -> Result<Self> {
+	pub fn new(track: hang::TrackConsumer, info: hang::AudioTrack) -> Result<Self> {
+		let config = &info.config;
+
 		// Construct the video decoder
 		let (decoder, decoded) = web_codecs::AudioDecoderConfig {
-			codec: info.codec.to_string(),
-			description: info.description.clone(),
-			channel_count: info.channel_count,
-			sample_rate: info.sample_rate,
+			codec: config.codec.to_string(),
+			description: config.description.clone(),
+			channel_count: config.channel_count,
+			sample_rate: config.sample_rate,
 		}
 		.build()?;
 

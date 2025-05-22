@@ -1,6 +1,6 @@
 use web_async::FuturesExt;
 
-use crate::Result;
+use crate::{Error, Result};
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
 
@@ -133,22 +133,27 @@ impl Default for Video {
 
 pub struct VideoTrack {
 	pub track: hang::TrackConsumer,
-	pub info: hang::Video,
+	pub info: hang::VideoTrack,
 
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
 }
 
 impl VideoTrack {
-	pub fn new(track: hang::TrackConsumer, info: hang::Video) -> Result<Self> {
+	pub fn new(track: hang::TrackConsumer, info: hang::VideoTrack) -> Result<Self> {
+		let config = &info.config;
+
+		let resolution = match (config.coded_width, config.coded_height) {
+			(Some(w), Some(h)) => Some(web_codecs::Dimensions { width: w, height: h }),
+			(None, None) => None,
+			_ => return Err(Error::InvalidDimensions),
+		};
+
 		// Construct the video decoder
 		let (decoder, decoded) = web_codecs::VideoDecoderConfig {
-			codec: info.codec.to_string(),
-			description: info.description.clone(),
-			resolution: info.dimensions.map(|d| web_codecs::Dimensions {
-				width: d.width,
-				height: d.height,
-			}),
+			codec: config.codec.to_string(),
+			description: config.description.clone(),
+			resolution,
 			latency_optimized: Some(true),
 			..Default::default()
 		}

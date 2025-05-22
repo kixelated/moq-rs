@@ -2,19 +2,7 @@ import { z } from "zod/v4-mini";
 
 import { TrackSchema } from "./track";
 
-export const DimensionsSchema = z.object({
-	width: z.uint32(),
-	height: z.uint32(),
-});
-
-export type Dimensions = z.infer<typeof DimensionsSchema>;
-
-// Mirrors VideoDecoderConfig
-// https://w3c.github.io/webcodecs/#video-decoder-config
-export const VideoSchema = z.object({
-	// The MoQ track information.
-	track: TrackSchema,
-
+export const VideoConfigSchema = z.object({
 	// See: https://w3c.github.io/webcodecs/codec_registry.html
 	codec: z.string(),
 
@@ -24,12 +12,14 @@ export const VideoSchema = z.object({
 	description: z.optional(z.string()), // hex encoded
 
 	// The width and height of the video in pixels
-	dimensions: z.optional(DimensionsSchema),
+	codedWidth: z.optional(z.uint32()),
+	codedHeight: z.optional(z.uint32()),
 
 	// Ratio of display width/height to coded width/height
 	// Allows stretching/squishing individual "pixels" of the video
 	// If not provided, the display ratio is 1:1
-	displayRatio: z.optional(DimensionsSchema),
+	displayRatioWidth: z.optional(z.uint32()),
+	displayRatioHeight: z.optional(z.uint32()),
 
 	// The frame rate of the video in frames per second
 	framerate: z.optional(z.uint32()),
@@ -51,4 +41,15 @@ export const VideoSchema = z.object({
 	flip: z.optional(z.boolean()),
 });
 
+// Mirrors VideoDecoderConfig
+// https://w3c.github.io/webcodecs/#video-decoder-config
+export const VideoSchema = z.object({
+	// The MoQ track information.
+	track: TrackSchema,
+
+	// The configuration of the video track
+	config: VideoConfigSchema,
+});
+
 export type Video = z.infer<typeof VideoSchema>;
+export type VideoConfig = z.infer<typeof VideoConfigSchema>;

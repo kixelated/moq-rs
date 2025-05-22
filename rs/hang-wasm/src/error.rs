@@ -41,6 +41,9 @@ pub enum Error {
 	#[error("not visible")]
 	NotVisible,
 
+	#[error("invalid dimensions")]
+	InvalidDimensions,
+
 	#[error("unclassified: {0}")]
 	Js(String),
 

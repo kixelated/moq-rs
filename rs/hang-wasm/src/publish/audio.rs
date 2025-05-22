@@ -77,13 +77,15 @@ impl PublishAudio {
 
 	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::Audio {
+			let info = hang::AudioTrack {
 				track: self.track.inner.info.clone(),
-				description: config.description,
-				codec: config.codec.into(),
-				sample_rate: config.sample_rate,
-				channel_count: config.channel_count,
-				bitrate: self.config.bitrate.map(|b| b as _),
+				config: hang::AudioConfig {
+					codec: config.codec.into(),
+					description: config.description,
+					sample_rate: config.sample_rate,
+					channel_count: config.channel_count,
+					bitrate: self.config.bitrate.map(|b| b as _),
+				},
 			};
 
 			broadcast.add_audio(self.track.consume(), info);

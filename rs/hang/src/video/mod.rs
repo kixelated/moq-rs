@@ -1,13 +1,11 @@
 mod av1;
 mod codec;
-mod dimensions;
 mod h264;
 mod h265;
 mod vp9;
 
 pub use av1::*;
 pub use codec::*;
-pub use dimensions::*;
 pub use h264::*;
 pub use h265::*;
 pub use vp9::*;
@@ -23,17 +21,23 @@ use crate::Track;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 /// Information about a video track.
-///
-/// Based on VideoDecoderConfig:
-/// https://w3c.github.io/webcodecs/#video-decoder-config
-pub struct Video {
+pub struct VideoTrack {
 	/// MoQ specific track information
 	pub track: Track,
 
-	/// The codec mimetype encoded as a string
-	///
-	/// ex. avc1.42c01e
-	/// See: https://w3c.github.io/webcodecs/codec_registry.html
+	/// The configuration of the video track
+	pub config: VideoConfig,
+}
+
+#[serde_with::serde_as]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+/// VideoDecoderConfig from WebCodecs
+/// https://w3c.github.io/webcodecs/#video-decoder-config
+pub struct VideoConfig {
+	/// The codec, see the registry for details:
+	/// https://w3c.github.io/webcodecs/codec_registry.html
 	#[serde_as(as = "DisplayFromStr")]
 	pub codec: VideoCodec,
 
@@ -49,17 +53,15 @@ pub struct Video {
 	///
 	/// This is optional because it can be changed in-band for some codecs.
 	/// It's primarily a hint to allocate the correct amount of memory up-front.
-	///
-	/// NOTE: This is coded_width and coded_height in the WebCodecs API.
-	pub dimensions: Option<Dimensions>,
+	pub coded_width: Option<u32>,
+	pub coded_height: Option<u32>,
 
 	/// The display aspect ratio of the media.
 	///
 	/// This allows you to stretch/shrink pixels of the video.
 	/// If not provided, the display aspect ratio is 1:1
-	///
-	/// NOTE: This is display_aspect_width and display_aspect_height in the WebCodecs API.
-	pub display_ratio: Option<Dimensions>,
+	pub display_ratio_width: Option<u32>,
+	pub display_ratio_height: Option<u32>,
 
 	// TODO color space
 	/// The maximum bitrate of the video track, if known.

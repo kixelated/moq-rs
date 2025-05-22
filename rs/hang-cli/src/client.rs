@@ -55,7 +55,7 @@ impl Client {
 			tls,
 		})?;
 
-		tracing::info!(url = ?self.url, "connecting");
+		tracing::info!(url = %self.url, "connecting");
 
 		let session = quic.client.connect(self.url.clone()).await?;
 		let mut session = Session::connect(session).await?;

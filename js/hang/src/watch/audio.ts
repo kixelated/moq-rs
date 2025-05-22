@@ -269,9 +269,11 @@ export class WatchAudioSource {
 			error: (error) => console.error(error),
 		});
 
+		const config = selected.config;
+
 		decoder.configure({
-			...selected,
-			description: selected.description ? Buffer.from(selected.description, "hex") : undefined,
+			...config,
+			description: config.description ? Buffer.from(config.description, "hex") : undefined,
 		});
 
 		const media = new Container.Decoder(sub);

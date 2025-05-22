@@ -178,14 +178,14 @@ impl HangSrc {
 		for video in catalog.video {
 			let mut track = broadcast.track(&video.track);
 
-			let caps = match video.codec {
+			let caps = match video.config.codec {
 				hang::VideoCodec::H264(_) => {
 					let builder = gst::Caps::builder("video/x-h264")
 						//.field("width", video.resolution.width)
 						//.field("height", video.resolution.height)
 						.field("alignment", "au");
 
-					if let Some(description) = video.description {
+					if let Some(description) = video.config.description {
 						builder
 							.field("stream-format", "avc")
 							.field("codec_data", gst::Buffer::from_slice(description.clone()))
@@ -257,14 +257,14 @@ impl HangSrc {
 		for audio in catalog.audio {
 			let mut track = broadcast.track(&audio.track);
 
-			let caps = match &audio.codec {
+			let caps = match &audio.config.codec {
 				hang::AudioCodec::AAC(_aac) => {
 					let builder = gst::Caps::builder("audio/mpeg")
 						.field("mpegversion", 4)
-						.field("channels", audio.channel_count)
-						.field("rate", audio.sample_rate);
+						.field("channels", audio.config.channel_count)
+						.field("rate", audio.config.sample_rate);
 
-					if let Some(description) = audio.description {
+					if let Some(description) = audio.config.description {
 						builder
 							.field("codec_data", gst::Buffer::from_slice(description.clone()))
 							.field("stream-format", "aac")
@@ -275,10 +275,10 @@ impl HangSrc {
 				}
 				hang::AudioCodec::Opus => {
 					let builder = gst::Caps::builder("audio/x-opus")
-						.field("rate", audio.sample_rate)
-						.field("channels", audio.channel_count);
+						.field("rate", audio.config.sample_rate)
+						.field("channels", audio.config.channel_count);
 
-					if let Some(description) = audio.description {
+					if let Some(description) = audio.config.description {
 						builder
 							.field("codec_data", gst::Buffer::from_slice(description.clone()))
 							.field("stream-format", "ogg")
