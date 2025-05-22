@@ -190,10 +190,8 @@ mod test {
 					},
 					"config": {
 						"codec": "avc1.64001f",
-						"dimensions": {
-							"width": 1280,
-							"height": 720
-						},
+						"codedWidth": 1280,
+						"codedHeight": 720,
 						"bitrate": 6000000,
 						"framerate": 30.0
 					}

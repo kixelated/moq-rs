@@ -72,7 +72,7 @@ export class PublishAudio {
 				numberOfChannels: settings.channelCount,
 				// TODO configurable
 				bitrate: 64_000,
-			}
+			},
 		};
 
 		this.#catalog.set(catalog);

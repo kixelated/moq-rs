@@ -32,6 +32,5 @@ export const AudioSchema = z.object({
 	config: AudioConfigSchema,
 });
 
-
 export type Audio = z.infer<typeof AudioSchema>;
 export type AudioConfig = z.infer<typeof AudioConfigSchema>;
