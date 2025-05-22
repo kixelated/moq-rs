@@ -12,14 +12,14 @@ web:
 	pnpm -r run dev
 
 # Run the CI checks
-check:
-	pnpm -r i
+check flags="":
+	pnpm -r install {{flags}}
 
 	# Make sure Typescript compiles
 	pnpm -r run check
 
 	# Format/lint the JS packages
-	pnpm -r exec biome check --config-path ../../biome.jsonc
+	pnpm -r exec biome check
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit
@@ -28,18 +28,20 @@ check:
 	# pnpm exec knip --no-exit-code
 
 # Automatically fix some issues.
-fix:
+fix flags="":
 	# Fix the JS packages
-	pnpm -r i
+	pnpm -r install {{flags}}
 
 	# Format and lint
-	pnpm -r exec biome check --fix --config-path ../../biome.jsonc
+	pnpm -r exec biome check --fix
 
 	# Make sure the JS packages are not vulnerable
 	pnpm -r exec pnpm audit --fix
 
 # Run any CI tests
-test:
+test flags="":
+	pnpm -r install {{flags}}
+
 	# Run the JS tests via node.
 	pnpm -r test
 
@@ -51,8 +53,8 @@ upgrade:
 	pnpm -r outdated
 
 # Build the packages
-build:
-	pnpm -r i
+build flags="":
+	pnpm -r install {{flags}}
 	pnpm -r run build
 
 # Generate documentation

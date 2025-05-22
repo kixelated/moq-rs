@@ -1,4 +1,5 @@
-// TODO This should be removed. I just need to find a way for the VSCode plugin to use js/biome.jsonc.
+// NOTE: There's another biome.jsonc in the root that's used for VSCode until I can fix it.
+// This one is used for docker...
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
@@ -12,7 +13,10 @@
 	},
 	"formatter": {
 		"enabled": true,
-		"useEditorconfig": true
+		"lineWidth": 120,
+		"indentStyle": "tab",
+		"indentWidth": 4,
+		"lineEnding": "lf"
 	},
 	"organizeImports": { "enabled": true },
 	"linter": {

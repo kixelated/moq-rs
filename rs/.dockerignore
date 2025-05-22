@@ -3,3 +3,4 @@ target
 dist
 dev
 node_modules
+pkg
