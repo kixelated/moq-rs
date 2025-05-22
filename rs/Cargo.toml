@@ -27,8 +27,8 @@ web-async = { version = "0.1.1", features = ["tracing"] }
 tokio = "1.45"
 serde = { version = "1", features = ["derive"] }
 
-hang = { version = "0.1", path = "hang" }
-moq-lite = { version = "0.1", path = "moq" }
+hang = { version = "0.2", path = "hang" }
+moq-lite = { version = "0.2", path = "moq" }
 moq-native = { version = "0.6", path = "moq-native" }
 
 [profile.release.package.hang-wasm]

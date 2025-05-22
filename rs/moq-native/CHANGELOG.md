@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9](https://github.com/kixelated/moq/compare/moq-native-v0.6.8...moq-native-v0.6.9) - 2025-05-21
+
+### Other
+
+- Split into Rust/Javascript halves and rebrand as moq-lite/hang ([#376](https://github.com/kixelated/moq/pull/376))
+
 ## [0.6.8](https://github.com/kixelated/moq/compare/moq-native-v0.6.7...moq-native-v0.6.8) - 2025-03-09
 
 ### Other
