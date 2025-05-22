@@ -50,7 +50,8 @@ jobs:
       - uses: depot/build-push-action@v1
         with:
           project: r257ctfqm6
-          context: rs/Dockerfile
+          file: rs/Dockerfile
+          context: rs
           push: true
           target: ${{ steps.parse.outputs.target }}
           tags: |
