@@ -208,10 +208,13 @@ function AudioTrackProcessor(track: AudioTrack): ReadableStream<AudioData> {
 			});
 
 			function worklet() {
+				// @ts-expect-error Would need a separate tsconfig to get this to work.
 				registerProcessor(
 					"mstp-shim",
+					// @ts-expect-error Would need a separate tsconfig to get this to work.
 					class Processor extends AudioWorkletProcessor {
 						process(input: Float32Array[][]) {
+							// @ts-expect-error Would need a separate tsconfig to get this to work.
 							this.port.postMessage(input[0]);
 							return true;
 						}

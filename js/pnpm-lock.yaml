@@ -41,9 +41,6 @@ importers:
       '@kixelated/signals':
         specifier: workspace:^0.1.0
         version: link:../signals
-      '@types/audioworklet':
-        specifier: ^0.0.75
-        version: 0.0.75
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -795,9 +792,6 @@ packages:
 
   '@types/argparse@1.0.38':
     resolution: {integrity: sha512-ebDJ9b0e702Yr7pWgB0jzm+CX4Srzz8RcXtLJDJB+BSccqMa36uyH/zUsSYao5+BD1ytv3k3rPYCq4mAE1hsXA==}
-
-  '@types/audioworklet@0.0.75':
-    resolution: {integrity: sha512-Xb35K9bXy+fUl/moqCgoTuvuLWxd2Tro1ua+2j3JzOBzYb5n5bvBry7OKNrw1imObjKufxV5+ZfZ02xFkqJiXw==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -2357,8 +2351,6 @@ snapshots:
     optional: true
 
   '@types/argparse@1.0.38': {}
-
-  '@types/audioworklet@0.0.75': {}
 
   '@types/babel__core@7.20.5':
     dependencies:
