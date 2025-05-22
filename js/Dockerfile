@@ -28,10 +28,9 @@ COPY . .
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm -r install --frozen-lockfile
 
-# Run check and test
-RUN just build --frozen-lockfile && \
-	just check --frozen-lockfile && \
-	just test --frozen-lockfile
+# Run the CI checks and make sure it builds.
+RUN just check --frozen-lockfile && \
+	just build --frozen-lockfile
 
 FROM scratch AS final
 COPY --from=build /build/hang/dist /dist

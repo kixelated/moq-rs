@@ -21,9 +21,6 @@ export class WatchElement extends HTMLElement {
 		// The broadcast path is relative to the connection URL.
 		this.lib = new Watch({ video: { canvas }, broadcast: { path: "" } });
 
-		// Create an element for controls if they want them.
-		const controls = document.createElement("div");
-
 		// Render the controls element.
 		render(
 			() => (
@@ -31,10 +28,8 @@ export class WatchElement extends HTMLElement {
 					<WatchControls lib={this.lib} root={this} />
 				</Show>
 			),
-			controls,
+			this,
 		);
-
-		this.append(controls);
 
 		// Optionally update attributes to match the library state.
 		// This is kind of dangerous because it can create loops.

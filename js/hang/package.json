@@ -16,21 +16,21 @@
 		"release": "tsx scripts/release.ts"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:^0.5.0",
-		"@kixelated/signals": "workspace:^0.1.0",
+		"@kixelated/moq": "workspace:^",
+		"@kixelated/signals": "workspace:^",
 		"@types/audioworklet": "^0.0.75",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",
-		"solid-js": "^1.9.6",
-		"zod": "^3.25.3"
+		"solid-js": "^1.9.7",
+		"zod": "^3.25.20"
 	},
 	"devDependencies": {
 		"@tailwindcss/postcss": "^4.1.7",
 		"@tailwindcss/typography": "^0.5.16",
 		"@tailwindcss/vite": "^4.1.7",
 		"@types/dom-mediacapture-transform": "^0.1.11",
-		"@types/lodash": "^4.17.16",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.234",
+		"@types/lodash": "^4.17.17",
+		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
 		"highlight.js": "^11.11.1",
 		"tailwindcss": "^4.1.7",
 		"typescript": "^5.8.3",

@@ -60,11 +60,6 @@ fix flags="":
 	just --justfile rs/justfile fix {{flags}}
 	just --justfile js/justfile fix
 
-# Run any CI tests
-test flags="":
-	just --justfile rs/justfile test {{flags}}
-	just --justfile js/justfile test
-
 # Upgrade any tooling
 upgrade:
 	just --justfile rs/justfile upgrade

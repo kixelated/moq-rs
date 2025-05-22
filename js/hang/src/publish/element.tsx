@@ -19,9 +19,6 @@ export class PublishElement extends HTMLElement {
 		// The broadcast path is "" because it's relative to the connection URL.
 		this.lib = new Publish({ preview, broadcast: { path: "" } });
 
-		// Create an element for controls if they want them.
-		const controls = document.createElement("div");
-
 		// Render the controls element.
 		render(
 			() => (
@@ -29,10 +26,8 @@ export class PublishElement extends HTMLElement {
 					<PublishControls lib={this.lib} />
 				</Show>
 			),
-			controls,
+			this,
 		);
-
-		this.append(controls);
 	}
 
 	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {

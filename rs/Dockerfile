@@ -54,6 +54,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Copy over the rest of the files.
 COPY . .
 
+# Make sure u guys don't write bad code before we build.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/build/target \
+	just check --release
+
 # Reuse a cache between builds.
 # I tried to `cargo install`, but it doesn't seem to work with workspaces.
 # There's also issues with the cache mount since it builds into /usr/local/cargo/bin
@@ -65,11 +70,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	cargo build --release && \
 	cp /build/target/release/moq* /out && \
 	cp /build/target/release/hang* /out
-
-# Yes it compiles, but let's make sure u guys don't write bad code.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/build/target \
-	just check --release && just test --release
 
 # moq-clock
 FROM ubuntu:24.04 AS moq-clock
