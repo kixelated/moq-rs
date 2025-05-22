@@ -321,23 +321,12 @@ export class PublishVideo {
 				name: track.name,
 				priority: track.priority,
 			},
-			// Important: decoderConfig contains the fully resolved codec unlike encoderConfig.
-			codec: decoderConfig.codec,
-			description,
-			dimensions: {
-				width: encoderConfig.width,
-				height: encoderConfig.height,
+			config: {
+				// The order is important here.
+				...encoderConfig,
+				...decoderConfig,
+				description,
 			},
-			displayRatio:
-				decoderConfig.displayAspectHeight && decoderConfig.displayAspectWidth
-					? {
-							width: decoderConfig.displayAspectWidth,
-							height: decoderConfig.displayAspectHeight,
-						}
-					: undefined,
-			framerate: encoderConfig.framerate,
-			optimizeForLatency: decoderConfig.optimizeForLatency ?? true,
-			// TODO rotation and flip
 		};
 
 		this.#catalog.set(catalog);

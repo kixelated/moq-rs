@@ -1,5 +1,5 @@
 use crate::track::TrackConsumer;
-use crate::{Audio, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, Video};
+use crate::{AudioTrack, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, VideoTrack};
 use moq_lite::Track;
 use web_async::spawn;
 
@@ -33,7 +33,7 @@ impl BroadcastProducer {
 	}
 
 	/// Add a video track to the broadcast.
-	pub fn add_video(&mut self, track: TrackConsumer, info: Video) {
+	pub fn add_video(&mut self, track: TrackConsumer, info: VideoTrack) {
 		self.inner.insert(track.inner.clone());
 		self.catalog.add_video(info.clone());
 		self.catalog.publish();
@@ -48,7 +48,7 @@ impl BroadcastProducer {
 	}
 
 	/// Add an audio track to the broadcast.
-	pub fn add_audio(&mut self, track: TrackConsumer, info: Audio) {
+	pub fn add_audio(&mut self, track: TrackConsumer, info: AudioTrack) {
 		self.inner.insert(track.inner.clone());
 		self.catalog.add_audio(info.clone());
 		self.catalog.publish();
@@ -62,13 +62,13 @@ impl BroadcastProducer {
 		});
 	}
 
-	pub fn create_video(&mut self, video: Video) -> TrackProducer {
+	pub fn create_video(&mut self, video: VideoTrack) -> TrackProducer {
 		let producer: TrackProducer = video.track.clone().produce().into();
 		self.add_video(producer.consume(), video);
 		producer
 	}
 
-	pub fn create_audio(&mut self, audio: Audio) -> TrackProducer {
+	pub fn create_audio(&mut self, audio: AudioTrack) -> TrackProducer {
 		let producer: TrackProducer = audio.track.clone().produce().into();
 		self.add_audio(producer.consume(), audio);
 		producer

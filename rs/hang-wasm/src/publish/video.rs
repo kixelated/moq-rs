@@ -124,22 +124,21 @@ impl PublishVideo {
 
 	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let dimensions = config.resolution.map(|r| hang::Dimensions {
-				width: r.width,
-				height: r.height,
-			});
-
-			let info = hang::Video {
+			let info = hang::VideoTrack {
 				track: self.track.inner.info.clone(),
-				codec: config.codec.into(),
-				description: config.description,
-				dimensions,
-				bitrate: self.config.bitrate.map(|b| b as _),
-				framerate: self.config.framerate.map(|f| f as _),
-				display_ratio: None,
-				rotation: None,
-				flip: None,
-				optimize_for_latency: None,
+				config: hang::VideoConfig {
+					codec: config.codec.into(),
+					description: config.description,
+					coded_width: config.resolution.map(|r| r.width),
+					coded_height: config.resolution.map(|r| r.height),
+					bitrate: self.config.bitrate.map(|b| b as _),
+					framerate: self.config.framerate.map(|f| f as _),
+					display_ratio_width: None,
+					display_ratio_height: None,
+					rotation: None,
+					flip: None,
+					optimize_for_latency: None,
+				},
 			};
 
 			broadcast.add_video(self.track.consume(), info);

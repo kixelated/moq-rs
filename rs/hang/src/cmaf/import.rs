@@ -1,7 +1,7 @@
 use super::{Error, Result};
 use crate::{
-	Audio, AudioCodec, BroadcastProducer, Dimensions, Frame, Timestamp, Track, TrackProducer, Video, VideoCodec, AAC,
-	AV1, H264, H265, VP9,
+	AudioCodec, AudioConfig, AudioTrack, BroadcastProducer, Frame, Timestamp, Track, TrackProducer, VideoCodec,
+	VideoConfig, VideoTrack, AAC, AV1, H264, H265, VP9,
 };
 use bytes::{Bytes, BytesMut};
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Mdat, Moof, Moov, Tfdt, Trak, Trun};
@@ -103,7 +103,7 @@ impl Import {
 		Ok(())
 	}
 
-	fn init_video(trak: &Trak) -> Result<Video> {
+	fn init_video(trak: &Trak) -> Result<VideoTrack> {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -122,112 +122,115 @@ impl Import {
 				let mut description = BytesMut::new();
 				avcc.encode_body(&mut description)?;
 
-				Video {
+				VideoTrack {
 					track,
-					dimensions: Some(Dimensions {
-						width: avc1.visual.width as _,
-						height: avc1.visual.height as _,
-					}),
-					codec: H264 {
-						profile: avcc.avc_profile_indication,
-						constraints: avcc.profile_compatibility,
-						level: avcc.avc_level_indication,
-					}
-					.into(),
-					description: Some(description.freeze()),
+					config: VideoConfig {
+						coded_width: Some(avc1.visual.width as _),
+						coded_height: Some(avc1.visual.height as _),
+						codec: H264 {
+							profile: avcc.avc_profile_indication,
+							constraints: avcc.profile_compatibility,
+							level: avcc.avc_level_indication,
+						}
+						.into(),
+						description: Some(description.freeze()),
+						// TODO: populate these fields
+						framerate: None,
+						bitrate: None,
+						rotation: None,
+						flip: None,
+						display_ratio_width: None,
+						display_ratio_height: None,
+						optimize_for_latency: None,
+					},
+				}
+			}
+			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
+			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
+			mp4_atom::Codec::Vp08(vp08) => VideoTrack {
+				track,
+				config: VideoConfig {
+					codec: VideoCodec::VP8,
+					description: Default::default(),
+					coded_width: Some(vp08.visual.width as _),
+					coded_height: Some(vp08.visual.height as _),
 					// TODO: populate these fields
 					framerate: None,
 					bitrate: None,
 					rotation: None,
 					flip: None,
-					display_ratio: None,
+					display_ratio_width: None,
+					display_ratio_height: None,
 					optimize_for_latency: None,
-				}
-			}
-			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
-			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
-			mp4_atom::Codec::Vp08(vp08) => Video {
-				track,
-				codec: VideoCodec::VP8,
-				description: Default::default(),
-				dimensions: Some(Dimensions {
-					width: vp08.visual.width as _,
-					height: vp08.visual.height as _,
-				}),
-				// TODO: populate these fields
-				framerate: None,
-				bitrate: None,
-				rotation: None,
-				flip: None,
-				display_ratio: None,
-				optimize_for_latency: None,
+				},
 			},
 			mp4_atom::Codec::Vp09(vp09) => {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 
-				Video {
+				VideoTrack {
 					track,
-					codec: VP9 {
-						profile: vpcc.profile,
-						level: vpcc.level,
-						bit_depth: vpcc.bit_depth,
-						chroma_subsampling: vpcc.chroma_subsampling,
-						color_primaries: vpcc.color_primaries,
-						transfer_characteristics: vpcc.transfer_characteristics,
-						matrix_coefficients: vpcc.matrix_coefficients,
-						full_range: vpcc.video_full_range_flag,
-					}
-					.into(),
-					description: Default::default(),
-					dimensions: Some(Dimensions {
-						width: vp09.visual.width as _,
-						height: vp09.visual.height as _,
-					}),
-					// TODO: populate these fields
-					display_ratio: None,
-					rotation: None,
-					flip: None,
-					optimize_for_latency: None,
-					bitrate: None,
-					framerate: None,
+					config: VideoConfig {
+						codec: VP9 {
+							profile: vpcc.profile,
+							level: vpcc.level,
+							bit_depth: vpcc.bit_depth,
+							color_primaries: vpcc.color_primaries,
+							chroma_subsampling: vpcc.chroma_subsampling,
+							transfer_characteristics: vpcc.transfer_characteristics,
+							matrix_coefficients: vpcc.matrix_coefficients,
+							full_range: vpcc.video_full_range_flag,
+						}
+						.into(),
+						description: Default::default(),
+						coded_width: Some(vp09.visual.width as _),
+						coded_height: Some(vp09.visual.height as _),
+						// TODO: populate these fields
+						display_ratio_width: None,
+						display_ratio_height: None,
+						rotation: None,
+						flip: None,
+						optimize_for_latency: None,
+						bitrate: None,
+						framerate: None,
+					},
 				}
 			}
 			mp4_atom::Codec::Av01(av01) => {
 				let av1c = &av01.av1c;
 
-				Video {
+				VideoTrack {
 					track,
-					codec: AV1 {
-						profile: av1c.seq_profile,
-						level: av1c.seq_level_idx_0,
-						tier: if av1c.seq_tier_0 { 'M' } else { 'H' },
-						bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
-							(true, true) => 12,
-							(true, false) => 10,
-							(false, true) => 10,
-							(false, false) => 8,
-						},
-						mono_chrome: av1c.monochrome,
-						chroma_subsampling_x: av1c.chroma_subsampling_x,
-						chroma_subsampling_y: av1c.chroma_subsampling_y,
-						chroma_sample_position: av1c.chroma_sample_position,
-						// TODO HDR stuff?
-						..Default::default()
-					}
-					.into(),
-					description: Default::default(),
-					dimensions: Some(Dimensions {
-						width: av01.visual.width as _,
-						height: av01.visual.height as _,
-					}),
-					// TODO: populate these fields
-					display_ratio: None,
-					rotation: None,
-					flip: None,
-					optimize_for_latency: None,
-					bitrate: None,
-					framerate: None,
+					config: VideoConfig {
+						codec: AV1 {
+							profile: av1c.seq_profile,
+							level: av1c.seq_level_idx_0,
+							bitdepth: match (av1c.seq_tier_0, av1c.high_bitdepth) {
+								(true, true) => 12,
+								(true, false) => 10,
+								(false, true) => 10,
+								(false, false) => 8,
+							},
+							mono_chrome: av1c.monochrome,
+							chroma_subsampling_x: av1c.chroma_subsampling_x,
+							chroma_subsampling_y: av1c.chroma_subsampling_y,
+							chroma_sample_position: av1c.chroma_sample_position,
+							// TODO HDR stuff?
+							..Default::default()
+						}
+						.into(),
+						description: Default::default(),
+						coded_width: Some(av01.visual.width as _),
+						coded_height: Some(av01.visual.height as _),
+						// TODO: populate these fields
+						display_ratio_width: None,
+						display_ratio_height: None,
+						rotation: None,
+						flip: None,
+						optimize_for_latency: None,
+						bitrate: None,
+						framerate: None,
+					},
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),
@@ -238,38 +241,39 @@ impl Import {
 	}
 
 	// There's two almost identical hvcc atoms in the wild.
-	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
+	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<VideoTrack> {
 		let mut description = BytesMut::new();
 		hvcc.encode_body(&mut description)?;
 
-		Ok(Video {
+		Ok(VideoTrack {
 			track,
-			codec: H265 {
-				in_band,
-				profile_space: hvcc.general_profile_space,
-				profile_idc: hvcc.general_profile_idc,
-				profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
-				tier_flag: hvcc.general_tier_flag,
-				level_idc: hvcc.general_level_idc,
-				constraint_flags: hvcc.general_constraint_indicator_flags,
-			}
-			.into(),
-			description: Some(description.freeze()),
-			dimensions: Some(Dimensions {
-				width: visual.width as _,
-				height: visual.height as _,
-			}),
-			// TODO: populate these fields
-			bitrate: None,
-			framerate: None,
-			display_ratio: None,
-			rotation: None,
-			flip: None,
-			optimize_for_latency: None,
+			config: VideoConfig {
+				codec: H265 {
+					in_band,
+					profile_space: hvcc.general_profile_space,
+					profile_idc: hvcc.general_profile_idc,
+					profile_compatibility_flags: hvcc.general_profile_compatibility_flags,
+					tier_flag: hvcc.general_tier_flag,
+					level_idc: hvcc.general_level_idc,
+					constraint_flags: hvcc.general_constraint_indicator_flags,
+				}
+				.into(),
+				description: Some(description.freeze()),
+				coded_width: Some(visual.width as _),
+				coded_height: Some(visual.height as _),
+				// TODO: populate these fields
+				bitrate: None,
+				framerate: None,
+				display_ratio_width: None,
+				display_ratio_height: None,
+				rotation: None,
+				flip: None,
+				optimize_for_latency: None,
+			},
 		})
 	}
 
-	fn init_audio(trak: &Trak) -> Result<Audio> {
+	fn init_audio(trak: &Trak) -> Result<AudioTrack> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -292,26 +296,30 @@ impl Import {
 
 				let bitrate = desc.avg_bitrate.max(desc.max_bitrate);
 
-				Audio {
+				AudioTrack {
 					track,
-					codec: AAC {
-						profile: desc.dec_specific.profile,
-					}
-					.into(),
-					sample_rate: mp4a.audio.sample_rate.integer() as _,
-					channel_count: mp4a.audio.channel_count as _,
-					bitrate: Some(bitrate.into()),
-					description: None, // TODO?
+					config: AudioConfig {
+						codec: AAC {
+							profile: desc.dec_specific.profile,
+						}
+						.into(),
+						sample_rate: mp4a.audio.sample_rate.integer() as _,
+						channel_count: mp4a.audio.channel_count as _,
+						bitrate: Some(bitrate.into()),
+						description: None, // TODO?
+					},
 				}
 			}
 			mp4_atom::Codec::Opus(opus) => {
-				Audio {
+				AudioTrack {
 					track,
-					codec: AudioCodec::Opus,
-					sample_rate: opus.audio.sample_rate.integer() as _,
-					channel_count: opus.audio.channel_count as _,
-					bitrate: None,
-					description: None, // TODO?
+					config: AudioConfig {
+						codec: AudioCodec::Opus,
+						sample_rate: opus.audio.sample_rate.integer() as _,
+						channel_count: opus.audio.channel_count as _,
+						bitrate: None,
+						description: None, // TODO?
+					},
 				}
 			}
 			mp4_atom::Codec::Unknown(unknown) => return Err(Error::UnsupportedCodec(unknown.to_string())),

@@ -2,25 +2,33 @@ mod aac;
 mod codec;
 
 pub use aac::*;
-use bytes::Bytes;
 pub use codec::*;
 
 use crate::Track;
+use bytes::Bytes;
 
 use super::Error;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
 #[serde_with::serde_as]
-#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-// Mirrors AudioDecoderConfig
-// https://w3c.github.io/webcodecs/#audio-decoder-config
-pub struct Audio {
+pub struct AudioTrack {
 	// Generic information about the track
 	pub track: Track,
 
+	// The configuration of the audio track
+	pub config: AudioConfig,
+}
+
+#[serde_with::serde_as]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+/// AudioDecoderConfig from WebCodecs
+/// https://www.w3.org/TR/webcodecs/#audio-decoder-config
+pub struct AudioConfig {
 	// The codec, see the registry for details:
 	// https://w3c.github.io/webcodecs/codec_registry.html
 	#[serde_as(as = "DisplayFromStr")]

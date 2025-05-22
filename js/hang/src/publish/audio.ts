@@ -65,12 +65,14 @@ export class PublishAudio {
 				name: track.name,
 				priority: track.priority,
 			},
-			// TODO get codec and description from decoderConfig
-			codec: "opus",
-			sampleRate,
-			numberOfChannels: settings.channelCount,
-			// TODO configurable
-			bitrate: 64_000,
+			config: {
+				// TODO get codec and description from decoderConfig
+				codec: "opus",
+				sampleRate,
+				numberOfChannels: settings.channelCount,
+				// TODO configurable
+				bitrate: 64_000,
+			},
 		};
 
 		this.#catalog.set(catalog);
@@ -119,11 +121,13 @@ export class PublishAudio {
 			},
 		});
 
+		const config = catalog.config;
+
 		encoder.configure({
-			codec: catalog.codec,
-			numberOfChannels: catalog.numberOfChannels,
-			sampleRate: catalog.sampleRate,
-			bitrate: catalog.bitrate,
+			codec: config.codec,
+			numberOfChannels: config.numberOfChannels,
+			sampleRate: config.sampleRate,
+			bitrate: config.bitrate,
 		});
 
 		const processor = AudioTrackProcessor(media);

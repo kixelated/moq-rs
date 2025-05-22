@@ -183,14 +183,12 @@ export class WatchVideoSource {
 			},
 		});
 
+		const config = selected.config;
+
 		decoder.configure({
-			...selected,
-			codedHeight: selected.dimensions?.height,
-			codedWidth: selected.dimensions?.width,
-			displayAspectHeight: selected.displayRatio?.height,
-			displayAspectWidth: selected.displayRatio?.width,
-			description: selected.description ? Buffer.from(selected.description, "hex") : undefined,
-			optimizeForLatency: selected.optimizeForLatency ?? true,
+			...config,
+			description: config.description ? Buffer.from(config.description, "hex") : undefined,
+			optimizeForLatency: config.optimizeForLatency ?? true,
 		});
 
 		(async () => {
