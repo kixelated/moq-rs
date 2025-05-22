@@ -20,8 +20,7 @@ export function WatchControls(props: { lib: Watch; root: HTMLElement }): JSX.Ele
 		>
 			<Pause lib={lib} />
 			<Volume lib={lib} />
-			<Connection lib={lib} />
-			<Broadcast lib={lib} />
+			<Status lib={lib} />
 			<Fullscreen lib={lib} root={root} />
 		</div>
 	);
@@ -80,31 +79,21 @@ function Volume(props: { lib: Watch }): JSX.Element {
 	);
 }
 
-function Connection(props: { lib: Watch }): JSX.Element {
+function Status(props: { lib: Watch }): JSX.Element {
 	const url = props.lib.connection.url.get;
-	const status = props.lib.connection.status.get;
+	const connection = props.lib.connection.status.get;
+	const broadcast = props.lib.broadcast.status.get;
 
 	return (
 		<div>
 			<Switch>
-				<Match when={!url()}>🔴&nbsp;Missing URL</Match>
-				<Match when={status() === "connected"}>🟢&nbsp;Connected</Match>
-				<Match when={status() === "connecting"}>🟡&nbsp;Connecting...</Match>
-				<Match when={status() === "disconnected"}>🔴&nbsp;Disconnected</Match>
-			</Switch>
-		</div>
-	);
-}
-
-function Broadcast(props: { lib: Watch }): JSX.Element {
-	const status = props.lib.broadcast.status.get;
-
-	return (
-		<div>
-			<Switch>
-				<Match when={status() === "live"}>🟢&nbsp;Live</Match>
-				<Match when={status() === "loading"}>🟡&nbsp;Loading...</Match>
-				<Match when={status() === "offline"}>🔴&nbsp;Offline</Match>
+				<Match when={!url()}>🔴&nbsp;No URL</Match>
+				<Match when={connection() === "disconnected"}>🔴&nbsp;Disconnected</Match>
+				<Match when={connection() === "connecting"}>🟡&nbsp;Connecting...</Match>
+				<Match when={broadcast() === "offline"}>🔴&nbsp;Offline</Match>
+				<Match when={broadcast() === "loading"}>🟡&nbsp;Loading...</Match>
+				<Match when={broadcast() === "live"}>🟢&nbsp;Live</Match>
+				<Match when={connection() === "connected"}>🟢&nbsp;Connected</Match>
 			</Switch>
 		</div>
 	);
