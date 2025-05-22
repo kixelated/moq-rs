@@ -13,8 +13,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # Use depot/docker to build the binaries and run CI.
-      - name: Build dependencies
-        uses: depot/build-push-action@v1
+      - uses: depot/setup-action@v1
+      - uses: depot/build-push-action@v1
         with:
           project: r257ctfqm6
           file: rs/Dockerfile

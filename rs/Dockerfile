@@ -63,7 +63,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
 	mkdir -p /out && \
 	cargo build --release && \
-	cp /build/target/release/moq-* /out
+	cp /build/target/release/moq* /out && \
+	cp /build/target/release/hang* /out
 
 # Yes it compiles, but let's make sure u guys don't write bad code.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

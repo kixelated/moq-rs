@@ -16,8 +16,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # Use depot/docker to run CI so it's semi-cached.
-      - name: Build dependencies
-        uses: depot/build-push-action@v1
+      - uses: depot/setup-action@v1
+      - uses: depot/build-push-action@v1
         with:
           project: r257ctfqm6
           file: js/Dockerfile
