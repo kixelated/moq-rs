@@ -5,15 +5,15 @@ import { isEqual } from "lodash";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
-export type WatchVideoProps = {
+export type VideoProps = {
 	canvas?: HTMLCanvasElement;
 	paused?: boolean;
 };
 
 // An component to render a video to a canvas.
-export class WatchVideo {
+export class Video {
 	// The source of video frames, also responsible for switching between video tracks.
-	source: WatchVideoSource;
+	source: VideoSource;
 
 	// The canvas to render the video to.
 	canvas: Signal<HTMLCanvasElement | undefined>;
@@ -26,7 +26,7 @@ export class WatchVideo {
 	#ctx!: Derived<CanvasRenderingContext2D | undefined>;
 	#signals = new Signals();
 
-	constructor(source: WatchVideoSource, props?: WatchVideoProps) {
+	constructor(source: VideoSource, props?: VideoProps) {
 		this.source = source;
 		this.canvas = signal(props?.canvas);
 		this.paused = signal(props?.paused ?? false);
@@ -116,14 +116,14 @@ export class WatchVideo {
 	}
 }
 
-export type WatchVideoSourceProps = {
+export type VideoSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Video[];
 	enabled?: boolean;
 };
 
 // Responsible for switching between video tracks and buffering frames.
-export class WatchVideoSource {
+export class VideoSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	enabled: Signal<boolean>; // Don't download any longer
 	tracks: Signal<Catalog.Video[]>;
@@ -139,7 +139,7 @@ export class WatchVideoSource {
 
 	#signals = new Signals();
 
-	constructor(props?: WatchVideoSourceProps) {
+	constructor(props?: VideoSourceProps) {
 		this.broadcast = signal(props?.broadcast);
 		this.tracks = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);

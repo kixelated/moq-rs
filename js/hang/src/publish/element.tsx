@@ -1,10 +1,10 @@
 import { signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
-import { PublishDevice } from "./broadcast";
-import { PublishControls } from "./controls";
+import { Device } from "./broadcast";
+import { Controls } from "./controls";
 import { Publish } from "./publish";
 
-export class PublishElement extends HTMLElement {
+export default class HangPublish extends HTMLElement {
 	static observedAttributes = ["url", "device", "audio", "video", "controls"];
 
 	#controls = signal(false);
@@ -23,7 +23,7 @@ export class PublishElement extends HTMLElement {
 		render(
 			() => (
 				<Show when={this.#controls.get()}>
-					<PublishControls lib={this.lib} />
+					<Controls lib={this.lib} />
 				</Show>
 			),
 			this,
@@ -34,7 +34,7 @@ export class PublishElement extends HTMLElement {
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "device") {
-			this.lib.broadcast.device.set(newValue as PublishDevice);
+			this.lib.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {
 			this.lib.broadcast.audio.constraints.set(newValue !== undefined);
 		} else if (name === "video") {
@@ -45,10 +45,10 @@ export class PublishElement extends HTMLElement {
 	}
 }
 
-customElements.define("hang-publish", PublishElement);
+customElements.define("hang-publish", HangPublish);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"hang-publish": PublishElement;
+		"hang-publish": HangPublish;
 	}
 }

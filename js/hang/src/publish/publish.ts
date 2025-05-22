@@ -1,23 +1,23 @@
 import { Signal, Signals, signal } from "@kixelated/signals";
 import { Connection, ConnectionProps } from "../connection";
-import { PublishBroadcast, PublishBroadcastProps } from "./broadcast";
+import { Broadcast, BroadcastProps } from "./broadcast";
 
 export interface PublishProps {
 	connection?: ConnectionProps;
-	broadcast?: PublishBroadcastProps;
+	broadcast?: BroadcastProps;
 	preview?: HTMLVideoElement;
 }
 
 export class Publish {
 	connection: Connection;
-	broadcast: PublishBroadcast;
+	broadcast: Broadcast;
 	preview: Signal<HTMLVideoElement | undefined>;
 
 	#signals = new Signals();
 
 	constructor(props?: PublishProps) {
 		this.connection = new Connection(props?.connection);
-		this.broadcast = new PublishBroadcast(this.connection, props?.broadcast);
+		this.broadcast = new Broadcast(this.connection, props?.broadcast);
 		this.preview = signal<HTMLVideoElement | undefined>(props?.preview);
 
 		this.#signals.effect(() => {

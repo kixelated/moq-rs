@@ -1,40 +1,40 @@
 import { JSX, Match, Show, Switch, createMemo, createSelector, createSignal } from "solid-js";
 
 export type SupportRole = "core" | "watch" | "publish" | "all";
-export type SupportPartial = "full" | "partial" | "none";
+export type Partial = "full" | "partial" | "none";
 
 const FIREFOX = navigator.userAgent.toLowerCase().includes("firefox");
 
-export type SupportAudio = {
+export type Audio = {
 	aac: boolean;
 	opus: boolean;
 };
 
-export type SupportCodec = {
+export type Codec = {
 	hardware?: boolean; // undefined on Firefox
 	software: boolean;
 };
 
-export type SupportVideo = {
-	h264: SupportCodec;
-	h265: SupportCodec;
-	vp8: SupportCodec;
-	vp9: SupportCodec;
-	av1: SupportCodec;
+export type Video = {
+	h264: Codec;
+	h265: Codec;
+	vp8: Codec;
+	vp9: Codec;
+	av1: Codec;
 };
 
-export type Support = {
+export type Modal = {
 	webtransport: boolean;
 	audio: {
 		capture: boolean;
-		encoding: SupportAudio | undefined;
-		decoding: SupportAudio | undefined;
+		encoding: Audio | undefined;
+		decoding: Audio | undefined;
 		render: boolean;
 	};
 	video: {
-		capture: SupportPartial;
-		encoding: SupportVideo | undefined;
-		decoding: SupportVideo | undefined;
+		capture: Partial;
+		encoding: Video | undefined;
+		decoding: Video | undefined;
 		render: boolean;
 	};
 };
@@ -129,7 +129,7 @@ async function videoEncoderSupported(codec: keyof typeof CODECS) {
 	};
 }
 
-export async function isSupported(): Promise<Support> {
+export async function isSupported(): Promise<Modal> {
 	return {
 		webtransport: typeof WebTransport !== "undefined",
 		audio: {
@@ -184,8 +184,8 @@ export async function isSupported(): Promise<Support> {
 	};
 }
 
-export function Support(props: { role: SupportRole; show: SupportPartial }) {
-	const [support, setSupport] = createSignal<Support | undefined>();
+export function Modal(props: { role: SupportRole; show: Partial }) {
+	const [support, setSupport] = createSignal<Modal | undefined>();
 	isSupported().then(setSupport);
 
 	const core = createMemo<"full" | "none" | undefined>(() => {
@@ -297,7 +297,7 @@ export function Support(props: { role: SupportRole; show: SupportPartial }) {
 	);
 }
 
-const SupportDetails = (props: { support: Support | undefined; role: "core" | "watch" | "publish" | "all" }) => {
+const SupportDetails = (props: { support: Modal | undefined; role: "core" | "watch" | "publish" | "all" }) => {
 	const support = props.support;
 	if (!support) return null;
 
@@ -317,9 +317,9 @@ const SupportDetails = (props: { support: Support | undefined; role: "core" | "w
 	};
 
 	const binary = (value: boolean | undefined) => (value ? "🟢 Yes" : "🔴 No");
-	const hardware = (codec: SupportCodec | undefined) =>
+	const hardware = (codec: Codec | undefined) =>
 		codec?.hardware ? "🟢 Hardware" : codec?.software ? `🟡 Software${FIREFOX ? "*" : ""}` : "🔴 No";
-	const partial = (value: SupportPartial | undefined) =>
+	const partial = (value: Partial | undefined) =>
 		value === "full" ? "🟢 Full" : value === "partial" ? "🟡 Partial" : "🔴 None";
 
 	return (

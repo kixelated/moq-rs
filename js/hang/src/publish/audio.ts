@@ -2,24 +2,37 @@ import * as Moq from "@kixelated/moq";
 import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Frame } from "../container/frame";
-import { AudioTrackSettings } from "../util/settings";
 
 // Create a group every half a second
 const GOP_DURATION = 0.5;
 
-export type AudioTrackConstraints = Omit<
+export type AudioConstraints = Omit<
 	MediaTrackConstraints,
 	"aspectRatio" | "backgroundBlur" | "displaySurface" | "facingMode" | "frameRate" | "height" | "width"
 >;
 
-export type PublishAudioProps = {
+// MediaTrackSettings can represent both audio and video, which means a LOT of possibly undefined properties.
+// This is a fork of the MediaTrackSettings interface with properties required for audio or vidfeo.
+export interface AudioTrackSettings {
+	deviceId: string;
+	groupId: string;
+
+	autoGainControl: boolean;
+	channelCount: number;
+	echoCancellation: boolean;
+	noiseSuppression: boolean;
+	sampleRate: number;
+	sampleSize: number;
+}
+
+export type AudioProps = {
 	media?: MediaStreamAudioTrack;
-	constraints?: AudioTrackConstraints | boolean;
+	constraints?: AudioConstraints | boolean;
 };
 
-export class PublishAudio {
+export class Audio {
 	readonly media: Signal<MediaStreamAudioTrack | undefined>;
-	readonly constraints: Signal<AudioTrackConstraints | boolean | undefined>;
+	readonly constraints: Signal<AudioConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -33,7 +46,7 @@ export class PublishAudio {
 	#id = 0;
 	#signals = new Signals();
 
-	constructor(props?: PublishAudioProps) {
+	constructor(props?: AudioProps) {
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 

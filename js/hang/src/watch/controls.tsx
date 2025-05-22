@@ -4,7 +4,7 @@ import { Watch } from "./watch";
 
 // A simple set of controls mostly for the demo.
 // You don't have to use SolidJS to implement your own controls; use the .subscribe() API instead.
-export function WatchControls(props: { lib: Watch; root: HTMLElement }): JSX.Element {
+export function Controls(props: { lib: Watch; root: HTMLElement }): JSX.Element {
 	const lib = props.lib;
 	const root = props.root;
 

@@ -1,10 +1,10 @@
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { Support, SupportPartial, SupportRole } from "./";
+import { Modal, Partial, SupportRole } from "./";
 
-export class SupportElement extends HTMLElement {
+export default class HangSupport extends HTMLElement {
 	#role = createSignal<SupportRole>("all");
-	#show = createSignal<SupportPartial>("full");
+	#show = createSignal<Partial>("full");
 
 	static get observedAttributes() {
 		return ["role", "show"];
@@ -31,8 +31,14 @@ export class SupportElement extends HTMLElement {
 
 	connectedCallback() {
 		const root = this.appendChild(document.createElement("div"));
-		render(() => <Support role={this.#role[0]()} show={this.#show[0]()} />, root);
+		render(() => <Modal role={this.#role[0]()} show={this.#show[0]()} />, root);
 	}
 }
 
-customElements.define("hang-support", SupportElement);
+customElements.define("hang-support", HangSupport);
+
+declare global {
+	interface HTMLElementTagNameMap {
+		"hang-support": HangSupport;
+	}
+}

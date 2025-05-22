@@ -3,12 +3,23 @@ import * as Moq from "@kixelated/moq";
 import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
-import { VideoTrackSettings } from "../util/settings";
 
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;
 
-export type VideoTrackConstraints = Omit<
+export interface VideoTrackSettings {
+	deviceId: string;
+	groupId: string;
+
+	aspectRatio: number;
+	facingMode: "user" | "environment" | "left" | "right";
+	frameRate: number;
+	height: number;
+	resizeMode: "none" | "crop-and-scale";
+	width: number;
+}
+
+export type VideoConstraints = Omit<
 	MediaTrackConstraints,
 	"autoGainControl" | "channelCount" | "echoCancellation" | "noiseSuppression" | "sampleRate" | "sampleSize"
 > & {
@@ -16,14 +27,14 @@ export type VideoTrackConstraints = Omit<
 	resizeMode?: "none" | "crop-and-scale";
 };
 
-export type PublishVideoProps = {
+export type VideoProps = {
 	media?: MediaStreamVideoTrack;
-	constraints?: VideoTrackConstraints | boolean;
+	constraints?: VideoConstraints | boolean;
 };
 
-export class PublishVideo {
+export class Video {
 	readonly media: Signal<MediaStreamVideoTrack | undefined>;
-	readonly constraints: Signal<VideoTrackConstraints | boolean | undefined>;
+	readonly constraints: Signal<VideoConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Video | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -40,7 +51,7 @@ export class PublishVideo {
 	#signals = new Signals();
 	#id = 0;
 
-	constructor(props?: PublishVideoProps) {
+	constructor(props?: VideoProps) {
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 
@@ -108,7 +119,7 @@ export class PublishVideo {
 			let { value: frame } = await reader.read();
 			if (!frame) return;
 
-			const config = await PublishVideo.#bestEncoderConfig(settings, frame);
+			const config = await Video.#bestEncoderConfig(settings, frame);
 			encoder.configure(config);
 
 			this.#encoderConfig.set(config);
@@ -243,7 +254,7 @@ export class PublishVideo {
 		// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
 		if (!navigator.userAgent.toLowerCase().includes("firefox")) {
 			for (const codec of HARDWARE_CODECS) {
-				const config = PublishVideo.#codecSpecific(baseConfig, codec, bitrate, true);
+				const config = Video.#codecSpecific(baseConfig, codec, bitrate, true);
 				const { supported, config: hardwareConfig } = await VideoEncoder.isConfigSupported(config);
 				if (supported && hardwareConfig) {
 					console.debug("using hardware encoding: ", hardwareConfig);
@@ -256,7 +267,7 @@ export class PublishVideo {
 
 		// Try software encoding.
 		for (const codec of SOFTWARE_CODECS) {
-			const config = PublishVideo.#codecSpecific(baseConfig, codec, bitrate, false);
+			const config = Video.#codecSpecific(baseConfig, codec, bitrate, false);
 			const { supported, config: softwareConfig } = await VideoEncoder.isConfigSupported(config);
 			if (supported && softwareConfig) {
 				console.debug("using software encoding: ", softwareConfig);

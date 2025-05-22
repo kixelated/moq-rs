@@ -1,23 +1,37 @@
 {
 	"name": "@kixelated/hang",
 	"type": "module",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./publish": "./src/publish/index.ts",
+		"./publish/element": "./src/publish/element.ts",
+		"./watch": "./src/watch/index.ts",
+		"./watch/element": "./src/watch/element.ts",
+		"./catalog": "./src/catalog/index.ts",
+		"./container": "./src/container/index.ts",
+		"./support": "./src/support/index.ts",
+		"./support/element": "./src/support/index.ts",
+		"./connection": "./src/connection.ts"
 	},
-	"files": ["./src", "README.md"],
+	"sideEffects": [
+		"./src/publish/element.ts",
+		"./src/watch/element.ts",
+		"./src/support/element.ts"
+	],
+	"files": ["./src", "./dist", "README.md", "tsconfig.json"],
 	"scripts": {
-		"build": "vite build --mode lib",
-		"dev": "vite --mode demo --open",
+		"build": "tsc -b",
+		"dev": "vite --open",
 		"check": "tsc --noEmit",
 		"release": "tsx scripts/release.ts"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:^",
-		"@kixelated/signals": "workspace:^",
+		"@kixelated/moq": "workspace:^0.5.0",
+		"@kixelated/signals": "workspace:^0.1.0",
 		"@types/audioworklet": "^0.0.75",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",

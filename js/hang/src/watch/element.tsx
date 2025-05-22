@@ -1,10 +1,10 @@
 import { Signals, signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
-import { WatchControls } from "./controls";
+import { Controls } from "./controls";
 import { Watch } from "./watch";
 
 // An optional web component that wraps a <canvas>
-export class WatchElement extends HTMLElement {
+export default class HangWatch extends HTMLElement {
 	static observedAttributes = ["url", "paused", "volume", "muted", "controls"];
 
 	#controls = signal(false);
@@ -25,7 +25,7 @@ export class WatchElement extends HTMLElement {
 		render(
 			() => (
 				<Show when={this.#controls.get()}>
-					<WatchControls lib={this.lib} root={this} />
+					<Controls lib={this.lib} root={this} />
 				</Show>
 			),
 			this,
@@ -102,10 +102,10 @@ export class WatchElement extends HTMLElement {
 	}
 }
 
-customElements.define("hang-watch", WatchElement);
+customElements.define("hang-watch", HangWatch);
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"hang-watch": WatchElement;
+		"hang-watch": HangWatch;
 	}
 }

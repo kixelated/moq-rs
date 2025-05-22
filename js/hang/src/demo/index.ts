@@ -1,12 +1,12 @@
 import "./index.css";
 import "./highlight";
 
-import { SupportElement } from "../support/element";
-import { WatchElement } from "../watch/element";
+import HangSupport from "../support/element";
+import HangWatch from "../watch/element";
 
-export { WatchElement, SupportElement };
+export { HangWatch, HangSupport };
 
-const watch = document.querySelector("hang-watch") as WatchElement;
+const watch = document.querySelector("hang-watch") as HangWatch;
 
 // If query params are provided, use it as the broadcast name.
 const urlParams = new URLSearchParams(window.location.search);
