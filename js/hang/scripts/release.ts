@@ -50,7 +50,7 @@ try {
 	writeFileSync("package.json", JSON.stringify(pkg, null, 2));
 
 	console.log("🚀 Publishing...");
-	execSync("pnpm publish --access=public --dry-run --no-git-checks", {
+	execSync("pnpm publish --access=public", {
 		stdio: "inherit",
 	});
 } finally {
