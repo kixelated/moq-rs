@@ -1,3 +1,6 @@
+![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
+[![Discord](https://img.shields.io/discord/1124083992740761730)](https://discord.gg/FCYF3p99mr)
+
 <p align="center">
 	<img height="128px" src="https://github.com/kixelated/moq/blob/main/.github/logo.svg" alt="Media over QUIC">
 </p>
@@ -23,10 +26,9 @@ just setup
 just all
 ```
 
-## Layers
-Now that those with ADHD have left, let's talk about the layers.
-Unlike WebRTC, MoQ is purposely split into multiple layers to allow for maximum flexibility.
-For more information, see [the blog](https://quic.video/blog/moq-onion).
+## Design
+For the non-vibe coders, let's talk about how the protocol works.
+Unlike WebRTC, MoQ is purposely split into multiple layers to allow for maximum flexibility:
 
 - **QUIC**: The network layer, providing a semi-reliable transport over UDP.
 - **WebTransport**: QUIC but with a HTTP/3 handshake for browser compatibility.
@@ -34,70 +36,68 @@ For more information, see [the blog](https://quic.video/blog/moq-onion).
 - **hang**: Media-specific encoding based on the [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API). It's designed primarily for real-time conferencing.
 - **application**: Any stuff you want to build on top of moq/hang.
 
-If you're curious about the underlying protocols, check out the [specification](https://github.com/kixelated/moq-drafts).
-If you want to argue about anything, participate in the [IETF](https://datatracker.ietf.org/group/moq/documents/) or bad-mouth `@kixelated` on [Discord](https://discord.gg/FCYF3p99mr).
+For more information, check out [the blog](https://quic.video/blog/moq-onion).
+If you're extra curious, check out the [specification](https://github.com/kixelated/moq-drafts).
+If you want to make changes (or argue about anything), ping `@kixelated` on [Discord](https://discord.gg/FCYF3p99mr).
 
 
-## Environments
-Originally, this repository was called `moq-rs` with the aim of targetting all platforms.
-The reality is that the `moq` and `hang` are relatively simple while everything else is platform specific.
-
-For example, a MoQ web player MUST use browser APIs for networking, encoding, decoding, rendering, capture, etc.
-The low level hardware and syscalls otherwise necessary are not exposed to the application (Javascript and WASM alike).
-You can use [wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/) and [web-sys](https://rustwasm.github.io/wasm-bindgen/api/web_sys/) shims, and you can see an example in [hang-wasm](rs/hang-wasm), but it's a lot of boilerplate and type juggling.
-
-Instead, this repository is split based on the language and environment:
+## Languages
+This repository is split based on the language and environment:
 - [rs](rs): Rust libraries for native platforms. (and WASM)
 - [js](js): Typescript libraries for web only. (not node)
 
 Unfortunately, this means that there are two implementations of `moq` and `hang`.
-They have a similar API but of course there are language differences.
+They use the same concepts and have a similar API but of course there are language differences.
+
+Originally, this repository was called `moq-rs` with the aim of using Rust to target all platforms.
+Unfortunately, it turns out that much of the code is platform specific, so it resulted in a tiny Rust core and a lot of convoluted wrappers.
+
+For example, a MoQ web player MUST use browser APIs for networking, encoding, decoding, rendering, capture, etc.
+The web is a sandbox, and with no low level hardware access we have to jump through the APIs designed for Javascript.
+[wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/) and [web-sys](https://rustwasm.github.io/wasm-bindgen/api/web_sys/) help, and you can see an example in [hang-wasm](rs/hang-wasm), but it's a lot of boilerplate and language juggling for little gain.
+
+Anyway, enough ranting, let's get to the code.
 
 ### Rust (Native)
-
-- [moq](rs/moq): The underlying pub/sub protocol providing real-time latency and scale. This is a simplified fork of the IETF [moq-transport draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) called `moq-lite`.
-- [moq-relay](rs/moq-relay): A server that forwards content from publishers to any interested subscribers. It can optionally be clustered, allowing N servers to transfer between themselves.
+- [moq](https://docs.rs/moq-lite): The underlying pub/sub protocol providing real-time latency and scale. This is a simplified fork of the IETF [moq-transport draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) called `moq-lite`.
+- [moq-relay](rs/moq-relay): A server that forwards content from publishers to any interested subscribers. It can be clustered, allowing multiple servers to be run (around the world!) that will proxy content to each other.
 - [moq-clock](rs/moq-clock): A dumb clock client/server just to prove MoQ can be used for more than media.
 - [moq-native](rs/moq-native): Helpers to configure QUIC on native platforms.
-- [hang](rs/hang): Media-specific components built on top of MoQ.
+- [hang](https://docs.rs/hang): Media-specific components built on top of MoQ.
 - [hang-cli](rs/hang-cli): A CLI for publishing and subscribing to media.
 - [hang-gst](rs/hang-gst): A gstreamer plugin for publishing and subscribing to media.
-- [hang-wasm](rs/hang-wasm): A web client written in Rust and using WASM. (*unmaintained*)
 - [web-transport](https://github.com/kixelated/web-transport-rs): A Rust implementation of the WebTransport API powered by [Quinn](https://github.com/quinn-rs/quinn).
 
-The [hang-wasm](rs/hang-wasm) crate is currently unmaintained and depends on some other [unmaintained crates](https://github.com/kixelated/web-rs) that I've made. Notably:
+The [hang-wasm](rs/hang-wasm) crate is currently unmaintained and depends on some other unmaintained crates. Notably:
 - [web-transport-wasm](https://github.com/kixelated/web-transport-rs/tree/main/web-transport-wasm): A wrapper around the WebTransport API.
 - [web-codecs](https://docs.rs/web-codecs/latest/web_codecs/): A wrapper around the WebCodecs API.
 - [web-streams](https://docs.rs/web-streams/latest/web_streams/): A wrapper around the WebStreams API.
-- You get the idea; it's all wrappers.
+- You get the idea; it's wrappers all the way down.
 
 
 ### Typescript (Web)
-- [moq](js/moq): The underlying pub/sub protocol providing real-time latency and scale. Available as [@kixelated/moq](https://www.npmjs.com/package/@kixelated/moq)
-- [hang](js/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a WebComponent. Available as [@kixelated/hang](https://www.npmjs.com/package/@kixelated/hang)
+- [@kixelated/moq](https://www.npmjs.com/package/@kixelated/moq): The underlying pub/sub protocol providing real-time latency and scale.
+- [@kixelated/hang](https://www.npmjs.com/package/@kixelated/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a Web Component.
 
-Check out the [demo](js/hang/src/demo) for an example of how to use the library.
 Documentation is sparse as the API is still a work in progress.
-The provided Web Components (`Watch` and `Publish`) are unlikely to change dramatically.
+Check out the [demo](js/hang/src/demo) for an example.
 
 
-# Usage
+# Development
+We use [just](https://github.com/casey/just) to simplify the development process.
+Check out the [justfile](justfile) or run `just` to see the available commands.
+
 ## Requirements
 - [Rustup](https://www.rust-lang.org/tools/install)
+- [Node](https://nodejs.org/)
 - [Just](https://github.com/casey/just?tab=readme-ov-file#installation)
-- [Node + NPM](https://nodejs.org/)
-
-## Development
-### Setup
-We use `just` to simplify the development process.
-Check out the [Justfile](justfile) or run `just` to see the available commands.
 
 Install any other required tools:
 ```sh
 just setup
 ```
 
-### Building
+## Building
 
 ```sh
 # Run the relay, a demo movie, and web server:
@@ -111,13 +111,10 @@ just web
 
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
-There are a lot more commands; check out the [Justfile](justfile) and individual README files.
-
 ### Contributing
 When you're ready to submit a PR, make sure the tests pass or face the wrath of CI:
 ```sh
 just check
-just test
 
 # Optional: Automatically fix easy lint issues.
 just fix
@@ -127,6 +124,5 @@ just fix
 # License
 
 Licensed under either:
-
 -   Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 -   MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
