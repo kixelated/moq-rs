@@ -1,5 +1,9 @@
 name: Javascript
 
+permissions:
+  id-token: write
+  contents: read
+
 on:
   pull_request:
     branches: ["main"]
@@ -12,28 +16,13 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: ./js
-
     steps:
       - uses: actions/checkout@v4
 
-      # Install Just to run CI scripts
-      - uses: extractions/setup-just@v3
-
-      # Install pnpm
-      - uses: pnpm/action-setup@v4
+      # Use depot/docker to run CI so it's semi-cached.
+      - uses: depot/setup-action@v1
+      - uses: depot/build-push-action@v1
         with:
-          package_json_file: js/package.json
-          run_install: false
-
-      # Install Node
-      - uses: actions/setup-node@v4
-        with:
-          cache: 'pnpm'
-          cache-dependency-path: js/pnpm-lock.yaml
-
-      # Make sure u guys don't write bad code
-      - run: just check
-      - run: just test
+          project: r257ctfqm6
+          file: js/Dockerfile
+          context: js

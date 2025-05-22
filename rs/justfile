@@ -8,16 +8,7 @@ default:
 
 # Install any required dependencies.
 setup:
-	# Install binstall so we can install the other tools faster.
-	cargo install cargo-binstall
-
-	# Install the tools
-	just setup-tools
-
-# CI calls this script directly because it gets rust/binstall from other sources.
-setup-tools:
-	# Install utilities
-	cargo binstall -y cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
+	cargo install cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run a localhost relay server
 relay:
@@ -129,7 +120,7 @@ check flags="":
 	cargo fmt --all --check
 
 	# Make sure it actually compiles with WASM.
-	cargo check -p hang-wasm --target wasm32-unknown-unknown
+	cargo check -p hang-wasm --target wasm32-unknown-unknown {{flags}}
 
 	# requires: cargo install cargo-shear
 	cargo shear
