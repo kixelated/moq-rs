@@ -2,43 +2,43 @@ import * as Moq from "@kixelated/moq";
 import { Derived, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { AudioTrackConstraints, PublishAudio } from "./audio";
-import { PublishVideo, VideoTrackConstraints } from "./video";
+import { Audio, AudioConstraints, AudioTrack } from "./audio";
+import { Video, VideoConstraints, VideoTrack } from "./video";
 
-export type PublishDevice = "screen" | "camera";
+export type Device = "screen" | "camera";
 
-export type PublishBroadcastProps = {
+export type BroadcastProps = {
 	publish?: boolean;
 	path?: string;
-	audio?: AudioTrackConstraints | boolean;
-	video?: VideoTrackConstraints | boolean;
-	device?: PublishDevice;
+	audio?: AudioConstraints | boolean;
+	video?: VideoConstraints | boolean;
+	device?: Device;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
 };
 
-export class PublishBroadcast {
+export class Broadcast {
 	connection: Connection;
 	publish: Signal<boolean>;
 	path: Signal<string>;
 
-	audio: PublishAudio;
-	video: PublishVideo;
+	audio: Audio;
+	video: Video;
 
 	catalog: Derived<Catalog.Broadcast>;
-	device: Signal<PublishDevice | undefined>;
+	device: Signal<Device | undefined>;
 
 	#broadcast = signal<Moq.BroadcastProducer | undefined>(undefined);
 	#catalog = new Moq.TrackProducer("catalog.json", 0);
 	#signals = new Signals();
 
-	constructor(connection: Connection, props?: PublishBroadcastProps) {
+	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
 		this.publish = signal(props?.publish ?? true);
 		this.path = signal(props?.path ?? "");
-		this.audio = new PublishAudio({ constraints: props?.audio });
-		this.video = new PublishVideo({ constraints: props?.video });
+		this.audio = new Audio({ constraints: props?.audio });
+		this.video = new Video({ constraints: props?.video });
 		this.device = signal(props?.device);
 
 		this.#signals.effect(() => {
@@ -107,7 +107,8 @@ export class PublishBroadcast {
 
 		media
 			.then((media) => {
-				this.audio.media.set(media.getAudioTracks().at(0));
+				const track = media.getAudioTracks().at(0);
+				this.audio.media.set(track as AudioTrack | undefined);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);
@@ -132,7 +133,8 @@ export class PublishBroadcast {
 
 		media
 			.then((media) => {
-				this.video.media.set(media.getVideoTracks().at(0));
+				const track = media.getVideoTracks().at(0);
+				this.video.media.set(track as VideoTrack | undefined);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);
@@ -173,8 +175,10 @@ export class PublishBroadcast {
 
 		media
 			.then((media) => {
-				this.video.media.set(media.getVideoTracks().at(0));
-				this.audio.media.set(media.getAudioTracks().at(0));
+				const video = media.getVideoTracks().at(0) as VideoTrack | undefined;
+				const audio = media.getAudioTracks().at(0) as AudioTrack | undefined;
+				this.video.media.set(video);
+				this.audio.media.set(audio);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);

@@ -80,7 +80,7 @@ The [hang-wasm](rs/hang-wasm) crate is currently unmaintained and depends on som
 - [@kixelated/hang](https://www.npmjs.com/package/@kixelated/hang): Media-specific components built on top of MoQ. Can be embedded on a web page via a Web Component.
 
 Documentation is sparse as the API is still a work in progress.
-Check out the [demo](js/hang/src/demo) for an example.
+Check out the [demos](js/hang-demo) and [quic.video](https://github.com/kixelated/quic.video/blob/main/src/components/watch.tsx) for examples.
 
 
 # Development

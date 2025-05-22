@@ -1,5 +1,5 @@
 import "./index.css";
-import "./highlight";
+import "./demo/highlight";
 
 import { createMemo, createSelector, createSignal, onCleanup } from "solid-js";
 import { For, render } from "solid-js/web";

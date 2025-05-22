@@ -31,10 +31,23 @@
 
 	<h3>Tips:</h3>
 	<p>
+		You can find the source code for this demo in <code>js/hang-demo/src/index.html</code>.
+		Yes I know it's confusing when a command automatically opens a browser window.
+	</p>
+	<p>
+		This demo uses
+		<code>http</code> so it's extra not secure.
+		It works by insecurely fetching the certificate hash and telling WebTransport to trust it.
+		If you're going to run this code in production, you'll need a valid certificate (ex. LetsEncrypt) and use
+		<code>https</code>.
+	</p>
+	<hr />
+	<p>
 		You can instanciate the player via the provided <code class="language-html">&lt;hang-watch&gt;</code> <a
 			href="https://developer.mozilla.org/en-US/docs/Web/API/Web_components">Web Component</a>.
 		Either modify HTML attributes like <code class="language-html">&lt;hang-watch paused&gt;</code> or use the
 		Javascript API.
+		The Javascript API is still evolving, so I recommend the Web Component for now.
 	</p>
 	<p>
 		You can provide your own canvas element and use CSS to modify it.
@@ -55,8 +68,8 @@
 	</p>
 	<p>
 		Audio may start muted because the browser can require user interaction before autoplaying.
-		You can unmute it by changing the volume or calling <code
-			class="language-typescript">watch.audio.enabled.set(true)</code> via the Javascript API.
+		You can unmute it by removing the <code>muted</code> property or calling <code
+			class="language-typescript">watch.audio.muted.set(false)</code> via the Javascript API.
 		And of course, nothing is downloaded while it's muted.
 	</p>
 	<hr />
@@ -87,10 +100,10 @@ function Volume(hang: Watch) {
 }
 		</code></pre>
 	</p>
-
 	<p>
-		But the demo doesn't use SolidJS on purpose to show that it's not required.
-		You can use the handy <code class="language-typescript">subscribe()</code> method to trigger a callback instead:
+		But of course you shouldn't migrate to SolidJS just for this crummy library.
+		Somebody should implement a React element, but until then, you can use the handy <code
+			class="language-typescript">subscribe()</code> method to trigger a callback on change:
 
 	<pre><code class="language-typescript">
 // There's also a `derived` method that is just a wrapper around SolidJS's `createMemo`.
@@ -138,12 +151,6 @@ just pub bbb
 	<p>
 		And if you're feeing extra adventurous, use <code class="language-bash">just sub-gst tos</code> to <i>watch</i>
 		via gstreamer.
-	</p>
-	<hr />
-	<p>
-		This demo uses `http://` so it's not secure.
-		It works by fetching the certificate hash (via HTTP) and providing that to WebTransport, which requires HTTPS.
-		To run this in production, you'll need a valid certificate (ex. letsencrypt) and to use `https://`.
 	</p>
 </body>
 

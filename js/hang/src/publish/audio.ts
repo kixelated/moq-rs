@@ -2,24 +2,43 @@ import * as Moq from "@kixelated/moq";
 import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Frame } from "../container/frame";
-import { AudioTrackSettings } from "../util/settings";
 
 // Create a group every half a second
 const GOP_DURATION = 0.5;
 
-export type AudioTrackConstraints = Omit<
+export type AudioConstraints = Omit<
 	MediaTrackConstraints,
 	"aspectRatio" | "backgroundBlur" | "displaySurface" | "facingMode" | "frameRate" | "height" | "width"
 >;
 
-export type PublishAudioProps = {
-	media?: MediaStreamAudioTrack;
-	constraints?: AudioTrackConstraints | boolean;
+// Stronger typing for the MediaStreamTrack interface.
+export interface AudioTrack extends MediaStreamTrack {
+	kind: "audio";
+	clone(): AudioTrack;
+}
+
+// MediaTrackSettings can represent both audio and video, which means a LOT of possibly undefined properties.
+// This is a fork of the MediaTrackSettings interface with properties required for audio or vidfeo.
+export interface AudioTrackSettings {
+	deviceId: string;
+	groupId: string;
+
+	autoGainControl: boolean;
+	channelCount: number;
+	echoCancellation: boolean;
+	noiseSuppression: boolean;
+	sampleRate: number;
+	sampleSize: number;
+}
+
+export type AudioProps = {
+	media?: AudioTrack;
+	constraints?: AudioConstraints | boolean;
 };
 
-export class PublishAudio {
-	readonly media: Signal<MediaStreamAudioTrack | undefined>;
-	readonly constraints: Signal<AudioTrackConstraints | boolean | undefined>;
+export class Audio {
+	readonly media: Signal<AudioTrack | undefined>;
+	readonly constraints: Signal<AudioConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -33,7 +52,7 @@ export class PublishAudio {
 	#id = 0;
 	#signals = new Signals();
 
-	constructor(props?: PublishAudioProps) {
+	constructor(props?: AudioProps) {
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 
@@ -165,8 +184,10 @@ export class PublishAudio {
 // Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
 // Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
 // Thanks Jan-Ivar
-function AudioTrackProcessor(track: MediaStreamAudioTrack): ReadableStream<AudioData> {
+function AudioTrackProcessor(track: AudioTrack): ReadableStream<AudioData> {
+	// @ts-expect-error Chrome only for now
 	if (self.MediaStreamTrackProcessor) {
+		// @ts-expect-error Chrome only for now
 		return new self.MediaStreamTrackProcessor({ track }).readable;
 	}
 
@@ -187,10 +208,13 @@ function AudioTrackProcessor(track: MediaStreamAudioTrack): ReadableStream<Audio
 			});
 
 			function worklet() {
+				// @ts-expect-error Would need a separate tsconfig to get this to work.
 				registerProcessor(
 					"mstp-shim",
+					// @ts-expect-error Would need a separate tsconfig to get this to work.
 					class Processor extends AudioWorkletProcessor {
 						process(input: Float32Array[][]) {
+							// @ts-expect-error Would need a separate tsconfig to get this to work.
 							this.port.postMessage(input[0]);
 							return true;
 						}

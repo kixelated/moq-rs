@@ -7,24 +7,24 @@ import * as Container from "../container";
 const LATENCY = 50;
 
 // A pair of AudioContext and GainNode.
-export type WatchAudioContext = {
-	root: AudioContext;
+export type AudioRoot = {
+	context: AudioContext;
 	gain: GainNode;
 };
 
-export type WatchAudioProps = {
+export type AudioProps = {
 	volume?: number;
 	paused?: boolean;
 	muted?: boolean;
 };
 
-export class WatchAudio {
-	source: WatchAudioSource;
+export class Audio {
+	source: AudioSource;
 	volume: Signal<number>;
 	muted: Signal<boolean>;
 	paused: Signal<boolean>;
 
-	#context = signal<WatchAudioContext | undefined>(undefined);
+	#context = signal<AudioRoot | undefined>(undefined);
 	readonly context = this.#context.readonly();
 
 	#sampleRate = signal<number | undefined>(undefined);
@@ -41,7 +41,7 @@ export class WatchAudio {
 	// The volume to use when unmuted.
 	#unmuteVolume = 0.5;
 
-	constructor(source: WatchAudioSource, props?: WatchAudioProps) {
+	constructor(source: AudioSource, props?: AudioProps) {
 		this.source = source;
 		this.volume = signal(props?.volume ?? 0.5);
 		this.muted = signal(props?.muted ?? true); // default to true because autoplay restrictions
@@ -69,7 +69,7 @@ export class WatchAudio {
 			const gain = new GainNode(root, { gain: this.volume.peek() });
 			gain.connect(root.destination);
 
-			this.#context.set({ root, gain });
+			this.#context.set({ context: root, gain });
 
 			return () => {
 				gain.disconnect();
@@ -129,12 +129,12 @@ export class WatchAudio {
 		const maxLatency = sample.numberOfFrames / sample.sampleRate + LATENCY / 1000;
 
 		if (!this.#ref) {
-			this.#ref = timestamp - context.root.currentTime - maxLatency;
+			this.#ref = timestamp - context.context.currentTime - maxLatency;
 		}
 
 		// Determine when the sample should be played in AudioContext units.
 		let when = timestamp - this.#ref;
-		const latency = when - context.root.currentTime;
+		const latency = when - context.context.currentTime;
 		if (latency < 0) {
 			// Can't play in the past.
 			sample.close();
@@ -143,7 +143,7 @@ export class WatchAudio {
 
 		if (latency > maxLatency) {
 			// We went over the max latency, so we need a new ref.
-			this.#ref = timestamp - context.root.currentTime - maxLatency;
+			this.#ref = timestamp - context.context.currentTime - maxLatency;
 
 			// Cancel any active samples and let them reschedule themselves if needed.
 			for (const active of this.#active) {
@@ -151,11 +151,11 @@ export class WatchAudio {
 			}
 
 			// Schedule the sample to play at the max latency.
-			when = context.root.currentTime + maxLatency;
+			when = context.context.currentTime + maxLatency;
 		}
 
 		// Create an audio buffer for this sample.
-		const buffer = this.#createBuffer(sample, context.root);
+		const buffer = this.#createBuffer(sample, context.context);
 		this.#scheduleBuffer(context, buffer, timestamp, when);
 	}
 
@@ -190,8 +190,8 @@ export class WatchAudio {
 		return buffer;
 	}
 
-	#scheduleBuffer(context: WatchAudioContext, buffer: AudioBuffer, timestamp: number, when: number) {
-		const source = context.root.createBufferSource();
+	#scheduleBuffer(context: AudioRoot, buffer: AudioBuffer, timestamp: number, when: number) {
+		const source = context.context.createBufferSource();
 		source.buffer = buffer;
 		source.connect(context.gain);
 		source.onended = () => {
@@ -202,7 +202,7 @@ export class WatchAudio {
 			// Check if we need to reschedule this sample because it was cancelled.
 			if (this.#ref) {
 				const newWhen = timestamp - this.#ref;
-				if (newWhen > context.root.currentTime) {
+				if (newWhen > context.context.currentTime) {
 					// Reschedule the sample to play at the new time.
 					this.#scheduleBuffer(context, buffer, timestamp, newWhen);
 					return;
@@ -221,13 +221,13 @@ export class WatchAudio {
 	}
 }
 
-export type WatchAudioSourceProps = {
+export type AudioSourceProps = {
 	broadcast?: Moq.BroadcastConsumer;
 	available?: Catalog.Audio[];
 	enabled?: boolean;
 };
 
-export class WatchAudioSource {
+export class AudioSource {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
 	available: Signal<Catalog.Audio[]>;
 	enabled: Signal<boolean>;
@@ -240,7 +240,7 @@ export class WatchAudioSource {
 
 	#signals = new Signals();
 
-	constructor(props?: WatchAudioSourceProps) {
+	constructor(props?: AudioSourceProps) {
 		this.broadcast = signal(props?.broadcast);
 		this.available = signal(props?.available ?? []);
 		this.enabled = signal(props?.enabled ?? false);

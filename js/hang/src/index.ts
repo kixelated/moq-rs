@@ -1,6 +1,8 @@
-export * from "./catalog";
+// TODO This should go into MoQ.
 export * from "./connection";
-export * from "./container";
-export * from "./publish";
-export * from "./watch";
-export * from "./support";
+
+export * as Catalog from "./catalog";
+export * as Publish from "./publish";
+export * as Watch from "./watch";
+export * as Container from "./container";
+export * as Support from "./support";

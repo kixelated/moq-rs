@@ -11,24 +11,8 @@ See [quic.video](https://quic.video) for more information.
 The principles are the same but the implementation is exponentially simpler given a narrower focus (and no politics).
 
 # Usage
-This library contains a lot of media stuff.
-More documentation will be available later, until then refer to the code and especially the [demos](../hang-demo).
-
-```html
-    <!-- import "@kixelated/hang/publish/element" -->
-	<hang-publish url="http://localhost:4443/demo/me.hang" audio video controls>
-		<!-- It's optional to provide a video element to preview the outgoing media. -->
-		<video style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;" muted autoplay></video>
-	</hang-publish>
-
-	<!-- import "@kixelated/hang/watch/element" -->
-	<hang-watch url="http://localhost:4443/demo/me.hang" muted controls>
-		<!-- It's optional to provide a canvas element to render the incoming media. -->
-		<canvas style="max-width: 100%; height: auto; border-radius: 4px; margin: 0 auto;"></canvas>
-	</hang-watch>
-```
-
-The API is still evolving, so expect breaking changes.
+These are demos, duh.
+We're using Vite but other bundlers should just work™.
 
 # License
 

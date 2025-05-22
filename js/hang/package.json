@@ -1,42 +1,40 @@
 {
 	"name": "@kixelated/hang",
 	"type": "module",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./publish": "./src/publish/index.ts",
+		"./publish/element": "./src/publish/element.tsx",
+		"./watch": "./src/watch/index.ts",
+		"./watch/element": "./src/watch/element.tsx",
+		"./catalog": "./src/catalog/index.ts",
+		"./container": "./src/container/index.ts",
+		"./support": "./src/support/index.ts",
+		"./support/element": "./src/support/element.tsx",
+		"./connection": "./src/connection.ts"
 	},
-	"files": ["./src", "README.md"],
+	"sideEffects": ["./src/publish/element.ts", "./src/watch/element.ts", "./src/support/element.ts"],
+	"files": ["./src", "./dist", "README.md", "tsconfig.json"],
 	"scripts": {
-		"build": "vite build --mode lib",
-		"dev": "vite --mode demo --open",
+		"build": "tsc -b",
 		"check": "tsc --noEmit",
 		"release": "tsx scripts/release.ts"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:^",
-		"@kixelated/signals": "workspace:^",
-		"@types/audioworklet": "^0.0.75",
+		"@kixelated/moq": "workspace:^0.5.0",
+		"@kixelated/signals": "workspace:^0.1.0",
 		"buffer": "^6.0.3",
 		"lodash": "^4.17.21",
 		"solid-js": "^1.9.7",
 		"zod": "^3.25.20"
 	},
 	"devDependencies": {
-		"@tailwindcss/postcss": "^4.1.7",
-		"@tailwindcss/typography": "^0.5.16",
-		"@tailwindcss/vite": "^4.1.7",
-		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/lodash": "^4.17.17",
 		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
-		"highlight.js": "^11.11.1",
-		"tailwindcss": "^4.1.7",
-		"typescript": "^5.8.3",
-		"vite": "^6.3.5",
-		"vite-plugin-dts": "^4.5.4",
-		"vite-plugin-html": "^3.2.2",
-		"vite-plugin-solid": "^2.11.6"
+		"typescript": "^5.8.3"
 	}
 }

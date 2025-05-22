@@ -1,9 +1,9 @@
 import { Match, Switch, createSelector } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
-import { PublishDevice } from "./broadcast";
+import { Device } from "./broadcast";
 import { Publish } from "./publish";
 
-export function PublishControls(props: { lib: Publish }): JSX.Element {
+export function Controls(props: { lib: Publish }): JSX.Element {
 	return (
 		<div
 			style={{
@@ -43,13 +43,13 @@ function Status(props: { lib: Publish }): JSX.Element {
 }
 
 function Select(props: { lib: Publish }): JSX.Element {
-	const setDevice = (device: PublishDevice | undefined) => {
+	const setDevice = (device: Device | undefined) => {
 		props.lib.broadcast.device.set(device);
 	};
 
 	const selected = createSelector(props.lib.broadcast.device.get);
 
-	const buttonStyle = (id: PublishDevice | undefined) => ({
+	const buttonStyle = (id: Device | undefined) => ({
 		cursor: "pointer",
 		opacity: selected(id) ? 1 : 0.5,
 	});

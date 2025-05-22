@@ -6,7 +6,9 @@
 		"moduleResolution": "bundler",
 
 		"declaration": true,
+		"declarationMap": true,
 		"isolatedModules": true,
+		"sourceMap": true,
 
 		// https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
 		"allowUnreachableCode": false,
@@ -33,7 +35,6 @@
 		// Disable enums and weird Typescript features.
 		"erasableSyntaxOnly": true,
 
-		// Avoids a bug with the dom-mediacapture-transform types.
 		"skipLibCheck": true
 	}
 }

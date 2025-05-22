@@ -1,0 +1,30 @@
+{
+	"name": "@kixelated/hang-demo",
+	"private": true,
+	"type": "module",
+	"version": "0.1.0",
+	"description": "Media over QUIC - Demo",
+	"license": "(MIT OR Apache-2.0)",
+	"repository": "github:kixelated/moq",
+	"scripts": {
+		"dev": "vite --open",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@kixelated/moq": "workspace:^0.5.0",
+		"@kixelated/hang": "workspace:^0.1.2",
+		"@kixelated/signals": "workspace:^0.1.0",
+		"solid-js": "^1.9.7"
+	},
+	"devDependencies": {
+		"@tailwindcss/postcss": "^4.1.7",
+		"@tailwindcss/typography": "^0.5.16",
+		"@tailwindcss/vite": "^4.1.7",
+		"highlight.js": "^11.11.1",
+		"tailwindcss": "^4.1.7",
+		"typescript": "^5.8.3",
+		"vite": "^6.3.5",
+		"vite-plugin-html": "^3.2.2",
+		"vite-plugin-solid": "^2.11.6"
+	}
+}
