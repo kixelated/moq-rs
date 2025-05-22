@@ -34,7 +34,6 @@
 		"zod": "^3.25.20"
 	},
 	"devDependencies": {
-		"@types/dom-mediacapture-transform": "^0.1.11",
 		"@types/lodash": "^4.17.17",
 		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
 		"typescript": "^5.8.3"

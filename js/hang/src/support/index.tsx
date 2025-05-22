@@ -134,6 +134,7 @@ export async function isSupported(): Promise<Modal> {
 		webtransport: typeof WebTransport !== "undefined",
 		audio: {
 			// We have a polyfill for when MediaStreamTrackProcessor is not supported.
+			// @ts-expect-error Chrome only for now
 			capture: typeof MediaStreamTrackProcessor !== "undefined" || typeof AudioWorkletNode !== "undefined",
 			encoding:
 				typeof AudioEncoder !== "undefined"
@@ -154,6 +155,7 @@ export async function isSupported(): Promise<Modal> {
 		video: {
 			capture:
 				// We have a fallback for MediaStreamTrackProcessor, but it's pretty gross so no full points.
+				// @ts-expect-error Chrome only for now
 				typeof MediaStreamTrackProcessor !== "undefined"
 					? "full"
 					: typeof OffscreenCanvas !== "undefined"

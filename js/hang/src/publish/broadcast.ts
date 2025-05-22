@@ -2,8 +2,8 @@ import * as Moq from "@kixelated/moq";
 import { Derived, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { Audio, AudioConstraints } from "./audio";
-import { Video, VideoConstraints } from "./video";
+import { Audio, AudioConstraints, AudioTrack } from "./audio";
+import { Video, VideoConstraints, VideoTrack } from "./video";
 
 export type Device = "screen" | "camera";
 
@@ -107,7 +107,8 @@ export class Broadcast {
 
 		media
 			.then((media) => {
-				this.audio.media.set(media.getAudioTracks().at(0));
+				const track = media.getAudioTracks().at(0);
+				this.audio.media.set(track as AudioTrack | undefined);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);
@@ -132,7 +133,8 @@ export class Broadcast {
 
 		media
 			.then((media) => {
-				this.video.media.set(media.getVideoTracks().at(0));
+				const track = media.getVideoTracks().at(0);
+				this.video.media.set(track as VideoTrack | undefined);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);
@@ -173,8 +175,10 @@ export class Broadcast {
 
 		media
 			.then((media) => {
-				this.video.media.set(media.getVideoTracks().at(0));
-				this.audio.media.set(media.getAudioTracks().at(0));
+				const video = media.getVideoTracks().at(0) as VideoTrack | undefined;
+				const audio = media.getAudioTracks().at(0) as AudioTrack | undefined;
+				this.video.media.set(video);
+				this.audio.media.set(audio);
 			})
 			.catch((err) => {
 				console.error("failed to get media", err);

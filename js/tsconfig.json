@@ -35,7 +35,6 @@
 		// Disable enums and weird Typescript features.
 		"erasableSyntaxOnly": true,
 
-		// Avoids a bug with the dom-mediacapture-transform types.
 		"skipLibCheck": true
 	}
 }

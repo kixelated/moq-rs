@@ -11,6 +11,12 @@ export type AudioConstraints = Omit<
 	"aspectRatio" | "backgroundBlur" | "displaySurface" | "facingMode" | "frameRate" | "height" | "width"
 >;
 
+// Stronger typing for the MediaStreamTrack interface.
+export interface AudioTrack extends MediaStreamTrack {
+	kind: "audio";
+	clone(): AudioTrack;
+}
+
 // MediaTrackSettings can represent both audio and video, which means a LOT of possibly undefined properties.
 // This is a fork of the MediaTrackSettings interface with properties required for audio or vidfeo.
 export interface AudioTrackSettings {
@@ -26,12 +32,12 @@ export interface AudioTrackSettings {
 }
 
 export type AudioProps = {
-	media?: MediaStreamAudioTrack;
+	media?: AudioTrack;
 	constraints?: AudioConstraints | boolean;
 };
 
 export class Audio {
-	readonly media: Signal<MediaStreamAudioTrack | undefined>;
+	readonly media: Signal<AudioTrack | undefined>;
 	readonly constraints: Signal<AudioConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
@@ -178,8 +184,10 @@ export class Audio {
 // Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
 // Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
 // Thanks Jan-Ivar
-function AudioTrackProcessor(track: MediaStreamAudioTrack): ReadableStream<AudioData> {
+function AudioTrackProcessor(track: AudioTrack): ReadableStream<AudioData> {
+	// @ts-expect-error Chrome only for now
 	if (self.MediaStreamTrackProcessor) {
+		// @ts-expect-error Chrome only for now
 		return new self.MediaStreamTrackProcessor({ track }).readable;
 	}
 

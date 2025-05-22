@@ -7,6 +7,12 @@ import * as Container from "../container";
 // Create a group every 2 seconds
 const GOP_DURATION_US = 2 * 1000 * 1000;
 
+// Stronger typing for the MediaStreamTrack interface.
+export interface VideoTrack extends MediaStreamTrack {
+	kind: "video";
+	clone(): VideoTrack;
+}
+
 export interface VideoTrackSettings {
 	deviceId: string;
 	groupId: string;
@@ -28,12 +34,12 @@ export type VideoConstraints = Omit<
 };
 
 export type VideoProps = {
-	media?: MediaStreamVideoTrack;
+	media?: VideoTrack;
 	constraints?: VideoConstraints | boolean;
 };
 
 export class Video {
-	readonly media: Signal<MediaStreamVideoTrack | undefined>;
+	readonly media: Signal<VideoTrack | undefined>;
 	readonly constraints: Signal<VideoConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Video | undefined>(undefined);
@@ -355,8 +361,10 @@ export class Video {
 // Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
 // Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
 // Thanks Jan-Ivar
-function VideoTrackProcessor(track: MediaStreamVideoTrack): ReadableStream<VideoFrame> {
+function VideoTrackProcessor(track: VideoTrack): ReadableStream<VideoFrame> {
+	// @ts-expect-error Chrome only for now
 	if (self.MediaStreamTrackProcessor) {
+		// @ts-expect-error Chrome only for now
 		return new self.MediaStreamTrackProcessor({ track }).readable;
 	}
 
