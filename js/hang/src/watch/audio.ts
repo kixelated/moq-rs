@@ -22,6 +22,9 @@ export class Audio {
 	source: AudioSource;
 	volume: Signal<number>;
 	muted: Signal<boolean>;
+
+	// When paused, no audio is downloaded or processed.
+	// This is the default state unfortunately because of autoplay restrictions.
 	paused: Signal<boolean>;
 
 	#context = signal<AudioRoot | undefined>(undefined);
@@ -44,8 +47,8 @@ export class Audio {
 	constructor(source: AudioSource, props?: AudioProps) {
 		this.source = source;
 		this.volume = signal(props?.volume ?? 0.5);
-		this.muted = signal(props?.muted ?? true); // default to true because autoplay restrictions
-		this.paused = signal(props?.paused ?? false);
+		this.muted = signal(props?.muted ?? false);
+		this.paused = signal(props?.paused ?? true); // default to true because autoplay restrictions
 
 		this.#signals.effect(() => {
 			const ctx = this.#context.get();
@@ -62,10 +65,22 @@ export class Audio {
 		});
 
 		this.#signals.effect(() => {
+			const paused = this.paused.get();
+			if (paused) return undefined;
+
 			const sampleRate = this.#sampleRate.get();
 			if (!sampleRate) return undefined;
 
+			// NOTE: We still create an AudioContext even when muted.
+			// This way we can process the audio for visualizations.
+
 			const root = new AudioContext({ latencyHint: "interactive", sampleRate });
+			if (root.state === "suspended") {
+				// Force paused if autoplay restrictions are preventing us from playing.
+				this.paused.set(true);
+				return;
+			}
+
 			const gain = new GainNode(root, { gain: this.volume.peek() });
 			gain.connect(root.destination);
 
@@ -74,6 +89,7 @@ export class Audio {
 			return () => {
 				gain.disconnect();
 				root.close();
+				this.#context.set(undefined);
 			};
 		});
 
@@ -116,8 +132,7 @@ export class Audio {
 		this.#sampleRate.set(sample.sampleRate);
 
 		const context = this.#context.get();
-		const paused = this.paused.get();
-		if (!context || paused) {
+		if (!context) {
 			sample.close();
 			return;
 		}

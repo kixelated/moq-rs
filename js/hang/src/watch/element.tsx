@@ -54,7 +54,7 @@ export default class HangWatch extends HTMLElement {
 		this.#signals.effect(() => {
 			const paused = this.lib.video.paused.get();
 			if (paused) {
-				this.setAttribute("paused", "");
+				this.setAttribute("paused", "true");
 			} else {
 				this.removeAttribute("paused");
 			}
@@ -73,9 +73,16 @@ export default class HangWatch extends HTMLElement {
 				this.removeAttribute("controls");
 			}
 		});
+
+		this.#signals.effect(() => {
+			// "pause" audio when video is paused, or if the audio is muted.
+			// This will prevent downloading it.
+			const paused = this.lib.video.paused.get() || this.lib.audio.muted.get();
+			this.lib.audio.paused.set(paused);
+		});
 	}
 
-	attributeChangedCallback(name: string, oldValue: string | undefined, newValue: string | undefined) {
+	attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
 		if (oldValue === newValue) {
 			return;
 		}
@@ -83,15 +90,14 @@ export default class HangWatch extends HTMLElement {
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "paused") {
-			this.lib.video.paused.set(newValue !== undefined);
-			this.lib.audio.paused.set(newValue !== undefined);
+			this.lib.video.paused.set(newValue !== null);
 		} else if (name === "volume") {
 			const volume = newValue ? Number.parseFloat(newValue) : 0.5;
 			this.lib.audio.volume.set(volume);
 		} else if (name === "muted") {
-			this.lib.audio.muted.set(newValue !== undefined);
+			this.lib.audio.muted.set(newValue !== null);
 		} else if (name === "controls") {
-			this.#controls.set(newValue !== undefined);
+			this.#controls.set(newValue !== null);
 		}
 	}
 

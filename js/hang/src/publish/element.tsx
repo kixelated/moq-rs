@@ -30,17 +30,17 @@ export default class HangPublish extends HTMLElement {
 		);
 	}
 
-	attributeChangedCallback(name: string, _oldValue: string | undefined, newValue: string | undefined) {
+	attributeChangedCallback(name: string, _oldValue: string | null, newValue: string | null) {
 		if (name === "url") {
 			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "device") {
 			this.lib.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {
-			this.lib.broadcast.audio.constraints.set(newValue !== undefined);
+			this.lib.broadcast.audio.constraints.set(newValue !== null);
 		} else if (name === "video") {
-			this.lib.broadcast.video.constraints.set(newValue !== undefined);
+			this.lib.broadcast.video.constraints.set(newValue !== null);
 		} else if (name === "controls") {
-			this.#controls.set(newValue !== undefined);
+			this.#controls.set(newValue !== null);
 		}
 	}
 }

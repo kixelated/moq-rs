@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createEffect, createSignal } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
 import { Watch } from "./watch";
 
@@ -27,17 +27,14 @@ export function Controls(props: { lib: Watch; root: HTMLElement }): JSX.Element 
 }
 
 function Pause(props: { lib: Watch }): JSX.Element {
-	const [paused, setPaused] = createSignal(false);
+	const togglePause = (e: MouseEvent) => {
+		e.preventDefault();
+		props.lib.video.paused.set((prev) => !prev);
+	};
 
-	createEffect(() => {
-		props.lib.audio.paused.set(paused());
-		props.lib.video.paused.set(paused());
-	});
-
-	const togglePause = () => setPaused((p) => !p);
 	return (
 		<button title="Pause" type="button" onClick={togglePause}>
-			<Show when={paused()} fallback={<>⏸️</>}>
+			<Show when={props.lib.video.paused.get()} fallback={<>⏸️</>}>
 				▶️
 			</Show>
 		</button>
