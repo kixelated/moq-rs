@@ -28,7 +28,12 @@ impl Publisher {
 		self.broadcasts.publish(path, broadcast);
 	}
 
-	/// Publish all broadcasts from the given origin.
+	/// Publish all broadcasts from the given origin with a prefix.
+	pub fn publish_prefix(&mut self, prefix: &str, broadcast: OriginConsumer) {
+		self.broadcasts.publish_prefix(prefix, broadcast);
+	}
+
+	/// Publish all broadcasts from the given origin
 	pub fn publish_all(&mut self, broadcasts: OriginConsumer) {
 		self.broadcasts.publish_all(broadcasts);
 	}

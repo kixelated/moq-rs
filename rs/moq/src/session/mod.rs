@@ -169,6 +169,11 @@ impl Session {
 		self.publisher.publish(path, broadcast);
 	}
 
+	/// Publish all broadcasts from the given origin with a prefix.
+	pub fn publish_prefix(&mut self, prefix: &str, broadcasts: OriginConsumer) {
+		self.publisher.publish_prefix(prefix, broadcasts);
+	}
+
 	/// Publish all broadcasts from the given origin.
 	pub fn publish_all(&mut self, broadcasts: OriginConsumer) {
 		self.publisher.publish_all(broadcasts);

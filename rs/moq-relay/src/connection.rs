@@ -42,7 +42,7 @@ impl Connection {
 		// Publish all broadcasts produced by the session to the local origin.
 		// TODO These need to be published to remotes if it's a relay.
 		let produced = session.consume_all();
-		self.cluster.locals.publish_all(produced);
+		self.cluster.locals.publish_prefix(&self.path, produced);
 
 		// Wait until the session is closed.
 		session.closed().await;

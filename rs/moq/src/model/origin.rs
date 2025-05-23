@@ -83,12 +83,29 @@ impl OriginProducer {
 	}
 
 	/// Publish all broadcasts from the given origin.
-	pub fn publish_all(&mut self, mut broadcasts: OriginConsumer) {
+	pub fn publish_all(&mut self, broadcasts: OriginConsumer) {
+		self.publish_prefix("", broadcasts);
+	}
+
+	/// Publish all broadcasts from the given origin with an optional prefix.
+	pub fn publish_prefix(&mut self, prefix: &str, mut broadcasts: OriginConsumer) {
 		// Really gross that this just spawns a background task, but I want publishing to be sync.
 		let mut this = self.clone();
 
+		// Overkill to avoid allocating a string if the prefix is empty.
+		let prefix = match prefix {
+			"" => None,
+			prefix => Some(prefix.to_string()),
+		};
+
 		web_async::spawn(async move {
-			while let Some((path, broadcast)) = broadcasts.next().await {
+			while let Some((suffix, broadcast)) = broadcasts.next().await {
+				let path = match &prefix {
+					Some(prefix) => format!("{}{}", prefix, suffix),
+					None => suffix,
+				};
+
+				tracing::info!(?path, "publishing broadcast");
 				this.publish(path, broadcast);
 			}
 		});
