@@ -19,6 +19,7 @@ impl Announce {
 		}
 	}
 }
+
 impl Decode for Announce {
 	fn decode<R: bytes::Buf>(r: &mut R) -> Result<Self, DecodeError> {
 		Ok(match AnnounceStatus::decode(r)? {
@@ -43,23 +44,6 @@ impl Encode for Announce {
 				AnnounceStatus::Ended.encode(w);
 				suffix.encode(w);
 			}
-		}
-	}
-}
-
-#[cfg(test)]
-impl Announce {
-	pub fn assert_active(&self, expected: &str) {
-		match self {
-			Announce::Active { suffix } => assert_eq!(suffix, expected),
-			_ => panic!("expected active announce"),
-		}
-	}
-
-	pub fn assert_ended(&self, expected: &str) {
-		match self {
-			Announce::Ended { suffix } => assert_eq!(suffix, expected),
-			_ => panic!("expected ended announce"),
 		}
 	}
 }

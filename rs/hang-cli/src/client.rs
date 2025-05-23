@@ -63,8 +63,6 @@ impl Client {
 		// The path is relative to the URL, so it's empty because we only publish one broadcast.
 		session.publish("", consumer.inner.clone());
 
-		tracing::info!("connected");
-
 		tokio::select! {
 			// On ctrl-c, close the session and exit.
 			_ = tokio::signal::ctrl_c() => {

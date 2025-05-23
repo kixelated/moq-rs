@@ -1,4 +1,4 @@
-use crate::{message, AnnounceConsumer, BroadcastConsumer, Error, Origin};
+use crate::{message, BroadcastConsumer, Error, OriginConsumer};
 
 use web_async::spawn;
 
@@ -169,19 +169,35 @@ impl Session {
 		self.publisher.publish(path, broadcast);
 	}
 
-	/// Scope subscriptions to a broadcast, returning a handle that can request tracks.
+	/// Publish all broadcasts from the given origin with a prefix.
+	pub fn publish_prefix(&mut self, prefix: &str, broadcasts: OriginConsumer) {
+		self.publisher.publish_prefix(prefix, broadcasts);
+	}
+
+	/// Publish all broadcasts from the given origin.
+	pub fn publish_all(&mut self, broadcasts: OriginConsumer) {
+		self.publisher.publish_all(broadcasts);
+	}
+
+	/// Consume a broadcast, returning a handle that can request tracks.
 	///
-	/// No data flows over the network until [BroadcastConsumer::subscribe] is called.
+	/// No tracks flow over the network until [BroadcastConsumer::subscribe] is called.
 	pub fn consume(&self, path: &str) -> BroadcastConsumer {
 		self.subscriber.consume(path)
 	}
 
-	/// Discover any broadcasts published by the remote matching a prefix.
+	/// Discover and consume all broadcasts.
 	///
-	/// There will be an event each time a broadcast starts and later ends.
-	/// The results contain the suffix only; you may need to re-apply the prefix.
-	pub fn announced<S: ToString>(&self, prefix: S) -> AnnounceConsumer {
-		self.subscriber.announced(prefix.to_string())
+	/// No tracks flow over the network until [BroadcastConsumer::subscribe] is called.
+	pub fn consume_all(&self) -> OriginConsumer {
+		self.subscriber.consume_prefix("")
+	}
+
+	/// Discover and consume any broadcasts published by the remote matching a prefix.
+	///
+	/// No tracks flow over the network until [BroadcastConsumer::subscribe] is called.
+	pub fn consume_prefix<S: ToString>(&self, prefix: S) -> OriginConsumer {
+		self.subscriber.consume_prefix(prefix)
 	}
 
 	/// Close the underlying WebTransport session.
@@ -194,15 +210,14 @@ impl Session {
 		self.webtransport.closed().await.into()
 	}
 
+	/*
 	/// Publish all of our broadcasts to the given origin.
 	///
 	/// If an optional prefix is provided, the prefix will be applied when inserting into the origin.
-	pub async fn publish_to(&mut self, mut origin: Origin, prefix: &str) {
-		let mut announced = self.announced("");
+	pub async fn publish_to(&mut self, mut origin: OriginProducer, prefix: &str) {
+		let mut broadcasts = self.consume_prefix(prefix);
 
-		while let Some(suffix) = announced.active().await {
-			let broadcast = self.consume(&suffix);
-
+		while let Some((suffix, broadcast)) = broadcasts.next().await {
 			// We can avoid a string copy if there's no prefix.
 			match prefix {
 				"" => origin.publish(suffix, broadcast),
@@ -214,27 +229,12 @@ impl Session {
 	/// Serve all broadcasts from the given origin.
 	///
 	/// If the prefix is provided, then only broadcasts matching the (stripped) prefix are served.
-	pub async fn consume_from(&mut self, origin: Origin, prefix: &str) {
-		let mut remotes = origin.announced(prefix);
+	pub async fn consume_from(&mut self, origin: OriginProducer, prefix: &str) {
+		let mut remotes = origin.consume_prefix(prefix);
 
-		while let Some(suffix) = remotes.active().await {
-			match prefix {
-				// If there's no prefix, we can avoid a string copy.
-				"" => {
-					if let Some(upstream) = origin.consume(&suffix) {
-						// If the broadcast exists (it should...) then we serve it.
-						self.publish(suffix, upstream);
-					}
-				}
-				// We need to re-apply the prefix to get the full path on the origin.
-				prefix => {
-					let path = format!("{}{}", prefix, suffix);
-					if let Some(upstream) = origin.consume(&path) {
-						// If the broadcast exists (it should...) then we serve it.
-						self.publish(suffix, upstream);
-					}
-				}
-			};
+		while let Some((suffix, broadcast)) = remotes.next().await {
+			self.publish(suffix, broadcast);
 		}
 	}
+	*/
 }

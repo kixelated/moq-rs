@@ -75,23 +75,19 @@ impl Web {
 	}
 }
 
-/// Serve the announced tracks for a given prefix.
+/// Serve the announced broadcasts for a given prefix.
 async fn serve_announced(Path(prefix): Path<String>, cluster: Cluster) -> impl IntoResponse {
-	let mut local = cluster.locals.announced(&prefix);
-	let mut remote = cluster.remotes.announced(&prefix);
+	let mut local = cluster.locals.consume_prefix(&prefix);
+	let mut remote = cluster.remotes.consume_prefix(&prefix);
 
 	let mut broadcasts = Vec::new();
 
-	while let Some(Some(local)) = local.next().now_or_never() {
-		if let moq_lite::Announce::Active { suffix } = local {
-			broadcasts.push(suffix);
-		}
+	while let Some(Some((prefix, _))) = local.next().now_or_never() {
+		broadcasts.push(prefix);
 	}
 
-	while let Some(Some(remote)) = remote.next().now_or_never() {
-		if let moq_lite::Announce::Active { suffix } = remote {
-			broadcasts.push(suffix);
-		}
+	while let Some(Some((prefix, _))) = remote.next().now_or_never() {
+		broadcasts.push(prefix);
 	}
 
 	broadcasts.join("\n")
@@ -114,7 +110,7 @@ async fn serve_fetch(Path(path): Path<String>, cluster: Cluster) -> axum::respon
 
 	tracing::info!(?broadcast, ?track, "subscribing to track");
 
-	let broadcast = cluster.consume(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
+	let broadcast = cluster.get(&broadcast).ok_or(StatusCode::NOT_FOUND)?;
 	let mut track = broadcast.subscribe(&track);
 
 	let group = match track.next_group().await {
