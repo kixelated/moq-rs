@@ -157,14 +157,19 @@ export class Broadcast {
 		if (!audio && !video) return;
 
 		// TODO Expose these to the application.
-		// @ts-ignore new API
-		const controller = new CaptureController();
-		controller.setFocusBehavior("no-focus-change");
+		// @ts-expect-error Chrome only
+		let controller: CaptureController | undefined;
+		// @ts-expect-error Chrome only
+		if (typeof self.CaptureController !== "undefined") {
+			// @ts-expect-error Chrome only
+			controller = new CaptureController();
+			controller.setFocusBehavior("no-focus-change");
+		}
 
 		const media = navigator.mediaDevices.getDisplayMedia({
 			video,
 			audio,
-			// @ts-ignore new API
+			// @ts-expect-error Chrome only
 			controller,
 			preferCurrentTab: false,
 			selfBrowserSurface: "exclude",
