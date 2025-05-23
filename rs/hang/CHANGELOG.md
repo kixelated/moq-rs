@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kixelated/moq/compare/hang-v0.2.0...hang-v0.3.0) - 2025-05-23
+
+### Other
+
+- Revamp origin/announced ([#390](https://github.com/kixelated/moq/pull/390))
+- Move config to a separate field to match the specification. ([#387](https://github.com/kixelated/moq/pull/387))
+
 ## [0.2.0](https://github.com/kixelated/moq/compare/hang-v0.1.0...hang-v0.2.0) - 2025-05-21
 
 ### Other

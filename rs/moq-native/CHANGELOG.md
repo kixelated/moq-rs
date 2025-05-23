@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.10](https://github.com/kixelated/moq/compare/moq-native-v0.6.9...moq-native-v0.6.10) - 2025-05-23
+
+### Other
+
+- updated the following local packages: moq-lite
+
 ## [0.6.9](https://github.com/kixelated/moq/compare/moq-native-v0.6.8...moq-native-v0.6.9) - 2025-05-21
 
 ### Other

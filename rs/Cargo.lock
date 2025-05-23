@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "hang"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bytes",
  "derive_more",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "hang-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1009,7 +1009,7 @@ dependencies = [
 
 [[package]]
 name = "hang-gst"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "hang-wasm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "console_error_panic_hook",
  "gloo-net",
@@ -1587,7 +1587,7 @@ dependencies = [
 
 [[package]]
 name = "moq-clock"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "moq-lite"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "bytes",
@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "anyhow",
  "clap",
@@ -1642,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "moq-relay"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "axum",
