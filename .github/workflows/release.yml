@@ -4,6 +4,11 @@ permissions:
   pull-requests: write
   contents: write
 
+# Only one release job can run at a time.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
 on:
   push:
     branches:
