@@ -108,7 +108,6 @@ impl Subscriber {
 	/// Subscribe to a specific broadcast.
 	///
 	/// TODO: This BroadcastConsumer may not be active and is never closed because it doesn't rely on announce.
-	/// TODO: Make this asynchronous and wait for an ANNOUNCE/UNANNOUNCE message.
 	pub fn consume(&self, path: &str) -> BroadcastConsumer {
 		if let Some(producer) = self.broadcasts.lock().get(path) {
 			return producer.consume();
