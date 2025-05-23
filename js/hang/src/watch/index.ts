@@ -1,7 +1,6 @@
 export * from "./audio";
 export * from "./broadcast";
 export * from "./video";
-export * from "./watch";
 export * from "./controls";
 
 // NOTE: element is not exported from this module

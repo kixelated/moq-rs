@@ -2,8 +2,8 @@ import * as Moq from "@kixelated/moq";
 import { Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { AudioSource } from "./audio";
-import { VideoSource } from "./video";
+import { Audio, AudioProps } from "./audio";
+import { Video, VideoProps } from "./video";
 
 export interface BroadcastProps {
 	// The broadcast path relative to the connection URL.
@@ -12,6 +12,9 @@ export interface BroadcastProps {
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
+
+	video?: VideoProps;
+	audio?: AudioProps;
 }
 
 // A broadcast that (optionally) reloads automatically when live/offline.
@@ -21,8 +24,8 @@ export class Broadcast {
 	path: Signal<string>;
 	status = signal<"offline" | "loading" | "live">("offline");
 
-	audio: AudioSource = new AudioSource();
-	video: VideoSource = new VideoSource();
+	audio: Audio;
+	video: Video;
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
@@ -38,6 +41,8 @@ export class Broadcast {
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
 		this.path = signal(props?.path ?? "");
+		this.audio = new Audio(props?.audio);
+		this.video = new Video(props?.video);
 		this.#reload = props?.reload ?? true;
 
 		this.#signals.effect(() => this.#runActive());
