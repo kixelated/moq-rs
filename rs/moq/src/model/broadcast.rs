@@ -35,7 +35,7 @@ pub struct BroadcastProducer {
 
 	// Dropped when all senders or all receivers are dropped.
 	// TODO Make a better way of doing this.
-	closed: watch::Sender<()>,
+	closed: watch::Sender<bool>,
 }
 
 impl Default for BroadcastProducer {
@@ -55,8 +55,12 @@ impl BroadcastProducer {
 		}
 	}
 
-	pub async fn requested(&self) -> TrackProducer {
-		self.queue.recv().await.unwrap()
+	pub async fn requested(&self) -> Option<TrackProducer> {
+		tokio::select! {
+			biased;
+			producer = self.queue.recv() => producer.ok(),
+			_ = self.closed() => None,
+		}
 	}
 
 	pub fn create(&self, track: Track) -> TrackProducer {
@@ -85,6 +89,14 @@ impl BroadcastProducer {
 		}
 	}
 
+	pub fn finish(&self) {
+		self.closed.send(true).ok();
+	}
+
+	pub async fn closed(&self) {
+		self.closed.closed().await
+	}
+
 	/// Block until there are no more consumers.
 	///
 	/// A new consumer can be created by calling [Self::consume] and this will block again.
@@ -99,7 +111,7 @@ pub struct BroadcastConsumer {
 	state: Arc<Mutex<State>>,
 
 	// Annoying, but we need to know when the above channel is closed without sending.
-	closed: watch::Receiver<()>,
+	closed: watch::Receiver<bool>,
 }
 
 impl BroadcastConsumer {

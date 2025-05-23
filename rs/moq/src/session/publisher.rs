@@ -1,13 +1,18 @@
+use std::collections::HashSet;
+
+use futures::{stream::FuturesUnordered, StreamExt};
 use web_async::FuturesExt;
 
-use crate::{message, model::GroupConsumer, BroadcastConsumer, Error, Origin, Track, TrackConsumer};
+use crate::{
+	message, model::GroupConsumer, BroadcastConsumer, Error, OriginConsumer, OriginProducer, Track, TrackConsumer,
+};
 
 use super::{Stream, Writer};
 
 #[derive(Clone)]
 pub(super) struct Publisher {
 	session: web_transport::Session,
-	broadcasts: Origin,
+	broadcasts: OriginProducer,
 }
 
 impl Publisher {
@@ -21,6 +26,11 @@ impl Publisher {
 	/// Publish a broadcast.
 	pub fn publish<T: ToString>(&mut self, path: T, broadcast: BroadcastConsumer) {
 		self.broadcasts.publish(path, broadcast);
+	}
+
+	/// Publish all broadcasts from the given origin.
+	pub fn publish_all(&mut self, broadcasts: OriginConsumer) {
+		self.broadcasts.publish_all(broadcasts);
 	}
 
 	pub async fn recv_announce(&mut self, stream: &mut Stream) -> Result<(), Error> {
@@ -46,7 +56,10 @@ impl Publisher {
 	}
 
 	async fn run_announce(&mut self, stream: &mut Stream, prefix: &str) -> Result<(), Error> {
-		let mut announced = self.broadcasts.announced(prefix);
+		let mut announced = self.broadcasts.consume_prefix(prefix);
+
+		let mut active = HashSet::new();
+		let mut tasks = FuturesUnordered::new();
 
 		// Flush any synchronously announced paths
 		loop {
@@ -55,14 +68,34 @@ impl Publisher {
 				res = stream.reader.finished() => return res,
 				announced = announced.next() => {
 					match announced {
-						Some(msg) => {
-							tracing::debug!(?msg, "announce");
+						Some((suffix, broadcast)) => {
+							tracing::debug!(?suffix, "announce");
+
+							let msg = message::Announce::Active { suffix: suffix.clone() };
 							stream.writer.encode(&msg).await?;
+							active.insert(suffix.clone());
+
+							// Wait until the broadcast is closed before unannouncing.
+							tasks.push(async move {
+								broadcast.closed().await;
+								suffix
+							});
 						},
 						None => break,
 					}
 				}
+				Some(suffix) = tasks.next() => {
+					active.remove(&suffix);
+					let msg = message::Announce::Ended { suffix };
+					stream.writer.encode(&msg).await?;
+				}
 			}
+		}
+
+		// Clean up any remaining active broadcasts.
+		for suffix in active.drain() {
+			let msg = message::Announce::Ended { suffix };
+			stream.writer.encode(&msg).await?;
 		}
 
 		stream.writer.finish().await

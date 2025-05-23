@@ -6,12 +6,12 @@ use std::{
 use crate::{
 	message,
 	model::{BroadcastConsumer, BroadcastProducer},
-	AnnounceProducer, Error, Frame, FrameProducer, Group, GroupProducer, TrackProducer,
+	Error, Frame, FrameProducer, Group, GroupProducer, OriginProducer, TrackProducer,
 };
 
 use web_async::{spawn, Lock};
 
-use super::{AnnounceConsumer, Reader, Stream};
+use super::{OriginConsumer, Reader, Stream};
 
 #[derive(Clone)]
 pub(super) struct Subscriber {
@@ -33,19 +33,19 @@ impl Subscriber {
 		}
 	}
 
-	/// Discover any tracks matching a filter.
-	pub fn announced<S: ToString>(&self, prefix: S) -> AnnounceConsumer {
+	/// Consume any broadcasts matching a prefix.
+	pub fn consume_prefix<T: ToString>(&self, prefix: T) -> OriginConsumer {
 		let prefix = prefix.to_string();
 
-		let producer = AnnounceProducer::default();
-		let consumer = producer.consume(prefix.clone());
+		let producer = OriginProducer::default();
+		let consumer = producer.consume_prefix(prefix.clone());
 
 		web_async::spawn(self.clone().run_announced(prefix, producer));
 
 		consumer
 	}
 
-	async fn run_announced(mut self, prefix: String, producer: AnnounceProducer) {
+	async fn run_announced(mut self, prefix: String, producer: OriginProducer) {
 		tracing::debug!(%prefix, "announced started");
 
 		// Keep running until we don't care about the producer anymore.
@@ -54,57 +54,49 @@ impl Subscriber {
 		// Wait until the producer is no longer needed or the stream is closed.
 		let res = tokio::select! {
 			_ = closed.unused() => Err(Error::Cancel),
-			res = self.run_announce(&prefix, producer) => res,
+			res = self.run_broadcasts(&prefix, producer) => res,
 		};
 
 		match res {
-			Err(Error::Cancel) => {
-				tracing::trace!(%prefix, "announced cancelled");
-			}
-			Err(err) => {
-				tracing::trace!(?err, %prefix, "announced error");
-			}
-			_ => {
-				tracing::trace!(%prefix, "announced complete");
-			}
+			Err(Error::Cancel) => tracing::trace!(%prefix, "announced cancelled"),
+			Err(err) => tracing::trace!(?err, %prefix, "announced error"),
+			_ => tracing::trace!(%prefix, "announced complete"),
 		}
 	}
 
-	async fn run_announce(&mut self, prefix: &str, mut announced: AnnounceProducer) -> Result<(), Error> {
+	async fn run_broadcasts(&mut self, prefix: &str, mut announced: OriginProducer) -> Result<(), Error> {
 		let mut stream = Stream::open(&mut self.session, message::ControlType::Announce).await?;
 
-		stream
-			.writer
-			.encode(&message::AnnounceRequest {
-				prefix: prefix.to_string(),
-			})
-			.await?;
+		let msg = message::AnnounceRequest {
+			prefix: prefix.to_string(),
+		};
+		stream.writer.encode(&msg).await?;
+
+		let mut producers = HashMap::new();
 
 		while let Some(announce) = stream.reader.decode_maybe::<message::Announce>().await? {
 			match announce {
 				message::Announce::Active { suffix } => {
-					let broadcast = match prefix {
-						"" => suffix,
-						prefix => format!("{}{}", prefix, suffix),
-					};
+					tracing::debug!(%suffix, "received announce");
 
-					tracing::debug!(%broadcast, "received announce");
+					let producer = BroadcastProducer::new();
+					let consumer = producer.consume();
 
-					if !announced.insert(broadcast) {
+					// Run the broadcast in the background until all consumers are dropped.
+					if !announced.publish(suffix.clone(), consumer) {
 						return Err(Error::Duplicate);
 					}
+
+					producers.insert(suffix.clone(), producer.clone());
+
+					spawn(self.clone().run_broadcast(suffix, producer));
 				}
 				message::Announce::Ended { suffix } => {
-					let broadcast = match prefix {
-						"" => suffix,
-						prefix => format!("{}{}", prefix, suffix),
-					};
+					tracing::debug!(%suffix, "received unannounce");
 
-					tracing::debug!(%broadcast, "received unannounce");
-
-					if !announced.remove(&broadcast) {
-						return Err(Error::NotFound);
-					}
+					// Close the producer.
+					let producer = producers.remove(&suffix).ok_or(Error::NotFound)?;
+					producer.finish();
 				}
 			}
 		}
@@ -113,7 +105,10 @@ impl Subscriber {
 		stream.writer.finish().await
 	}
 
-	/// Subscribe to a given broadcast.
+	/// Subscribe to a specific broadcast.
+	///
+	/// TODO: This BroadcastConsumer may not be active and is never closed because it doesn't rely on announce.
+	/// TODO: Make this asynchronous and wait for an ANNOUNCE/UNANNOUNCE message.
 	pub fn consume(&self, path: &str) -> BroadcastConsumer {
 		if let Some(producer) = self.broadcasts.lock().get(path) {
 			return producer.consume();
@@ -135,7 +130,10 @@ impl Subscriber {
 			// Keep serving requests until there are no more consumers.
 			// This way we'll clean up the task when the broadcast is no longer needed.
 			let mut track = tokio::select! {
-				producer = broadcast.requested() => producer,
+				producer = broadcast.requested() => match producer {
+					Some(producer) => producer,
+					None => break,
+				},
 				_ = broadcast.unused() => break,
 				_ = self.session.closed() => break,
 			};

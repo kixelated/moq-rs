@@ -23,8 +23,8 @@ impl Connection {
 	}
 
 	#[tracing::instrument("session", skip_all, fields(id = self.id, path = self.path))]
-	pub async fn run(self) {
-		let session = match moq_lite::Session::accept(self.session).await {
+	pub async fn run(mut self) {
+		let mut session = match moq_lite::Session::accept(self.session).await {
 			Ok(session) => session,
 			Err(err) => {
 				tracing::warn!(?err, "failed to accept session");
@@ -32,23 +32,19 @@ impl Connection {
 			}
 		};
 
-		let mut session1 = session.clone();
-		let mut session2 = session.clone();
-		let mut session3 = session.clone();
+		// Publish all local and remote broadcasts to the session.
+		// TODO We need to learn if this is a relay and NOT publish remotes.
+		let locals = self.cluster.locals.consume_prefix(&self.path);
+		let remotes = self.cluster.remotes.consume_prefix(&self.path);
+		session.publish_all(locals);
+		session.publish_all(remotes);
 
-		tokio::select! {
-			// Publish any of our broadcasts to the "locals" origin.
-			// These are advertised to other nodes in the cluster.
-			_ = session1.publish_to(self.cluster.locals.clone(), &self.path) => {},
+		// Publish all broadcasts produced by the session to the local origin.
+		// TODO These need to be published to remotes if it's a relay.
+		let produced = session.consume_all();
+		self.cluster.locals.publish_all(produced);
 
-			// Consume broadcasts from other clients connected locally.
-			_ = session2.consume_from(self.cluster.locals.clone(), &self.path) => {},
-
-			// Consume broadcasts from other nodes in the cluster.
-			_ = session3.consume_from(self.cluster.remotes.clone(), &self.path) => {},
-
-			// Wait until the session is closed.
-			_ = session.closed() => {},
-		}
+		// Wait until the session is closed.
+		session.closed().await;
 	}
 }

@@ -7,7 +7,7 @@ use crate::{BroadcastConsumer, BroadcastProducer};
 #[derive(Clone)]
 pub struct Room {
 	pub path: String,
-	announced: moq_lite::AnnounceConsumer,
+	broadcasts: moq_lite::OriginConsumer,
 	session: moq_lite::Session,
 	ourselves: Lock<HashSet<String>>,
 }
@@ -15,7 +15,7 @@ pub struct Room {
 impl Room {
 	pub fn new(session: moq_lite::Session, path: String) -> Self {
 		Self {
-			announced: session.announced(path.clone()),
+			broadcasts: session.consume_prefix(&path),
 			path,
 			session,
 			ourselves: Lock::new(HashSet::new()),
@@ -41,22 +41,15 @@ impl Room {
 		producer
 	}
 
-	/// Returns the next room action.
-	pub async fn update(&mut self) -> Option<moq_lite::Announce> {
+	/// Returns the next broadcaster in the room (not including ourselves).
+	pub async fn watch(&mut self) -> Option<BroadcastConsumer> {
 		loop {
-			let announced = self.announced.next().await?;
-			if self.ourselves.lock().contains(announced.suffix()) {
+			let (prefix, broadcast) = self.broadcasts.next().await?;
+			if self.ourselves.lock().contains(&prefix) {
 				continue;
 			}
 
-			return Some(announced);
+			return Some(BroadcastConsumer::new(broadcast));
 		}
-	}
-
-	// Takes the name of the broadcast to watch within the room.
-	pub fn watch(&mut self, name: &str) -> BroadcastConsumer {
-		let path = format!("{}{}", self.path, name);
-		let broadcast = self.session.consume(&path);
-		BroadcastConsumer::new(broadcast)
 	}
 }
