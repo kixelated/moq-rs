@@ -105,7 +105,6 @@ impl OriginProducer {
 					None => suffix,
 				};
 
-				tracing::info!(?path, "publishing broadcast");
 				this.publish(path, broadcast);
 			}
 		});
