@@ -23,7 +23,7 @@ export type Video = {
 	av1: Codec;
 };
 
-export type Modal = {
+export type Full = {
 	webtransport: boolean;
 	audio: {
 		capture: boolean;
@@ -129,7 +129,7 @@ async function videoEncoderSupported(codec: keyof typeof CODECS) {
 	};
 }
 
-export async function isSupported(): Promise<Modal> {
+export async function isSupported(): Promise<Full> {
 	return {
 		webtransport: typeof WebTransport !== "undefined",
 		audio: {
@@ -186,8 +186,11 @@ export async function isSupported(): Promise<Modal> {
 	};
 }
 
-export function Modal(props: { role: SupportRole; show: Partial }) {
-	const [support, setSupport] = createSignal<Modal | undefined>();
+export function Modal(props: { role?: SupportRole; show?: Partial }) {
+	const role = props.role ?? "all";
+	const show = props.show ?? "full";
+
+	const [support, setSupport] = createSignal<Full | undefined>();
 	isSupported().then(setSupport);
 
 	const core = createMemo<"full" | "none" | undefined>(() => {
@@ -238,13 +241,13 @@ export function Modal(props: { role: SupportRole; show: Partial }) {
 
 	const final = createMemo<"full" | "partial" | "none" | undefined>(() => {
 		const b = core();
-		if (b === "none" || props.role === "core") return b;
+		if (b === "none" || role === "core") return b;
 
-		if (props.role === "watch") {
+		if (role === "watch") {
 			return watch();
 		}
 
-		if (props.role === "publish") {
+		if (role === "publish") {
 			return publish();
 		}
 
@@ -260,10 +263,13 @@ export function Modal(props: { role: SupportRole; show: Partial }) {
 	const isFinal = createSelector(final);
 	const [showDetails, setShowDetails] = createSignal<boolean>(false);
 
+	const [close, setClose] = createSignal<boolean>(false);
+
 	// Only render based on the result.
 	const shouldShow = () => {
-		if (props.show === "full") return true;
-		if (props.show === "partial") return isFinal("partial") || isFinal("none");
+		if (close()) return false;
+		if (show === "full") return true;
+		if (show === "partial") return isFinal("partial") || isFinal("none");
 		return isFinal("none");
 	};
 
@@ -288,18 +294,21 @@ export function Modal(props: { role: SupportRole; show: Partial }) {
 						</Switch>
 					</div>
 					<button type="button" onClick={() => setShowDetails((d) => !d)} style={{ "font-size": "14px" }}>
-						{showDetails() ? "Hide Details ➖" : "Show Details ➕"}
+						{showDetails() ? "Details ➖" : "Details ➕"}
+					</button>
+					<button type="button" onClick={() => setClose(true)} style={{ "font-size": "14px" }}>
+						Close ❌
 					</button>
 				</div>
 				<Show when={showDetails()}>
-					<SupportDetails support={support()} role={props.role} />
+					<SupportDetails support={support()} role={role} />
 				</Show>
 			</div>
 		</Show>
 	);
 }
 
-const SupportDetails = (props: { support: Modal | undefined; role: "core" | "watch" | "publish" | "all" }) => {
+const SupportDetails = (props: { support: Full | undefined; role: "core" | "watch" | "publish" | "all" }) => {
 	const support = props.support;
 	if (!support) return null;
 
