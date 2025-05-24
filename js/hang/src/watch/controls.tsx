@@ -1,11 +1,17 @@
 import { Match, Show, Switch } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
-import { Watch } from "./watch";
+import { AudioEmitter } from "./audio";
+import { Broadcast } from "./broadcast";
+import { VideoRenderer } from "./video";
 
 // A simple set of controls mostly for the demo.
 // You don't have to use SolidJS to implement your own controls; use the .subscribe() API instead.
-export function Controls(props: { lib: Watch; root: HTMLElement }): JSX.Element {
-	const lib = props.lib;
+export function Controls(props: {
+	broadcast: Broadcast;
+	video: VideoRenderer;
+	audio: AudioEmitter;
+	root: HTMLElement;
+}): JSX.Element {
 	const root = props.root;
 
 	return (
@@ -18,35 +24,35 @@ export function Controls(props: { lib: Watch; root: HTMLElement }): JSX.Element 
 				"align-content": "center",
 			}}
 		>
-			<Pause lib={lib} />
-			<Volume lib={lib} />
-			<Status lib={lib} />
-			<Fullscreen lib={lib} root={root} />
+			<Pause video={props.video} />
+			<Volume audio={props.audio} />
+			<Status broadcast={props.broadcast} />
+			<Fullscreen root={root} />
 		</div>
 	);
 }
 
-function Pause(props: { lib: Watch }): JSX.Element {
+function Pause(props: { video: VideoRenderer }): JSX.Element {
 	const togglePause = (e: MouseEvent) => {
 		e.preventDefault();
-		props.lib.video.paused.set((prev) => !prev);
+		props.video.paused.set((prev) => !prev);
 	};
 
 	return (
 		<button title="Pause" type="button" onClick={togglePause}>
-			<Show when={props.lib.video.paused.get()} fallback={<>⏸️</>}>
+			<Show when={props.video.paused.get()} fallback={<>⏸️</>}>
 				▶️
 			</Show>
 		</button>
 	);
 }
 
-function Volume(props: { lib: Watch }): JSX.Element {
-	const volume = props.lib.audio.volume;
-	const muted = props.lib.audio.muted;
+function Volume(props: { audio: AudioEmitter }): JSX.Element {
+	const volume = props.audio.volume;
+	const muted = props.audio.muted;
 
 	const changeVolume = (str: string) => {
-		const v = Number.parseFloat(str);
+		const v = Number.parseFloat(str) / 100;
 		volume.set(v);
 	};
 
@@ -66,9 +72,8 @@ function Volume(props: { lib: Watch }): JSX.Element {
 			<input
 				type="range"
 				min="0"
-				max="1"
-				step="0.01"
-				value={volume.get()}
+				max="100"
+				value={volume.get() * 100}
 				onInput={(e) => changeVolume(e.currentTarget.value)}
 			/>
 			<span style={{ display: "inline-block", width: "2em", "text-align": "right" }}>{rounded()}%</span>
@@ -76,10 +81,10 @@ function Volume(props: { lib: Watch }): JSX.Element {
 	);
 }
 
-function Status(props: { lib: Watch }): JSX.Element {
-	const url = props.lib.connection.url.get;
-	const connection = props.lib.connection.status.get;
-	const broadcast = props.lib.broadcast.status.get;
+function Status(props: { broadcast: Broadcast }): JSX.Element {
+	const url = props.broadcast.connection.url.get;
+	const connection = props.broadcast.connection.status.get;
+	const broadcast = props.broadcast.status.get;
 
 	return (
 		<div>
@@ -96,7 +101,7 @@ function Status(props: { lib: Watch }): JSX.Element {
 	);
 }
 
-function Fullscreen(props: { lib: Watch; root: HTMLElement }): JSX.Element {
+function Fullscreen(props: { root: HTMLElement }): JSX.Element {
 	const toggleFullscreen = () => {
 		if (document.fullscreenElement) {
 			document.exitFullscreen();

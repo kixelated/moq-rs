@@ -1,7 +1,10 @@
 import { Signals, signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
+import { Connection } from "../connection";
+import { AudioEmitter } from "./audio";
+import { Broadcast } from "./broadcast";
 import { Controls } from "./controls";
-import { Watch } from "./watch";
+import { VideoRenderer } from "./video";
 
 // An optional web component that wraps a <canvas>
 export default class HangWatch extends HTMLElement {
@@ -9,7 +12,12 @@ export default class HangWatch extends HTMLElement {
 
 	#controls = signal(false);
 
-	lib: Watch;
+	// You can construct these manually if you want to use the library without the web component.
+	// However be warned that the API is still in flux and may change.
+	connection: Connection;
+	broadcast: Broadcast;
+	video: VideoRenderer;
+	audio: AudioEmitter;
 
 	#signals = new Signals();
 
@@ -18,14 +26,16 @@ export default class HangWatch extends HTMLElement {
 
 		const canvas = this.querySelector("canvas") as HTMLCanvasElement | undefined;
 
-		// The broadcast path is relative to the connection URL.
-		this.lib = new Watch({ video: { canvas }, broadcast: { path: "" } });
+		this.connection = new Connection();
+		this.broadcast = new Broadcast(this.connection);
+		this.video = new VideoRenderer(this.broadcast.video, { canvas });
+		this.audio = new AudioEmitter(this.broadcast.audio);
 
 		// Render the controls element.
 		render(
 			() => (
 				<Show when={this.#controls.get()}>
-					<Controls lib={this.lib} root={this} />
+					<Controls broadcast={this.broadcast} video={this.video} audio={this.audio} root={this} />
 				</Show>
 			),
 			this,
@@ -34,7 +44,7 @@ export default class HangWatch extends HTMLElement {
 		// Optionally update attributes to match the library state.
 		// This is kind of dangerous because it can create loops.
 		this.#signals.effect(() => {
-			const url = this.lib.connection.url.get();
+			const url = this.connection.url.get();
 			if (url) {
 				this.setAttribute("url", url.toString());
 			} else {
@@ -43,7 +53,7 @@ export default class HangWatch extends HTMLElement {
 		});
 
 		this.#signals.effect(() => {
-			const muted = this.lib.audio.muted.get();
+			const muted = this.audio.muted.get();
 			if (muted) {
 				this.setAttribute("muted", "");
 			} else {
@@ -52,7 +62,7 @@ export default class HangWatch extends HTMLElement {
 		});
 
 		this.#signals.effect(() => {
-			const paused = this.lib.video.paused.get();
+			const paused = this.video.paused.get();
 			if (paused) {
 				this.setAttribute("paused", "true");
 			} else {
@@ -61,7 +71,7 @@ export default class HangWatch extends HTMLElement {
 		});
 
 		this.#signals.effect(() => {
-			const volume = this.lib.audio.volume.get();
+			const volume = this.audio.volume.get();
 			this.setAttribute("volume", volume.toString());
 		});
 
@@ -75,10 +85,9 @@ export default class HangWatch extends HTMLElement {
 		});
 
 		this.#signals.effect(() => {
-			// "pause" audio when video is paused, or if the audio is muted.
-			// This will prevent downloading it.
-			const paused = this.lib.video.paused.get() || this.lib.audio.muted.get();
-			this.lib.audio.paused.set(paused);
+			// Don't download audio if we're muted or paused.
+			const paused = this.video.paused.get() || this.audio.muted.get();
+			this.audio.paused.set(paused);
 		});
 	}
 
@@ -88,14 +97,14 @@ export default class HangWatch extends HTMLElement {
 		}
 
 		if (name === "url") {
-			this.lib.connection.url.set(newValue ? new URL(newValue) : undefined);
+			this.connection.url.set(newValue ? new URL(newValue) : undefined);
 		} else if (name === "paused") {
-			this.lib.video.paused.set(newValue !== null);
+			this.video.paused.set(newValue !== null);
 		} else if (name === "volume") {
 			const volume = newValue ? Number.parseFloat(newValue) : 0.5;
-			this.lib.audio.volume.set(volume);
+			this.audio.volume.set(volume);
 		} else if (name === "muted") {
-			this.lib.audio.muted.set(newValue !== null);
+			this.audio.muted.set(newValue !== null);
 		} else if (name === "controls") {
 			this.#controls.set(newValue !== null);
 		}
@@ -103,7 +112,10 @@ export default class HangWatch extends HTMLElement {
 
 	// TODO Do this on disconnectedCallback?
 	close() {
-		this.lib.close();
+		this.connection.close();
+		this.broadcast.close();
+		this.video.close();
+		this.audio.close();
 		this.#signals.close();
 	}
 }

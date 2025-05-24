@@ -6,29 +6,108 @@ import * as Container from "../container";
 // An annoying hack, but there's stuttering that we need to fix.
 const LATENCY = 50;
 
-// A pair of AudioContext and GainNode.
+// Expose the root of the audio graph so we can use it for custom visualizations.
 export type AudioRoot = {
 	context: AudioContext;
-	gain: GainNode;
+	node: GainNode;
 };
 
-export type AudioProps = {
+export type AudioEmitterProps = {
 	volume?: number;
-	paused?: boolean;
 	muted?: boolean;
+	paused?: boolean;
 };
 
-export class Audio {
-	source: AudioSource;
+// A helper that emits audio directly to the speakers.
+export class AudioEmitter {
+	source: Audio;
 	volume: Signal<number>;
 	muted: Signal<boolean>;
 
-	// When paused, no audio is downloaded or processed.
-	// This is the default state unfortunately because of autoplay restrictions.
+	// Similar to muted, but controls whether we download audio at all.
+	// That way we can be "muted" but also download audio for visualizations.
 	paused: Signal<boolean>;
 
-	#context = signal<AudioRoot | undefined>(undefined);
-	readonly context = this.#context.readonly();
+	#signals = new Signals();
+
+	// The volume to use when unmuted.
+	#unmuteVolume = 0.5;
+
+	// The gain node used to adjust the volume.
+	#gain = signal<GainNode | undefined>(undefined);
+
+	constructor(source: Audio, props?: AudioEmitterProps) {
+		this.source = source;
+		this.volume = signal(props?.volume ?? 0.5);
+		this.muted = signal(props?.muted ?? false);
+		this.paused = signal(props?.paused ?? props?.muted ?? false);
+
+		// Set the volume to 0 when muted.
+		this.#signals.effect(() => {
+			const muted = this.muted.get();
+			if (muted) {
+				this.#unmuteVolume = this.volume.peek() || 0.5;
+				this.volume.set(0);
+				this.source.enabled.set(false);
+			} else {
+				this.volume.set(this.#unmuteVolume);
+				this.source.enabled.set(true);
+			}
+		});
+
+		// Set unmute when the volume is non-zero.
+		this.#signals.effect(() => {
+			const volume = this.volume.get();
+			this.muted.set(volume === 0);
+		});
+
+		this.#signals.effect(() => {
+			const root = this.source.root.get();
+			if (!root) return;
+
+			const gain = new GainNode(root.context, { gain: this.volume.peek() });
+			root.node.connect(gain);
+			gain.connect(root.context.destination); // speakers
+
+			this.#gain.set(gain);
+		});
+
+		this.#signals.effect(() => {
+			const gain = this.#gain.get();
+			if (!gain) return;
+
+			const volume = this.volume.get();
+			gain.gain.value = volume;
+		});
+
+		this.#signals.effect(() => {
+			this.source.enabled.set(!this.paused.get());
+		});
+	}
+
+	close() {
+		this.#signals.close();
+	}
+}
+
+export type AudioProps = {
+	broadcast?: Moq.BroadcastConsumer;
+	available?: Catalog.Audio[];
+	enabled?: boolean;
+};
+
+// Downloads audio from a track and emits it to an AudioContext.
+// The user is responsible for hooking up audio to speakers, an analyzer, etc.
+export class Audio {
+	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
+	available: Signal<Catalog.Audio[]>;
+	enabled: Signal<boolean>;
+	selected: Derived<Catalog.Audio | undefined>;
+
+	// The raw audio context, which can be used for custom visualizations.
+	// If using this class directly, you'll need to hook up audio to speakers, an analyzer, etc.
+	#root = signal<AudioRoot | undefined>(undefined);
+	readonly root = this.#root.readonly();
 
 	#sampleRate = signal<number | undefined>(undefined);
 	readonly sampleRate = this.#sampleRate.readonly();
@@ -39,34 +118,29 @@ export class Audio {
 
 	// Used to convert from timestamp units to AudioContext units.
 	#ref?: number;
+
 	#signals = new Signals();
 
-	// The volume to use when unmuted.
-	#unmuteVolume = 0.5;
+	constructor(props?: AudioProps) {
+		this.broadcast = signal(props?.broadcast);
+		this.available = signal(props?.available ?? []);
+		this.enabled = signal(props?.enabled ?? false);
 
-	constructor(source: AudioSource, props?: AudioProps) {
-		this.source = source;
-		this.volume = signal(props?.volume ?? 0.5);
-		this.muted = signal(props?.muted ?? false);
-		this.paused = signal(props?.paused ?? true); // default to true because autoplay restrictions
+		this.selected = this.#signals.derived(() => this.available.get().at(0));
 
+		// Stop all active samples when disabled.
 		this.#signals.effect(() => {
-			const ctx = this.#context.get();
-			if (!ctx) return;
+			const enabled = this.enabled.get();
+			if (enabled) return;
 
-			const volume = this.volume.get();
-			ctx.gain.gain.value = volume;
-
-			if (volume === 0) {
-				for (const active of this.#active) {
-					active.node.stop();
-				}
+			for (const active of this.#active) {
+				active.node.stop();
 			}
 		});
 
 		this.#signals.effect(() => {
-			const paused = this.paused.get();
-			if (paused) return undefined;
+			const enabled = this.enabled.get();
+			if (!enabled) return undefined;
 
 			const sampleRate = this.#sampleRate.get();
 			if (!sampleRate) return undefined;
@@ -76,195 +150,22 @@ export class Audio {
 
 			const root = new AudioContext({ latencyHint: "interactive", sampleRate });
 			if (root.state === "suspended") {
-				// Force paused if autoplay restrictions are preventing us from playing.
-				this.paused.set(true);
+				// Force disabled if autoplay restrictions are preventing us from playing.
+				this.enabled.set(false);
 				return;
 			}
 
-			const gain = new GainNode(root, { gain: this.volume.peek() });
-			gain.connect(root.destination);
-
-			this.#context.set({ context: root, gain });
+			// Make a dummy gain node that we can expose.
+			const node = new GainNode(root, { gain: 1 });
+			this.#root.set({ context: root, node });
 
 			return () => {
-				gain.disconnect();
+				node.disconnect();
 				root.close();
-				this.#context.set(undefined);
+				this.#root.set(undefined);
 			};
 		});
 
-		// Set the volume to 0 when muted.
-		this.#signals.effect(() => {
-			const muted = this.muted.get();
-			if (muted) {
-				this.#unmuteVolume = this.volume.peek() || 0.5;
-				this.volume.set(0);
-			} else {
-				this.volume.set(this.#unmuteVolume);
-			}
-		});
-
-		// Set unmute when the volume is non-zero.
-		this.#signals.effect(() => {
-			const volume = this.volume.get();
-
-			// Only download audio when the volume is non-zero.
-			this.muted.set(volume === 0);
-			this.source.enabled.set(volume > 0);
-		});
-
-		this.#run();
-	}
-
-	async #run() {
-		const reader = this.source.samples.getReader();
-		for (;;) {
-			const { value: sample } = await reader.read();
-			if (!sample) break;
-
-			this.#emit(sample);
-		}
-
-		reader.releaseLock();
-	}
-
-	#emit(sample: AudioData) {
-		this.#sampleRate.set(sample.sampleRate);
-
-		const context = this.#context.get();
-		if (!context) {
-			sample.close();
-			return;
-		}
-
-		// Convert from microseconds to seconds.
-		const timestamp = sample.timestamp / 1_000_000;
-
-		// The maximum latency in seconds, including a full frame size.
-		const maxLatency = sample.numberOfFrames / sample.sampleRate + LATENCY / 1000;
-
-		if (!this.#ref) {
-			this.#ref = timestamp - context.context.currentTime - maxLatency;
-		}
-
-		// Determine when the sample should be played in AudioContext units.
-		let when = timestamp - this.#ref;
-		const latency = when - context.context.currentTime;
-		if (latency < 0) {
-			// Can't play in the past.
-			sample.close();
-			return;
-		}
-
-		if (latency > maxLatency) {
-			// We went over the max latency, so we need a new ref.
-			this.#ref = timestamp - context.context.currentTime - maxLatency;
-
-			// Cancel any active samples and let them reschedule themselves if needed.
-			for (const active of this.#active) {
-				active.node.stop();
-			}
-
-			// Schedule the sample to play at the max latency.
-			when = context.context.currentTime + maxLatency;
-		}
-
-		// Create an audio buffer for this sample.
-		const buffer = this.#createBuffer(sample, context.context);
-		this.#scheduleBuffer(context, buffer, timestamp, when);
-	}
-
-	#createBuffer(sample: AudioData, context: AudioContext): AudioBuffer {
-		let buffer: AudioBuffer | undefined;
-
-		while (this.#buffers.length > 0) {
-			const reuse = this.#buffers.shift();
-			if (
-				reuse &&
-				reuse.sampleRate === sample.sampleRate &&
-				reuse.numberOfChannels === sample.numberOfChannels &&
-				reuse.length === sample.numberOfFrames
-			) {
-				buffer = reuse;
-				break;
-			}
-		}
-
-		if (!buffer) {
-			buffer = context.createBuffer(sample.numberOfChannels, sample.numberOfFrames, sample.sampleRate);
-		}
-
-		// Copy the sample data to the buffer.
-		for (let channel = 0; channel < sample.numberOfChannels; channel++) {
-			const channelData = new Float32Array(sample.numberOfFrames);
-			sample.copyTo(channelData, { format: "f32-planar", planeIndex: channel });
-			buffer.copyToChannel(channelData, channel);
-		}
-		sample.close();
-
-		return buffer;
-	}
-
-	#scheduleBuffer(context: AudioRoot, buffer: AudioBuffer, timestamp: number, when: number) {
-		const source = context.context.createBufferSource();
-		source.buffer = buffer;
-		source.connect(context.gain);
-		source.onended = () => {
-			// Remove ourselves from the active list.
-			// This is super gross and probably wrong, but yolo.
-			this.#active.shift();
-
-			// Check if we need to reschedule this sample because it was cancelled.
-			if (this.#ref) {
-				const newWhen = timestamp - this.#ref;
-				if (newWhen > context.context.currentTime) {
-					// Reschedule the sample to play at the new time.
-					this.#scheduleBuffer(context, buffer, timestamp, newWhen);
-					return;
-				}
-			}
-
-			this.#buffers.push(buffer);
-		};
-		source.start(when);
-
-		this.#active.push({ node: source, timestamp });
-	}
-
-	close() {
-		this.#signals.close();
-	}
-}
-
-export type AudioSourceProps = {
-	broadcast?: Moq.BroadcastConsumer;
-	available?: Catalog.Audio[];
-	enabled?: boolean;
-};
-
-export class AudioSource {
-	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
-	available: Signal<Catalog.Audio[]>;
-	enabled: Signal<boolean>;
-	selected: Derived<Catalog.Audio | undefined>;
-
-	samples: ReadableStream<AudioData>;
-	#writer: WritableStreamDefaultWriter<AudioData>;
-
-	// TODO add max bitrate/resolution/etc.
-
-	#signals = new Signals();
-
-	constructor(props?: AudioSourceProps) {
-		this.broadcast = signal(props?.broadcast);
-		this.available = signal(props?.available ?? []);
-		this.enabled = signal(props?.enabled ?? false);
-
-		const queue = new TransformStream<AudioData, AudioData>();
-		this.#writer = queue.writable.getWriter();
-		this.samples = queue.readable;
-
-		this.selected = this.#signals.derived(() => this.available.get().at(0));
 		this.#signals.effect(() => this.#init());
 	}
 
@@ -280,7 +181,7 @@ export class AudioSource {
 		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
 
 		const decoder = new AudioDecoder({
-			output: (data) => this.#writer.write(data),
+			output: (data) => this.#emit(data),
 			error: (error) => console.error(error),
 		});
 
@@ -315,8 +216,110 @@ export class AudioSource {
 		};
 	}
 
+	#emit(sample: AudioData) {
+		this.#sampleRate.set(sample.sampleRate);
+
+		const root = this.#root.get();
+		if (!root) {
+			sample.close();
+			return;
+		}
+
+		// Convert from microseconds to seconds.
+		const timestamp = sample.timestamp / 1_000_000;
+
+		// The maximum latency in seconds, including a full frame size.
+		const maxLatency = sample.numberOfFrames / sample.sampleRate + LATENCY / 1000;
+
+		if (!this.#ref) {
+			this.#ref = timestamp - root.context.currentTime - maxLatency;
+		}
+
+		// Determine when the sample should be played in AudioContext units.
+		let when = timestamp - this.#ref;
+		const latency = when - root.context.currentTime;
+		if (latency < 0) {
+			// Can't play in the past.
+			sample.close();
+			return;
+		}
+
+		if (latency > maxLatency) {
+			// We went over the max latency, so we need a new ref.
+			this.#ref = timestamp - root.context.currentTime - maxLatency;
+
+			// Cancel any active samples and let them reschedule themselves if needed.
+			for (const active of this.#active) {
+				active.node.stop();
+			}
+
+			// Schedule the sample to play at the max latency.
+			when = root.context.currentTime + maxLatency;
+		}
+
+		// Create an audio buffer for this sample.
+		const buffer = this.#createBuffer(sample, root.context);
+		this.#scheduleBuffer(root, buffer, timestamp, when);
+	}
+
+	#createBuffer(sample: AudioData, context: AudioContext): AudioBuffer {
+		let buffer: AudioBuffer | undefined;
+
+		while (this.#buffers.length > 0) {
+			const reuse = this.#buffers.shift();
+			if (
+				reuse &&
+				reuse.sampleRate === sample.sampleRate &&
+				reuse.numberOfChannels === sample.numberOfChannels &&
+				reuse.length === sample.numberOfFrames
+			) {
+				buffer = reuse;
+				break;
+			}
+		}
+
+		if (!buffer) {
+			buffer = context.createBuffer(sample.numberOfChannels, sample.numberOfFrames, sample.sampleRate);
+		}
+
+		// Copy the sample data to the buffer.
+		for (let channel = 0; channel < sample.numberOfChannels; channel++) {
+			const channelData = new Float32Array(sample.numberOfFrames);
+			sample.copyTo(channelData, { format: "f32-planar", planeIndex: channel });
+			buffer.copyToChannel(channelData, channel);
+		}
+		sample.close();
+
+		return buffer;
+	}
+
+	#scheduleBuffer(root: AudioRoot, buffer: AudioBuffer, timestamp: number, when: number) {
+		const source = root.context.createBufferSource();
+		source.buffer = buffer;
+		source.connect(root.node);
+		source.onended = () => {
+			// Remove ourselves from the active list.
+			// This is super gross and probably wrong, but yolo.
+			this.#active.shift();
+
+			// Check if we need to reschedule this sample because it was cancelled.
+			if (this.#ref) {
+				const newWhen = timestamp - this.#ref;
+				if (newWhen > root.context.currentTime) {
+					// Reschedule the sample to play at the new time.
+					this.#scheduleBuffer(root, buffer, timestamp, newWhen);
+					return;
+				}
+			}
+
+			this.#buffers.push(buffer);
+		};
+		source.start(when);
+
+		this.#active.push({ node: source, timestamp });
+	}
+
 	close() {
 		this.#signals.close();
-		this.#writer.close().catch(() => void 0);
 	}
 }
