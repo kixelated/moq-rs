@@ -1,8 +1,9 @@
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Parser, Clone, Default)]
+#[derive(Parser, Clone, Default, Serialize, Deserialize, Debug)]
 pub struct Args {
 	#[arg(long, short, action = clap::ArgAction::Count)]
 	pub verbose: u8,

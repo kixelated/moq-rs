@@ -2,6 +2,7 @@ use std::{net, sync::Arc, time};
 
 use anyhow::Context;
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::tls;
@@ -12,7 +13,7 @@ use futures::FutureExt;
 
 use web_transport::quinn as web_transport_quinn;
 
-#[derive(Parser, Clone)]
+#[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct Args {
 	/// Listen for UDP packets on the given address.
 	#[arg(long, default_value = "[::]:0")]

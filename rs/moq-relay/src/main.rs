@@ -1,39 +1,19 @@
 mod cluster;
+mod config;
 mod connection;
 mod web;
 
 pub use cluster::*;
+pub use config::*;
 pub use connection::*;
 pub use web::*;
 
 use anyhow::Context;
-use clap::Parser;
 use moq_native::quic;
-
-#[derive(Parser, Clone)]
-pub struct Config {
-	/// Listen on this address, both TCP and UDP.
-	#[arg(long, default_value = "[::]:443")]
-	pub bind: String,
-
-	/// The TLS configuration.
-	#[command(flatten)]
-	pub tls: moq_native::tls::Args,
-
-	/// Log configuration.
-	#[command(flatten)]
-	pub log: moq_native::log::Args,
-
-	/// Cluster configuration.
-	#[command(flatten)]
-	pub cluster: ClusterConfig,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let config = Config::parse();
-	config.log.init();
-
+	let config = Config::load()?;
 	let bind = tokio::net::lookup_host(config.bind)
 		.await
 		.context("invalid bind address")?

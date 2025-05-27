@@ -6,12 +6,13 @@ use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer, ServerName, UnixTime
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
 use rustls::RootCertStore;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Cursor, Read};
 use std::path;
 use std::sync::Arc;
 
-#[derive(Parser, Clone, Default)]
+#[derive(Parser, Clone, Serialize, Deserialize, Debug, Default)]
 #[group(id = "tls")]
 pub struct Args {
 	/// Use the certificates at this path, encoded as PEM.

@@ -1,5 +1,15 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::{fs, io, path::PathBuf};
+
+#[derive(Debug, Clone, Copy, Parser, ValueEnum, Eq, PartialEq)]
+#[clap(rename_all = "kebab-case")]
+enum KeyFormat {
+	/// DER-encoded keys.
+	Der,
+	// TODO somebody please add support for these formats.
+	// Pem,
+	// Jwk,
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "moq-token")]
@@ -8,6 +18,10 @@ struct Cli {
 	/// The algorithm to use for the token.
 	#[arg(long, default_value = "HS256")]
 	algorithm: moq_token::Algorithm,
+
+	/// The format of the key.
+	#[arg(long, value_enum, default_value_t = KeyFormat::Der)]
+	format: KeyFormat,
 
 	/// The command to execute.
 	#[command(subcommand)]
