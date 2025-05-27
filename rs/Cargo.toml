@@ -8,6 +8,7 @@ members = [
 	"moq-clock",
 	"moq-native",
 	"moq-relay",
+	"moq-token",
 ]
 # without hang-gst because it requires gstreamer to be installed
 # and without hang-wasm because it's deprecated and weird
@@ -18,6 +19,7 @@ default-members = [
 	"moq-clock",
 	"moq-native",
 	"moq-relay",
+	"moq-token",
 ]
 resolver = "2"
 

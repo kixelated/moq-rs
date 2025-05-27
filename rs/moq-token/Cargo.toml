@@ -1,0 +1,21 @@
+[package]
+name = "moq-token"
+description = "Media over QUIC - Token Generation and Validation"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq"
+license = "MIT OR Apache-2.0"
+
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jsonwebtoken = "9"
+serde = { version = "1", features = ["derive"] }
+aws-lc-rs = "1"
+serde_with = "3"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+
+[[bin]]
+name = "moq-token"
+path = "src/bin.rs"
