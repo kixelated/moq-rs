@@ -22,9 +22,9 @@ hyper-serve = { version = "0.6", features = [
 ] } # fork of axum-server
 moq-lite = { workspace = true }
 moq-native = { workspace = true }
+moq-token = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_with = { version = "3", features = ["json", "base64"] }
-serde_json = "1"
 thiserror = "2"
 tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
@@ -32,4 +32,3 @@ tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
 url = "2"
 web-transport = { workspace = true }
-moq-token = { workspace = true }

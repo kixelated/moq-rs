@@ -45,6 +45,7 @@ pub struct Key {
 }
 
 impl Key {
+	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(s: &str) -> anyhow::Result<Self> {
 		Ok(serde_json::from_str(s)?)
 	}
@@ -85,7 +86,7 @@ impl Key {
 
 		println!("token: {}", token);
 
-		let token = jsonwebtoken::decode::<Payload>(token, &decode, &validation)?;
+		let token = jsonwebtoken::decode::<Payload>(token, decode, &validation)?;
 		Ok(token.claims)
 	}
 
@@ -106,7 +107,7 @@ impl Key {
 
 		let mut header = Header::new(self.algorithm.into());
 		header.kid = self.kid.clone();
-		let token = jsonwebtoken::encode(&header, &payload, &encode)?;
+		let token = jsonwebtoken::encode(&header, &payload, encode)?;
 		Ok(token)
 	}
 
