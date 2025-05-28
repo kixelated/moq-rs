@@ -43,9 +43,9 @@ pub struct ServerConfig {
 	pub bind: net::SocketAddr,
 
 	/// Load the given certificate and keys from disk.
-	#[arg(long = "tls-cert", value_parser = ServerCert::parse)]
+	#[arg(value_parser = ServerCert::parse)]
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub tls_certs: Vec<ServerCert>,
+	pub tls_cert: Vec<ServerCert>,
 
 	/// Or generate a new certificate and key with the given hostnames.
 	/// This won't be valid unless the client uses the fingerprint or disables verification.
@@ -81,7 +81,7 @@ impl Server {
 		let mut serve = ServeCerts::default();
 
 		// Load the certificate and key files based on their index.
-		for cert in &config.tls_certs {
+		for cert in &config.tls_cert {
 			serve.load(&cert.chain, &cert.key)?;
 		}
 
