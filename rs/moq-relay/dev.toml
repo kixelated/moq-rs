@@ -1,0 +1,36 @@
+[log]
+# Enable debug logging for development.
+# The RUST_LOG environment variable will take precedence.
+level = "debug"
+
+[server]
+# Listen for QUIC connections on UDP:4443
+# Sometimes IPv6 causes issues; try 127.0.0.1:4443 instead.
+bind = "[::]:4443"
+
+# Generate a self-signed certificate for the server.
+# This is used for local development
+tls_generate = ["localhost"]
+
+[cluster]
+# Include our hostname so leaf nodes can connect to us.
+node = "localhost:4443"
+
+# Authentication is rather crude because it's GOOD ENOUGH for now.
+# The first part of the path is used to determine the key to use.
+# ex. /demo/foo/bar will use the demo key.
+#
+# If an empty string is specified, then the full path is used to scope the connection.
+# ex. `/anon/foo` will allow publishing/subscribing `/anon/foo/bar` as `/bar`.
+#
+# If there is an authentication key specified, then the rest of the path is used as the authentication token.
+# ex. `/demo/XXXXX` will try to decode/verify `XXXXX` as a moq-token payload. (base64 JSON)
+#
+# Inside of the token, there is a path that it used to scope the connection.
+# ex. `/demo/{path:foo}` will allow publishing/subscribing `/demo/foo/bar` as `/bar`.
+#
+# The token can also further scope what can be published and subscribed.
+# ex. `/demo/{path:foo,pub:bar}` will NOT allow publishing `/demo/foo/baz`
+[auth.key]
+# All that explanation just to disable authentication for the demo/ path.
+demo = ""

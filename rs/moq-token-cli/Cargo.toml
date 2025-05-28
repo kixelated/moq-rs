@@ -1,5 +1,5 @@
 [package]
-name = "moq-token"
+name = "moq-token-cli"
 description = "Media over QUIC - Token Generation and Validation"
 authors = ["Luke Curley"]
 repository = "https://github.com/kixelated/moq"
@@ -10,8 +10,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-aws-lc-rs = "1"
-jsonwebtoken = "9"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_with = { version = "3", features = ["base64"] }
+clap = { version = "4", features = ["derive"] }
+moq-token = { path = "../moq-token" }
+
+[[bin]]
+name = "moq-token"
+path = "src/bin.rs"

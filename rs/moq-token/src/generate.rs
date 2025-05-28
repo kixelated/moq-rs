@@ -1,14 +1,10 @@
-use crate::Algorithm;
-
-use aws_lc_rs::{
-	encoding::{AsDer, Pkcs8V1Der},
-	rand, rsa,
-	signature::{self, KeyPair},
-};
+// This code will be useful one day.
+/*
+use crate::{Algorithm, Key, KeyOperation};
 
 /// Generate a key pair for the given algorithm, returning the private and public keys.
-pub fn generate(algorithm: Algorithm) -> (Vec<u8>, Vec<u8>) {
-	match algorithm {
+pub fn generate(algorithm: Algorithm, id: Option<String>) -> Key {
+	let private_key = match algorithm {
 		Algorithm::HS256 => generate_hmac_key::<32>(),
 		Algorithm::HS384 => generate_hmac_key::<48>(),
 		Algorithm::HS512 => generate_hmac_key::<64>(),
@@ -21,14 +17,29 @@ pub fn generate(algorithm: Algorithm) -> (Vec<u8>, Vec<u8>) {
 		Algorithm::PS384 => generate_rsa_key(rsa::KeySize::Rsa2048),
 		Algorithm::PS512 => generate_rsa_key(rsa::KeySize::Rsa2048),
 		Algorithm::EdDSA => generate_ed25519_key(),
-	}
+	};
+
+	let private_key = Key {
+		kid: id.clone(),
+		operations: [KeyOperation::Sign, KeyOperation::Verify].into(),
+		algorithm,
+		secret: private_key,
+		decode: Default::default(),
+		encode: Default::default(),
+	};
+
+	let public_key = Key {
+		kid: id,
+		operations: [KeyOperation::Verify].into(),
+		algorithm,
+		der: public_key,
+		decode: Default::default(),
+		encode: Default::default(),
+	};
+
+	(private_key, public_key)
 }
 
-fn generate_hmac_key<const SIZE: usize>() -> (Vec<u8>, Vec<u8>) {
-	let mut key = [0u8; SIZE];
-	rand::fill(&mut key).unwrap();
-	(key.to_vec(), key.to_vec())
-}
 
 fn generate_rsa_key(size: rsa::KeySize) -> (Vec<u8>, Vec<u8>) {
 	let key = rsa::KeyPair::generate(size).unwrap();
@@ -54,3 +65,4 @@ fn generate_ed25519_key() -> (Vec<u8>, Vec<u8>) {
 
 	(private_key, public_key)
 }
+*/

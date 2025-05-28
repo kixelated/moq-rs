@@ -14,9 +14,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
 futures = "0.3"
 hex = "0.4"
+
 moq-lite = { workspace = true }
 quinn = "0.11"
 rcgen = "0.13"
@@ -25,6 +25,8 @@ ring = "0.17"
 rustls = "0.23"
 rustls-native-certs = "0.8"
 rustls-pemfile = "2"
+serde = { version = "1", features = ["derive"] }
+serde_with = "3"
 time = "0.3"
 tokio = { workspace = true, features = ["full"] }
 tracing = "0.1"

@@ -1,15 +1,30 @@
 use anyhow::Context;
 use moq_lite::{BroadcastConsumer, BroadcastProducer, OriginProducer};
-use moq_native::quic;
 use tracing::Instrument;
 use url::Url;
 
-use crate::ClusterConfig;
+#[serde_with::serde_as]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default)]
+#[serde_with::skip_serializing_none]
+#[serde(deny_unknown_fields)]
+pub struct ClusterConfig {
+	/// Announce our tracks and discover other origins via this server.
+	/// If not provided, then clustering is disabled.
+	///
+	/// Peers will connect to use via this hostname.
+	pub root: Option<String>,
+
+	/// Our unique name which we advertise to other origins.
+	/// If not provided, then we are a read-only member of the cluster.
+	///
+	/// Peers will connect to use via this hostname.
+	pub node: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct Cluster {
 	config: ClusterConfig,
-	client: quic::Client,
+	client: moq_native::Client,
 
 	// Tracks announced by local clients (users).
 	pub locals: OriginProducer,
@@ -21,7 +36,7 @@ pub struct Cluster {
 impl Cluster {
 	const ORIGINS: &str = "internal/origins/";
 
-	pub fn new(config: ClusterConfig, client: quic::Client) -> Self {
+	pub fn new(config: ClusterConfig, client: moq_native::Client) -> Self {
 		Cluster {
 			config,
 			client,
@@ -120,7 +135,7 @@ impl Cluster {
 	}
 
 	async fn run_root(self) -> anyhow::Result<()> {
-		tracing::info!("running as root");
+		tracing::info!("running as root, accepting leaf nodes");
 
 		// Literally nothing to do here, because it's handled when accepting connections.
 

@@ -1,71 +1,40 @@
-use std::path::PathBuf;
-
-use clap::Parser;
-use figment::{
-	providers::{Env, Format, Serialized, Toml},
-	Figment,
-};
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-#[derive(Parser, Clone, Deserialize, Serialize, Debug)]
+use crate::{AuthConfig, ClusterConfig};
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
-	/// Path to a TOML config file
-	pub config: Option<PathBuf>,
+	/// The QUIC/TLS configuration for the server.
+	pub server: moq_native::ServerConfig,
 
-	/// Listen on this address, both TCP and UDP.
-	//#[bpaf(fallback("[::]:443"))]
-	pub bind: String,
-
-	/// The TLS configuration.
-	#[clap(flatten)]
-	pub tls: moq_native::tls::Args,
+	/// The QUIC/TLS configuration for the client. (clustering only)
+	#[serde(default)]
+	pub client: moq_native::ClientConfig,
 
 	/// Log configuration.
-	#[clap(flatten)]
-	pub log: moq_native::log::Args,
+	#[serde(default)]
+	pub log: moq_native::Log,
 
 	/// Cluster configuration.
-	#[clap(flatten)]
+	#[serde(default)]
 	pub cluster: ClusterConfig,
 
 	/// Authentication configuration.
-	#[clap(flatten)]
+	#[serde(default)]
 	pub auth: AuthConfig,
 }
 
 impl Config {
 	pub fn load() -> anyhow::Result<Self> {
-		let args = Config::parse();
+		let path = std::env::args()
+			.nth(1)
+			.context("the only argument is a TOML configuration file")?;
 
-		let mut figment = Figment::new().merge(Serialized::defaults(&args));
-		if let Some(config) = args.config {
-			figment = figment.merge(Toml::file(config));
-		}
-
-		let config: Config = figment.merge(Env::prefixed("MOQ_")).extract()?;
+		let config: Config = toml::from_str(&std::fs::read_to_string(path)?)?;
 		config.log.init();
 
-		tracing::debug!(?config, "loaded config");
 		Ok(config)
 	}
 }
-
-#[derive(Clone, Parser, Serialize, Deserialize, Debug, Default)]
-pub struct ClusterConfig {
-	/// Announce our tracks and discover other origins via this server.
-	/// If not provided, then clustering is disabled.
-	///
-	/// Peers will connect to use via this hostname.
-	#[arg(long = "cluster-root")]
-	pub root: Option<String>,
-
-	/// Our unique name which we advertise to other origins.
-	/// If not provided, then we are a read-only member of the cluster.
-	///
-	/// Peers will connect to use via this hostname.
-	#[arg(long = "cluster-node")]
-	pub node: Option<String>,
-}
-
-#[derive(Clone, Parser, Serialize, Deserialize, Debug, Default)]
-pub struct AuthConfig {}

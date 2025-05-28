@@ -6,7 +6,6 @@ use gst_base::subclass::prelude::*;
 
 use hang::moq_lite;
 
-use moq_native::{quic, tls};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -152,15 +151,11 @@ impl HangSink {
 		let url = Url::parse(url).context("invalid URL")?;
 
 		// TODO support TLS certs and other options
-		let config = quic::Args {
-			bind: "[::]:0".parse().unwrap(),
-			tls: tls::Args {
-				disable_verify: settings.tls_disable_verify,
-				..Default::default()
-			},
+		let client = moq_native::ClientConfig {
+			tls_disable_verify: settings.tls_disable_verify,
+			..Default::default()
 		}
-		.load()?;
-		let client = quic::Endpoint::new(config)?.client;
+		.init()?;
 
 		RUNTIME.block_on(async move {
 			let session = client.connect(url.clone()).await.expect("failed to connect");

@@ -9,6 +9,7 @@ members = [
 	"moq-native",
 	"moq-relay",
 	"moq-token",
+	"moq-token-cli",
 ]
 # without hang-gst because it requires gstreamer to be installed
 # and without hang-wasm because it's deprecated and weird
@@ -20,6 +21,7 @@ default-members = [
 	"moq-native",
 	"moq-relay",
 	"moq-token",
+	"moq-token-cli",
 ]
 resolver = "2"
 
@@ -32,6 +34,7 @@ serde = { version = "1", features = ["derive"] }
 hang = { version = "0.2", path = "hang" }
 moq-lite = { version = "0.2", path = "moq" }
 moq-native = { version = "0.6", path = "moq-native" }
+moq-token = { version = "0.1", path = "moq-token" }
 
 [profile.release.package.hang-wasm]
 # Tell `rustc` to optimize for small code size.

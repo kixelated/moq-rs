@@ -12,11 +12,11 @@ setup:
 
 # Run a localhost relay server
 relay:
-	RUST_LOG=debug cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
+	cargo run --bin moq-relay moq-relay/dev.toml
 
 # Run a localhost leaf server, connecting to the relay server
 leaf:
-	RUST_LOG=debug cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
+	cargo run --bin moq-relay moq-relay/leaf.toml
 
 # Run a cluster of relay servers
 cluster:
@@ -101,7 +101,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve
+		- | cargo run --bin hang -- --bind "[::]:4443" --tls-generate "localhost:4443" --tls-disable-verify serve
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
@@ -160,3 +160,18 @@ upgrade:
 # Build the packages
 build:
 	cargo build
+
+
+# Generate an authentication key for the given path.
+# This key needs to be added to the moq-relay configuration before it does anything.
+# The sub-token and pub-token commands show how you can use the key to sign requests.
+key path:
+	cargo run --bin moq-token -- --key "{{path}}.jwk" generate; \
+
+# Generate a token for subscribing to the named broadcast ONLY.
+sub-token key path:
+	cargo run --quiet --bin moq-token -- --key "{{key}}.jwk" sign --subscribe "{{path}}.hang"
+
+# Generate a token for publishing the named broadcast ONLY.
+pub-token key path:
+	cargo run --quiet --bin moq-token -- --key "{{key}}.jwk" sign --publish "{{path}}.hang"

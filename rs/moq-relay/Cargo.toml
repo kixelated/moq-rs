@@ -15,7 +15,6 @@ categories = ["multimedia", "network-programming", "web-programming"]
 anyhow = { version = "1", features = ["backtrace"] }
 axum = { version = "0.8", features = ["tokio"] }
 bytes = "1"
-clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 http-body = "1"
 hyper-serve = { version = "0.6", features = [
@@ -23,11 +22,14 @@ hyper-serve = { version = "0.6", features = [
 ] } # fork of axum-server
 moq-lite = { workspace = true }
 moq-native = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_with = { version = "3", features = ["json", "base64"] }
+serde_json = "1"
 thiserror = "2"
 tokio = { workspace = true, features = ["full"] }
+toml = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
 url = "2"
 web-transport = { workspace = true }
-figment = { version = "0.10", features = ["env", "toml"] }
-serde = { version = "1", features = ["derive"] }
+moq-token = { workspace = true }

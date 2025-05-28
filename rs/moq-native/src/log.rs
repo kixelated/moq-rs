@@ -1,29 +1,28 @@
-use clap::Parser;
 use serde::{Deserialize, Serialize};
+use serde_with::DisplayFromStr;
 use tracing::level_filters::LevelFilter;
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Parser, Clone, Default, Serialize, Deserialize, Debug)]
-pub struct Args {
-	#[arg(long, short, action = clap::ArgAction::Count)]
-	pub verbose: u8,
-
-	#[arg(long, short, action = clap::ArgAction::Count, conflicts_with = "verbose")]
-	pub quiet: u8,
+#[serde_with::serde_as]
+#[derive(Clone, clap::Parser, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, default)]
+pub struct Log {
+	/// The level filter to use.
+	#[serde_as(as = "DisplayFromStr")]
+	#[arg(id = "log-level", long = "log-level", default_value = "info")]
+	pub level: Level,
 }
 
-impl Args {
+impl Default for Log {
+	fn default() -> Self {
+		Self { level: Level::INFO }
+	}
+}
+
+impl Log {
 	pub fn level(&self) -> LevelFilter {
-		// Default to INFO, go up or down based on -q or -v counts
-		match self.verbose {
-			0 => match self.quiet {
-				0 => LevelFilter::INFO,
-				1 => LevelFilter::ERROR,
-				_ => LevelFilter::OFF,
-			},
-			1 => LevelFilter::DEBUG,
-			_ => LevelFilter::TRACE,
-		}
+		LevelFilter::from_level(self.level)
 	}
 
 	pub fn init(&self) {

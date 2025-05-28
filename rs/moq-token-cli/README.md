@@ -1,6 +1,6 @@
 # moq-token
 
-A simple JWT and JWK based authentication scheme for moq-relay.
+A simple JWT-based authentication scheme for moq-relay.
 
 ## Usage
 ```bash
