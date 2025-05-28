@@ -1,5 +1,3 @@
-use moq_native::quic;
-use std::net;
 use url::Url;
 
 use clap::Parser;
@@ -9,17 +7,13 @@ use moq_lite::*;
 
 #[derive(Parser, Clone)]
 pub struct Config {
-	/// Listen for UDP packets on the given address.
-	#[arg(long, default_value = "[::]:0")]
-	pub bind: net::SocketAddr,
-
 	/// Connect to the given URL starting with https://
 	#[arg()]
 	pub url: Url,
 
-	/// The TLS configuration.
+	/// The MoQ client configuration.
 	#[command(flatten)]
-	pub tls: moq_native::tls::Args,
+	pub client: moq_native::ClientConfig,
 
 	/// The path of the clock broadcast.
 	#[arg(long, default_value = "clock")]
@@ -31,7 +25,7 @@ pub struct Config {
 
 	/// The log configuration.
 	#[command(flatten)]
-	pub log: moq_native::log::Args,
+	pub log: moq_native::Log,
 
 	/// Whether to publish the clock or consume it.
 	#[command(subcommand)]
@@ -49,13 +43,11 @@ async fn main() -> anyhow::Result<()> {
 	let config = Config::parse();
 	config.log.init();
 
-	let tls = config.tls.load()?;
-
-	let quic = quic::Endpoint::new(quic::Config { bind: config.bind, tls })?;
+	let client = config.client.init()?;
 
 	tracing::info!(url = ?config.url, "connecting to server");
 
-	let session = quic.client.connect(config.url).await?;
+	let session = client.connect(config.url).await?;
 	let mut session = moq_lite::Session::connect(session).await?;
 
 	let track = Track {

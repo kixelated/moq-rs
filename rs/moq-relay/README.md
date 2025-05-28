@@ -3,14 +3,8 @@
 **moq-relay** is a server that forwards subscriptions from publishers to subscribers, caching and deduplicating along the way.
 It's designed to be run in a datacenter, relaying media across multiple hops to deduplicate and improve QoS.
 
-Required arguments:
-
--   `--bind <ADDR>`: Listen on this address, default: `[::]:4443`
--   `--tls-cert <CERT>`: Use the certificate file at this path
--   `--tls-key <KEY>` Use the private key at this path
-
-This listens for WebTransport connections on `UDP https://localhost:4443` by default.
-You need a client to connect to that address, to both publish and consume media.
+The only argument is the path to a TOML configuration file.
+See [dev.toml](dev.toml) for an example configuration.
 
 ## HTTP
 Primarily for debugging, you can also connect to the relay via HTTP.

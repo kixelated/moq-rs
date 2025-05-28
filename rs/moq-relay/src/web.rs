@@ -22,7 +22,7 @@ use crate::Cluster;
 
 pub struct WebConfig {
 	pub bind: net::SocketAddr,
-	pub tls: moq_native::tls::Config,
+	pub fingerprints: Vec<String>,
 	pub cluster: Cluster,
 }
 
@@ -37,7 +37,7 @@ impl Web {
 	pub fn new(config: WebConfig) -> Self {
 		// Get the first certificate's fingerprint.
 		// TODO serve all of them so we can support multiple signature algorithms.
-		let fingerprint = config.tls.fingerprints.first().expect("missing certificate").clone();
+		let fingerprint = config.fingerprints.first().expect("missing certificate").clone();
 
 		let app = Router::new()
 			.route("/certificate.sha256", get(fingerprint))

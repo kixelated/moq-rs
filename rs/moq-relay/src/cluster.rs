@@ -1,31 +1,30 @@
 use anyhow::Context;
-use clap::Parser;
 use moq_lite::{BroadcastConsumer, BroadcastProducer, OriginProducer};
-use moq_native::quic;
 use tracing::Instrument;
 use url::Url;
 
-#[derive(Clone, Parser)]
+#[serde_with::serde_as]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default)]
+#[serde_with::skip_serializing_none]
+#[serde(deny_unknown_fields)]
 pub struct ClusterConfig {
 	/// Announce our tracks and discover other origins via this server.
 	/// If not provided, then clustering is disabled.
 	///
 	/// Peers will connect to use via this hostname.
-	#[arg(long)]
-	pub cluster_root: Option<String>,
+	pub root: Option<String>,
 
 	/// Our unique name which we advertise to other origins.
 	/// If not provided, then we are a read-only member of the cluster.
 	///
 	/// Peers will connect to use via this hostname.
-	#[arg(long)]
-	pub cluster_node: Option<String>,
+	pub node: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct Cluster {
 	config: ClusterConfig,
-	client: quic::Client,
+	client: moq_native::Client,
 
 	// Tracks announced by local clients (users).
 	pub locals: OriginProducer,
@@ -37,7 +36,7 @@ pub struct Cluster {
 impl Cluster {
 	const ORIGINS: &str = "internal/origins/";
 
-	pub fn new(config: ClusterConfig, client: quic::Client) -> Self {
+	pub fn new(config: ClusterConfig, client: moq_native::Client) -> Self {
 		Cluster {
 			config,
 			client,
@@ -53,8 +52,8 @@ impl Cluster {
 	}
 
 	pub async fn run(self) -> anyhow::Result<()> {
-		let root = self.config.cluster_root.clone();
-		let node = self.config.cluster_node.as_ref().map(|node| node.to_string());
+		let root = self.config.root.clone();
+		let node = self.config.node.as_ref().map(|node| node.to_string());
 
 		tracing::info!(?root, ?node, "initializing cluster");
 
@@ -70,7 +69,7 @@ impl Cluster {
 		// Create a "broadcast" with no tracks to announce ourselves.
 		let noop = BroadcastProducer::new();
 
-		let node = self.config.cluster_node.as_ref().map(|node| node.to_string());
+		let node = self.config.node.as_ref().map(|node| node.to_string());
 
 		// If we're a node, then we need to announce ourselves as an origin.
 		// We do this by creating a "broadcast" with no tracks.
@@ -136,7 +135,7 @@ impl Cluster {
 	}
 
 	async fn run_root(self) -> anyhow::Result<()> {
-		tracing::info!("running as root");
+		tracing::info!("running as root, accepting leaf nodes");
 
 		// Literally nothing to do here, because it's handled when accepting connections.
 

@@ -1,0 +1,14 @@
+[server]
+bind = "[::]:4444"
+tls_generate = ["localhost:4444"]
+
+[client]
+tls_disable_verify = true
+
+[cluster]
+root = "localhost:4443"
+node = "localhost:4444"
+
+[auth.key]
+# Disable authentication for the demo/ path.
+demo = ""
