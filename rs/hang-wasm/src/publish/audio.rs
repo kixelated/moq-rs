@@ -7,21 +7,21 @@ pub struct PublishAudio {
 	config: web_codecs::AudioEncoderConfig,
 
 	// The track that we are publishing.
-	track: hang::TrackProducer,
+	track: hang::model::TrackProducer,
 
 	// The encoder accepts raw frames and spits out encoded frames.
 	encoder: web_codecs::AudioEncoder,
 	encoded: web_codecs::AudioEncoded,
 
 	// When set, publish to the given broadcast.
-	broadcast: Option<hang::BroadcastProducer>,
+	broadcast: Option<hang::model::BroadcastProducer>,
 }
 
 impl PublishAudio {
 	pub async fn init(id: usize, channel_count: u32, sample_rate: u32) -> Result<Self> {
 		let track = moq_lite::Track {
 			name: format!("audio_{}", id),
-			priority: 1,
+			priority: 2,
 		}
 		.produce();
 
@@ -50,7 +50,7 @@ impl PublishAudio {
 				self.publish_to(&mut broadcast);
 			}
 
-			self.track.write(hang::Frame {
+			self.track.write(hang::model::Frame {
 				timestamp: frame.timestamp,
 				keyframe: frame.keyframe,
 				payload: frame.payload,
@@ -75,11 +75,11 @@ impl PublishAudio {
 		}
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
+	pub fn publish_to(&mut self, broadcast: &mut hang::model::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::AudioTrack {
+			let info = hang::catalog::AudioTrack {
 				track: self.track.inner.info.clone(),
-				config: hang::AudioConfig {
+				config: hang::catalog::AudioConfig {
 					codec: config.codec.into(),
 					description: config.description,
 					sample_rate: config.sample_rate,

@@ -7,21 +7,21 @@ pub struct PublishVideo {
 	config: web_codecs::VideoEncoderConfig,
 
 	// The track that we are publishing.
-	track: hang::TrackProducer,
+	track: hang::model::TrackProducer,
 
 	// The encoder accepts raw frames and spits out encoded frames.
 	encoder: web_codecs::VideoEncoder,
 	encoded: web_codecs::VideoEncoded,
 
 	// When set, publish to the given broadcast.
-	broadcast: Option<hang::BroadcastProducer>,
+	broadcast: Option<hang::model::BroadcastProducer>,
 }
 
 impl PublishVideo {
 	pub async fn init(id: usize, width: u32, height: u32) -> Result<Self> {
 		let track = moq_lite::Track {
 			name: format!("video_{}", id),
-			priority: 2,
+			priority: 1,
 		}
 		.produce();
 
@@ -122,11 +122,11 @@ impl PublishVideo {
 		Ok(())
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
+	pub fn publish_to(&mut self, broadcast: &mut hang::model::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::VideoTrack {
+			let info = hang::catalog::VideoTrack {
 				track: self.track.inner.info.clone(),
-				config: hang::VideoConfig {
+				config: hang::catalog::VideoConfig {
 					codec: config.codec.into(),
 					description: config.description,
 					coded_width: config.resolution.map(|r| r.width),

@@ -6,7 +6,7 @@ pub use audio::*;
 pub use message::*;
 pub use video::*;
 
-use hang::{moq_lite::Session, BroadcastProducer};
+use hang::{model::BroadcastProducer, moq_lite::Session};
 
 use crate::{Connect, Result};
 

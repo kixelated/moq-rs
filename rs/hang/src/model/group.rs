@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use crate::{Frame, Result, Timestamp};
+use crate::model::{Frame, Timestamp};
+use crate::Result;
+
 use moq_lite::coding::Decode;
 
 pub struct GroupConsumer {

@@ -24,7 +24,7 @@ use std::cmp::Ordering;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Track {
 	pub name: String,
-	pub priority: i8,
+	pub priority: u8,
 }
 
 impl Track {

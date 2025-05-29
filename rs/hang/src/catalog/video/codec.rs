@@ -6,6 +6,7 @@ use derive_more::{Display, From};
 
 use crate::Error;
 
+// TODO implement serde for convience
 #[derive(Debug, Clone, PartialEq, Eq, Display, From)]
 pub enum VideoCodec {
 	H264(H264),

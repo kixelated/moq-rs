@@ -14,8 +14,6 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
-use crate::Track;
-
 #[serde_with::serde_as]
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -23,7 +21,7 @@ use crate::Track;
 /// Information about a video track.
 pub struct VideoTrack {
 	/// MoQ specific track information
-	pub track: Track,
+	pub track: moq_lite::Track,
 
 	/// The configuration of the video track
 	pub config: VideoConfig,

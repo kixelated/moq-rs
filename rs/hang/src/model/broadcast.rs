@@ -1,5 +1,5 @@
-use crate::track::TrackConsumer;
-use crate::{AudioTrack, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, VideoTrack};
+use crate::catalog::{AudioTrack, Capabilities, CatalogConsumer, CatalogProducer, LocationTrack, Root, VideoTrack};
+use crate::model::{TrackConsumer, TrackProducer};
 use moq_lite::Track;
 use web_async::spawn;
 
@@ -18,7 +18,7 @@ impl Default for BroadcastProducer {
 
 impl BroadcastProducer {
 	pub fn new() -> Self {
-		let catalog = Catalog::default().produce();
+		let catalog = Root::default().produce();
 		let inner = moq_lite::BroadcastProducer::new();
 		inner.insert(catalog.consume().track);
 
@@ -73,6 +73,16 @@ impl BroadcastProducer {
 		self.add_audio(producer.consume(), audio);
 		producer
 	}
+
+	pub fn create_location(&mut self, location: LocationTrack) {
+		self.catalog.set_location(Some(location));
+		self.catalog.publish();
+	}
+
+	pub fn create_capabilities(&mut self, capabilities: Capabilities) {
+		self.catalog.set_capabilities(Some(capabilities));
+		self.catalog.publish();
+	}
 }
 
 impl std::ops::Deref for BroadcastProducer {
@@ -99,8 +109,8 @@ pub struct BroadcastConsumer {
 impl BroadcastConsumer {
 	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
 		let catalog = Track {
-			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: 0,
+			name: Root::DEFAULT_NAME.to_string(),
+			priority: 100,
 		};
 		let catalog = inner.subscribe(&catalog).into();
 

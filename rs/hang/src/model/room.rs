@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use web_async::Lock;
 
-use crate::{BroadcastConsumer, BroadcastProducer};
+use crate::model::{BroadcastConsumer, BroadcastProducer};
 
 #[derive(Clone)]
 pub struct Room {

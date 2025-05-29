@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
 
-use crate::{Error, Frame, GroupConsumer, Timestamp};
+use crate::model::{Frame, GroupConsumer, Timestamp};
+use crate::Error;
 use futures::{stream::FuturesUnordered, StreamExt};
 
 use moq_lite::coding::*;
-
-pub use moq_lite::Track;
 
 #[derive(Clone)]
 pub struct TrackProducer {

@@ -1,5 +1,6 @@
-use super::*;
+use crate::Error;
 
+use super::*;
 use derive_more::{Display, From};
 use std::str::FromStr;
 

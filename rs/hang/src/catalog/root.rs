@@ -4,19 +4,33 @@ use std::sync::{Arc, Mutex};
 /// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
 
-use crate::{AudioTrack, Result, VideoTrack};
+use crate::catalog::{AudioTrack, VideoTrack};
+use crate::Result;
+
+use super::{Capabilities, LocationTrack};
 
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
-pub struct Catalog {
+#[serde(default, rename_all = "camelCase")]
+pub struct Root {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub video: Vec<VideoTrack>,
 
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub audio: Vec<AudioTrack>,
+
+	/// A location track, used to indicate the desired position of the broadcaster from -1 to 1.
+	/// This is primarily used for audio panning but can also be used for video.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub location: Option<LocationTrack>,
+
+	/// A capabilities track, indicating our viewing capabilities.
+	/// Another broadcaster MAY use this information to change codecs, bitrate, etc.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub capabilities: Option<Capabilities>,
 }
 
-impl Catalog {
+impl Root {
 	pub const DEFAULT_NAME: &str = "catalog.json";
 
 	#[allow(clippy::should_implement_trait)]
@@ -54,8 +68,8 @@ impl Catalog {
 
 	pub fn produce(self) -> CatalogProducer {
 		let track = moq_lite::Track {
-			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: -1,
+			name: Root::DEFAULT_NAME.to_string(),
+			priority: 100,
 		}
 		.produce();
 
@@ -66,11 +80,11 @@ impl Catalog {
 #[derive(Clone)]
 pub struct CatalogProducer {
 	pub track: moq_lite::TrackProducer,
-	current: Arc<Mutex<Catalog>>,
+	current: Arc<Mutex<Root>>,
 }
 
 impl CatalogProducer {
-	pub fn new(track: moq_lite::TrackProducer, init: Catalog) -> Self {
+	pub fn new(track: moq_lite::TrackProducer, init: Root) -> Self {
 		Self {
 			current: Arc::new(Mutex::new(init)),
 			track,
@@ -85,6 +99,16 @@ impl CatalogProducer {
 	pub fn add_audio(&mut self, audio: AudioTrack) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.push(audio);
+	}
+
+	pub fn set_location(&mut self, location: Option<LocationTrack>) {
+		let mut current = self.current.lock().unwrap();
+		current.location = location;
+	}
+
+	pub fn set_capabilities(&mut self, capabilities: Option<Capabilities>) {
+		let mut current = self.current.lock().unwrap();
+		current.capabilities = capabilities;
 	}
 
 	pub fn remove_video(&mut self, video: &VideoTrack) {
@@ -115,19 +139,19 @@ impl CatalogProducer {
 
 impl From<moq_lite::TrackProducer> for CatalogProducer {
 	fn from(inner: moq_lite::TrackProducer) -> Self {
-		Self::new(inner, Catalog::default())
+		Self::new(inner, Root::default())
 	}
 }
 
 impl Default for CatalogProducer {
 	fn default() -> Self {
 		let track = moq_lite::Track {
-			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: -1,
+			name: Root::DEFAULT_NAME.to_string(),
+			priority: 100,
 		}
 		.produce();
 
-		CatalogProducer::new(track, Catalog::default())
+		CatalogProducer::new(track, Root::default())
 	}
 }
 
@@ -142,7 +166,7 @@ impl CatalogConsumer {
 		Self { track, group: None }
 	}
 
-	pub async fn next(&mut self) -> Result<Option<Catalog>> {
+	pub async fn next(&mut self) -> Result<Option<Root>> {
 		loop {
 			tokio::select! {
 				res = self.track.next_group() => {
@@ -159,7 +183,7 @@ impl CatalogConsumer {
 				},
 				Some(frame) = async { self.group.as_mut()?.read_frame().await.transpose() } => {
 					self.group.take(); // We don't support deltas yet
-					let catalog = Catalog::from_slice(&frame?)?;
+					let catalog = Root::from_slice(&frame?)?;
 					return Ok(Some(catalog));
 				}
 			}
@@ -175,7 +199,8 @@ impl From<moq_lite::TrackConsumer> for CatalogConsumer {
 
 #[cfg(test)]
 mod test {
-	use crate::{AudioCodec::Opus, AudioConfig, Track, VideoConfig, H264};
+	use crate::catalog::{AudioCodec::Opus, AudioConfig, VideoConfig, H264};
+	use moq_lite::Track;
 
 	use super::*;
 
@@ -216,11 +241,11 @@ mod test {
 
 		encoded.retain(|c| !c.is_whitespace());
 
-		let decoded = Catalog {
+		let decoded = Root {
 			video: vec![VideoTrack {
 				track: Track {
 					name: "video".to_string(),
-					priority: 2,
+					priority: 1,
 				},
 				config: VideoConfig {
 					codec: H264 {
@@ -244,7 +269,7 @@ mod test {
 			audio: vec![AudioTrack {
 				track: Track {
 					name: "audio".to_string(),
-					priority: 1,
+					priority: 2,
 				},
 				config: AudioConfig {
 					codec: Opus,
@@ -254,9 +279,10 @@ mod test {
 					description: None,
 				},
 			}],
+			..Default::default()
 		};
 
-		let output = Catalog::from_str(&encoded).expect("failed to decode");
+		let output = Root::from_str(&encoded).expect("failed to decode");
 		assert_eq!(decoded, output, "wrong decoded output");
 
 		let output = decoded.to_string().expect("failed to encode");

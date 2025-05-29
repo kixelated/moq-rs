@@ -1,9 +1,10 @@
 use super::{Error, Result};
-use crate::{
-	AudioCodec, AudioConfig, AudioTrack, BroadcastProducer, Frame, Timestamp, Track, TrackProducer, VideoCodec,
-	VideoConfig, VideoTrack, AAC, AV1, H264, H265, VP9,
+use crate::catalog::{
+	AudioCodec, AudioConfig, AudioTrack, VideoCodec, VideoConfig, VideoTrack, AAC, AV1, H264, H265, VP9,
 };
+use crate::model::{BroadcastProducer, Frame, Timestamp, TrackProducer};
 use bytes::{Bytes, BytesMut};
+use moq_lite::Track;
 use mp4_atom::{Any, AsyncReadFrom, Atom, DecodeMaybe, Mdat, Moof, Moov, Tfdt, Trak, Trun};
 use std::{collections::HashMap, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -277,7 +278,7 @@ impl Import {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
-		let track = Track { name, priority: 1 };
+		let track = Track { name, priority: 2 };
 
 		let codec = match stsd.codecs.len() {
 			0 => return Err(Error::MissingCodec),

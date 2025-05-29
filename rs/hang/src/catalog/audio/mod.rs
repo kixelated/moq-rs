@@ -4,10 +4,8 @@ mod codec;
 pub use aac::*;
 pub use codec::*;
 
-use crate::Track;
 use bytes::Bytes;
 
-use super::Error;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, DisplayFromStr};
 
@@ -16,7 +14,7 @@ use serde_with::{hex::Hex, DisplayFromStr};
 #[serde(rename_all = "camelCase")]
 pub struct AudioTrack {
 	// Generic information about the track
-	pub track: Track,
+	pub track: moq_lite::Track,
 
 	// The configuration of the audio track
 	pub config: AudioConfig,

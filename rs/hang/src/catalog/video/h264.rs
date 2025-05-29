@@ -44,7 +44,7 @@ impl FromStr for H264 {
 mod tests {
 	use std::str::FromStr;
 
-	use crate::VideoCodec;
+	use crate::catalog::VideoCodec;
 
 	use super::*;
 
