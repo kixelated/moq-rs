@@ -7,12 +7,13 @@ use serde::{Deserialize, Serialize};
 use crate::catalog::{AudioTrack, VideoTrack};
 use crate::Result;
 
-use super::{Capabilities, LocationTrack};
+use super::LocationTrack;
 
+/// A catalog track, created by a broadcaster to describe the tracks available in a broadcast.
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(default, rename_all = "camelCase")]
-pub struct Root {
+pub struct Catalog {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub video: Vec<VideoTrack>,
 
@@ -23,14 +24,9 @@ pub struct Root {
 	/// This is primarily used for audio panning but can also be used for video.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub location: Option<LocationTrack>,
-
-	/// A capabilities track, indicating our viewing capabilities.
-	/// Another broadcaster MAY use this information to change codecs, bitrate, etc.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub capabilities: Option<Capabilities>,
 }
 
-impl Root {
+impl Catalog {
 	pub const DEFAULT_NAME: &str = "catalog.json";
 
 	#[allow(clippy::should_implement_trait)]
@@ -62,13 +58,9 @@ impl Root {
 		Ok(serde_json::to_writer(writer, self)?)
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.video.is_empty() && self.audio.is_empty()
-	}
-
 	pub fn produce(self) -> CatalogProducer {
 		let track = moq_lite::Track {
-			name: Root::DEFAULT_NAME.to_string(),
+			name: Catalog::DEFAULT_NAME.to_string(),
 			priority: 100,
 		}
 		.produce();
@@ -80,11 +72,11 @@ impl Root {
 #[derive(Clone)]
 pub struct CatalogProducer {
 	pub track: moq_lite::TrackProducer,
-	current: Arc<Mutex<Root>>,
+	current: Arc<Mutex<Catalog>>,
 }
 
 impl CatalogProducer {
-	pub fn new(track: moq_lite::TrackProducer, init: Root) -> Self {
+	pub fn new(track: moq_lite::TrackProducer, init: Catalog) -> Self {
 		Self {
 			current: Arc::new(Mutex::new(init)),
 			track,
@@ -104,11 +96,6 @@ impl CatalogProducer {
 	pub fn set_location(&mut self, location: Option<LocationTrack>) {
 		let mut current = self.current.lock().unwrap();
 		current.location = location;
-	}
-
-	pub fn set_capabilities(&mut self, capabilities: Option<Capabilities>) {
-		let mut current = self.current.lock().unwrap();
-		current.capabilities = capabilities;
 	}
 
 	pub fn remove_video(&mut self, video: &VideoTrack) {
@@ -139,19 +126,19 @@ impl CatalogProducer {
 
 impl From<moq_lite::TrackProducer> for CatalogProducer {
 	fn from(inner: moq_lite::TrackProducer) -> Self {
-		Self::new(inner, Root::default())
+		Self::new(inner, Catalog::default())
 	}
 }
 
 impl Default for CatalogProducer {
 	fn default() -> Self {
 		let track = moq_lite::Track {
-			name: Root::DEFAULT_NAME.to_string(),
+			name: Catalog::DEFAULT_NAME.to_string(),
 			priority: 100,
 		}
 		.produce();
 
-		CatalogProducer::new(track, Root::default())
+		CatalogProducer::new(track, Catalog::default())
 	}
 }
 
@@ -166,7 +153,7 @@ impl CatalogConsumer {
 		Self { track, group: None }
 	}
 
-	pub async fn next(&mut self) -> Result<Option<Root>> {
+	pub async fn next(&mut self) -> Result<Option<Catalog>> {
 		loop {
 			tokio::select! {
 				res = self.track.next_group() => {
@@ -183,7 +170,7 @@ impl CatalogConsumer {
 				},
 				Some(frame) = async { self.group.as_mut()?.read_frame().await.transpose() } => {
 					self.group.take(); // We don't support deltas yet
-					let catalog = Root::from_slice(&frame?)?;
+					let catalog = Catalog::from_slice(&frame?)?;
 					return Ok(Some(catalog));
 				}
 			}
@@ -241,7 +228,7 @@ mod test {
 
 		encoded.retain(|c| !c.is_whitespace());
 
-		let decoded = Root {
+		let decoded = Catalog {
 			video: vec![VideoTrack {
 				track: Track {
 					name: "video".to_string(),
@@ -282,7 +269,7 @@ mod test {
 			..Default::default()
 		};
 
-		let output = Root::from_str(&encoded).expect("failed to decode");
+		let output = Catalog::from_str(&encoded).expect("failed to decode");
 		assert_eq!(decoded, output, "wrong decoded output");
 
 		let output = decoded.to_string().expect("failed to encode");

@@ -7,9 +7,14 @@ export const PositionSchema = z.object({
 })
 
 export const LocationSchema = z.object({
-	initial: PositionSchema,
+	initial: z.optional(PositionSchema),
 	track: z.optional(TrackSchema),
 })
 
+// As part of feedback, viewers can advertise the location of another broadcaster.
+// This is opt-in, and the broadcaster can choose to ignore the feedback.
+export const LocationsSchema = z.record(z.string(), TrackSchema)
+
 export type Location = z.infer<typeof LocationSchema>
 export type Position = z.infer<typeof PositionSchema>
+export type Locations = z.infer<typeof LocationsSchema>

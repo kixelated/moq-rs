@@ -2,6 +2,7 @@ import * as Moq from "@kixelated/moq"
 import { Derived, Signal, Signals, signal } from "@kixelated/signals"
 import * as Catalog from "../catalog"
 import * as Container from "../container"
+import { isEqual } from "lodash"
 
 // An annoying hack, but there's stuttering that we need to fix.
 const LATENCY = 50
@@ -91,8 +92,6 @@ export class AudioEmitter {
 }
 
 export type AudioProps = {
-	broadcast?: Moq.BroadcastConsumer
-	catalog?: Catalog.Audio[]
 	enabled?: boolean
 }
 
@@ -100,7 +99,7 @@ export type AudioProps = {
 // The user is responsible for hooking up audio to speakers, an analyzer, etc.
 export class Audio {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>
-	catalog: Signal<Catalog.Audio[]>
+	catalog: Signal<Catalog.Root | undefined>
 	enabled: Signal<boolean>
 	selected: Derived<Catalog.Audio | undefined>
 
@@ -121,12 +120,14 @@ export class Audio {
 
 	#signals = new Signals();
 
-	constructor(props?: AudioProps) {
-		this.broadcast = signal(props?.broadcast)
-		this.catalog = signal(props?.catalog ?? [])
+	constructor(broadcast: Signal<Moq.BroadcastConsumer | undefined>, catalog: Signal<Catalog.Root | undefined>, props?: AudioProps) {
+		this.broadcast = broadcast
+		this.catalog = catalog
 		this.enabled = signal(props?.enabled ?? false)
 
-		this.selected = this.#signals.derived(() => this.catalog.get().at(0))
+		this.selected = this.#signals.derived(() => this.catalog.get()?.audio?.[0], {
+			equals: (a, b) => isEqual(a, b),
+		})
 
 		// Stop all active samples when disabled.
 		this.#signals.effect(() => {

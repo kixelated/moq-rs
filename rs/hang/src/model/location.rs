@@ -18,13 +18,11 @@ impl LocationProducer {
 	}
 
 	// If the handle is 0, then this is our own location.
-	pub fn update(&mut self, handle: u32, location: Location) {
+	pub fn update(&mut self, location: Location) {
 		let mut group = self.track.append_group();
 
 		// Encode the two floats to the buffer.
 		let mut buffer = Vec::new();
-		// TODO save some bits and use a varint
-		buffer.extend_from_slice(&handle.to_le_bytes());
 		buffer.extend_from_slice(&location.x.to_le_bytes());
 		buffer.extend_from_slice(&location.y.to_le_bytes());
 

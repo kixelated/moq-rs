@@ -1,12 +1,12 @@
-import { TrackConsumer, TrackProducer } from "./track";
-import { WatchConsumer, WatchProducer } from "./util/watch";
+import { TrackConsumer, TrackProducer } from "./track"
+import { WatchConsumer, WatchProducer } from "./util/watch"
 
 class State {
 	tracks = new Map<string, TrackConsumer>();
 
 	// Called when a track is not found.
 	// The receiver is responsible for producing the track.
-	onUnknown?: (track: TrackProducer) => void;
+	onUnknown?: (track: TrackProducer) => void
 }
 
 /**
@@ -16,19 +16,16 @@ class State {
  */
 export class BroadcastProducer {
 	/** The path identifier for this broadcast */
-	readonly path: string;
-	#state: WatchProducer<State>;
+	#state: WatchProducer<State>
 
 	/**
 	 * Creates a new BroadcastProducer with the specified path and state.
-	 * @param path - The path identifier
 	 * @param state - The state producer
 	 *
 	 * @internal
 	 */
-	constructor(path: string) {
-		this.path = path;
-		this.#state = new WatchProducer<State>(new State());
+	constructor() {
+		this.#state = new WatchProducer<State>(new State())
 	}
 
 	/**
@@ -37,9 +34,9 @@ export class BroadcastProducer {
 	 * @returns A TrackProducer for the new track
 	 */
 	createTrack(name: string): TrackProducer {
-		const track = new TrackProducer(name, 0);
-		this.insertTrack(track.consume());
-		return track;
+		const track = new TrackProducer(name, 0)
+		this.insertTrack(track.consume())
+		return track
 	}
 
 	/**
@@ -48,11 +45,11 @@ export class BroadcastProducer {
 	 */
 	insertTrack(track: TrackConsumer) {
 		this.#state.update((state) => {
-			const existing = state.tracks.get(track.name);
-			existing?.close();
-			state.tracks.set(track.name, track);
-			return state;
-		});
+			const existing = state.tracks.get(track.name)
+			existing?.close()
+			state.tracks.set(track.name, track)
+			return state
+		})
 	}
 
 	/**
@@ -62,11 +59,11 @@ export class BroadcastProducer {
 	removeTrack(name: string) {
 		try {
 			this.#state.update((state) => {
-				const track = state.tracks.get(name);
-				track?.close();
-				state.tracks.delete(name);
-				return state;
-			});
+				const track = state.tracks.get(name)
+				track?.close()
+				state.tracks.delete(name)
+				return state
+			})
 		} catch {
 			// We don't care if we try to remove when closed
 		}
@@ -80,9 +77,9 @@ export class BroadcastProducer {
 	 */
 	unknownTrack(fn?: (track: TrackProducer) => void) {
 		this.#state.update((state) => {
-			state.onUnknown = fn;
-			return state;
-		});
+			state.onUnknown = fn
+			return state
+		})
 	}
 
 	/**
@@ -90,7 +87,7 @@ export class BroadcastProducer {
 	 * @param reason - The error reason for aborting
 	 */
 	abort(reason: Error) {
-		this.#state.abort(reason);
+		this.#state.abort(reason)
 	}
 
 	/**
@@ -99,23 +96,23 @@ export class BroadcastProducer {
 	close() {
 		this.#state.update((state) => {
 			for (const track of state.tracks.values()) {
-				track.close();
+				track.close()
 			}
-			state.tracks.clear();
-			return state;
-		});
-		this.#state.close();
+			state.tracks.clear()
+			return state
+		})
+		this.#state.close()
 	}
 
 	/**
 	 * Returns a promise that resolves when the writer is unused.
 	 */
 	async unused(): Promise<void> {
-		return this.#state.unused();
+		return this.#state.unused()
 	}
 
 	consume(): BroadcastConsumer {
-		return new BroadcastConsumer(this.#state.consume(), this.path);
+		return new BroadcastConsumer(this.#state.consume())
 	}
 }
 
@@ -127,10 +124,7 @@ export class BroadcastProducer {
  * @public
  */
 export class BroadcastConsumer {
-	/** The path identifier for this reader */
-	readonly path: string;
-
-	#state: WatchConsumer<State>;
+	#state: WatchConsumer<State>
 
 	/**
 	 * Creates a new BroadcastConsumer with the specified path and state.
@@ -139,9 +133,8 @@ export class BroadcastConsumer {
 	 *
 	 * @internal
 	 */
-	constructor(state: WatchConsumer<State>, path: string) {
-		this.path = path;
-		this.#state = state;
+	constructor(state: WatchConsumer<State>) {
+		this.#state = state
 	}
 
 	/**
@@ -151,23 +144,23 @@ export class BroadcastConsumer {
 	 * @returns A TrackConsumer for the subscribed track
 	 */
 	subscribe(track: string, priority: number): TrackConsumer {
-		const state = this.#state.value();
+		const state = this.#state.value()
 
-		const existing = state.tracks.get(track);
+		const existing = state.tracks.get(track)
 		if (existing) {
-			return existing.clone();
+			return existing.clone()
 		}
 
-		const producer = new TrackProducer(track, priority);
-		const consumer = producer.consume();
+		const producer = new TrackProducer(track, priority)
+		const consumer = producer.consume()
 
 		if (state.onUnknown) {
-			state.onUnknown(producer);
+			state.onUnknown(producer)
 		} else {
-			producer.abort(new Error("not found"));
+			producer.abort(new Error("not found"))
 		}
 
-		return consumer;
+		return consumer
 	}
 
 	/**
@@ -175,14 +168,14 @@ export class BroadcastConsumer {
 	 * @returns A promise that resolves when closed
 	 */
 	async closed(): Promise<void> {
-		return this.#state.closed();
+		return this.#state.closed()
 	}
 
 	/**
 	 * Closes the reader.
 	 */
 	close() {
-		this.#state.close();
+		this.#state.close()
 	}
 
 	/**
@@ -190,6 +183,6 @@ export class BroadcastConsumer {
 	 * @returns A new BroadcastConsumer instance
 	 */
 	clone(): BroadcastConsumer {
-		return new BroadcastConsumer(this.#state.clone(), this.path);
+		return new BroadcastConsumer(this.#state.clone())
 	}
 }

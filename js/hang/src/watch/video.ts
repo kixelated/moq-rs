@@ -95,7 +95,7 @@ export class VideoRenderer {
 		ctx.fillStyle = "#000"
 		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
 
-		const { frame, lag } = this.source.get(now) ?? {}
+		const { frame, lag } = this.source.frame(now) ?? {}
 		if (frame) {
 			ctx.canvas.width = frame.displayWidth
 			ctx.canvas.height = frame.displayHeight
@@ -139,8 +139,6 @@ export class VideoRenderer {
 }
 
 export type VideoProps = {
-	broadcast?: Moq.BroadcastConsumer
-	catalog?: Catalog.Video[]
 	enabled?: boolean
 }
 
@@ -148,8 +146,9 @@ export type VideoProps = {
 export class Video {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>
 	enabled: Signal<boolean> // Don't download any longer
-	catalog: Signal<Catalog.Video[]>
+	catalog: Signal<Catalog.Root | undefined>
 	selected: Derived<Catalog.Video | undefined>
+	active: Derived<boolean>
 
 	// Unfortunately, browsers don't let us hold on to multiple VideoFrames.
 	// TODO To support higher latencies, keep around the encoded data and decode on demand.
@@ -164,14 +163,17 @@ export class Video {
 
 	#signals = new Signals();
 
-	constructor(props?: VideoProps) {
-		this.broadcast = signal(props?.broadcast)
-		this.catalog = signal(props?.catalog ?? [])
+	constructor(broadcast: Signal<Moq.BroadcastConsumer | undefined>, catalog: Signal<Catalog.Root | undefined>, props?: VideoProps) {
+		this.broadcast = broadcast
+		this.catalog = catalog
 		this.enabled = signal(props?.enabled ?? false)
 
-		this.selected = this.#signals.derived(() => this.catalog.get().at(0), {
+		// TODO use isConfigSupported
+		this.selected = this.#signals.derived(() => this.catalog.get()?.video?.[0], {
 			equals: (a, b) => isEqual(a, b),
 		})
+		this.active = this.#signals.derived(() => this.selected.get() !== undefined)
+
 		this.#signals.effect(() => this.#init())
 	}
 
@@ -249,7 +251,7 @@ export class Video {
 	}
 
 	// Returns the closest frame to the given timestamp and the lag.
-	get(now: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {
+	frame(now: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {
 		for (; ;) {
 			if (!this.#current) return
 

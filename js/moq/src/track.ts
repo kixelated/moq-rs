@@ -1,5 +1,5 @@
-import { GroupConsumer, GroupProducer } from "./group";
-import { WatchConsumer, WatchProducer } from "./util/watch";
+import { GroupConsumer, GroupProducer } from "./group"
+import { WatchConsumer, WatchProducer } from "./util/watch"
 
 /**
  * Handles writing and managing groups in a track.
@@ -8,12 +8,12 @@ import { WatchConsumer, WatchProducer } from "./util/watch";
  */
 export class TrackProducer {
 	/** The name of the track */
-	readonly name: string;
+	readonly name: string
 	/** The priority level of the track */
-	readonly priority: number;
+	readonly priority: number
 
 	#latest = new WatchProducer<GroupConsumer | null>(null);
-	#next?: number;
+	#next?: number
 
 	/**
 	 * Creates a new TrackProducer with the specified name, priority, and latest group producer.
@@ -24,8 +24,8 @@ export class TrackProducer {
 	 * @internal
 	 */
 	constructor(name: string, priority: number) {
-		this.name = name;
-		this.priority = priority;
+		this.name = name
+		this.priority = priority
 	}
 
 	/**
@@ -33,15 +33,15 @@ export class TrackProducer {
 	 * @returns A GroupProducer for the new group
 	 */
 	appendGroup(): GroupProducer {
-		const group = new GroupProducer(this.#next ?? 0);
+		const group = new GroupProducer(this.#next ?? 0)
 
-		this.#next = group.id + 1;
+		this.#next = group.id + 1
 		this.#latest.update((latest) => {
-			latest?.close();
-			return group.consume();
-		});
+			latest?.close()
+			return group.consume()
+		})
 
-		return group;
+		return group
 	}
 
 	/**
@@ -50,15 +50,15 @@ export class TrackProducer {
 	 */
 	insertGroup(group: GroupConsumer) {
 		if (group.id < (this.#next ?? 0)) {
-			group.close();
-			return;
+			group.close()
+			return
 		}
 
-		this.#next = group.id + 1;
+		this.#next = group.id + 1
 		this.#latest.update((latest) => {
-			latest?.close();
-			return group;
-		});
+			latest?.close()
+			return group
+		})
 	}
 
 	/**
@@ -67,12 +67,16 @@ export class TrackProducer {
 	close() {
 		try {
 			this.#latest.update((latest) => {
-				latest?.close();
-				return null;
-			});
+				latest?.close()
+				return null
+			})
 
-			this.#latest.close();
-		} catch {}
+			this.#latest.close()
+		} catch { }
+	}
+
+	closed(): Promise<void> {
+		return this.#latest.closed()
 	}
 
 	/**
@@ -80,11 +84,11 @@ export class TrackProducer {
 	 * @returns A promise that resolves when unused
 	 */
 	async unused(): Promise<void> {
-		await this.#latest.unused();
+		await this.#latest.unused()
 	}
 
 	consume(): TrackConsumer {
-		return new TrackConsumer(this.name, this.priority, this.#latest.consume());
+		return new TrackConsumer(this.name, this.priority, this.#latest.consume())
 	}
 
 	/**
@@ -94,11 +98,11 @@ export class TrackProducer {
 	abort(reason: Error) {
 		try {
 			this.#latest.update((latest) => {
-				latest?.close();
-				return null;
-			});
-			this.#latest.abort(reason);
-		} catch {}
+				latest?.close()
+				return null
+			})
+			this.#latest.abort(reason)
+		} catch { }
 	}
 }
 
@@ -109,11 +113,11 @@ export class TrackProducer {
  */
 export class TrackConsumer {
 	/** The name of the track */
-	readonly name: string;
+	readonly name: string
 	/** The priority level of the track */
-	readonly priority: number;
+	readonly priority: number
 
-	#groups: WatchConsumer<GroupConsumer | null>;
+	#groups: WatchConsumer<GroupConsumer | null>
 
 	/**
 	 * Creates a new TrackConsumer with the specified name, priority, and groups consumer.
@@ -124,9 +128,9 @@ export class TrackConsumer {
 	 * @internal
 	 */
 	constructor(name: string, priority: number, groups: WatchConsumer<GroupConsumer | null>) {
-		this.name = name;
-		this.priority = priority;
-		this.#groups = groups;
+		this.name = name
+		this.priority = priority
+		this.#groups = groups
 	}
 
 	/**
@@ -134,8 +138,8 @@ export class TrackConsumer {
 	 * @returns A promise that resolves to the next group or undefined
 	 */
 	async nextGroup(): Promise<GroupConsumer | undefined> {
-		const group = await this.#groups.next((group) => !!group);
-		return group?.clone();
+		const group = await this.#groups.next((group) => !!group)
+		return group?.clone()
 	}
 
 	/**
@@ -143,14 +147,14 @@ export class TrackConsumer {
 	 * @returns A new TrackConsumer instance
 	 */
 	clone(): TrackConsumer {
-		return new TrackConsumer(this.name, this.priority, this.#groups.clone());
+		return new TrackConsumer(this.name, this.priority, this.#groups.clone())
 	}
 
 	/**
 	 * Closes the consumer.
 	 */
 	close() {
-		this.#groups.close();
+		this.#groups.close()
 	}
 
 	/**
@@ -158,6 +162,6 @@ export class TrackConsumer {
 	 * @returns A promise that resolves when closed
 	 */
 	async closed(): Promise<void> {
-		await this.#groups.closed();
+		await this.#groups.closed()
 	}
 }

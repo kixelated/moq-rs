@@ -4,17 +4,20 @@ import { z } from "zod/v4-mini"
 import { type Audio, AudioSchema } from "./audio"
 import { type Video, VideoSchema } from "./video"
 import { Location, LocationSchema } from "./location"
+import { Feedback, FeedbackSchema } from "./feedback"
 
 export const RootSchema = z.object({
 	video: z.optional(z.array(VideoSchema)),
 	audio: z.optional(z.array(AudioSchema)),
 	location: z.optional(LocationSchema),
+	feedback: z.optional(FeedbackSchema),
 })
 
 export class Root {
 	video: Video[] = [];
 	audio: Audio[] = [];
 	location: Location | undefined
+	feedback: Feedback | undefined
 
 	encode() {
 		return JSON.stringify(this)
@@ -26,12 +29,13 @@ export class Root {
 		const json = JSON.parse(str)
 		const parsed = RootSchema.parse(json)
 
-		const broadcast = new Root()
-		broadcast.video = parsed.video ?? []
-		broadcast.audio = parsed.audio ?? []
-		broadcast.location = parsed.location
+		const root = new Root()
+		root.video = parsed.video ?? []
+		root.audio = parsed.audio ?? []
+		root.location = parsed.location
+		root.feedback = parsed.feedback
 
-		return broadcast
+		return root
 	}
 
 	static async fetch(track: Moq.TrackConsumer): Promise<Root | undefined> {

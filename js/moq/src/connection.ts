@@ -1,9 +1,9 @@
-import { Buffer } from "buffer";
-import { AnnouncedConsumer } from "./announced";
-import { BroadcastConsumer } from "./broadcast";
-import { Publisher } from "./publisher";
-import { Subscriber } from "./subscriber";
-import * as Wire from "./wire";
+import { Buffer } from "buffer"
+import { AnnouncedConsumer } from "./announced"
+import { BroadcastConsumer } from "./broadcast"
+import { Publisher } from "./publisher"
+import { Subscriber } from "./subscriber"
+import * as Wire from "./wire"
 
 /**
  * Represents a connection to a MoQ server.
@@ -12,19 +12,19 @@ import * as Wire from "./wire";
  */
 export class Connection {
 	// The URL of the connection.
-	readonly url: URL;
+	readonly url: URL
 
 	// The established WebTransport session.
-	#quic: WebTransport;
+	#quic: WebTransport
 
 	// Use to receive/send session messages.
-	#session: Wire.Stream;
+	#session: Wire.Stream
 
 	// Module for contributing tracks.
-	#publisher: Publisher;
+	#publisher: Publisher
 
 	// Module for distributing tracks.
-	#subscriber: Subscriber;
+	#subscriber: Subscriber
 
 	/**
 	 * Creates a new Connection instance.
@@ -35,16 +35,16 @@ export class Connection {
 	 * @internal
 	 */
 	private constructor(url: URL, quic: WebTransport, session: Wire.Stream) {
-		this.url = url;
-		this.#quic = quic;
-		this.#session = session;
+		this.url = url
+		this.#quic = quic
+		this.#session = session
 
-		this.#publisher = new Publisher(this.#quic);
-		this.#subscriber = new Subscriber(this.#quic);
+		this.#publisher = new Publisher(this.#quic)
+		this.#subscriber = new Subscriber(this.#quic)
 
 		this.#run().catch((err: unknown) => {
-			console.error("failed to run connection: ", err);
-		});
+			console.error("failed to run connection: ", err)
+		})
 	}
 
 	/**
@@ -58,57 +58,57 @@ export class Connection {
 			allowPooling: false,
 			congestionControl: "low-latency",
 			requireUnreliable: true,
-		};
+		}
 
-		let adjustedUrl = url;
+		let adjustedUrl = url
 
 		if (url.protocol === "http:") {
-			const fingerprintUrl = new URL(url);
-			fingerprintUrl.pathname = "/certificate.sha256";
+			const fingerprintUrl = new URL(url)
+			fingerprintUrl.pathname = "/certificate.sha256"
 			console.warn(
 				fingerprintUrl.toString(),
 				"performing an insecure fingerprint fetch; use https:// in production",
-			);
+			)
 
 			// Fetch the fingerprint from the server.
-			const fingerprint = await fetch(fingerprintUrl);
-			const bytes = Buffer.from(await fingerprint.text(), "hex");
+			const fingerprint = await fetch(fingerprintUrl)
+			const bytes = Buffer.from(await fingerprint.text(), "hex")
 
 			options.serverCertificateHashes = [
 				{
 					algorithm: "sha-256",
 					value: bytes,
 				},
-			];
+			]
 
-			adjustedUrl = new URL(url);
-			adjustedUrl.protocol = "https:";
+			adjustedUrl = new URL(url)
+			adjustedUrl.protocol = "https:"
 		}
 
-		const quic = new WebTransport(adjustedUrl, options);
-		await quic.ready;
+		const quic = new WebTransport(adjustedUrl, options)
+		await quic.ready
 
-		const client = new Wire.SessionClient([Wire.CURRENT_VERSION]);
-		const stream = await Wire.Stream.open(quic, client);
+		const client = new Wire.SessionClient([Wire.CURRENT_VERSION])
+		const stream = await Wire.Stream.open(quic, client)
 
-		const server = await Wire.SessionServer.decode(stream.reader);
+		const server = await Wire.SessionServer.decode(stream.reader)
 		if (server.version !== Wire.CURRENT_VERSION) {
-			throw new Error(`unsupported server version: ${server.version.toString()}`);
+			throw new Error(`unsupported server version: ${server.version.toString()}`)
 		}
 
-		const conn = new Connection(adjustedUrl, quic, stream);
+		const conn = new Connection(adjustedUrl, quic, stream)
 
 		const cleanup = () => {
-			conn.close();
-		};
+			conn.close()
+		}
 
 		// Attempt to close the connection when the window is closed.
-		document.addEventListener("pagehide", cleanup);
+		document.addEventListener("pagehide", cleanup)
 		void conn.closed().then(() => {
-			document.removeEventListener("pagehide", cleanup);
-		});
+			document.removeEventListener("pagehide", cleanup)
+		})
 
-		return conn;
+		return conn
 	}
 
 	/**
@@ -116,26 +116,26 @@ export class Connection {
 	 */
 	close() {
 		try {
-			this.#quic.close();
+			this.#quic.close()
 		} catch {
 			// ignore
 		}
 	}
 
 	async #run(): Promise<void> {
-		const session = this.#runSession();
-		const bidis = this.#runBidis();
-		const unis = this.#runUnis();
+		const session = this.#runSession()
+		const bidis = this.#runBidis()
+		const unis = this.#runUnis()
 
-		await Promise.all([session, bidis, unis]);
+		await Promise.all([session, bidis, unis])
 	}
 
 	/**
 	 * Publishes a broadcast to the connection.
 	 * @param broadcast - The broadcast to publish
 	 */
-	publish(broadcast: BroadcastConsumer) {
-		this.#publisher.publish(broadcast);
+	publish(path: string, broadcast: BroadcastConsumer) {
+		this.#publisher.publish(path, broadcast)
 	}
 
 	/**
@@ -144,7 +144,7 @@ export class Connection {
 	 * @returns An AnnounceConsumer instance
 	 */
 	announced(prefix = ""): AnnouncedConsumer {
-		return this.#subscriber.announced(prefix);
+		return this.#subscriber.announced(prefix)
 	}
 
 	/**
@@ -157,79 +157,82 @@ export class Connection {
 	 * @returns A BroadcastConsumer instance
 	 */
 	consume(broadcast: string): BroadcastConsumer {
-		// To avoid downloading the a broadcast we're publishing, check the publisher first.
-		const publisher = this.#publisher.consume(broadcast);
-		if (publisher) return publisher;
+		const publisher = this.#publisher.consume(broadcast)
+		if (publisher) {
+			// This is probably a bug; fix your code.
+			console.warn("consuming a broadcast we're publishing: ", broadcast)
+			return publisher
+		}
 
-		return this.#subscriber.consume(broadcast);
+		return this.#subscriber.consume(broadcast)
 	}
 
 	async #runSession() {
 		// Receive messages until the connection is closed.
-		for (;;) {
-			const msg = await Wire.SessionInfo.decode_maybe(this.#session.reader);
-			if (!msg) break;
+		for (; ;) {
+			const msg = await Wire.SessionInfo.decode_maybe(this.#session.reader)
+			if (!msg) break
 			// TODO use the session info
 		}
 	}
 
 	async #runBidis() {
-		for (;;) {
-			const next = await Wire.Stream.accept(this.#quic);
+		for (; ;) {
+			const next = await Wire.Stream.accept(this.#quic)
 			if (!next) {
-				break;
+				break
 			}
 
-			const [msg, stream] = next;
+			const [msg, stream] = next
 			this.#runBidi(msg, stream)
 				.catch((err: unknown) => {
-					stream.writer.reset(err);
+					stream.writer.reset(err)
 				})
 				.finally(() => {
-					stream.writer.close();
-				});
+					stream.writer.close()
+				})
 		}
 	}
 
 	async #runBidi(msg: Wire.StreamBi, stream: Wire.Stream) {
 		if (msg instanceof Wire.SessionClient) {
-			throw new Error("duplicate session stream");
+			throw new Error("duplicate session stream")
 		}
 
 		if (msg instanceof Wire.AnnounceInterest) {
-			await this.#publisher.runAnnounce(msg, stream);
-			return;
+			await this.#publisher.runAnnounce(msg, stream)
+			return
 		}
 
 		if (msg instanceof Wire.Subscribe) {
-			await this.#publisher.runSubscribe(msg, stream);
-			return;
+			await this.#publisher.runSubscribe(msg, stream)
+			return
 		}
 
-		throw new Error("unknown message: ", msg);
+		throw new Error("unknown message: ", msg)
 	}
 
 	async #runUnis() {
-		for (;;) {
-			const next = await Wire.Reader.accept(this.#quic);
+		for (; ;) {
+			const next = await Wire.Reader.accept(this.#quic)
 			if (!next) {
-				break;
+				break
 			}
 
-			const [msg, stream] = next;
+			const [msg, stream] = next
 			this.#runUni(msg, stream)
 				.then(() => {
-					stream.stop(new Error("cancel"));
+					stream.stop(new Error("cancel"))
 				})
 				.catch((err: unknown) => {
-					stream.stop(err);
-				});
+					stream.stop(err)
+				})
 		}
 	}
 
 	async #runUni(msg: Wire.StreamUni, stream: Wire.Reader) {
 		if (msg instanceof Wire.Group) {
-			await this.#subscriber.runGroup(msg, stream);
+			await this.#subscriber.runGroup(msg, stream)
 		}
 	}
 
@@ -238,6 +241,6 @@ export class Connection {
 	 * @returns A promise that resolves when closed
 	 */
 	async closed(): Promise<void> {
-		await this.#quic.closed;
+		await this.#quic.closed
 	}
 }

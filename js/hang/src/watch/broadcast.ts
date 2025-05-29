@@ -5,8 +5,13 @@ import { Connection } from "../connection"
 import { Audio, AudioProps } from "./audio"
 import { Video, VideoProps } from "./video"
 import { Location, LocationProps } from "./location"
+import { Feedback, FeedbackProps } from "./feedback"
 
 export interface BroadcastProps {
+	// Whether to start downloading the broadcast.
+	// Defaults to false so you can make sure everything is ready before starting.
+	enabled?: boolean
+
 	// The broadcast path relative to the connection URL.
 	// Defaults to ""
 	path?: string
@@ -17,24 +22,28 @@ export interface BroadcastProps {
 	video?: VideoProps
 	audio?: AudioProps
 	location?: LocationProps
+	feedback?: FeedbackProps
 }
 
 // A broadcast that (optionally) reloads automatically when live/offline.
 export class Broadcast {
 	connection: Connection
 
+	enabled: Signal<boolean>
 	path: Signal<string>
 	status = signal<"offline" | "loading" | "live">("offline");
 
 	audio: Audio
 	video: Video
 	location: Location
+	feedback: Feedback
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
 	#catalog = signal<Catalog.Root | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
+	// This signal is true when the broadcast has been announced, unless reloading is disabled.
 	#active = signal(false);
 	readonly active = this.#active.readonly();
 
@@ -44,18 +53,21 @@ export class Broadcast {
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection
 		this.path = signal(props?.path ?? "")
-		this.audio = new Audio(props?.audio)
-		this.video = new Video(props?.video)
-		this.location = new Location(props?.location)
+		this.enabled = signal(props?.enabled ?? false)
+		this.audio = new Audio(this.#broadcast, this.#catalog, props?.audio)
+		this.video = new Video(this.#broadcast, this.#catalog, props?.video)
+		this.location = new Location(this.#broadcast, this.#catalog, props?.location)
+		this.feedback = new Feedback(this.#broadcast, this.#catalog, props?.feedback)
 		this.#reload = props?.reload ?? true
 
 		this.#signals.effect(() => this.#runActive())
 		this.#signals.effect(() => this.#runBroadcast())
 		this.#signals.effect(() => this.#runCatalog())
-		this.#signals.effect(() => this.#runTracks())
 	}
 
 	#runActive() {
+		if (!this.enabled.get()) return
+
 		if (!this.#reload) {
 			this.#active.set(true)
 
@@ -96,27 +108,23 @@ export class Broadcast {
 		const conn = this.connection.established.get()
 		if (!conn) return
 
+		if (!this.enabled.get()) return
+
 		const path = this.path.get()
 		if (!this.#active.get()) return
 
 		const broadcast = conn.consume(path)
 		this.#broadcast.set(broadcast)
 
-		this.audio.broadcast.set(broadcast)
-		this.video.broadcast.set(broadcast)
-		this.location.broadcast.set(broadcast)
-
 		return () => {
 			broadcast.close()
-
 			this.#broadcast.set(undefined)
-			this.audio.broadcast.set(undefined)
-			this.video.broadcast.set(undefined)
-			this.location.broadcast.set(undefined)
 		}
 	}
 
 	#runCatalog() {
+		if (!this.enabled.get()) return
+
 		const broadcast = this.#broadcast.get()
 		if (!broadcast) return
 
@@ -146,27 +154,12 @@ export class Broadcast {
 		}
 	}
 
-	#runTracks() {
-		const broadcast = this.#broadcast.get()
-		if (!broadcast) return
-
-		const catalog = this.#catalog.get()
-		if (!catalog) return
-
-		this.audio.catalog.set(catalog.audio)
-		this.video.catalog.set(catalog.video)
-		this.location.catalog.set(catalog.location)
-
-		return () => {
-			this.audio.catalog.set([])
-			this.video.catalog.set([])
-		}
-	}
-
 	close() {
 		this.#signals.close()
 
 		this.audio.close()
 		this.video.close()
+		this.location.close()
+		this.feedback.close()
 	}
 }

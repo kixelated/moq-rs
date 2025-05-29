@@ -1,9 +1,8 @@
 import { Match, Switch, createSelector } from "solid-js";
 import { JSX } from "solid-js/jsx-runtime";
-import { Device } from "./broadcast";
-import { Publish } from "./publish";
+import { Broadcast, Device } from "./broadcast";
 
-export function Controls(props: { lib: Publish }): JSX.Element {
+export function Controls(props: { broadcast: Broadcast }): JSX.Element {
 	return (
 		<div
 			style={{
@@ -14,17 +13,17 @@ export function Controls(props: { lib: Publish }): JSX.Element {
 				"align-content": "center",
 			}}
 		>
-			<Select lib={props.lib} />
-			<Status lib={props.lib} />
+			<Select broadcast={props.broadcast} />
+			<Status broadcast={props.broadcast} />
 		</div>
 	);
 }
 
-function Status(props: { lib: Publish }): JSX.Element {
-	const url = props.lib.connection.url.get;
-	const status = props.lib.connection.status.get;
-	const audio = props.lib.broadcast.audio.catalog.get;
-	const video = props.lib.broadcast.video.catalog.get;
+function Status(props: { broadcast: Broadcast }): JSX.Element {
+	const url = props.broadcast.connection.url.get;
+	const status = props.broadcast.connection.status.get;
+	const audio = props.broadcast.audio.catalog.get;
+	const video = props.broadcast.video.catalog.get;
 
 	return (
 		<div>
@@ -42,12 +41,12 @@ function Status(props: { lib: Publish }): JSX.Element {
 	);
 }
 
-function Select(props: { lib: Publish }): JSX.Element {
+function Select(props: { broadcast: Broadcast }): JSX.Element {
 	const setDevice = (device: Device | undefined) => {
-		props.lib.broadcast.device.set(device);
+		props.broadcast.device.set(device);
 	};
 
-	const selected = createSelector(props.lib.broadcast.device.get);
+	const selected = createSelector(props.broadcast.device.get);
 
 	const buttonStyle = (id: Device | undefined) => ({
 		cursor: "pointer",
