@@ -4,20 +4,20 @@ import { z } from "zod/v4-mini"
 import { type Audio, AudioSchema } from "./audio"
 import { type Video, VideoSchema } from "./video"
 import { Location, LocationSchema } from "./location"
-import { Feedback, FeedbackSchema } from "./feedback"
+import { Capabilities, CapabilitiesSchema } from "./capabilities"
 
 export const RootSchema = z.object({
 	video: z.optional(z.array(VideoSchema)),
 	audio: z.optional(z.array(AudioSchema)),
 	location: z.optional(LocationSchema),
-	feedback: z.optional(FeedbackSchema),
+	capabilities: z.optional(CapabilitiesSchema),
 })
 
 export class Root {
 	video: Video[] = [];
 	audio: Audio[] = [];
 	location: Location | undefined
-	feedback: Feedback | undefined
+	capabilities: Capabilities | undefined
 
 	encode() {
 		return JSON.stringify(this)
@@ -33,7 +33,7 @@ export class Root {
 		root.video = parsed.video ?? []
 		root.audio = parsed.audio ?? []
 		root.location = parsed.location
-		root.feedback = parsed.feedback
+		root.capabilities = parsed.capabilities
 
 		return root
 	}

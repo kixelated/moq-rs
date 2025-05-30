@@ -8,11 +8,20 @@ export type LocationProps = {
 
 	// Our initial position.
 	position?: Catalog.Position
+
+	// If provided, this broadcaster allows other peers to request a position update via this (random) handle.
+	handle?: number
 }
 
 export class Location {
+	broadcast: Moq.BroadcastProducer
+
 	enabled: Signal<boolean>
-	current: Signal<Catalog.Position | undefined>
+
+	position: Signal<Catalog.Position | undefined>
+
+	// If provided, this broadcaster allows other peers to request a position update via this (random) handle.
+	handle: Signal<number | undefined>
 
 	#track = new Moq.TrackProducer("location", 0);
 	#producer = new LocationProducer(this.#track);
@@ -23,8 +32,11 @@ export class Location {
 	#signals = new Signals();
 
 	constructor(broadcast: Moq.BroadcastProducer, props?: LocationProps) {
+		this.broadcast = broadcast
+
 		this.enabled = signal(props?.enabled ?? false)
-		this.current = signal(props?.position ?? undefined)
+		this.position = signal(props?.position ?? undefined)
+		this.handle = signal(props?.handle ?? undefined)
 
 		broadcast.insertTrack(this.#track.consume())
 		this.#signals.cleanup(() => broadcast.removeTrack(this.#track.name))
@@ -33,11 +45,45 @@ export class Location {
 		this.#signals.effect(() => this.#runProducer())
 	}
 
+	// Request that a peer update their position via their handle.
+	peer(handle: number): LocationProducer {
+		const track = new Moq.TrackProducer(`location/${handle}`, 0)
+		const producer = new LocationProducer(track)
+		this.broadcast.insertTrack(track.consume())
+
+		this.#catalog.set((prev) => {
+			return {
+				...(prev?.peers ?? {}),
+				[handle]: {
+					track: {
+						name: track.name,
+						priority: track.priority,
+					},
+				},
+			}
+		})
+
+		track.closed().then(() => {
+			this.broadcast.removeTrack(track.name)
+
+			// TODO also remove from catalog
+			this.#catalog.set((prev) => {
+				const { [handle]: _, ...rest } = prev?.peers ?? {}
+				return {
+					...prev,
+					peers: rest,
+				}
+			})
+		})
+
+		return producer
+	}
+
 	#runProducer() {
-		const position = this.current.get()
+		const position = this.position.get()
 		if (!position) return
 
-		this.#producer.append(position)
+		this.#producer.update(position)
 	}
 
 	#runCatalog() {
@@ -45,8 +91,9 @@ export class Location {
 		if (!enabled) return
 
 		const catalog = {
-			initial: this.current.peek(), // Doesn't trigger a re-render
-			track: { name: this.#track.name, priority: this.#track.priority },
+			initial: this.position.peek(), // Doesn't trigger a re-render
+			updates: { name: this.#track.name, priority: this.#track.priority },
+			handle: this.handle.get(),
 		}
 
 		this.#catalog.set(catalog)
@@ -65,14 +112,16 @@ export class LocationProducer {
 		this.track = track
 	}
 
-	append({ x, y }: { x: number, y: number }) {
+	update(position: Catalog.Position) {
 		const group = this.track.appendGroup()
 
-		// We encode our x as a f32, and our y as a f32.
-		const buffer = new ArrayBuffer(8)
+		// Everything is encoded as a f32 for simplicity.
+		// We can definitely same a few bytes if needed later.
+		const buffer = new ArrayBuffer(12)
 		const view = new DataView(buffer)
-		view.setFloat32(0, x, true)
-		view.setFloat32(4, y, true)
+		view.setFloat32(0, position.x ?? 0)
+		view.setFloat32(4, position.y ?? 0)
+		view.setFloat32(8, position.zoom ?? 1)
 
 		group.writeFrame(new Uint8Array(buffer))
 		group.close()

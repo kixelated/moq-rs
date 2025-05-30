@@ -5,7 +5,6 @@ import { Connection } from "../connection"
 import { Audio, AudioConstraints, AudioTrack } from "./audio"
 import { Video, VideoConstraints, VideoTrack } from "./video"
 import { Location, LocationProps } from "./location"
-import { Feedback, FeedbackProps } from "./feedback"
 
 export type Device = "screen" | "camera"
 
@@ -15,7 +14,6 @@ export type BroadcastProps = {
 	audio?: AudioConstraints | boolean
 	video?: VideoConstraints | boolean
 	location?: LocationProps
-	feedback?: FeedbackProps
 	device?: Device
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
@@ -30,7 +28,6 @@ export class Broadcast {
 	audio: Audio
 	video: Video
 	location: Location
-	feedback: Feedback
 
 	catalog: Derived<Catalog.Root>
 	device: Signal<Device | undefined>
@@ -47,7 +44,6 @@ export class Broadcast {
 		this.audio = new Audio(this.#broadcast, { constraints: props?.audio })
 		this.video = new Video(this.#broadcast, { constraints: props?.video })
 		this.location = new Location(this.#broadcast, props?.location)
-		this.feedback = new Feedback(this.#broadcast, props?.feedback)
 
 		this.device = signal(props?.device)
 
@@ -193,8 +189,7 @@ export class Broadcast {
 
 		const audio = this.audio.catalog.get()
 		const video = this.video.catalog.get()
-		catalog.location = this.location.enabled.get() ? this.location.catalog.get() : undefined
-		catalog.feedback = this.feedback.catalog.get()
+		catalog.location = this.location.catalog.get()
 
 		if (audio) {
 			catalog.audio.push(audio)

@@ -164,11 +164,7 @@ impl TrackConsumer {
 	/// Block until the track is closed.
 	pub async fn closed(&self) -> Result<()> {
 		match self.state.clone().wait_for(|state| state.closed.is_some()).await {
-			Ok(state) => match &state.closed {
-				Some(Ok(_)) => Ok(()),
-				Some(Err(err)) => Err(err.clone()),
-				_ => unreachable!(),
-			},
+			Ok(state) => return state.closed.clone().unwrap(),
 			Err(_) => Err(Error::Cancel),
 		}
 	}

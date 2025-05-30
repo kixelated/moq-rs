@@ -1,4 +1,4 @@
-use crate::catalog::{AudioTrack, Catalog, CatalogConsumer, CatalogProducer, LocationTrack, VideoTrack};
+use crate::catalog::{AudioTrack, Catalog, CatalogConsumer, CatalogProducer, VideoTrack};
 use crate::model::{TrackConsumer, TrackProducer};
 use moq_lite::Track;
 use web_async::spawn;
@@ -6,7 +6,7 @@ use web_async::spawn;
 /// A wrapper around a moq_lite::BroadcastProducer that produces a `catalog.json` track.
 #[derive(Clone)]
 pub struct BroadcastProducer {
-	pub catalog: CatalogProducer,
+	catalog: CatalogProducer,
 	pub inner: moq_lite::BroadcastProducer,
 }
 
@@ -74,10 +74,22 @@ impl BroadcastProducer {
 		producer
 	}
 
-	pub fn create_location(&mut self, location: LocationTrack) {
-		self.catalog.set_location(Some(location));
+	/*
+	// Given a producer, publish the location track and update the catalog accordingly.
+	// If a handle is provided, then it can be used by peers to update our position.
+	pub fn location(&mut self, producer: &LocationProducer, handle: Option<u32>) {
+		self.inner.insert(producer.track.consume());
+
+		self.catalog.set_location(Some(Location {
+			handle,
+			initial: producer.latest(),
+			updates: Some(producer.track.info.clone()),
+			peers: HashMap::new(),
+		}));
+
 		self.catalog.publish();
 	}
+	*/
 }
 
 impl std::ops::Deref for BroadcastProducer {
@@ -112,7 +124,7 @@ impl BroadcastConsumer {
 		Self { catalog, inner }
 	}
 
-	pub fn track(&self, track: &Track) -> TrackConsumer {
+	pub fn subscribe_media(&self, track: &Track) -> TrackConsumer {
 		self.inner.subscribe(track).into()
 	}
 }

@@ -5,7 +5,6 @@ import { Connection } from "../connection"
 import { Audio, AudioProps } from "./audio"
 import { Video, VideoProps } from "./video"
 import { Location, LocationProps } from "./location"
-import { Feedback, FeedbackProps } from "./feedback"
 
 export interface BroadcastProps {
 	// Whether to start downloading the broadcast.
@@ -22,7 +21,6 @@ export interface BroadcastProps {
 	video?: VideoProps
 	audio?: AudioProps
 	location?: LocationProps
-	feedback?: FeedbackProps
 }
 
 // A broadcast that (optionally) reloads automatically when live/offline.
@@ -36,7 +34,6 @@ export class Broadcast {
 	audio: Audio
 	video: Video
 	location: Location
-	feedback: Feedback
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
@@ -57,7 +54,6 @@ export class Broadcast {
 		this.audio = new Audio(this.#broadcast, this.#catalog, props?.audio)
 		this.video = new Video(this.#broadcast, this.#catalog, props?.video)
 		this.location = new Location(this.#broadcast, this.#catalog, props?.location)
-		this.feedback = new Feedback(this.#broadcast, this.#catalog, props?.feedback)
 		this.#reload = props?.reload ?? true
 
 		this.#signals.effect(() => this.#runActive())
@@ -160,6 +156,5 @@ export class Broadcast {
 		this.audio.close()
 		this.video.close()
 		this.location.close()
-		this.feedback.close()
 	}
 }

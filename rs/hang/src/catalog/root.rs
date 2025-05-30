@@ -1,5 +1,5 @@
 //! This module contains the structs and functions for the MoQ catalog format
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::catalog::{AudioTrack, VideoTrack};
 use crate::Result;
 
-use super::LocationTrack;
+use super::Location;
 
 /// A catalog track, created by a broadcaster to describe the tracks available in a broadcast.
 #[serde_with::serde_as]
@@ -23,7 +23,7 @@ pub struct Catalog {
 	/// A location track, used to indicate the desired position of the broadcaster from -1 to 1.
 	/// This is primarily used for audio panning but can also be used for video.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub location: Option<LocationTrack>,
+	pub location: Option<Location>,
 }
 
 impl Catalog {
@@ -93,7 +93,7 @@ impl CatalogProducer {
 		current.audio.push(audio);
 	}
 
-	pub fn set_location(&mut self, location: Option<LocationTrack>) {
+	pub fn set_location(&mut self, location: Option<Location>) {
 		let mut current = self.current.lock().unwrap();
 		current.location = location;
 	}
@@ -106,6 +106,11 @@ impl CatalogProducer {
 	pub fn remove_audio(&mut self, audio: &AudioTrack) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.retain(|a| a != audio);
+	}
+
+	// Just grab a lock to the current catalog, so you can update it manually.
+	pub fn update(&mut self) -> MutexGuard<'_, Catalog> {
+		self.current.lock().unwrap()
 	}
 
 	/// Publish any changes to the catalog.
@@ -121,6 +126,10 @@ impl CatalogProducer {
 
 	pub fn consume(&self) -> CatalogConsumer {
 		CatalogConsumer::new(self.track.consume())
+	}
+
+	pub fn finish(&mut self) {
+		self.track.finish();
 	}
 }
 
@@ -175,6 +184,10 @@ impl CatalogConsumer {
 				}
 			}
 		}
+	}
+
+	pub async fn closed(&self) -> Result<()> {
+		Ok(self.track.closed().await?)
 	}
 }
 

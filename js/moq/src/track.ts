@@ -23,9 +23,9 @@ export class TrackProducer {
 	 *
 	 * @internal
 	 */
-	constructor(name: string, priority: number) {
+	constructor(name: string, priority?: number) {
 		this.name = name
-		this.priority = priority
+		this.priority = priority ?? 0
 	}
 
 	/**
