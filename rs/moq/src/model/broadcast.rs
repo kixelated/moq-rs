@@ -26,6 +26,12 @@ pub struct BroadcastProducer {
 	cloned: Arc<AtomicUsize>,
 }
 
+impl Default for BroadcastProducer {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl BroadcastProducer {
 	pub fn new() -> Self {
 		Self {

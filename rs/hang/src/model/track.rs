@@ -23,7 +23,7 @@ impl TrackProducer {
 		timestamp.encode(&mut header);
 
 		if frame.keyframe {
-			if let Some(mut group) = self.group.take() {
+			if let Some(group) = self.group.take() {
 				group.finish();
 			}
 		}

@@ -1,9 +1,9 @@
-import { AnnouncedConsumer, AnnouncedProducer } from "./announced"
-import { BroadcastConsumer, BroadcastProducer } from "./broadcast"
-import { GroupProducer } from "./group"
-import { type TrackProducer } from "./track"
-import { error } from "./util/error"
-import * as Wire from "./wire"
+import { AnnouncedConsumer, AnnouncedProducer } from "./announced";
+import { BroadcastConsumer, BroadcastProducer } from "./broadcast";
+import { GroupProducer } from "./group";
+import { type TrackProducer } from "./track";
+import { error } from "./util/error";
+import * as Wire from "./wire";
 
 /**
  * Handles subscribing to broadcasts and managing their lifecycle.
@@ -11,7 +11,7 @@ import * as Wire from "./wire"
  * @internal
  */
 export class Subscriber {
-	#quic: WebTransport
+	#quic: WebTransport;
 
 	// Our subscribed tracks.
 	#subscribes = new Map<bigint, TrackProducer>();
@@ -27,7 +27,7 @@ export class Subscriber {
 	 * @internal
 	 */
 	constructor(quic: WebTransport) {
-		this.#quic = quic
+		this.#quic = quic;
 	}
 
 	/**
@@ -36,47 +36,47 @@ export class Subscriber {
 	 * @returns An AnnounceConsumer instance
 	 */
 	announced(prefix = ""): AnnouncedConsumer {
-		const producer = new AnnouncedProducer()
-		const consumer = producer.consume(prefix)
+		const producer = new AnnouncedProducer();
+		const consumer = producer.consume(prefix);
 
 		const msg = new Wire.AnnounceInterest(prefix);
 
 		(async () => {
-			const active = new Set<string>()
+			const active = new Set<string>();
 
 			try {
-				const stream = await Wire.Stream.open(this.#quic, msg)
+				const stream = await Wire.Stream.open(this.#quic, msg);
 
-				for (; ;) {
-					const announce = await Wire.Announce.decode_maybe(stream.reader)
+				for (;;) {
+					const announce = await Wire.Announce.decode_maybe(stream.reader);
 					if (!announce) {
-						break
+						break;
 					}
 
-					const full = prefix.concat(announce.suffix)
+					const full = prefix.concat(announce.suffix);
 
-					console.debug(`announced: path=${full} active=${announce.active}`)
-					producer.write({ path: full, active: announce.active })
+					console.debug(`announced: path=${full} active=${announce.active}`);
+					producer.write({ path: full, active: announce.active });
 
 					// Just for logging
 					if (announce.active) {
-						active.add(full)
+						active.add(full);
 					} else {
-						active.delete(full)
+						active.delete(full);
 					}
 				}
 
-				producer.close()
+				producer.close();
 			} catch (err: unknown) {
-				producer.abort(error(err))
+				producer.abort(error(err));
 			} finally {
 				for (const broadcast of active) {
-					console.debug(`announced: broadcast=${broadcast} active=dropped`)
+					console.debug(`announced: broadcast=${broadcast} active=dropped`);
 				}
 			}
-		})()
+		})();
 
-		return consumer
+		return consumer;
 	}
 
 	/**
@@ -85,63 +85,63 @@ export class Subscriber {
 	 * @returns A BroadcastConsumer instance
 	 */
 	consume(path: string): BroadcastConsumer {
-		const existing = this.#broadcasts.get(path)
+		const existing = this.#broadcasts.get(path);
 		if (existing) {
-			return existing.clone()
+			return existing.clone();
 		}
 
-		const producer = new BroadcastProducer()
-		const consumer = producer.consume()
+		const producer = new BroadcastProducer();
+		const consumer = producer.consume();
 
 		producer.unknownTrack((track) => {
 			// Save the track in the cache to deduplicate.
 			// NOTE: We don't clone it (yet) so it doesn't count as an active consumer.
 			// When we do clone it, we'll only get the most recent (consumed) group.
-			producer.insertTrack(track.consume())
+			producer.insertTrack(track.consume());
 
 			// Perform the subscription in the background.
 			this.#runSubscribe(path, track).finally(() => {
 				try {
-					producer.removeTrack(track.name)
+					producer.removeTrack(track.name);
 				} catch (err) {
 					// Already closed.
 				}
-			})
-		})
+			});
+		});
 
-		this.#broadcasts.set(path, consumer.clone())
+		this.#broadcasts.set(path, consumer.clone());
 
 		// Close when the producer has no more consumers.
 		producer.unused().finally(() => {
-			producer.close()
-			this.#broadcasts.delete(path)
-		})
+			producer.close();
+			this.#broadcasts.delete(path);
+		});
 
-		return consumer
+		return consumer;
 	}
 
 	async #runSubscribe(path: string, track: TrackProducer) {
-		const id = this.#subscribeNext++
+		const id = this.#subscribeNext++;
 
 		// Save the writer so we can append groups to it.
-		this.#subscribes.set(id, track)
+		this.#subscribes.set(id, track);
 
-		const msg = new Wire.Subscribe(id, path, track.name, track.priority)
+		const msg = new Wire.Subscribe(id, path, track.name, track.priority);
 
-		const stream = await Wire.Stream.open(this.#quic, msg)
+		const stream = await Wire.Stream.open(this.#quic, msg);
 		try {
-			await Wire.SubscribeOk.decode(stream.reader)
-			console.debug(`subscribe ok: path=${path} track=${track.name}`)
+			await Wire.SubscribeOk.decode(stream.reader);
+			console.debug(`subscribe ok: path=${path} track=${track.name}`);
 
-			await Promise.race([stream.reader.closed(), track.unused()])
+			await Promise.race([stream.reader.closed(), track.unused()]);
 
-			track.close()
+			track.close();
 		} catch (err) {
-			track.abort(error(err))
+			track.abort(error(err));
 		} finally {
-			console.debug(`subscribe close: path=${path} track=${track.name}`)
-			this.#subscribes.delete(id)
-			stream.close()
+			console.debug(`subscribe close: path=${path} track=${track.name}`);
+			this.#subscribes.delete(id);
+			stream.close();
 		}
 	}
 
@@ -153,27 +153,27 @@ export class Subscriber {
 	 * @internal
 	 */
 	async runGroup(group: Wire.Group, stream: Wire.Reader) {
-		const subscribe = this.#subscribes.get(group.subscribe)
-		if (!subscribe) return
+		const subscribe = this.#subscribes.get(group.subscribe);
+		if (!subscribe) return;
 
-		const producer = new GroupProducer(group.sequence)
-		subscribe.insertGroup(producer.consume())
+		const producer = new GroupProducer(group.sequence);
+		subscribe.insertGroup(producer.consume());
 
 		try {
-			for (; ;) {
-				const done = await Promise.race([stream.done(), subscribe.unused(), producer.unused()])
-				if (done !== false) break
+			for (;;) {
+				const done = await Promise.race([stream.done(), subscribe.unused(), producer.unused()]);
+				if (done !== false) break;
 
-				const size = await stream.u53()
-				const payload = await stream.read(size)
-				if (!payload) break
+				const size = await stream.u53();
+				const payload = await stream.read(size);
+				if (!payload) break;
 
-				producer.writeFrame(payload)
+				producer.writeFrame(payload);
 			}
 
-			producer.close()
+			producer.close();
 		} catch (err: unknown) {
-			producer.abort(error(err))
+			producer.abort(error(err));
 		}
 	}
 }

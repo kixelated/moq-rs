@@ -151,7 +151,6 @@ impl TrackConsumer {
 	///
 	/// NOTE: This can have gaps if the reader is too slow or there were network slowdowns.
 	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>> {
-		println!("calling next_group");
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self
 			.state
@@ -163,8 +162,6 @@ impl TrackConsumer {
 			Ok(state) => state,
 			Err(_) => return Err(Error::Cancel),
 		};
-
-		println!("next_group_state: {:?}", state.closed);
 
 		match &state.closed {
 			Some(Ok(_)) => return Ok(None),
@@ -182,7 +179,7 @@ impl TrackConsumer {
 	/// Block until the track is closed.
 	pub async fn closed(&self) -> Result<()> {
 		match self.state.clone().wait_for(|state| state.closed.is_some()).await {
-			Ok(state) => return state.closed.clone().unwrap(),
+			Ok(state) => state.closed.clone().unwrap(),
 			Err(_) => Err(Error::Cancel),
 		}
 	}

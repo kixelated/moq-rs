@@ -38,27 +38,25 @@ impl LocationConsumer {
 	}
 
 	pub async fn next(&mut self) -> Result<Option<Position>> {
-		loop {
-			let mut group = match self.track.next_group().await? {
-				Some(group) => group,
-				None => return Ok(None),
-			};
+		let mut group = match self.track.next_group().await? {
+			Some(group) => group,
+			None => return Ok(None),
+		};
 
-			let mut frame = match group.read_frame().await? {
-				Some(frame) => frame,
-				None => return Err(Error::EmptyGroup),
-			};
+		let mut frame = match group.read_frame().await? {
+			Some(frame) => frame,
+			None => return Err(Error::EmptyGroup),
+		};
 
-			if frame.len() != 12 {
-				return Err(Error::InvalidFrame);
-			}
-
-			let x = frame.get_f32();
-			let y = frame.get_f32();
-			let zoom = frame.get_f32();
-
-			return Ok(Some(Position { x, y, zoom }));
+		if frame.len() != 12 {
+			return Err(Error::InvalidFrame);
 		}
+
+		let x = frame.get_f32();
+		let y = frame.get_f32();
+		let zoom = frame.get_f32();
+
+		Ok(Some(Position { x, y, zoom }))
 	}
 }
 

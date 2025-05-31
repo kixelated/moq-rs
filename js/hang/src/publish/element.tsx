@@ -1,8 +1,8 @@
-import { signal, Signals } from "@kixelated/signals";
+import { Signals, signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
+import { Connection } from "../connection";
 import { Broadcast, Device } from "./broadcast";
 import { Controls } from "./controls";
-import { Connection } from "../connection";
 
 export default class HangPublish extends HTMLElement {
 	static observedAttributes = ["url", "device", "audio", "video", "controls"];
