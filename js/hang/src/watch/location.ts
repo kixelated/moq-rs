@@ -27,13 +27,13 @@ export class Location {
 	) {
 		this.enabled = signal(props?.enabled ?? false)
 		this.broadcast = broadcast
-		this.catalog = this.#signals.derived(() => {
+		this.catalog = this.#signals.memo(() => {
 			return this.enabled.get() ? catalog.get()?.location : undefined
 		})
-		this.peering = this.#signals.derived(() => this.catalog.get()?.peering)
+		this.peering = this.#signals.memo(() => this.catalog.get()?.peering)
 
 		// Use equals to prevent re-subscribing to an identical track.
-		this.#updates = this.#signals.derived(() => {
+		this.#updates = this.#signals.memo(() => {
 			const broadcast = this.broadcast.get()
 			if (!broadcast) return
 
@@ -99,7 +99,7 @@ export class LocationPeer {
 		this.location = signal<Catalog.Position | undefined>(undefined)
 		this.broadcast = broadcast
 
-		this.#track = this.#signals.derived(() => {
+		this.#track = this.#signals.memo(() => {
 			const handle = this.handle.get()
 			if (!handle) return undefined
 

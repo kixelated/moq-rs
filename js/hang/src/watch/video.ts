@@ -31,7 +31,7 @@ export class VideoRenderer {
 		this.canvas = signal(props?.canvas)
 		this.paused = signal(props?.paused ?? false)
 
-		this.#ctx = this.#signals.derived(
+		this.#ctx = this.#signals.memo(
 			() => this.canvas.get()?.getContext("2d", { desynchronized: true }) ?? undefined,
 		)
 		this.#signals.effect(() => this.#schedule())
@@ -173,10 +173,10 @@ export class Video {
 		this.enabled = signal(props?.enabled ?? false)
 
 		// TODO use isConfigSupported
-		this.selected = this.#signals.derived(() => this.catalog.get()?.video?.[0], {
+		this.selected = this.#signals.memo(() => this.catalog.get()?.video?.[0], {
 			equals: (a, b) => isEqual(a, b),
 		})
-		this.active = this.#signals.derived(() => this.selected.get() !== undefined)
+		this.active = this.#signals.memo(() => this.selected.get() !== undefined)
 
 		this.#signals.effect(() => this.#init())
 	}

@@ -126,10 +126,10 @@ export class Signals {
 		}
 	}
 
-	derived<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
+	memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
 		const res = runWithOwner(this.#owner, () => memo(fn, options))
 		if (!res) {
-			throw new Error("derived called after root was closed")
+			throw new Error("memo called after root was closed")
 		}
 
 		return res

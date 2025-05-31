@@ -40,7 +40,7 @@ export class Location {
 		broadcast.insertTrack(this.#track.consume())
 		this.#signals.cleanup(() => broadcast.removeTrack(this.#track.name))
 
-		this.catalog = this.#signals.derived(() => {
+		this.catalog = this.#signals.memo(() => {
 			const enabled = this.enabled.get()
 			if (!enabled) return
 
@@ -84,7 +84,7 @@ export class LocationPeer {
 		this.catalog = catalog
 		this.broadcast = broadcast
 
-		this.producer = this.#signals.derived(() => {
+		this.producer = this.#signals.memo(() => {
 			const handle = this.handle.get()
 			if (!handle) return
 

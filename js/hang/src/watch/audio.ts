@@ -129,7 +129,7 @@ export class Audio {
 		this.catalog = catalog
 		this.enabled = signal(props?.enabled ?? false)
 
-		this.selected = this.#signals.derived(() => this.catalog.get()?.audio?.[0], {
+		this.selected = this.#signals.memo(() => this.catalog.get()?.audio?.[0], {
 			equals: (a, b) => isEqual(a, b),
 		})
 

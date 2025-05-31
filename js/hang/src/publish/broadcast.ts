@@ -1,10 +1,10 @@
 import * as Moq from "@kixelated/moq"
-import { Memo, Signal, Signals, signal } from "@kixelated/signals"
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals"
 import * as Catalog from "../catalog"
 import { Connection } from "../connection"
 import { Audio, AudioConstraints, AudioTrack } from "./audio"
-import { Location, LocationProps } from "./location"
 import { Video, VideoConstraints, VideoTrack } from "./video"
+import { Location, LocationProps } from "./location"
 
 export type Device = "screen" | "camera"
 
@@ -32,9 +32,12 @@ export class Broadcast {
 	catalog: Memo<Catalog.Root>
 	device: Signal<Device | undefined>
 
-	#broadcast = new Moq.BroadcastProducer();
+	#broadcast = new Moq.BroadcastProducer()
 	#catalog = new Moq.TrackProducer("catalog.json", 0);
 	#signals = new Signals();
+
+	#published = signal(false)
+	readonly published = this.#published.readonly()
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection
@@ -60,12 +63,13 @@ export class Broadcast {
 
 			// Publish the broadcast to the connection.
 			const consume = this.#broadcast.consume()
+
+			// Unpublish the broadcast by closing the consumer but not the publisher.
+			cleanup(() => consume.close())
 			connection.publish(path, consume)
 
-			return () => {
-				// Unpublish the broadcast by closing the consumer but not the publisher.
-				consume.close()
-			}
+			this.#published.set(true)
+			cleanup(() => this.#published.set(false))
 		})
 
 		// These are separate effects because the camera audio/video constraints can be independent.
@@ -74,7 +78,7 @@ export class Broadcast {
 		this.#signals.effect(() => this.#runCameraVideo())
 		this.#signals.effect(() => this.#runScreen())
 
-		this.catalog = this.#signals.derived(() => this.#runCatalog())
+		this.catalog = this.#signals.memo(() => this.#runCatalog())
 	}
 
 	#runCameraAudio() {
