@@ -122,18 +122,6 @@ export class LocationPeer {
 
 			return producer;
 		});
-
-		/*
-		this.#signals.effect(() => {
-			const producer = this.#producer.get()
-			if (!producer) return
-
-			const position = this.location.get()
-			if (!position) return
-
-			producer.update(position)
-		})
-		*/
 	}
 
 	close() {

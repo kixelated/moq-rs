@@ -32,6 +32,16 @@ export class Location {
 		});
 		this.peering = this.#signals.memo(() => this.catalog.get()?.peering);
 
+		this.#signals.effect(() => {
+			const catalog = this.catalog.get();
+			if (!catalog) return;
+
+			const initial = catalog.initial;
+			if (!initial) return;
+
+			this.#current.set(initial);
+		});
+
 		// Use equals to prevent re-subscribing to an identical track.
 		this.#updates = this.#signals.memo(
 			() => {
