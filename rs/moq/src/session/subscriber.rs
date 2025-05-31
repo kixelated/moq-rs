@@ -130,7 +130,7 @@ impl Subscriber {
 			// This way we'll clean up the task when the broadcast is no longer needed.
 			let track = tokio::select! {
 				_ = broadcast.unused() => break,
-				producer = broadcast.requested() => match producer {
+				producer = broadcast.request() => match producer {
 					Some(producer) => producer,
 					None => break,
 				},

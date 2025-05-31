@@ -1,73 +1,45 @@
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::HashMap,
 	future::Future,
+	sync::{
+		atomic::{AtomicUsize, Ordering},
+		Arc,
+	},
 };
 
-use crate::{TrackConsumer, TrackProducer};
+use crate::{Error, TrackConsumer, TrackProducer};
 use tokio::sync::watch;
+use web_async::Lock;
 
 use super::Track;
 
-#[derive(Default)]
-struct PublisherState {
-	tracks: HashMap<String, TrackConsumer>,
-
-	// NOTE: Not a Result because there's currently no way to announce a broadcast error.
-	closed: bool,
-}
-
-type ConsumerState = BTreeMap<String, TrackProducer>;
+type State = HashMap<String, TrackConsumer>;
 
 /// Receive broadcast/track requests and return if we can fulfill them.
-#[derive(Clone)]
 pub struct BroadcastProducer {
-	published: watch::Sender<PublisherState>,
-	// Unfortunately, this needs to be a sender so we can pop requests.
-	requested: watch::Sender<ConsumerState>,
+	published: Lock<State>,
+	closed: watch::Sender<bool>,
+	requested: (
+		async_channel::Sender<TrackProducer>,
+		async_channel::Receiver<TrackProducer>,
+	),
+	cloned: Arc<AtomicUsize>,
 }
 
 impl BroadcastProducer {
 	pub fn new() -> Self {
-		let this = Self {
+		Self {
 			published: Default::default(),
-			requested: Default::default(),
-		};
-
-		let mut published = this.published.subscribe();
-		let requested = this.requested.clone();
-
-		// Unfortunately, we should spawn a task to clean up any requested tracks that haven't been fulfilled.
-		// Otherwise they will only get cleared if all producers AND consumers are dropped.
-		web_async::spawn(async move {
-			published.wait_for(|published| published.closed).await.ok();
-			requested.send_modify(|requested| requested.clear());
-		});
-
-		this
+			closed: Default::default(),
+			requested: async_channel::unbounded(),
+			cloned: Default::default(),
+		}
 	}
 
-	pub async fn requested(&mut self) -> Option<TrackProducer> {
-		let mut requested = self.requested.subscribe();
-		loop {
-			// Wait until there is at least one request.
-			requested.wait_for(|requested| !requested.is_empty()).await.ok()?;
-
-			// Unfortunately, we can't consume using the read-only receiver.
-			// So we need to switch to the mutable sender to pop the state.
-			let mut result = None;
-			self.requested.send_modify(|requested| {
-				result = requested.pop_first();
-			});
-
-			// This is racey so we may need to loop again.
-			if let Some((name, producer)) = result {
-				// Save the consumer so we can deduplicate requests.
-				self.published.send_modify(|published| {
-					published.tracks.insert(name, producer.consume());
-				});
-				return Some(producer);
-			}
-		}
+	pub async fn request(&mut self) -> Option<TrackProducer> {
+		let track = self.requested.1.recv().await.ok()?;
+		web_async::spawn(Self::cleanup(track.consume(), self.published.clone()));
+		Some(track)
 	}
 
 	pub fn create(&mut self, track: Track) -> TrackProducer {
@@ -78,68 +50,89 @@ impl BroadcastProducer {
 
 	/// Insert a track into the lookup, returning true if it was unique.
 	pub fn insert(&mut self, track: TrackConsumer) -> bool {
-		let unique = self.published.send_if_modified(|published| {
-			published
-				.tracks
-				.insert(track.info.name.clone(), track.clone())
-				.is_none()
-		});
+		let unique = self
+			.published
+			.lock()
+			.insert(track.info.name.clone(), track.clone())
+			.is_none();
 
-		let published = self.published.clone();
-
-		web_async::spawn(async move {
-			// Wait until the track is closed and remove it from the lookup.
-			track.closed().await.ok();
-
-			// Remove the track from the lookup.
-			published.send_if_modified(|published| {
-				match published.tracks.remove(&track.info.name) {
-					// Make sure we are removing the correct track.
-					Some(track) if track.is_clone(&track) => true,
-					// Put it back if it's not the same track.
-					Some(other) => published.tracks.insert(track.info.name.clone(), other).is_some(),
-					None => false,
-				}
-			});
-		});
+		web_async::spawn(Self::cleanup(track, self.published.clone()));
 
 		unique
 	}
 
-	/*
-	/// Remove a track from the lookup, returning true if it was removed.
-	pub fn remove(&mut self, name: &str) -> bool {
-		self.state.send_if_modified(|state| {
-			state.published.remove(name);
-			false
-		})
+	// Remove the track from the lookup when it's closed.
+	async fn cleanup(track: TrackConsumer, published: Lock<State>) {
+		// Wait until the track is closed and remove it from the lookup.
+		track.closed().await.ok();
+
+		// Remove the track from the lookup.
+		let mut published = published.lock();
+		match published.remove(&track.info.name) {
+			// Make sure we are removing the correct track.
+			Some(track) if track.is_clone(&track) => true,
+			// Put it back if it's not the same track.
+			Some(other) => published.insert(track.info.name.clone(), other).is_some(),
+			None => false,
+		};
 	}
-	*/
 
 	// Try to create a new consumer.
 	pub fn consume(&self) -> BroadcastConsumer {
 		BroadcastConsumer {
-			published: self.published.subscribe(),
-			requested: self.requested.clone(),
+			published: self.published.clone(),
+			closed: self.closed.subscribe(),
+			requested: self.requested.0.clone(),
 		}
 	}
 
 	pub fn finish(&mut self) {
-		self.published.send_modify(|published| published.closed = true);
+		self.closed.send_modify(|closed| *closed = true);
 	}
 
 	/// Block until there are no more consumers.
 	///
 	/// A new consumer can be created by calling [Self::consume] and this will block again.
 	pub fn unused(&self) -> impl Future<Output = ()> {
-		let published = self.published.clone();
-		async move {
-			published.closed().await;
-		}
+		let closed = self.closed.clone();
+		async move { closed.closed().await }
 	}
 
 	pub fn is_clone(&self, other: &Self) -> bool {
-		self.requested.same_channel(&other.requested)
+		self.closed.same_channel(&other.closed)
+	}
+}
+
+impl Clone for BroadcastProducer {
+	fn clone(&self) -> Self {
+		self.cloned.fetch_add(1, Ordering::Relaxed);
+		Self {
+			published: self.published.clone(),
+			closed: self.closed.clone(),
+			requested: self.requested.clone(),
+			cloned: self.cloned.clone(),
+		}
+	}
+}
+
+impl Drop for BroadcastProducer {
+	fn drop(&mut self) {
+		if self.cloned.fetch_sub(1, Ordering::Relaxed) > 0 {
+			return;
+		}
+
+		// Cleanup any lingering state when the last producer is dropped.
+
+		// Close the sender so consumers can't send any more requests.
+		self.requested.0.close();
+
+		// Drain any remaining requests.
+		while let Ok(producer) = self.requested.1.try_recv() {
+			producer.abort(Error::Cancel);
+		}
+
+		// Cleanup any published tracks.
+		self.published.lock().clear();
 	}
 }
 
@@ -155,58 +148,71 @@ impl BroadcastProducer {
 	pub fn assert_unused(&self) {
 		assert!(self.unused().now_or_never().is_some(), "should be unused");
 	}
+
+	pub fn assert_request(&mut self) -> TrackProducer {
+		self.request()
+			.now_or_never()
+			.expect("should not have blocked")
+			.expect("should be a request")
+	}
+
+	pub fn assert_no_request(&mut self) {
+		assert!(self.request().now_or_never().is_none(), "should have blocked");
+	}
 }
 
 /// Subscribe to abitrary broadcast/tracks.
 #[derive(Clone)]
 pub struct BroadcastConsumer {
-	published: watch::Receiver<PublisherState>,
-	requested: watch::Sender<ConsumerState>,
+	published: Lock<State>,
+	closed: watch::Receiver<bool>,
+	requested: async_channel::Sender<TrackProducer>,
 }
 
 impl BroadcastConsumer {
 	pub fn subscribe(&self, track: &Track) -> TrackConsumer {
-		let published = self.published.borrow();
+		/*
+		let closed = match self.closed.wait_for(|closed| *closed).now_or_never() {
+			None => false, // would have blocked
+			Some(true) => true,
+			Some(false) => false,
+		};
 
-		if published.closed {
+		if closed {
 			// Kind of hacky, but return a closed track consumer.
-			return track.clone().produce().consume();
+			let track = track.clone().produce();
+			track.abort(Error::Cancel);
+			return track.consume();
 		}
+		*/
+
+		let mut published = self.published.lock();
 
 		// Return any explictly published track.
-		if let Some(consumer) = published.tracks.get(&track.name).cloned() {
+		if let Some(consumer) = published.get(&track.name).cloned() {
 			return consumer;
 		}
 
-		let mut consumer = None;
+		// Otherwise we have never seen this track before and need to create a new producer.
+		let producer = track.clone().produce();
+		let consumer = producer.consume();
+		published.insert(track.name.clone(), consumer.clone());
 
-		self.requested.send_if_modified(|requested| {
-			// Deduplicate any requested track.
-			if let Some(requested) = requested.get(&track.name) {
-				consumer = Some(requested.consume());
-				return false;
-			}
+		// Insert the producer into the lookup so we will deduplicate requests.
+		// This is not a subscriber so it doesn't count towards "used" subscribers.
+		match self.requested.try_send(producer) {
+			Ok(()) => {}
+			Err(error) => error.into_inner().abort(Error::Cancel),
+		}
 
-			// Otherwise we have never seen this track before and need to create a new producer.
-			// Otherwise we have never seen this track before and need to create a new producer.
-			let producer = track.clone().produce();
-			consumer = Some(producer.consume());
-
-			// Insert the producer into the lookup so we will deduplicate requests.
-			// This is not a subscriber so it doesn't count towards "used" subscribers.
-			requested.insert(track.name.clone(), producer.clone());
-
-			true
-		});
-
-		consumer.unwrap()
+		consumer
 	}
 
 	pub fn closed(&self) -> impl Future<Output = ()> {
 		// A hacky way to check if the broadcast is closed.
-		let mut published = self.published.clone();
+		let mut closed = self.closed.clone();
 		async move {
-			published.wait_for(|published| published.closed).await.ok();
+			closed.wait_for(|closed| *closed).await.ok();
 		}
 	}
 
@@ -214,13 +220,13 @@ impl BroadcastConsumer {
 	///
 	/// Duplicate names are allowed in the case of resumption.
 	pub fn is_clone(&self, other: &Self) -> bool {
-		self.requested.same_channel(&other.requested)
+		self.closed.same_channel(&other.closed)
 	}
 }
 
 #[cfg(test)]
 impl BroadcastConsumer {
-	pub fn assert_active(&self) {
+	pub fn assert_not_closed(&self) {
 		assert!(self.closed().now_or_never().is_none(), "should not be closed");
 	}
 
@@ -233,8 +239,8 @@ impl BroadcastConsumer {
 mod test {
 	use super::*;
 
-	#[test]
-	fn insert() {
+	#[tokio::test]
+	async fn insert() {
 		let mut producer = BroadcastProducer::new();
 		let mut track1 = Track::new("track1").produce();
 
@@ -298,32 +304,78 @@ mod test {
 		let mut producer = BroadcastProducer::new();
 
 		let consumer = producer.consume();
-		consumer.assert_active();
+		consumer.assert_not_closed();
 
 		// Create a new track and insert it into the broadcast.
 		let mut track1 = Track::new("track1").produce();
 		track1.append_group();
 		producer.insert(track1.consume());
 
-		let mut track1 = consumer.subscribe(&track1.info);
-		let mut track2 = consumer.subscribe(&Track::new("track2"));
+		let mut track1c = consumer.subscribe(&track1.info);
+		let track2 = consumer.subscribe(&Track::new("track2"));
 
 		drop(producer);
 		consumer.assert_closed();
 
-		track1.assert_group(); // debatable
-		track1.assert_no_group();
-		track2.assert_no_group();
+		// The requested TrackProducer should have been dropped, so the track should be closed.
+		track2.assert_closed();
+
+		// But track1 is still open because we currently don't cascade the closed state.
+		track1c.assert_group();
+		track1c.assert_no_group();
+		track1c.assert_not_closed();
+
+		// TODO: We should probably cascade the closed state.
+		drop(track1);
+		track1c.assert_closed();
 	}
 
 	#[tokio::test]
 	async fn select() {
 		let mut producer = BroadcastProducer::new();
 
-		// Make sure this compiles.
+		// Make sure this compiles; it's actually more involved than it should be.
 		tokio::select! {
 			_ = producer.unused() => {}
-			_ = producer.requested() => {}
+			_ = producer.request() => {}
 		}
+	}
+
+	#[tokio::test]
+	async fn requests() {
+		let mut producer = BroadcastProducer::new();
+
+		let consumer = producer.consume();
+		let consumer2 = consumer.clone();
+
+		let mut track1 = consumer.subscribe(&Track::new("track1"));
+		track1.assert_not_closed();
+		track1.assert_no_group();
+
+		// Make sure we deduplicate requests.
+		let mut track2 = consumer2.subscribe(&Track::new("track1"));
+		track2.assert_is_clone(&track1);
+
+		// Get the requested track, and there should only be one.
+		let mut track3 = producer.assert_request();
+		producer.assert_no_request();
+
+		// Make sure the consumer is the same.
+		track3.consume().assert_is_clone(&track1);
+
+		// Append a group and make sure they all get it.
+		track3.append_group();
+		track1.assert_group();
+		track2.assert_group();
+
+		// Make sure that tracks are cancelled when the producer is dropped.
+		let track4 = consumer.subscribe(&Track::new("track2"));
+		drop(producer);
+
+		// Make sure the track is errored, not closed.
+		track4.assert_error();
+
+		let track5 = consumer2.subscribe(&Track::new("track3"));
+		track5.assert_error();
 	}
 }

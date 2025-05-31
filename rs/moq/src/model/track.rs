@@ -151,6 +151,7 @@ impl TrackConsumer {
 	///
 	/// NOTE: This can have gaps if the reader is too slow or there were network slowdowns.
 	pub async fn next_group(&mut self) -> Result<Option<GroupConsumer>> {
+		println!("calling next_group");
 		// Wait until there's a new latest group or the track is closed.
 		let state = match self
 			.state
@@ -162,6 +163,8 @@ impl TrackConsumer {
 			Ok(state) => state,
 			Err(_) => return Err(Error::Cancel),
 		};
+
+		println!("next_group_state: {:?}", state.closed);
 
 		match &state.closed {
 			Some(Ok(_)) => return Ok(None),
@@ -205,15 +208,31 @@ impl TrackConsumer {
 	pub fn assert_no_group(&mut self) {
 		assert!(
 			self.next_group().now_or_never().is_none(),
-			"next group would have blocked"
+			"next group would not have blocked"
 		);
 	}
 
-	pub fn assert_active(&self) {
+	pub fn assert_not_closed(&self) {
 		assert!(self.closed().now_or_never().is_none(), "should not be closed");
 	}
 
 	pub fn assert_closed(&self) {
 		assert!(self.closed().now_or_never().is_some(), "should be closed");
+	}
+
+	// TODO assert specific errors after implementing PartialEq
+	pub fn assert_error(&self) {
+		assert!(
+			self.closed().now_or_never().expect("should not block").is_err(),
+			"should be error"
+		);
+	}
+
+	pub fn assert_is_clone(&self, other: &Self) {
+		assert!(self.is_clone(other), "should be clone");
+	}
+
+	pub fn assert_not_clone(&self, other: &Self) {
+		assert!(!self.is_clone(other), "should not be clone");
 	}
 }
