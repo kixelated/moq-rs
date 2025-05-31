@@ -1,9 +1,9 @@
-import { AnnouncedProducer } from "./announced";
-import { BroadcastConsumer } from "./broadcast";
-import type { GroupConsumer } from "./group";
-import type { TrackConsumer } from "./track";
-import { error } from "./util/error";
-import * as Wire from "./wire";
+import { AnnouncedProducer } from "./announced"
+import { BroadcastConsumer } from "./broadcast"
+import type { GroupConsumer } from "./group"
+import type { TrackConsumer } from "./track"
+import { error } from "./util/error"
+import * as Wire from "./wire"
 
 /**
  * Handles publishing broadcasts and managing their lifecycle.
@@ -11,7 +11,7 @@ import * as Wire from "./wire";
  * @internal
  */
 export class Publisher {
-	#quic: WebTransport;
+	#quic: WebTransport
 
 	// TODO this will store every announce/unannounce message, which will grow unbounded.
 	// We should remove any cached announcements on unannounce, etc.
@@ -27,7 +27,7 @@ export class Publisher {
 	 * @internal
 	 */
 	constructor(quic: WebTransport) {
-		this.#quic = quic;
+		this.#quic = quic
 	}
 
 	/**
@@ -36,7 +36,7 @@ export class Publisher {
 	 * @returns A BroadcastConsumer instance or undefined if not found
 	 */
 	consume(path: string): BroadcastConsumer | undefined {
-		return this.#broadcasts.get(path)?.clone();
+		return this.#broadcasts.get(path)?.clone()
 	}
 
 	/**
@@ -44,8 +44,8 @@ export class Publisher {
 	 * @param broadcast - The broadcast to publish
 	 */
 	publish(path: string, broadcast: BroadcastConsumer) {
-		this.#broadcasts.set(path, broadcast);
-		void this.#runPublish(path, broadcast);
+		this.#broadcasts.set(path, broadcast)
+		void this.#runPublish(path, broadcast)
 	}
 
 	async #runPublish(path: string, broadcast: BroadcastConsumer) {
@@ -53,25 +53,25 @@ export class Publisher {
 			this.#announced.write({
 				path,
 				active: true,
-			});
+			})
 
-			console.debug(`announce: path=${path} active=true`);
+			console.debug(`announce: broadcast=${path} active=true`)
 
 			// Wait until the broadcast is closed, then remove it from the lookup.
-			await broadcast.closed();
+			await broadcast.closed()
 
-			console.debug(`announce: path=${path} active=false`);
+			console.debug(`announce: broadcast=${path} active=false`)
 		} catch (err: unknown) {
-			console.warn(`announce: path=${path} error=${error(err)}`);
+			console.warn(`announce: broadcast=${path} error=${error(err)}`)
 		} finally {
-			broadcast.close();
+			broadcast.close()
 
-			this.#broadcasts.delete(path);
+			this.#broadcasts.delete(path)
 
 			this.#announced.write({
 				path,
 				active: false,
-			});
+			})
 		}
 	}
 
@@ -83,14 +83,14 @@ export class Publisher {
 	 * @internal
 	 */
 	async runAnnounce(msg: Wire.AnnounceInterest, stream: Wire.Stream) {
-		const consumer = this.#announced.consume(msg.prefix);
+		const consumer = this.#announced.consume(msg.prefix)
 
-		for (;;) {
-			const announcement = await consumer.next();
-			if (!announcement) break;
+		for (; ;) {
+			const announcement = await consumer.next()
+			if (!announcement) break
 
-			const wire = new Wire.Announce(announcement.path, announcement.active);
-			await wire.encode(stream.writer);
+			const wire = new Wire.Announce(announcement.path, announcement.active)
+			await wire.encode(stream.writer)
 		}
 	}
 
@@ -102,25 +102,25 @@ export class Publisher {
 	 * @internal
 	 */
 	async runSubscribe(msg: Wire.Subscribe, stream: Wire.Stream) {
-		const broadcast = this.#broadcasts.get(msg.broadcast);
+		const broadcast = this.#broadcasts.get(msg.broadcast)
 		if (!broadcast) {
-			console.debug(`publish unknown: path=${msg.broadcast}`);
-			stream.writer.reset(new Error("not found"));
-			return;
+			console.debug(`publish unknown: broadcast=${msg.broadcast}`)
+			stream.writer.reset(new Error("not found"))
+			return
 		}
 
-		const track = broadcast.subscribe(msg.track, msg.priority);
-		const serving = this.#runTrack(msg.id, msg.broadcast, track, stream.writer);
+		const track = broadcast.subscribe(msg.track, msg.priority)
+		const serving = this.#runTrack(msg.id, msg.broadcast, track, stream.writer)
 
-		for (;;) {
-			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);
+		for (; ;) {
+			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader)
 
-			const result = await Promise.any([serving, decode]);
-			if (!result) break;
+			const result = await Promise.any([serving, decode])
+			if (!result) break
 
 			if (result instanceof Wire.SubscribeUpdate) {
 				// TODO use the update
-				console.warn("subscribe update not supported", result);
+				console.warn("subscribe update not supported", result)
 			}
 		}
 	}
@@ -135,33 +135,33 @@ export class Publisher {
 	 * @internal
 	 */
 	async #runTrack(sub: bigint, broadcast: string, track: TrackConsumer, stream: Wire.Writer) {
-		let ok = false;
+		let ok = false
 
 		try {
-			for (;;) {
-				const group = await Promise.race([track.nextGroup(), stream.closed()]);
-				if (!group) break;
+			for (; ;) {
+				const group = await Promise.race([track.nextGroup(), stream.closed()])
+				if (!group) break
 
 				if (!ok) {
-					console.debug(`publish ok: broadcast=${broadcast} track=${track.name}`);
+					console.debug(`publish ok: broadcast=${broadcast} track=${track.name}`)
 
 					// Write the SUBSCRIBE_OK message on the first group.
-					const info = new Wire.SubscribeOk(track.priority);
-					await info.encode(stream);
-					ok = true;
+					const info = new Wire.SubscribeOk(track.priority)
+					await info.encode(stream)
+					ok = true
 				}
 
-				void this.#runGroup(sub, group);
+				void this.#runGroup(sub, group)
 			}
 
-			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`);
-			stream.close();
+			console.debug(`publish close: broadcast=${broadcast} track=${track.name}`)
+			stream.close()
 		} catch (err: unknown) {
-			const e = error(err);
-			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${e}`);
-			stream.reset(e);
+			const e = error(err)
+			console.warn(`publish error: broadcast=${broadcast} track=${track.name} error=${e}`)
+			stream.reset(e)
 		} finally {
-			track.close();
+			track.close()
 		}
 	}
 
@@ -173,24 +173,24 @@ export class Publisher {
 	 * @internal
 	 */
 	async #runGroup(sub: bigint, group: GroupConsumer) {
-		const msg = new Wire.Group(sub, group.id);
+		const msg = new Wire.Group(sub, group.id)
 		try {
-			const stream = await Wire.Writer.open(this.#quic, msg);
+			const stream = await Wire.Writer.open(this.#quic, msg)
 			try {
-				for (;;) {
-					const frame = await Promise.race([group.readFrame(), stream.closed()]);
-					if (!frame) break;
+				for (; ;) {
+					const frame = await Promise.race([group.readFrame(), stream.closed()])
+					if (!frame) break
 
-					await stream.u53(frame.byteLength);
-					await stream.write(frame);
+					await stream.u53(frame.byteLength)
+					await stream.write(frame)
 				}
 
-				stream.close();
+				stream.close()
 			} catch (err: unknown) {
-				stream.reset(error(err));
+				stream.reset(error(err))
 			}
 		} finally {
-			group.close();
+			group.close()
 		}
 	}
 }
