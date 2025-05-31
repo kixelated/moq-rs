@@ -14,21 +14,22 @@ export const PositionSchema = z.object({
 
 export const LocationSchema = z.object({
 	// The initial position of the broadcaster, from -1 to +1 in both dimensions.
-	// This should be used for audio panning if supported.
 	// If not provided, then the broadcaster is assumed to be at (0,0)
+	// This should be used for audio panning but can also be used for video positioning.
 	initial: z.optional(PositionSchema),
 
 	// If provided, then updates to the position are done via a separate Moq track.
-	// This avoids a full catalog update every time we want to update 8* bytes.
+	// This is used to avoid a full catalog update every time we want to update a few bytes.
+	// TODO: These updates currently use JSON for simplicity, but we should use a binary format.
 	updates: z.optional(TrackSchema),
 
-	// If provided, this broadcaster is requesting that other peers update their position.
-	// The contents of the track are the same as the positionUpdates track above, just float32 pairs.
-	peers: z.optional(z.record(z.uint32(), TrackSchema)),
+	// If true, then this broadcaster allows other peers to request position updates.
+	// We will have to discover and subscribe to their position updates.
+	peering: z.optional(z.boolean()),
 
-	// If provided, the broadcaster allows other peers to request a position updates.
-	// This is the key to the request record above, advertised in other catalogs.
-	handle: z.optional(z.uint32()),
+	// If provided, this broadcaster is signaling the location of other peers.
+	// The key is the name of the broadcast, and the value is the track that contains the position updates.
+	peers: z.optional(z.record(z.string(), TrackSchema)),
 })
 
 export type Location = z.infer<typeof LocationSchema>

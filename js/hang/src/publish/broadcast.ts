@@ -185,22 +185,18 @@ export class Broadcast {
 
 	#runCatalog(): Catalog.Root {
 		// Create the new catalog.
-		const catalog = new Catalog.Root()
-
 		const audio = this.audio.catalog.get()
 		const video = this.video.catalog.get()
-		catalog.location = this.location.catalog.get()
 
-		if (audio) {
-			catalog.audio.push(audio)
+		const catalog: Catalog.Root = {
+			video: video ? [video] : [],
+			audio: audio ? [audio] : [],
+			location: this.location.catalog.get(),
 		}
 
-		if (video) {
-			catalog.video.push(video)
-		}
+		const encoded = Catalog.encode(catalog)
 
-		const encoder = new TextEncoder()
-		const encoded = encoder.encode(catalog.encode())
+		// Encode the catalog.
 		const catalogGroup = this.#catalog.appendGroup()
 		catalogGroup.writeFrame(encoded)
 		catalogGroup.close()

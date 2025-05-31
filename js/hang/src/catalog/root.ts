@@ -1,10 +1,10 @@
 import * as Moq from "@kixelated/moq"
 import { z } from "zod/v4-mini"
 
-import { type Audio, AudioSchema } from "./audio"
-import { type Video, VideoSchema } from "./video"
-import { Location, LocationSchema } from "./location"
-import { Capabilities, CapabilitiesSchema } from "./capabilities"
+import { AudioSchema } from "./audio"
+import { VideoSchema } from "./video"
+import { LocationSchema } from "./location"
+import { CapabilitiesSchema } from "./capabilities"
 
 export const RootSchema = z.object({
 	video: z.optional(z.array(VideoSchema)),
@@ -13,41 +13,34 @@ export const RootSchema = z.object({
 	capabilities: z.optional(CapabilitiesSchema),
 })
 
-export class Root {
-	video: Video[] = [];
-	audio: Audio[] = [];
-	location: Location | undefined
-	capabilities: Capabilities | undefined
+export type Root = z.infer<typeof RootSchema>
 
-	encode() {
-		return JSON.stringify(this)
-	}
+export function encode(root: Root): Uint8Array {
+	const encoder = new TextEncoder()
+	return encoder.encode(JSON.stringify(root))
+}
 
-	static decode(raw: Uint8Array): Root {
-		const decoder = new TextDecoder()
-		const str = decoder.decode(raw)
+export function decode(raw: Uint8Array): Root {
+	const decoder = new TextDecoder()
+	const str = decoder.decode(raw)
+	try {
 		const json = JSON.parse(str)
-		const parsed = RootSchema.parse(json)
-
-		const root = new Root()
-		root.video = parsed.video ?? []
-		root.audio = parsed.audio ?? []
-		root.location = parsed.location
-		root.capabilities = parsed.capabilities
-
-		return root
+		return RootSchema.parse(json)
+	} catch (error) {
+		console.error("invalid catalog", str)
+		throw error
 	}
+}
 
-	static async fetch(track: Moq.TrackConsumer): Promise<Root | undefined> {
-		const group = await track.nextGroup()
-		if (!group) return undefined // track is done
+export async function fetch(track: Moq.TrackConsumer): Promise<Root | undefined> {
+	const group = await track.nextGroup()
+	if (!group) return undefined // track is done
 
-		try {
-			const frame = await group.readFrame()
-			if (!frame) throw new Error("empty group")
-			return Root.decode(frame)
-		} finally {
-			group.close()
-		}
+	try {
+		const frame = await group.readFrame()
+		if (!frame) throw new Error("empty group")
+		return decode(frame)
+	} finally {
+		group.close()
 	}
 }

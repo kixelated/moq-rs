@@ -95,7 +95,7 @@ impl Subscriber {
 					tracing::debug!(%suffix, "received unannounce");
 
 					// Close the producer.
-					let producer = producers.remove(&suffix).ok_or(Error::NotFound)?;
+					let mut producer = producers.remove(&suffix).ok_or(Error::NotFound)?;
 					producer.finish();
 				}
 			}
@@ -123,29 +123,27 @@ impl Subscriber {
 		consumer
 	}
 
-	async fn run_broadcast(self, path: String, broadcast: BroadcastProducer) {
+	async fn run_broadcast(self, path: String, mut broadcast: BroadcastProducer) {
 		// Actually start serving subscriptions.
 		loop {
 			// Keep serving requests until there are no more consumers.
 			// This way we'll clean up the task when the broadcast is no longer needed.
-			let mut track = tokio::select! {
+			let track = tokio::select! {
+				_ = broadcast.unused() => break,
 				producer = broadcast.requested() => match producer {
 					Some(producer) => producer,
 					None => break,
 				},
-				_ = broadcast.unused() => break,
 				_ = self.session.closed() => break,
 			};
 
 			let id = self.next_id.fetch_add(1, atomic::Ordering::Relaxed);
 			let path = path.clone();
 			let mut this = self.clone();
-			let broadcast = broadcast.clone();
 
 			spawn(async move {
-				this.run_subscribe(id, path, &mut track).await;
+				this.run_subscribe(id, path, track).await;
 				this.subscribes.lock().remove(&id);
-				broadcast.remove(&track.info.name);
 			});
 		}
 
@@ -153,7 +151,7 @@ impl Subscriber {
 		self.broadcasts.lock().remove(&path);
 	}
 
-	async fn run_subscribe(&mut self, id: u64, broadcast: String, track: &mut TrackProducer) {
+	async fn run_subscribe(&mut self, id: u64, broadcast: String, track: TrackProducer) {
 		self.subscribes.lock().insert(id, track.clone());
 
 		let msg = message::Subscribe {
@@ -214,7 +212,7 @@ impl Subscriber {
 
 		tracing::trace!(group = %group.sequence, "received group");
 
-		let mut group = {
+		let group = {
 			let mut subs = self.subscribes.lock();
 			let track = subs.get_mut(&group.subscribe).ok_or(Error::Cancel)?;
 
@@ -249,7 +247,7 @@ impl Subscriber {
 
 	async fn run_group(&mut self, stream: &mut Reader, mut group: GroupProducer) -> Result<(), Error> {
 		while let Some(frame) = stream.decode_maybe::<message::Frame>().await? {
-			let mut frame = group.create_frame(Frame { size: frame.size });
+			let frame = group.create_frame(Frame { size: frame.size });
 
 			let res = tokio::select! {
 				_ = frame.unused() => Err(Error::Cancel),

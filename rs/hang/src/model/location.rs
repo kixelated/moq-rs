@@ -104,7 +104,7 @@ impl LocationProducer {
 		Ok(())
 	}
 
-	pub fn finish(&mut self) {
+	pub fn finish(self) {
 		self.track.finish();
 	}
 }

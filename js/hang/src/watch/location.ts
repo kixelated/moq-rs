@@ -11,7 +11,7 @@ export class Location {
 
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>
 	catalog: Derived<Catalog.Location | undefined>
-	handle: Derived<number | undefined>
+	peering: Derived<boolean | undefined>
 
 	#current = signal<Catalog.Position | undefined>(undefined)
 	readonly current = this.#current.readonly()
@@ -24,7 +24,7 @@ export class Location {
 		this.catalog = this.#signals.derived(() => {
 			return this.enabled.get() ? catalog.get()?.location : undefined
 		})
-		this.handle = this.#signals.derived(() => this.catalog.get()?.handle)
+		this.peering = this.#signals.derived(() => this.catalog.get()?.peering)
 
 		this.#signals.effect(this.#run.bind(this))
 	}
@@ -53,14 +53,15 @@ export class Location {
 
 	// Request a reactive signal for a specific handle on demand.
 	// This is useful when publishing, as you only want to subscribe to the feedback you need.
-	peer(handle: number): Derived<Catalog.Position | undefined> {
+	// TODO: This API is super gross and leaks. We should figure out a better way to do this.
+	peer(handle: Signal<string>): Derived<Catalog.Position | undefined> {
 		const location = signal<Catalog.Position | undefined>(undefined)
 		this.#signals.effect(() => this.#runPeer(handle, location))
 
 		return location.readonly()
 	}
 
-	#runPeer(handle: number, location: Signal<Catalog.Position | undefined>) {
+	#runPeer(handle: Signal<string>, location: Signal<Catalog.Position | undefined>) {
 		cleanup(() => location.set(undefined))
 
 		const broadcast = this.broadcast.get()
@@ -69,7 +70,10 @@ export class Location {
 		const catalog = this.catalog.get()
 		if (!catalog) return
 
-		const track = catalog.peers?.[handle]
+		const path = handle.get()
+		if (!path) return
+
+		const track = catalog.peers?.[path]
 		if (!track) return
 
 		const sub = broadcast.subscribe(track.name, track.priority)
@@ -110,26 +114,12 @@ export class LocationConsumer {
 			const frame = await group.readFrame()
 			if (!frame) return undefined
 
-			let x: number | undefined
-			let y: number | undefined
-			let zoom: number | undefined
+			const decoder = new TextDecoder()
+			const str = decoder.decode(frame)
+			const position = Catalog.PositionSchema.parse(JSON.parse(str))
+			console.log("decoded", this.track.name, position)
 
-			const view = new DataView(frame.buffer)
-			if (view.byteLength >= 4) {
-				x = view.getFloat32(0)
-			}
-			if (view.byteLength >= 8) {
-				y = view.getFloat32(4)
-			}
-			if (view.byteLength >= 12) {
-				zoom = view.getFloat32(8)
-			}
-
-			return {
-				x,
-				y,
-				zoom,
-			}
+			return position
 		} finally {
 			group.close()
 		}

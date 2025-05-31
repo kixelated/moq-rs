@@ -19,7 +19,7 @@ impl Default for BroadcastProducer {
 impl BroadcastProducer {
 	pub fn new() -> Self {
 		let catalog = Catalog::default().produce();
-		let inner = moq_lite::BroadcastProducer::new();
+		let mut inner = moq_lite::BroadcastProducer::new();
 		inner.insert(catalog.consume().track);
 
 		Self { catalog, inner }
@@ -41,7 +41,6 @@ impl BroadcastProducer {
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.inner.remove(&track.inner.info.name);
 			this.catalog.remove_video(&info);
 			this.catalog.publish();
 		});
@@ -56,7 +55,6 @@ impl BroadcastProducer {
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.inner.remove(&track.inner.info.name);
 			this.catalog.remove_audio(&info);
 			this.catalog.publish();
 		});

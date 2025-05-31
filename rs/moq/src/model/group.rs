@@ -7,6 +7,8 @@
 //! The reader can be cloned, in which case each reader receives a copy of each frame. (fanout)
 //!
 //! The stream is closed with [ServeError::MoqError] when all writers or readers are dropped.
+use std::future::Future;
+
 use bytes::Bytes;
 use tokio::sync::watch;
 
@@ -113,11 +115,11 @@ impl GroupProducer {
 	}
 
 	// Clean termination of the group.
-	pub fn finish(&mut self) {
+	pub fn finish(self) {
 		self.state.send_modify(|state| state.closed = Some(Ok(())));
 	}
 
-	pub fn abort(&mut self, err: Error) {
+	pub fn abort(self, err: Error) {
 		self.state.send_modify(|state| state.closed = Some(Err(err)));
 	}
 
@@ -131,8 +133,11 @@ impl GroupProducer {
 		}
 	}
 
-	pub async fn unused(&self) {
-		self.state.closed().await;
+	pub fn unused(&self) -> impl Future<Output = ()> {
+		let state = self.state.clone();
+		async move {
+			state.closed().await;
+		}
 	}
 }
 

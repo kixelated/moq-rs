@@ -131,14 +131,12 @@ export class Broadcast {
 		(async () => {
 			try {
 				for (; ;) {
-					const update = await Catalog.Root.fetch(catalog)
+					const update = await Catalog.fetch(catalog)
 					if (!update) break
 
 					this.#catalog.set(update)
 					this.status.set("live")
 				}
-			} catch (err) {
-				console.error("catalog error", err)
 			} finally {
 				this.#catalog.set(undefined)
 				this.status.set("offline")

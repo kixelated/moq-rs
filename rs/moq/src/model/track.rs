@@ -18,7 +18,7 @@ use crate::{Error, Result};
 
 use super::{Group, GroupConsumer, GroupProducer};
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, future::Future};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -28,6 +28,13 @@ pub struct Track {
 }
 
 impl Track {
+	pub fn new<T: Into<String>>(name: T) -> Self {
+		Self {
+			name: name.into(),
+			priority: 0,
+		}
+	}
+
 	pub fn produce(self) -> TrackProducer {
 		TrackProducer::new(self)
 	}
@@ -94,11 +101,11 @@ impl TrackProducer {
 		self.create_group(group).unwrap()
 	}
 
-	pub fn finish(&mut self) {
+	pub fn finish(self) {
 		self.state.send_modify(|state| state.closed = Some(Ok(())));
 	}
 
-	pub fn abort(&mut self, err: Error) {
+	pub fn abort(self, err: Error) {
 		self.state.send_modify(|state| state.closed = Some(Err(err)));
 	}
 
@@ -112,8 +119,16 @@ impl TrackProducer {
 	}
 
 	/// Block until there are no active consumers.
-	pub async fn unused(&self) {
-		self.state.closed().await
+	pub fn unused(&self) -> impl Future<Output = ()> {
+		let state = self.state.clone();
+		async move {
+			state.closed().await;
+		}
+	}
+
+	/// Return true if this is the same track.
+	pub fn is_clone(&self, other: &Self) -> bool {
+		self.state.same_channel(&other.state)
 	}
 }
 
@@ -167,5 +182,38 @@ impl TrackConsumer {
 			Ok(state) => return state.closed.clone().unwrap(),
 			Err(_) => Err(Error::Cancel),
 		}
+	}
+
+	pub fn is_clone(&self, other: &Self) -> bool {
+		self.state.same_channel(&other.state)
+	}
+}
+
+#[cfg(test)]
+use futures::FutureExt;
+
+#[cfg(test)]
+impl TrackConsumer {
+	pub fn assert_group(&mut self) -> GroupConsumer {
+		self.next_group()
+			.now_or_never()
+			.expect("group would have blocked")
+			.expect("would have errored")
+			.expect("track was closed")
+	}
+
+	pub fn assert_no_group(&mut self) {
+		assert!(
+			self.next_group().now_or_never().is_none(),
+			"next group would have blocked"
+		);
+	}
+
+	pub fn assert_active(&self) {
+		assert!(self.closed().now_or_never().is_none(), "should not be closed");
+	}
+
+	pub fn assert_closed(&self) {
+		assert!(self.closed().now_or_never().is_some(), "should be closed");
 	}
 }

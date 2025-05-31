@@ -42,9 +42,7 @@ export class Connection {
 		this.#publisher = new Publisher(this.#quic)
 		this.#subscriber = new Subscriber(this.#quic)
 
-		this.#run().catch((err: unknown) => {
-			console.error("failed to run connection: ", err)
-		})
+		this.#run()
 	}
 
 	/**

@@ -128,7 +128,7 @@ impl CatalogProducer {
 		CatalogConsumer::new(self.track.consume())
 	}
 
-	pub fn finish(&mut self) {
+	pub fn finish(mut self) {
 		self.track.finish();
 	}
 }
@@ -211,7 +211,7 @@ mod test {
 				{
 					"track": {
 						"name": "video",
-						"priority": 2
+						"priority": 1
 					},
 					"config": {
 						"codec": "avc1.64001f",
@@ -226,7 +226,7 @@ mod test {
 				{
 					"track": {
 						"name": "audio",
-						"priority": 1
+						"priority": 2
 					},
 					"config": {
 						"codec": "opus",
