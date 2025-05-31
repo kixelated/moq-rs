@@ -70,9 +70,9 @@ impl BroadcastProducer {
 		let mut published = published.lock();
 		match published.remove(&track.info.name) {
 			// Make sure we are removing the correct track.
-			Some(track) if track.is_clone(&track) => true,
+			Some(other) if other.is_clone(&track) => true,
 			// Put it back if it's not the same track.
-			Some(other) => published.insert(track.info.name.clone(), other).is_some(),
+			Some(other) => published.insert(track.info.name.clone(), other.clone()).is_some(),
 			None => false,
 		};
 	}
