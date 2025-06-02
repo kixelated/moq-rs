@@ -44,9 +44,9 @@ impl Session {
 			};
 
 			match res {
-				Err(Error::WebTransport(web_transport::Error::Session(err))) => {
-					tracing::info!(?err, "session terminated");
-					session.close(1, &err.to_string());
+				Err(Error::WebTransport(web_transport::Error::Session(_))) => {
+					tracing::info!("session terminated");
+					session.close(1, "");
 				}
 				Err(err) => {
 					tracing::warn!(?err, "session error");
