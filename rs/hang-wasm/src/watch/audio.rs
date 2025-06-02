@@ -42,7 +42,7 @@ impl Audio {
 			}
 		}
 
-		let track = broadcast.track(&audio.track);
+		let track = broadcast.subscribe(&audio.track);
 
 		// TODO handle the error instead of ignoring it.
 		let track = AudioTrack::new(track, audio.clone()).ok()?;
@@ -221,14 +221,14 @@ impl Audio {
 
 pub struct AudioTrack {
 	pub track: hang::TrackConsumer,
-	pub info: hang::AudioTrack,
+	pub info: hang::catalog::Audio,
 
 	decoder: web_codecs::AudioDecoder,
 	decoded: web_codecs::AudioDecoded,
 }
 
 impl AudioTrack {
-	pub fn new(track: hang::TrackConsumer, info: hang::AudioTrack) -> Result<Self> {
+	pub fn new(track: hang::TrackConsumer, info: hang::catalog::Audio) -> Result<Self> {
 		let config = &info.config;
 
 		// Construct the video decoder

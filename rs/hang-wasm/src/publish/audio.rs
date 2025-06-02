@@ -7,14 +7,14 @@ pub struct PublishAudio {
 	config: web_codecs::AudioEncoderConfig,
 
 	// The track that we are publishing.
-	track: hang::model::TrackProducer,
+	track: hang::TrackProducer,
 
 	// The encoder accepts raw frames and spits out encoded frames.
 	encoder: web_codecs::AudioEncoder,
 	encoded: web_codecs::AudioEncoded,
 
 	// When set, publish to the given broadcast.
-	broadcast: Option<hang::model::BroadcastProducer>,
+	broadcast: Option<hang::BroadcastProducer>,
 }
 
 impl PublishAudio {
@@ -46,11 +46,11 @@ impl PublishAudio {
 
 	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.encoded.frame().await? {
-			if let Some(mut broadcast) = self.broadcast.take() {
-				self.publish_to(&mut broadcast);
+			if let Some(broadcast) = self.broadcast.take() {
+				self.publish_to(broadcast);
 			}
 
-			self.track.write(hang::model::Frame {
+			self.track.write(hang::Frame {
 				timestamp: frame.timestamp,
 				keyframe: frame.keyframe,
 				payload: frame.payload,
@@ -75,9 +75,9 @@ impl PublishAudio {
 		}
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::model::BroadcastProducer) {
+	pub fn publish_to(&mut self, mut broadcast: hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::catalog::AudioTrack {
+			let info = hang::catalog::Audio {
 				track: self.track.inner.info.clone(),
 				config: hang::catalog::AudioConfig {
 					codec: config.codec.into(),
@@ -91,7 +91,7 @@ impl PublishAudio {
 			broadcast.add_audio(self.track.consume(), info);
 		} else {
 			// Save a reference for later after fully initializing.
-			self.broadcast = Some(broadcast.clone());
+			self.broadcast = Some(broadcast);
 		}
 	}
 }

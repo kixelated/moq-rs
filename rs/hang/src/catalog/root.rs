@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{AudioTrack, VideoTrack};
+use crate::catalog::{Audio, Video};
 use crate::Result;
 
 use super::Location;
@@ -15,10 +15,10 @@ use super::Location;
 #[serde(default, rename_all = "camelCase")]
 pub struct Catalog {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub video: Vec<VideoTrack>,
+	pub video: Vec<Video>,
 
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub audio: Vec<AudioTrack>,
+	pub audio: Vec<Audio>,
 
 	/// A location track, used to indicate the desired position of the broadcaster from -1 to 1.
 	/// This is primarily used for audio panning but can also be used for video.
@@ -83,12 +83,12 @@ impl CatalogProducer {
 		}
 	}
 
-	pub fn add_video(&mut self, video: VideoTrack) {
+	pub fn add_video(&mut self, video: Video) {
 		let mut current = self.current.lock().unwrap();
 		current.video.push(video);
 	}
 
-	pub fn add_audio(&mut self, audio: AudioTrack) {
+	pub fn add_audio(&mut self, audio: Audio) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.push(audio);
 	}
@@ -98,12 +98,12 @@ impl CatalogProducer {
 		current.location = location;
 	}
 
-	pub fn remove_video(&mut self, video: &VideoTrack) {
+	pub fn remove_video(&mut self, video: &Video) {
 		let mut current = self.current.lock().unwrap();
 		current.video.retain(|v| v != video);
 	}
 
-	pub fn remove_audio(&mut self, audio: &AudioTrack) {
+	pub fn remove_audio(&mut self, audio: &Audio) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.retain(|a| a != audio);
 	}
@@ -242,7 +242,7 @@ mod test {
 		encoded.retain(|c| !c.is_whitespace());
 
 		let decoded = Catalog {
-			video: vec![VideoTrack {
+			video: vec![Video {
 				track: Track {
 					name: "video".to_string(),
 					priority: 1,
@@ -266,7 +266,7 @@ mod test {
 					flip: None,
 				},
 			}],
-			audio: vec![AudioTrack {
+			audio: vec![Audio {
 				track: Track {
 					name: "audio".to_string(),
 					priority: 2,

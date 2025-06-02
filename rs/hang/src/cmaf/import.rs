@@ -1,7 +1,5 @@
 use super::{Error, Result};
-use crate::catalog::{
-	AudioCodec, AudioConfig, AudioTrack, VideoCodec, VideoConfig, VideoTrack, AAC, AV1, H264, H265, VP9,
-};
+use crate::catalog::{Audio, AudioCodec, AudioConfig, Video, VideoCodec, VideoConfig, AAC, AV1, H264, H265, VP9};
 use crate::model::{BroadcastProducer, Frame, Timestamp, TrackProducer};
 use bytes::{Bytes, BytesMut};
 use moq_lite::Track;
@@ -104,7 +102,7 @@ impl Import {
 		Ok(())
 	}
 
-	fn init_video(trak: &Trak) -> Result<VideoTrack> {
+	fn init_video(trak: &Trak) -> Result<Video> {
 		let name = format!("video{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -123,7 +121,7 @@ impl Import {
 				let mut description = BytesMut::new();
 				avcc.encode_body(&mut description)?;
 
-				VideoTrack {
+				Video {
 					track,
 					config: VideoConfig {
 						coded_width: Some(avc1.visual.width as _),
@@ -148,7 +146,7 @@ impl Import {
 			}
 			mp4_atom::Codec::Hev1(hev1) => Self::init_h265(track, true, &hev1.hvcc, &hev1.visual)?,
 			mp4_atom::Codec::Hvc1(hvc1) => Self::init_h265(track, false, &hvc1.hvcc, &hvc1.visual)?,
-			mp4_atom::Codec::Vp08(vp08) => VideoTrack {
+			mp4_atom::Codec::Vp08(vp08) => Video {
 				track,
 				config: VideoConfig {
 					codec: VideoCodec::VP8,
@@ -169,7 +167,7 @@ impl Import {
 				// https://github.com/gpac/mp4box.js/blob/325741b592d910297bf609bc7c400fc76101077b/src/box-codecs.js#L238
 				let vpcc = &vp09.vpcc;
 
-				VideoTrack {
+				Video {
 					track,
 					config: VideoConfig {
 						codec: VP9 {
@@ -200,7 +198,7 @@ impl Import {
 			mp4_atom::Codec::Av01(av01) => {
 				let av1c = &av01.av1c;
 
-				VideoTrack {
+				Video {
 					track,
 					config: VideoConfig {
 						codec: AV1 {
@@ -242,11 +240,11 @@ impl Import {
 	}
 
 	// There's two almost identical hvcc atoms in the wild.
-	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<VideoTrack> {
+	fn init_h265(track: Track, in_band: bool, hvcc: &mp4_atom::Hvcc, visual: &mp4_atom::Visual) -> Result<Video> {
 		let mut description = BytesMut::new();
 		hvcc.encode_body(&mut description)?;
 
-		Ok(VideoTrack {
+		Ok(Video {
 			track,
 			config: VideoConfig {
 				codec: H265 {
@@ -274,7 +272,7 @@ impl Import {
 		})
 	}
 
-	fn init_audio(trak: &Trak) -> Result<AudioTrack> {
+	fn init_audio(trak: &Trak) -> Result<Audio> {
 		let name = format!("audio{}", trak.tkhd.track_id);
 		let stsd = &trak.mdia.minf.stbl.stsd;
 
@@ -297,7 +295,7 @@ impl Import {
 
 				let bitrate = desc.avg_bitrate.max(desc.max_bitrate);
 
-				AudioTrack {
+				Audio {
 					track,
 					config: AudioConfig {
 						codec: AAC {
@@ -312,7 +310,7 @@ impl Import {
 				}
 			}
 			mp4_atom::Codec::Opus(opus) => {
-				AudioTrack {
+				Audio {
 					track,
 					config: AudioConfig {
 						codec: AudioCodec::Opus,

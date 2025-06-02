@@ -7,14 +7,14 @@ pub struct PublishVideo {
 	config: web_codecs::VideoEncoderConfig,
 
 	// The track that we are publishing.
-	track: hang::model::TrackProducer,
+	track: hang::TrackProducer,
 
 	// The encoder accepts raw frames and spits out encoded frames.
 	encoder: web_codecs::VideoEncoder,
 	encoded: web_codecs::VideoEncoded,
 
 	// When set, publish to the given broadcast.
-	broadcast: Option<hang::model::BroadcastProducer>,
+	broadcast: Option<hang::BroadcastProducer>,
 }
 
 impl PublishVideo {
@@ -108,8 +108,8 @@ impl PublishVideo {
 
 	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.encoded.frame().await? {
-			if let Some(mut broadcast) = self.broadcast.take() {
-				self.publish_to(&mut broadcast);
+			if let Some(broadcast) = self.broadcast.take() {
+				self.publish_to(broadcast);
 			}
 
 			self.track.write(hang::Frame {
@@ -122,9 +122,9 @@ impl PublishVideo {
 		Ok(())
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::model::BroadcastProducer) {
+	pub fn publish_to(&mut self, mut broadcast: hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::catalog::VideoTrack {
+			let info = hang::catalog::Video {
 				track: self.track.inner.info.clone(),
 				config: hang::catalog::VideoConfig {
 					codec: config.codec.into(),
@@ -144,7 +144,7 @@ impl PublishVideo {
 			broadcast.add_video(self.track.consume(), info);
 		} else {
 			// Save a reference for later after fully initializing.
-			self.broadcast = Some(broadcast.clone());
+			self.broadcast = Some(broadcast);
 		}
 	}
 }

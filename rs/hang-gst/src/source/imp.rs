@@ -176,10 +176,10 @@ impl HangSrc {
 		gst::info!(CAT, "catalog: {:?}", catalog);
 
 		for video in catalog.video {
-			let mut track = broadcast.track(&video.track);
+			let mut track = broadcast.subscribe(&video.track);
 
 			let caps = match video.config.codec {
-				hang::VideoCodec::H264(_) => {
+				hang::catalog::VideoCodec::H264(_) => {
 					let builder = gst::Caps::builder("video/x-h264")
 						//.field("width", video.resolution.width)
 						//.field("height", video.resolution.height)
@@ -255,10 +255,10 @@ impl HangSrc {
 		}
 
 		for audio in catalog.audio {
-			let mut track = broadcast.track(&audio.track);
+			let mut track = broadcast.subscribe(&audio.track);
 
 			let caps = match &audio.config.codec {
-				hang::AudioCodec::AAC(_aac) => {
+				hang::catalog::AudioCodec::AAC(_aac) => {
 					let builder = gst::Caps::builder("audio/mpeg")
 						.field("mpegversion", 4)
 						.field("channels", audio.config.channel_count)
@@ -273,7 +273,7 @@ impl HangSrc {
 						builder.field("stream-format", "adts").build()
 					}
 				}
-				hang::AudioCodec::Opus => {
+				hang::catalog::AudioCodec::Opus => {
 					let builder = gst::Caps::builder("audio/x-opus")
 						.field("rate", audio.config.sample_rate)
 						.field("channels", audio.config.channel_count);

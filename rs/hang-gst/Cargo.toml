@@ -10,6 +10,11 @@ edition = "2021"
 
 keywords = ["quic", "http3", "webtransport", "media", "live"]
 categories = ["multimedia", "network-programming", "web-programming"]
+
+[lib]
+name = "gsthang"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -28,8 +33,3 @@ url = "2"
 
 [build-dependencies]
 gst-plugin-version-helper = "0.8"
-
-[lib]
-name = "gsthang"
-crate-type = ["cdylib", "rlib"]
-path = "src/lib.rs"

@@ -1,10 +1,13 @@
 mod error;
-pub use error::*;
+mod model;
 
 pub mod catalog;
 pub mod cmaf;
 pub mod feedback;
-pub mod model;
 
 // export the moq-lite version in use
 pub use moq_lite;
+
+pub use catalog::{Catalog, CatalogConsumer, CatalogProducer};
+pub use error::*;
+pub use model::*;

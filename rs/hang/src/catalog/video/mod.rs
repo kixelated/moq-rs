@@ -19,7 +19,7 @@ use serde_with::{hex::Hex, DisplayFromStr};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 /// Information about a video track.
-pub struct VideoTrack {
+pub struct Video {
 	/// MoQ specific track information
 	pub track: moq_lite::Track,
 
