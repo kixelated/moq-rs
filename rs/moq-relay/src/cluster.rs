@@ -12,13 +12,13 @@ pub struct ClusterConfig {
 	/// If not provided, then clustering is disabled.
 	///
 	/// Peers will connect to use via this hostname.
-	pub root: Option<String>,
+	pub root: Option<Url>,
 
 	/// Our unique name which we advertise to other origins.
 	/// If not provided, then we are a read-only member of the cluster.
 	///
 	/// Peers will connect to use via this hostname.
-	pub node: Option<String>,
+	pub node: Option<Url>,
 }
 
 #[derive(Clone)]
@@ -53,32 +53,37 @@ impl Cluster {
 
 	pub async fn run(self) -> anyhow::Result<()> {
 		let root = self.config.root.clone();
-		let node = self.config.node.as_ref().map(|node| node.to_string());
+		let node = self.config.node.clone();
 
-		tracing::info!(?root, ?node, "initializing cluster");
+		tracing::info!(
+			root = %root.as_ref().map(|r| r.as_str()).unwrap_or_default(),
+			node = %node.as_ref().map(|r| r.as_str()).unwrap_or_default(),
+			"initializing cluster"
+		);
 
-		match root.as_ref() {
+		match root {
 			// If we're using a root node, then we have to connect to it.
-			Some(root) if Some(root) != node.as_ref() => self.run_leaf(root).await,
+			Some(root) if Some(&root) != node.as_ref() => self.run_leaf(root).await,
 			// Otherwise, we're the root node so we wait for other nodes to connect to us.
 			_ => self.run_root().await,
 		}
 	}
 
-	async fn run_leaf(self, root: &str) -> anyhow::Result<()> {
+	async fn run_leaf(self, root: Url) -> anyhow::Result<()> {
 		// Create a "broadcast" with no tracks to announce ourselves.
 		let noop = BroadcastProducer::new();
 
-		let node = self.config.node.as_ref().map(|node| node.to_string());
-
 		// If we're a node, then we need to announce ourselves as an origin.
 		// We do this by creating a "broadcast" with no tracks.
-		let myself = node.as_ref().map(|node| format!("internal/origins/{}", node));
+		let myself = self
+			.config
+			.node
+			.as_ref()
+			.map(|node| format!("cluster/origins/{}", node));
 
 		tracing::info!(?root, "connecting to root");
 
 		// Connect to the root node.
-		let root = Url::parse(&format!("https://{}", root)).context("invalid root URL")?;
 		let root = self.client.connect(root).await.context("failed to connect to root")?;
 
 		let mut root = moq_lite::Session::connect(root)
@@ -96,16 +101,16 @@ impl Cluster {
 		// Discover other origins.
 		// NOTE: The root node will connect to all other nodes as a client, ignoring the existing (server) connection.
 		// This ensures that nodes are advertising a valid hostname before any tracks get announced.
-		while let Some((host, origin)) = origins.next().await {
-			if Some(&host) == node.as_ref() {
+		while let Some((url, origin)) = origins.next().await {
+			tracing::info!(%url, "discovered origin");
+			let url = Url::parse(&url).context("invalid node URL")?;
+
+			if Some(&url) == self.config.node.as_ref() {
 				// Skip ourselves.
 				continue;
 			}
 
-			tracing::info!(?host, "discovered origin");
-
 			let mut this = self.clone();
-			let remote = host.clone();
 
 			tokio::spawn(
 				async move {
@@ -113,7 +118,7 @@ impl Cluster {
 						let res = tokio::select! {
 							biased;
 							_ = origin.closed() => break,
-							res = this.run_remote(&remote) => res,
+							res = this.run_remote(url.clone()) => res,
 						};
 
 						match res {
@@ -125,7 +130,7 @@ impl Cluster {
 						tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 					}
 
-					tracing::info!(?host, "origin closed");
+					tracing::info!(%url, "origin closed");
 				}
 				.in_current_span(),
 			);
@@ -142,10 +147,8 @@ impl Cluster {
 		Ok(())
 	}
 
-	#[tracing::instrument("remote", skip_all, err, fields(%host))]
-	async fn run_remote(&mut self, host: &str) -> anyhow::Result<()> {
-		let url = Url::parse(&format!("https://{}", host)).context("invalid node URL")?;
-
+	#[tracing::instrument("remote", skip_all, err, fields(%url))]
+	async fn run_remote(&mut self, url: Url) -> anyhow::Result<()> {
 		// Connect to the remote node.
 		let conn = self.client.connect(url).await.context("failed to connect to remote")?;
 

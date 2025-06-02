@@ -152,7 +152,10 @@ impl HangSink {
 
 		// TODO support TLS certs and other options
 		let client = moq_native::ClientConfig {
-			tls_disable_verify: settings.tls_disable_verify,
+			tls: moq_native::ClientTls {
+				disable_verify: settings.tls_disable_verify,
+				..Default::default()
+			},
 			..Default::default()
 		}
 		.init()?;

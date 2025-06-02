@@ -17,14 +17,14 @@ use futures::FutureExt;
 
 use web_transport::quinn as web_transport_quinn;
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(clap::Args, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ServerCert {
+pub struct ServerTlsCert {
 	pub chain: PathBuf,
 	pub key: PathBuf,
 }
 
-impl ServerCert {
+impl ServerTlsCert {
 	// A crude colon separated string parser just for clap support.
 	pub fn parse(s: &str) -> anyhow::Result<Self> {
 		let (chain, key) = s.split_once(':').context("invalid certificate")?;
@@ -35,6 +35,21 @@ impl ServerCert {
 	}
 }
 
+#[derive(clap::Args, Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerTlsConfig {
+	/// Load the given certificate and keys from disk.
+	#[arg(long = "tls-cert", value_parser = ServerTlsCert::parse)]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub cert: Vec<ServerTlsCert>,
+
+	/// Or generate a new certificate and key with the given hostnames.
+	/// This won't be valid unless the client uses the fingerprint or disables verification.
+	#[arg(long = "tls-generate")]
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub generate: Vec<String>,
+}
+
 #[derive(clap::Args, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
@@ -42,16 +57,9 @@ pub struct ServerConfig {
 	#[arg(long)]
 	pub bind: net::SocketAddr,
 
-	/// Load the given certificate and keys from disk.
-	#[arg(value_parser = ServerCert::parse)]
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub tls_cert: Vec<ServerCert>,
-
-	/// Or generate a new certificate and key with the given hostnames.
-	/// This won't be valid unless the client uses the fingerprint or disables verification.
-	#[arg(long)]
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub tls_generate: Vec<String>,
+	#[command(flatten)]
+	#[serde(default)]
+	pub tls: ServerTlsConfig,
 }
 
 impl ServerConfig {
@@ -81,12 +89,12 @@ impl Server {
 		let mut serve = ServeCerts::default();
 
 		// Load the certificate and key files based on their index.
-		for cert in &config.tls_cert {
+		for cert in &config.tls.cert {
 			serve.load(&cert.chain, &cert.key)?;
 		}
 
-		if !config.tls_generate.is_empty() {
-			serve.generate(&config.tls_generate)?;
+		if !config.tls.generate.is_empty() {
+			serve.generate(&config.tls.generate)?;
 		}
 
 		let fingerprints = serve.fingerprints();

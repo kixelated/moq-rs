@@ -8,6 +8,25 @@ use url::Url;
 
 use web_transport::quinn as web_transport_quinn;
 
+#[derive(Clone, Default, Debug, clap::Args, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientTls {
+	/// Use the TLS root at this path, encoded as PEM.
+	///
+	/// This value can be provided multiple times for multiple roots.
+	/// If this is empty, system roots will be used instead
+	#[serde(skip_serializing_if = "Vec::is_empty")]
+	#[arg(long = "tls-root")]
+	pub root: Vec<PathBuf>,
+
+	/// Danger: Disable TLS certificate verification.
+	///
+	/// Fine for local development and between relays, but should be used in caution in production.
+	#[serde(skip_serializing_if = "std::ops::Not::not")]
+	#[arg(long = "tls-disable-verify")]
+	pub disable_verify: bool,
+}
+
 #[derive(Clone, Debug, clap::Parser, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ClientConfig {
@@ -15,27 +34,16 @@ pub struct ClientConfig {
 	#[arg(long, default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
 
-	/// Use the TLS root at this path, encoded as PEM.
-	///
-	/// This value can be provided multiple times for multiple roots.
-	/// If this is empty, system roots will be used instead
-	#[arg(long = "tls-root")]
-	#[serde(skip_serializing_if = "Vec::is_empty")]
-	pub tls_roots: Vec<PathBuf>,
-
-	/// Danger: Disable TLS certificate verification.
-	///
-	/// Fine for local development and between relays, but should be used in caution in production.
-	#[arg(long)]
-	pub tls_disable_verify: bool,
+	#[command(flatten)]
+	#[serde(default)]
+	pub tls: ClientTls,
 }
 
 impl Default for ClientConfig {
 	fn default() -> Self {
 		Self {
 			bind: "[::]:0".parse().unwrap(),
-			tls_roots: Vec::new(),
-			tls_disable_verify: false,
+			tls: ClientTls::default(),
 		}
 	}
 }
@@ -60,7 +68,7 @@ impl Client {
 		// Create a list of acceptable root certificates.
 		let mut roots = RootCertStore::empty();
 
-		if config.tls_roots.is_empty() {
+		if config.tls.root.is_empty() {
 			let native = rustls_native_certs::load_native_certs();
 
 			// Log any errors that occurred while loading the native root certificates.
@@ -74,7 +82,7 @@ impl Client {
 			}
 		} else {
 			// Add the specified root certificates.
-			for root in &config.tls_roots {
+			for root in &config.tls.root {
 				let root = fs::File::open(root).context("failed to open root cert file")?;
 				let mut root = io::BufReader::new(root);
 
@@ -94,7 +102,7 @@ impl Client {
 			.with_no_client_auth();
 
 		// Allow disabling TLS verification altogether.
-		if config.tls_disable_verify {
+		if config.tls.disable_verify {
 			tracing::warn!("TLS server certificate verification is disabled");
 
 			let noop = NoCertificateVerification(provider.clone());
