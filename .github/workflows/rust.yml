@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install Nix
         uses: cachix/install-nix-action@v24
@@ -22,5 +23,22 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
-      - run: cd rs && nix develop --command just check
+      - name: Enable flakes
+        run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
+
+      - name: Set up Rust cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            rs/target/
+          key: rust-${{ runner.os }}-${{ hashFiles('rs/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Check
+        run: cd rs && nix develop --command just check
+
+      - name: Test
+        run: cd rs && nix develop --command just test
