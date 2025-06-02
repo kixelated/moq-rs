@@ -114,11 +114,11 @@ impl Publisher {
 		let res = self.run_subscribe(stream, &mut subscribe).await;
 
 		match res {
-			Err(Error::Cancel) => {
+			Err(Error::Cancel) | Err(Error::WebTransport(_)) => {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed cancelled");
 			}
 			Err(err) => {
-				tracing::info!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
+				tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
 			}
 			_ => {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed complete");
@@ -196,7 +196,7 @@ impl Publisher {
 						let res = Self::serve_group(&mut stream, msg, &mut group).await;
 
 						match res {
-							Err(Error::Cancel) => {
+							Err(Error::Cancel) | Err(Error::WebTransport(_)) => {
 								tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group cancelled");
 								stream.abort(&Error::Cancel);
 							}

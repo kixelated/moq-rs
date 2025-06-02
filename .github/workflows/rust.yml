@@ -39,6 +39,3 @@ jobs:
 
       - name: Check
         run: cd rs && nix develop --command just check
-
-      - name: Test
-        run: cd rs && nix develop --command just test

@@ -43,9 +43,19 @@ impl Session {
 				res = Self::run_uni(session.clone(), subscriber) => res,
 			};
 
-			if let Err(err) = res {
-				tracing::info!(?err, "session terminated");
-				session.close(err.to_code(), &err.to_string());
+			match res {
+				Err(Error::WebTransport(web_transport::Error::Session(err))) => {
+					tracing::info!(?err, "session terminated");
+					session.close(1, &err.to_string());
+				}
+				Err(err) => {
+					tracing::warn!(?err, "session error");
+					session.close(err.to_code(), &err.to_string());
+				}
+				_ => {
+					tracing::info!("session ended");
+					session.close(0, "");
+				}
 			}
 		});
 
