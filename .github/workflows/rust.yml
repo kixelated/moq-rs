@@ -16,10 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Use depot/docker to build the binaries and run CI.
-      - uses: depot/setup-action@v1
-      - uses: depot/build-push-action@v1
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
         with:
-          project: r257ctfqm6
-          file: rs/Dockerfile
-          context: rs
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
+      - run: nix develop --command just check

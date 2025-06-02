@@ -2,18 +2,18 @@
   description = "My reproducible Rust dev environment with naersk";
 
   inputs = {
+    fenix.url = "github:nix-community/fenix";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay.url = "github:oxalica/rust-overlay";
     naersk.url = "github:nmattia/naersk";
   };
 
   outputs =
     {
       self,
+      fenix,
       nixpkgs,
       flake-utils,
-      rust-overlay,
       naersk,
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -21,20 +21,21 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ rust-overlay.overlays.default ];
         };
 
-        rust = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "wasm32-unknown-unknown" ];
-          extensions = [
-            "rustfmt"
-            "clippy"
+        rust =
+          with fenix.packages.${system};
+          combine [
+            stable.rustc
+            stable.cargo
+            stable.clippy
+            stable.rustfmt
+            targets.wasm32-unknown-unknown.latest.rust-std
           ];
-        };
 
-        naersk-lib = pkgs.callPackage naersk {
-          rustc = rust;
+        naersk' = naersk.lib.${system}.override {
           cargo = rust;
+          rustc = rust;
         };
 
         gst-deps = with pkgs.gst_all_1; [
@@ -54,32 +55,23 @@
       in
       {
         packages = {
-          moq-clock = naersk-lib.buildPackage {
+          moq-clock = naersk'.buildPackage {
+            pname = "moq-clock";
             src = ./.;
-            doCheck = false;
-            CARGO_TARGET_DIR = "target";
-            cargoBuildOptions = opts: opts ++ [ "--bin=moq-clock" ];
           };
 
-          moq-relay = naersk-lib.buildPackage {
+          moq-relay = naersk'.buildPackage {
+            pname = "moq-relay";
             src = ./.;
-            doCheck = false;
-            CARGO_TARGET_DIR = "target";
-            cargoBuildOptions = opts: opts ++ [ "--bin=moq-relay" ];
           };
 
-          hang = naersk-lib.buildPackage {
+          hang = naersk'.buildPackage {
+            pname = "hang";
             src = ./.;
-            doCheck = false;
-            CARGO_TARGET_DIR = "target";
-            cargoBuildOptions = opts: opts ++ [ "--bin=hang" ];
           };
 
-          # Optional: expose all workspace bins at once
-          default = naersk-lib.buildPackage {
+          default = naersk'.buildPackage {
             src = ./.;
-            doCheck = false;
-            CARGO_TARGET_DIR = "target";
           };
         };
 
