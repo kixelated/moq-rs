@@ -23,4 +23,4 @@ jobs:
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
       - run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
-      - run: nix develop --command just check
+      - run: cd rs && nix develop --command just check
