@@ -11,7 +11,7 @@ export type Audio = {
 };
 
 export type Codec = {
-	hardware?: boolean; // undefined on Firefox
+	hardware?: boolean; // undefined when we can't detect hardware acceleration
 	software: boolean;
 };
 
@@ -52,80 +52,66 @@ const CODECS = {
 };
 
 async function audioDecoderSupported(codec: keyof typeof CODECS) {
-	return (
-		(
-			await AudioDecoder.isConfigSupported({
-				codec: CODECS[codec],
-				numberOfChannels: 2,
-				sampleRate: 48000,
-			})
-		).supported === true
-	);
+	const res = await AudioDecoder.isConfigSupported({
+		codec: CODECS[codec],
+		numberOfChannels: 2,
+		sampleRate: 48000,
+	});
+
+	return res.supported === true;
 }
 
 async function audioEncoderSupported(codec: keyof typeof CODECS) {
-	return (
-		(
-			await AudioEncoder.isConfigSupported({
-				codec: CODECS[codec],
-				numberOfChannels: 2,
-				sampleRate: 48000,
-			})
-		).supported === true
-	);
+	const res = await AudioEncoder.isConfigSupported({
+		codec: CODECS[codec],
+		numberOfChannels: 2,
+		sampleRate: 48000,
+	});
+
+	return res.supported === true;
 }
 
 async function videoDecoderSupported(codec: keyof typeof CODECS) {
-	const software =
-		(
-			await VideoDecoder.isConfigSupported({
-				codec: CODECS[codec],
-				hardwareAcceleration: "prefer-software",
-			})
-		).supported === true;
+	const software = await VideoDecoder.isConfigSupported({
+		codec: CODECS[codec],
+		hardwareAcceleration: "prefer-software",
+	});
+
+	const hardware = await VideoDecoder.isConfigSupported({
+		codec: CODECS[codec],
+		hardwareAcceleration: "prefer-hardware",
+	});
 
 	// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
-	const hardware =
-		!navigator.userAgent.toLowerCase().includes("firefox") &&
-		(
-			await VideoDecoder.isConfigSupported({
-				codec: CODECS[codec],
-				hardwareAcceleration: "prefer-hardware",
-			})
-		).supported === true;
+	const unknown = FIREFOX || hardware.config?.hardwareAcceleration !== "prefer-hardware";
 
 	return {
-		hardware,
-		software,
+		hardware: unknown ? undefined : hardware.supported === true,
+		software: software.supported === true,
 	};
 }
 
 async function videoEncoderSupported(codec: keyof typeof CODECS) {
-	const software =
-		(
-			await VideoEncoder.isConfigSupported({
-				codec: CODECS[codec],
-				width: 1280,
-				height: 720,
-				hardwareAcceleration: "prefer-software",
-			})
-		).supported === true;
+	const software = await VideoEncoder.isConfigSupported({
+		codec: CODECS[codec],
+		width: 1280,
+		height: 720,
+		hardwareAcceleration: "prefer-software",
+	});
 
 	// We can't reliably detect hardware encoding on Firefox: https://github.com/w3c/webcodecs/issues/896
-	const hardware =
-		!navigator.userAgent.toLowerCase().includes("firefox") &&
-		(
-			await VideoEncoder.isConfigSupported({
-				codec: CODECS[codec],
-				width: 1280,
-				height: 720,
-				hardwareAcceleration: "prefer-hardware",
-			})
-		).supported === true;
+	const hardware = await VideoEncoder.isConfigSupported({
+		codec: CODECS[codec],
+		width: 1280,
+		height: 720,
+		hardwareAcceleration: "prefer-hardware",
+	});
+
+	const unknown = FIREFOX || hardware.config?.hardwareAcceleration !== "prefer-hardware";
 
 	return {
-		hardware,
-		software,
+		hardware: unknown ? undefined : hardware.supported === true,
+		software: software.supported === true,
 	};
 }
 

@@ -13,6 +13,7 @@ target
 pkg
 dist
 out
+result
 
 # Don't leak dev stuff
 *.mp4

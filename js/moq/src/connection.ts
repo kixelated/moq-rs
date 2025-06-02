@@ -42,9 +42,7 @@ export class Connection {
 		this.#publisher = new Publisher(this.#quic);
 		this.#subscriber = new Subscriber(this.#quic);
 
-		this.#run().catch((err: unknown) => {
-			console.error("failed to run connection: ", err);
-		});
+		this.#run();
 	}
 
 	/**
@@ -134,8 +132,8 @@ export class Connection {
 	 * Publishes a broadcast to the connection.
 	 * @param broadcast - The broadcast to publish
 	 */
-	publish(broadcast: BroadcastConsumer) {
-		this.#publisher.publish(broadcast);
+	publish(path: string, broadcast: BroadcastConsumer) {
+		this.#publisher.publish(path, broadcast);
 	}
 
 	/**
@@ -157,9 +155,12 @@ export class Connection {
 	 * @returns A BroadcastConsumer instance
 	 */
 	consume(broadcast: string): BroadcastConsumer {
-		// To avoid downloading the a broadcast we're publishing, check the publisher first.
 		const publisher = this.#publisher.consume(broadcast);
-		if (publisher) return publisher;
+		if (publisher) {
+			// This is probably a bug; fix your code.
+			console.warn("consuming a broadcast we're publishing: ", broadcast);
+			return publisher;
+		}
 
 		return this.#subscriber.consume(broadcast);
 	}

@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use bytes::{Bytes, BytesMut};
 use tokio::sync::watch;
 
@@ -81,12 +83,12 @@ impl FrameProducer {
 		});
 	}
 
-	pub fn finish(&mut self) {
+	pub fn finish(self) {
 		assert!(self.written == self.info.size as usize);
 		self.state.send_modify(|state| state.closed = Some(Ok(())));
 	}
 
-	pub fn abort(&mut self, err: Error) {
+	pub fn abort(self, err: Error) {
 		self.state.send_modify(|state| state.closed = Some(Err(err)));
 	}
 
@@ -99,8 +101,12 @@ impl FrameProducer {
 		}
 	}
 
-	pub async fn unused(&self) {
-		self.state.closed().await;
+	// Returns a Future so &self is not borrowed during the future.
+	pub fn unused(&self) -> impl Future<Output = ()> {
+		let state = self.state.clone();
+		async move {
+			state.closed().await;
+		}
 	}
 }
 

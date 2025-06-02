@@ -35,41 +35,41 @@ export class Publisher {
 	 * @param broadcast - The name of the broadcast to consume
 	 * @returns A BroadcastConsumer instance or undefined if not found
 	 */
-	consume(broadcast: string): BroadcastConsumer | undefined {
-		return this.#broadcasts.get(broadcast)?.clone();
+	consume(path: string): BroadcastConsumer | undefined {
+		return this.#broadcasts.get(path)?.clone();
 	}
 
 	/**
 	 * Publishes a broadcast with any associated tracks.
 	 * @param broadcast - The broadcast to publish
 	 */
-	publish(broadcast: BroadcastConsumer) {
-		this.#broadcasts.set(broadcast.path, broadcast);
-		void this.#runPublish(broadcast);
+	publish(path: string, broadcast: BroadcastConsumer) {
+		this.#broadcasts.set(path, broadcast);
+		void this.#runPublish(path, broadcast);
 	}
 
-	async #runPublish(broadcast: BroadcastConsumer) {
+	async #runPublish(path: string, broadcast: BroadcastConsumer) {
 		try {
 			this.#announced.write({
-				path: broadcast.path,
+				path,
 				active: true,
 			});
 
-			console.debug(`announce: broadcast=${broadcast.path} active=true`);
+			console.debug(`announce: broadcast=${path} active=true`);
 
 			// Wait until the broadcast is closed, then remove it from the lookup.
 			await broadcast.closed();
 
-			console.debug(`announce: broadcast=${broadcast.path} active=false`);
+			console.debug(`announce: broadcast=${path} active=false`);
 		} catch (err: unknown) {
-			console.warn(`announce: broadcast=${broadcast.path} error=${error(err)}`);
+			console.warn(`announce: broadcast=${path} error=${error(err)}`);
 		} finally {
 			broadcast.close();
 
-			this.#broadcasts.delete(broadcast.path);
+			this.#broadcasts.delete(path);
 
 			this.#announced.write({
-				path: broadcast.path,
+				path,
 				active: false,
 			});
 		}
@@ -110,7 +110,7 @@ export class Publisher {
 		}
 
 		const track = broadcast.subscribe(msg.track, msg.priority);
-		const serving = this.#runTrack(msg.id, broadcast.path, track, stream.writer);
+		const serving = this.#runTrack(msg.id, msg.broadcast, track, stream.writer);
 
 		for (;;) {
 			const decode = Wire.SubscribeUpdate.decode_maybe(stream.reader);

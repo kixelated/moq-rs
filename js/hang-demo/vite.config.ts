@@ -15,4 +15,8 @@ export default defineConfig({
 			},
 		},
 	},
+	server: {
+		// TODO: properly support HMR
+		hmr: false,
+	},
 });

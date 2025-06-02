@@ -49,8 +49,6 @@ delete pkg.devDependencies;
 // biome-ignore lint/performance/noDelete: <explanation>
 delete pkg.scripts;
 
-console.log(pkg);
-
 mkdirSync("dist", { recursive: true });
 writeFileSync("dist/package.json", JSON.stringify(pkg, null, 2));
 

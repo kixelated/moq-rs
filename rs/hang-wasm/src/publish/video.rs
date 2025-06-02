@@ -21,7 +21,7 @@ impl PublishVideo {
 	pub async fn init(id: usize, width: u32, height: u32) -> Result<Self> {
 		let track = moq_lite::Track {
 			name: format!("video_{}", id),
-			priority: 2,
+			priority: 1,
 		}
 		.produce();
 
@@ -108,8 +108,8 @@ impl PublishVideo {
 
 	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.encoded.frame().await? {
-			if let Some(mut broadcast) = self.broadcast.take() {
-				self.publish_to(&mut broadcast);
+			if let Some(broadcast) = self.broadcast.take() {
+				self.publish_to(broadcast);
 			}
 
 			self.track.write(hang::Frame {
@@ -122,11 +122,11 @@ impl PublishVideo {
 		Ok(())
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
+	pub fn publish_to(&mut self, mut broadcast: hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::VideoTrack {
+			let info = hang::catalog::Video {
 				track: self.track.inner.info.clone(),
-				config: hang::VideoConfig {
+				config: hang::catalog::VideoConfig {
 					codec: config.codec.into(),
 					description: config.description,
 					coded_width: config.resolution.map(|r| r.width),
@@ -144,7 +144,7 @@ impl PublishVideo {
 			broadcast.add_video(self.track.consume(), info);
 		} else {
 			// Save a reference for later after fully initializing.
-			self.broadcast = Some(broadcast.clone());
+			self.broadcast = Some(broadcast);
 		}
 	}
 }

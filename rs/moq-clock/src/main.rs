@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
 
 	match config.role {
 		Command::Publish => {
-			let broadcast = BroadcastProducer::new();
+			let mut broadcast = BroadcastProducer::new();
 			let track = broadcast.create(track);
 			let clock = clock::Publisher::new(track);
 

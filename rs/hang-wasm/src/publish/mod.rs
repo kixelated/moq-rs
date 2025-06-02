@@ -36,7 +36,7 @@ impl Publish {
 				self.video = Some(PublishVideo::init(self.video_id, width, height).await?);
 				self.video_id += 1;
 
-				if let Some(broadcast) = self.broadcast.as_mut() {
+				if let Some(broadcast) = self.broadcast.clone() {
 					self.video.as_mut().unwrap().publish_to(broadcast);
 				}
 			}
@@ -57,7 +57,7 @@ impl Publish {
 				self.audio = Some(PublishAudio::init(self.audio_id, channel_count, sample_rate).await?);
 				self.audio_id += 1;
 
-				if let Some(broadcast) = self.broadcast.as_mut() {
+				if let Some(broadcast) = self.broadcast.clone() {
 					self.audio.as_mut().unwrap().publish_to(broadcast);
 				}
 			}
@@ -93,14 +93,16 @@ impl Publish {
 	fn connected(&mut self, connect: Connect, session: Session) -> Result<()> {
 		let path = connect.path.strip_prefix("/").unwrap().to_string();
 		let mut room = hang::Room::new(session, path.to_string());
-		let mut broadcast = room.join(path);
+
+		let broadcast = hang::BroadcastProducer::new();
+		room.publish(path, broadcast.clone());
 
 		if let Some(video) = self.video.as_mut() {
-			video.publish_to(&mut broadcast);
+			video.publish_to(broadcast.clone());
 		}
 
 		if let Some(audio) = self.audio.as_mut() {
-			audio.publish_to(&mut broadcast);
+			audio.publish_to(broadcast);
 		}
 
 		Ok(())

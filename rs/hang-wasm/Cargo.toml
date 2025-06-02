@@ -40,42 +40,36 @@ web-time = "1"
 [dependencies.web-sys]
 version = "0.3.77"
 features = [
-	# DOM
-	"Window",
-	"Document",
-	"HtmlElement",
-	"Node",
-	"Text",
-	"HtmlVideoElement",
-
-	# Custom elements
-	"HtmlSlotElement",
-	"AssignedNodesOptions",
-	"CustomEvent",
-	"CustomEventInit",
-	"Event",
-	"EventTarget",
-
-	# Canvas stuff
-	"CanvasRenderingContext2d",
-	"HtmlCanvasElement",
-	"HtmlImageElement",
-	"OffscreenCanvas",
-	"DedicatedWorkerGlobalScope",
-	"OffscreenCanvasRenderingContext2d",
-
-	# Capture
-	"MediaStream",
-	"MediaStreamTrack",
-	"MediaTrackSettings",
-	"MediaStreamTrackProcessor",
-	"MediaStreamTrackProcessorInit",
-	"ReadableStreamDefaultReader",
-
-	"MessagePort",
-
-	"console",
-
-	"AudioData",
-	"AudioDataCopyToOptions",
+    # DOM
+    "Window",
+    "Document",
+    "HtmlElement",
+    "Node",
+    "Text",
+    "HtmlVideoElement",
+    # Custom elements
+    "HtmlSlotElement",
+    "AssignedNodesOptions",
+    "CustomEvent",
+    "CustomEventInit",
+    "Event",
+    "EventTarget",
+    # Canvas stuff
+    "CanvasRenderingContext2d",
+    "HtmlCanvasElement",
+    "HtmlImageElement",
+    "OffscreenCanvas",
+    "DedicatedWorkerGlobalScope",
+    "OffscreenCanvasRenderingContext2d",
+    # Capture
+    "MediaStream",
+    "MediaStreamTrack",
+    "MediaTrackSettings",
+    "MediaStreamTrackProcessor",
+    "MediaStreamTrackProcessorInit",
+    "ReadableStreamDefaultReader",
+    "MessagePort",
+    "console",
+    "AudioData",
+    "AudioDataCopyToOptions",
 ]

@@ -114,11 +114,11 @@ impl Publisher {
 		let res = self.run_subscribe(stream, &mut subscribe).await;
 
 		match res {
-			Err(Error::Cancel) => {
+			Err(Error::Cancel) | Err(Error::WebTransport(_)) => {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed cancelled");
 			}
 			Err(err) => {
-				tracing::info!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
+				tracing::warn!(?err, id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed error");
 			}
 			_ => {
 				tracing::debug!(id = %subscribe.id, broadcast = %subscribe.broadcast, track = %subscribe.track, "subscribed complete");
@@ -196,7 +196,7 @@ impl Publisher {
 						let res = Self::serve_group(&mut stream, msg, &mut group).await;
 
 						match res {
-							Err(Error::Cancel) => {
+							Err(Error::Cancel) | Err(Error::WebTransport(_)) => {
 								tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group cancelled");
 								stream.abort(&Error::Cancel);
 							}
@@ -266,7 +266,7 @@ impl Publisher {
 	// Specifically, group sequence 2^24 will overflow and be incorrectly prioritized.
 	// But even with a group per frame, it will take ~6 days to reach that point.
 	// TODO The behavior when two tracks share the same priority is undefined. Should we round-robin?
-	fn stream_priority(track_priority: i8, group_sequence: u64) -> i32 {
+	fn stream_priority(track_priority: u8, group_sequence: u64) -> i32 {
 		let sequence = (0xFFFFFF - group_sequence as u32) & 0xFFFFFF;
 		((track_priority as i32) << 24) | sequence as i32
 	}
@@ -284,9 +284,8 @@ mod test {
 
 		const U24: i32 = (1 << 24) - 1;
 
-		// NOTE: The lower the value, the higher the priority.
-		assert(-1, 50, -51);
-		assert(-1, 0, -1);
+		// NOTE: The lower the value, the higher the priority for Quinn.
+		// MoQ does the opposite, so we invert the values.
 		assert(0, 50, U24 - 50);
 		assert(0, 0, U24);
 		assert(1, 50, 2 * U24 - 49);

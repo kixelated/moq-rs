@@ -1,19 +1,29 @@
 //! This module contains the structs and functions for the MoQ catalog format
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// The catalog format is a JSON file that describes the tracks available in a broadcast.
 use serde::{Deserialize, Serialize};
 
-use crate::{AudioTrack, Result, VideoTrack};
+use crate::catalog::{Audio, Video};
+use crate::Result;
 
+use super::Location;
+
+/// A catalog track, created by a broadcaster to describe the tracks available in a broadcast.
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Catalog {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub video: Vec<VideoTrack>,
+	pub video: Vec<Video>,
 
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub audio: Vec<AudioTrack>,
+	pub audio: Vec<Audio>,
+
+	/// A location track, used to indicate the desired position of the broadcaster from -1 to 1.
+	/// This is primarily used for audio panning but can also be used for video.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub location: Option<Location>,
 }
 
 impl Catalog {
@@ -48,14 +58,10 @@ impl Catalog {
 		Ok(serde_json::to_writer(writer, self)?)
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.video.is_empty() && self.audio.is_empty()
-	}
-
 	pub fn produce(self) -> CatalogProducer {
 		let track = moq_lite::Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: -1,
+			priority: 100,
 		}
 		.produce();
 
@@ -77,24 +83,34 @@ impl CatalogProducer {
 		}
 	}
 
-	pub fn add_video(&mut self, video: VideoTrack) {
+	pub fn add_video(&mut self, video: Video) {
 		let mut current = self.current.lock().unwrap();
 		current.video.push(video);
 	}
 
-	pub fn add_audio(&mut self, audio: AudioTrack) {
+	pub fn add_audio(&mut self, audio: Audio) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.push(audio);
 	}
 
-	pub fn remove_video(&mut self, video: &VideoTrack) {
+	pub fn set_location(&mut self, location: Option<Location>) {
+		let mut current = self.current.lock().unwrap();
+		current.location = location;
+	}
+
+	pub fn remove_video(&mut self, video: &Video) {
 		let mut current = self.current.lock().unwrap();
 		current.video.retain(|v| v != video);
 	}
 
-	pub fn remove_audio(&mut self, audio: &AudioTrack) {
+	pub fn remove_audio(&mut self, audio: &Audio) {
 		let mut current = self.current.lock().unwrap();
 		current.audio.retain(|a| a != audio);
+	}
+
+	// Just grab a lock to the current catalog, so you can update it manually.
+	pub fn update(&mut self) -> MutexGuard<'_, Catalog> {
+		self.current.lock().unwrap()
 	}
 
 	/// Publish any changes to the catalog.
@@ -111,6 +127,10 @@ impl CatalogProducer {
 	pub fn consume(&self) -> CatalogConsumer {
 		CatalogConsumer::new(self.track.consume())
 	}
+
+	pub fn finish(self) {
+		self.track.finish();
+	}
 }
 
 impl From<moq_lite::TrackProducer> for CatalogProducer {
@@ -123,7 +143,7 @@ impl Default for CatalogProducer {
 	fn default() -> Self {
 		let track = moq_lite::Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: -1,
+			priority: 100,
 		}
 		.produce();
 
@@ -165,6 +185,10 @@ impl CatalogConsumer {
 			}
 		}
 	}
+
+	pub async fn closed(&self) -> Result<()> {
+		Ok(self.track.closed().await?)
+	}
 }
 
 impl From<moq_lite::TrackConsumer> for CatalogConsumer {
@@ -175,7 +199,8 @@ impl From<moq_lite::TrackConsumer> for CatalogConsumer {
 
 #[cfg(test)]
 mod test {
-	use crate::{AudioCodec::Opus, AudioConfig, Track, VideoConfig, H264};
+	use crate::catalog::{AudioCodec::Opus, AudioConfig, VideoConfig, H264};
+	use moq_lite::Track;
 
 	use super::*;
 
@@ -186,7 +211,7 @@ mod test {
 				{
 					"track": {
 						"name": "video",
-						"priority": 2
+						"priority": 1
 					},
 					"config": {
 						"codec": "avc1.64001f",
@@ -201,7 +226,7 @@ mod test {
 				{
 					"track": {
 						"name": "audio",
-						"priority": 1
+						"priority": 2
 					},
 					"config": {
 						"codec": "opus",
@@ -217,10 +242,10 @@ mod test {
 		encoded.retain(|c| !c.is_whitespace());
 
 		let decoded = Catalog {
-			video: vec![VideoTrack {
+			video: vec![Video {
 				track: Track {
 					name: "video".to_string(),
-					priority: 2,
+					priority: 1,
 				},
 				config: VideoConfig {
 					codec: H264 {
@@ -241,10 +266,10 @@ mod test {
 					flip: None,
 				},
 			}],
-			audio: vec![AudioTrack {
+			audio: vec![Audio {
 				track: Track {
 					name: "audio".to_string(),
-					priority: 1,
+					priority: 2,
 				},
 				config: AudioConfig {
 					codec: Opus,
@@ -254,6 +279,7 @@ mod test {
 					description: None,
 				},
 			}],
+			..Default::default()
 		};
 
 		let output = Catalog::from_str(&encoded).expect("failed to decode");

@@ -26,6 +26,9 @@ pub enum Error {
 	#[error("invalid codec")]
 	InvalidCodec,
 
+	#[error("invalid frame")]
+	InvalidFrame,
+
 	#[error("unsupported codec")]
 	UnsupportedCodec,
 

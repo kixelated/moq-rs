@@ -1,12 +1,12 @@
-use crate::track::TrackConsumer;
-use crate::{AudioTrack, Catalog, CatalogConsumer, CatalogProducer, TrackProducer, VideoTrack};
+use crate::catalog::{Audio, Catalog, CatalogConsumer, CatalogProducer, Video};
+use crate::model::{TrackConsumer, TrackProducer};
 use moq_lite::Track;
 use web_async::spawn;
 
 /// A wrapper around a moq_lite::BroadcastProducer that produces a `catalog.json` track.
 #[derive(Clone)]
 pub struct BroadcastProducer {
-	pub catalog: CatalogProducer,
+	catalog: CatalogProducer,
 	pub inner: moq_lite::BroadcastProducer,
 }
 
@@ -19,7 +19,7 @@ impl Default for BroadcastProducer {
 impl BroadcastProducer {
 	pub fn new() -> Self {
 		let catalog = Catalog::default().produce();
-		let inner = moq_lite::BroadcastProducer::new();
+		let mut inner = moq_lite::BroadcastProducer::new();
 		inner.insert(catalog.consume().track);
 
 		Self { catalog, inner }
@@ -33,7 +33,7 @@ impl BroadcastProducer {
 	}
 
 	/// Add a video track to the broadcast.
-	pub fn add_video(&mut self, track: TrackConsumer, info: VideoTrack) {
+	pub fn add_video(&mut self, track: TrackConsumer, info: Video) {
 		self.inner.insert(track.inner.clone());
 		self.catalog.add_video(info.clone());
 		self.catalog.publish();
@@ -41,14 +41,13 @@ impl BroadcastProducer {
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.inner.remove(&track.inner.info.name);
 			this.catalog.remove_video(&info);
 			this.catalog.publish();
 		});
 	}
 
 	/// Add an audio track to the broadcast.
-	pub fn add_audio(&mut self, track: TrackConsumer, info: AudioTrack) {
+	pub fn add_audio(&mut self, track: TrackConsumer, info: Audio) {
 		self.inner.insert(track.inner.clone());
 		self.catalog.add_audio(info.clone());
 		self.catalog.publish();
@@ -56,23 +55,39 @@ impl BroadcastProducer {
 		let mut this = self.clone();
 		spawn(async move {
 			let _ = track.closed().await;
-			this.inner.remove(&track.inner.info.name);
 			this.catalog.remove_audio(&info);
 			this.catalog.publish();
 		});
 	}
 
-	pub fn create_video(&mut self, video: VideoTrack) -> TrackProducer {
+	pub fn create_video(&mut self, video: Video) -> TrackProducer {
 		let producer: TrackProducer = video.track.clone().produce().into();
 		self.add_video(producer.consume(), video);
 		producer
 	}
 
-	pub fn create_audio(&mut self, audio: AudioTrack) -> TrackProducer {
+	pub fn create_audio(&mut self, audio: Audio) -> TrackProducer {
 		let producer: TrackProducer = audio.track.clone().produce().into();
 		self.add_audio(producer.consume(), audio);
 		producer
 	}
+
+	/*
+	// Given a producer, publish the location track and update the catalog accordingly.
+	// If a handle is provided, then it can be used by peers to update our position.
+	pub fn location(&mut self, producer: &LocationProducer, handle: Option<u32>) {
+		self.inner.insert(producer.track.consume());
+
+		self.catalog.set_location(Some(Location {
+			handle,
+			initial: producer.latest(),
+			updates: Some(producer.track.info.clone()),
+			peers: HashMap::new(),
+		}));
+
+		self.catalog.publish();
+	}
+	*/
 }
 
 impl std::ops::Deref for BroadcastProducer {
@@ -100,14 +115,16 @@ impl BroadcastConsumer {
 	pub fn new(inner: moq_lite::BroadcastConsumer) -> Self {
 		let catalog = Track {
 			name: Catalog::DEFAULT_NAME.to_string(),
-			priority: 0,
+			priority: 100,
 		};
 		let catalog = inner.subscribe(&catalog).into();
 
 		Self { catalog, inner }
 	}
 
-	pub fn track(&self, track: &Track) -> TrackConsumer {
+	/// Subscribe to a track, wrapping it in a [TrackConsumer].
+	/// If you don't want the wrapper, then use [self.inner.subscribe] instead.
+	pub fn subscribe(&self, track: &Track) -> TrackConsumer {
 		self.inner.subscribe(track).into()
 	}
 }

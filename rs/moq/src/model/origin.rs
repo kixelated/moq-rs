@@ -11,7 +11,7 @@ struct ProducerState {
 }
 
 impl ProducerState {
-	fn insert(&mut self, path: String, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
+	fn publish(&mut self, path: String, broadcast: BroadcastConsumer) -> Option<BroadcastConsumer> {
 		let mut i = 0;
 
 		while let Some((consumer, notify)) = self.consumers.get(i) {
@@ -79,7 +79,15 @@ impl OriginProducer {
 	/// Announce a broadcast, returning true if it was unique.
 	pub fn publish<S: ToString>(&mut self, path: S, broadcast: BroadcastConsumer) -> bool {
 		let path = path.to_string();
-		self.state.lock().insert(path, broadcast).is_none()
+		let unique = self.state.lock().publish(path.clone(), broadcast.clone()).is_none();
+
+		let state = self.state.clone();
+		web_async::spawn(async move {
+			broadcast.closed().await;
+			state.lock().active.remove(&path);
+		});
+
+		unique
 	}
 
 	/// Publish all broadcasts from the given origin.
