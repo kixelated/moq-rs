@@ -8,21 +8,31 @@ on:
   pull_request:
     branches: ["main"]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Use depot/docker to run CI so it's semi-cached.
-      - uses: depot/setup-action@v1
-      - uses: depot/build-push-action@v1
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
         with:
-          project: r257ctfqm6
-          file: js/Dockerfile
-          context: js
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable flakes
+        run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
+
+      - name: Set up pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('js/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Check
+        run: cd js && nix develop --command just check

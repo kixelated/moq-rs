@@ -55,7 +55,7 @@ export class Subscriber {
 
 					const full = prefix.concat(announce.suffix);
 
-					console.debug(`announced: path=${full} active=${announce.active}`);
+					console.debug(`announced: broadcast=${full} active=${announce.active}`);
 					producer.write({ path: full, active: announce.active });
 
 					// Just for logging
@@ -81,16 +81,16 @@ export class Subscriber {
 
 	/**
 	 * Consumes a broadcast from the connection.
-	 * @param broadcast - The name of the broadcast to consume
+	 * @param path - The path of the broadcast to consume
 	 * @returns A BroadcastConsumer instance
 	 */
-	consume(broadcast: string): BroadcastConsumer {
-		const existing = this.#broadcasts.get(broadcast);
+	consume(path: string): BroadcastConsumer {
+		const existing = this.#broadcasts.get(path);
 		if (existing) {
 			return existing.clone();
 		}
 
-		const producer = new BroadcastProducer(broadcast);
+		const producer = new BroadcastProducer();
 		const consumer = producer.consume();
 
 		producer.unknownTrack((track) => {
@@ -100,7 +100,7 @@ export class Subscriber {
 			producer.insertTrack(track.consume());
 
 			// Perform the subscription in the background.
-			this.#runSubscribe(broadcast, track).finally(() => {
+			this.#runSubscribe(path, track).finally(() => {
 				try {
 					producer.removeTrack(track.name);
 				} catch (err) {
@@ -109,29 +109,29 @@ export class Subscriber {
 			});
 		});
 
-		this.#broadcasts.set(broadcast, consumer.clone());
+		this.#broadcasts.set(path, consumer.clone());
 
 		// Close when the producer has no more consumers.
 		producer.unused().finally(() => {
 			producer.close();
-			this.#broadcasts.delete(broadcast);
+			this.#broadcasts.delete(path);
 		});
 
 		return consumer;
 	}
 
-	async #runSubscribe(broadcast: string, track: TrackProducer) {
+	async #runSubscribe(path: string, track: TrackProducer) {
 		const id = this.#subscribeNext++;
 
 		// Save the writer so we can append groups to it.
 		this.#subscribes.set(id, track);
 
-		const msg = new Wire.Subscribe(id, broadcast, track.name, track.priority);
+		const msg = new Wire.Subscribe(id, path, track.name, track.priority);
 
 		const stream = await Wire.Stream.open(this.#quic, msg);
 		try {
 			await Wire.SubscribeOk.decode(stream.reader);
-			console.debug(`subscribe ok: broadcast=${broadcast} track=${track.name}`);
+			console.debug(`subscribe ok: broadcast=${path} track=${track.name}`);
 
 			await Promise.race([stream.reader.closed(), track.unused()]);
 
@@ -139,7 +139,7 @@ export class Subscriber {
 		} catch (err) {
 			track.abort(error(err));
 		} finally {
-			console.debug(`subscribe close: broadcast=${broadcast} track=${track.name}`);
+			console.debug(`subscribe close: broadcast=${path} track=${track.name}`);
 			this.#subscribes.delete(id);
 			stream.close();
 		}

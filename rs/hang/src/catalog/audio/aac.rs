@@ -1,4 +1,5 @@
-use super::Error;
+use crate::Error;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

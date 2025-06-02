@@ -106,8 +106,8 @@ function Volume(hang: Watch) {
 			class="language-typescript">subscribe()</code> method to trigger a callback on change:
 
 	<pre><code class="language-typescript">
-// There's also a `derived` method that is just a wrapper around SolidJS's `createMemo`.
-const volume = hang.muted.derived((muted) => (muted ? 0 : hang.volume.get()));
+// There's also a `memo` method that is just a wrapper around SolidJS's `createMemo`.
+const volume = hang.muted.memo((muted) => (muted ? 0 : hang.volume.get()));
 
 const cleanup = volume.subscribe((volume) => {
 	// Update the volume display.

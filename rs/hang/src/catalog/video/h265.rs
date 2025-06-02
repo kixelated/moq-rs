@@ -126,7 +126,7 @@ impl FromStr for H265 {
 
 #[cfg(test)]
 mod tests {
-	use crate::VideoCodec;
+	use crate::catalog::VideoCodec;
 
 	use super::*;
 

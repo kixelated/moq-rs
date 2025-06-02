@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import { Signal, Signals, signal } from "@kixelated/signals";
+import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Frame } from "../container/frame";
 
@@ -37,14 +37,17 @@ export type AudioProps = {
 };
 
 export class Audio {
+	broadcast: Moq.BroadcastProducer;
+
 	readonly media: Signal<AudioTrack | undefined>;
 	readonly constraints: Signal<AudioConstraints | boolean | undefined>;
 
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
 
-	#track = signal<Moq.TrackProducer | undefined>(undefined);
-	readonly track = this.#track.readonly();
+	// Expose the AudioContext and AudioNode for any audio renderer.
+	#root = signal<{ context: AudioContext; node: AudioWorkletNode } | undefined>(undefined);
+	readonly root = this.#root.readonly();
 
 	#group?: Moq.GroupProducer;
 	#groupTimestamp = 0;
@@ -52,20 +55,67 @@ export class Audio {
 	#id = 0;
 	#signals = new Signals();
 
-	constructor(props?: AudioProps) {
+	constructor(broadcast: Moq.BroadcastProducer, props?: AudioProps) {
+		this.broadcast = broadcast;
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 
 		this.#signals.effect(() => this.#runCatalog());
+		this.#signals.effect(() => this.#runWorklet());
 		this.#signals.effect(() => this.#runEncoder());
 	}
 
 	#runCatalog() {
 		const media = this.media.get();
 		if (!media) return;
+	}
+
+	#runWorklet() {
+		const media = this.media.get();
+		if (!media) return;
+
+		const settings = media.getSettings();
+		if (!settings) {
+			throw new Error("track has no settings");
+		}
+
+		const root = this.root.get();
+		if (!root) return;
+
+		const context = new AudioContext({
+			sampleRate: settings.sampleRate,
+		});
+
+		// Async because we need to wait for the worklet to be registered.
+		// Annoying, I know
+		root.context.audioWorklet.addModule(`data:text/javascript,(${worklet.toString()})()`).then(() => {
+			const node = new AudioWorkletNode(root.context, "capture");
+			this.#root.set({ context, node });
+		});
+
+		return () => {
+			this.#root.set((p) => {
+				p?.node.disconnect();
+				p?.context.close();
+				return undefined;
+			});
+		};
+	}
+
+	#runEncoder() {
+		const root = this.root.get();
+		if (!root) return;
+
+		const media = this.media.get();
+		if (!media) return;
+
+		const { context, node } = root;
 
 		const track = new Moq.TrackProducer(`audio-${this.#id++}`, 1);
-		this.#track.set(track);
+		this.broadcast.insertTrack(track.consume());
+
+		cleanup(() => track.close());
+		cleanup(() => this.broadcast.removeTrack(track.name));
 
 		const settings = media.getSettings() as AudioTrackSettings;
 
@@ -95,24 +145,7 @@ export class Audio {
 		};
 
 		this.#catalog.set(catalog);
-
-		return () => {
-			track.close();
-
-			this.#catalog.set(undefined);
-			this.#track.set(undefined);
-		};
-	}
-
-	#runEncoder() {
-		const media = this.media.get();
-		if (!media) return;
-
-		const track = this.#track.get();
-		if (!track) return;
-
-		const catalog = this.#catalog.get();
-		if (!catalog) return;
+		cleanup(() => this.#catalog.set(undefined));
 
 		const encoder = new AudioEncoder({
 			output: (frame) => {
@@ -139,6 +172,7 @@ export class Audio {
 				track.abort(err);
 			},
 		});
+		cleanup(() => encoder.close());
 
 		const config = catalog.config;
 
@@ -149,95 +183,7 @@ export class Audio {
 			bitrate: config.bitrate,
 		});
 
-		const processor = AudioTrackProcessor(media);
-		const reader = processor.getReader();
-
-		(async () => {
-			for (;;) {
-				const { value: frame } = await reader.read();
-				if (!frame) {
-					break;
-				}
-
-				encoder.encode(frame);
-				frame.close();
-			}
-
-			try {
-				this.#group?.close();
-				this.#group = undefined;
-
-				encoder.close();
-			} catch {}
-		})();
-
-		return () => {
-			reader.cancel();
-		};
-	}
-
-	close() {
-		this.#signals.close();
-	}
-}
-
-// Firefox doesn't support MediaStreamTrackProcessor so we need to use a polyfill.
-// Based on: https://jan-ivar.github.io/polyfills/mediastreamtrackprocessor.js
-// Thanks Jan-Ivar
-function AudioTrackProcessor(track: AudioTrack): ReadableStream<AudioData> {
-	// @ts-expect-error Chrome only for now
-	if (self.MediaStreamTrackProcessor) {
-		// @ts-expect-error Chrome only for now
-		return new self.MediaStreamTrackProcessor({ track }).readable;
-	}
-
-	const settings = track.getSettings();
-	if (!settings) {
-		throw new Error("track has no settings");
-	}
-
-	let ac: AudioContext;
-	let node: AudioWorkletNode;
-	const arrays: Float32Array[][] = [];
-
-	return new ReadableStream({
-		async start() {
-			ac = new AudioContext({
-				// If undefined (Firefox), defaults to the system sample rate.
-				sampleRate: settings.sampleRate,
-			});
-
-			function worklet() {
-				// @ts-expect-error Would need a separate tsconfig to get this to work.
-				registerProcessor(
-					"mstp-shim",
-					// @ts-expect-error Would need a separate tsconfig to get this to work.
-					class Processor extends AudioWorkletProcessor {
-						process(input: Float32Array[][]) {
-							// @ts-expect-error Would need a separate tsconfig to get this to work.
-							this.port.postMessage(input[0]);
-							return true;
-						}
-					},
-				);
-			}
-			await ac.audioWorklet.addModule(`data:text/javascript,(${worklet.toString()})()`);
-			node = new AudioWorkletNode(ac, "mstp-shim");
-			ac.createMediaStreamSource(new MediaStream([track])).connect(node);
-			node.port.addEventListener("message", ({ data }: { data: Float32Array[] }) => {
-				if (data.length) arrays.push(data);
-			});
-		},
-		async pull(controller) {
-			let channels: Float32Array[] | undefined = arrays.shift();
-
-			while (!channels) {
-				await new Promise((r) => {
-					node.port.onmessage = r;
-				});
-				channels = arrays.shift();
-			}
-
+		node.port.addEventListener("message", ({ data: channels }: { data: Float32Array[] }) => {
 			const joinedLength = channels.reduce((a, b) => a + b.length, 0);
 			const joined = new Float32Array(joinedLength);
 
@@ -246,17 +192,37 @@ function AudioTrackProcessor(track: AudioTrack): ReadableStream<AudioData> {
 				return offset + channel.length;
 			}, 0);
 
-			controller.enqueue(
-				new AudioData({
-					format: "f32-planar",
-					sampleRate: ac.sampleRate,
-					numberOfFrames: channels[0].length,
-					numberOfChannels: channels.length,
-					timestamp: (ac.currentTime * 1e6) | 0,
-					data: joined,
-					transfer: [joined.buffer],
-				}),
-			);
+			const frame = new AudioData({
+				format: "f32-planar",
+				sampleRate: context.sampleRate,
+				numberOfFrames: channels[0].length,
+				numberOfChannels: channels.length,
+				timestamp: (context.currentTime * 1e6) | 0,
+				data: joined,
+				transfer: [joined.buffer],
+			});
+
+			encoder.encode(frame);
+			frame.close();
+		});
+	}
+
+	close() {
+		this.#signals.close();
+	}
+}
+
+function worklet() {
+	// @ts-expect-error Would need a separate file/tsconfig to get this to work.
+	registerProcessor(
+		"capture",
+		// @ts-expect-error Would need a separate tsconfig to get this to work.
+		class Processor extends AudioWorkletProcessor {
+			process(input: Float32Array[][]) {
+				// @ts-expect-error Would need a separate tsconfig to get this to work.
+				this.port.postMessage(input[0]);
+				return true;
+			}
 		},
-	});
+	);
 }

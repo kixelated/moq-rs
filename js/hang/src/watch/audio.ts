@@ -1,5 +1,6 @@
 import * as Moq from "@kixelated/moq";
-import { Derived, Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, signal } from "@kixelated/signals";
+import { isEqual } from "lodash";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -91,8 +92,6 @@ export class AudioEmitter {
 }
 
 export type AudioProps = {
-	broadcast?: Moq.BroadcastConsumer;
-	available?: Catalog.Audio[];
 	enabled?: boolean;
 };
 
@@ -100,9 +99,9 @@ export type AudioProps = {
 // The user is responsible for hooking up audio to speakers, an analyzer, etc.
 export class Audio {
 	broadcast: Signal<Moq.BroadcastConsumer | undefined>;
-	available: Signal<Catalog.Audio[]>;
+	catalog: Signal<Catalog.Root | undefined>;
 	enabled: Signal<boolean>;
-	selected: Derived<Catalog.Audio | undefined>;
+	selected: Memo<Catalog.Audio | undefined>;
 
 	// The raw audio context, which can be used for custom visualizations.
 	// If using this class directly, you'll need to hook up audio to speakers, an analyzer, etc.
@@ -121,12 +120,18 @@ export class Audio {
 
 	#signals = new Signals();
 
-	constructor(props?: AudioProps) {
-		this.broadcast = signal(props?.broadcast);
-		this.available = signal(props?.available ?? []);
+	constructor(
+		broadcast: Signal<Moq.BroadcastConsumer | undefined>,
+		catalog: Signal<Catalog.Root | undefined>,
+		props?: AudioProps,
+	) {
+		this.broadcast = broadcast;
+		this.catalog = catalog;
 		this.enabled = signal(props?.enabled ?? false);
 
-		this.selected = this.#signals.derived(() => this.available.get().at(0));
+		this.selected = this.#signals.memo(() => this.catalog.get()?.audio?.[0], {
+			equals: (a, b) => isEqual(a, b),
+		});
 
 		// Stop all active samples when disabled.
 		this.#signals.effect(() => {

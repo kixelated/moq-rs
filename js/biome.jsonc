@@ -18,7 +18,9 @@
 		"indentWidth": 4,
 		"lineEnding": "lf"
 	},
-	"organizeImports": { "enabled": true },
+	"organizeImports": {
+		"enabled": true
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {

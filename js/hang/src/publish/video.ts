@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
-import { Signal, Signals, signal } from "@kixelated/signals";
+import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -39,6 +39,8 @@ export type VideoProps = {
 };
 
 export class Video {
+	broadcast: Moq.BroadcastProducer;
+
 	readonly media: Signal<VideoTrack | undefined>;
 	readonly constraints: Signal<VideoConstraints | boolean | undefined>;
 
@@ -46,7 +48,9 @@ export class Video {
 	readonly catalog = this.#catalog.readonly();
 
 	#track = signal<Moq.TrackProducer | undefined>(undefined);
-	readonly track = this.#track.readonly();
+
+	#active = signal(false);
+	readonly active = this.#active.readonly();
 
 	#encoderConfig = signal<VideoEncoderConfig | undefined>(undefined);
 	#decoderConfig = signal<VideoDecoderConfig | undefined>(undefined);
@@ -57,7 +61,11 @@ export class Video {
 	#signals = new Signals();
 	#id = 0;
 
-	constructor(props?: VideoProps) {
+	// Store the latest VideoFrame and when it was captured.
+	#latest: { frame: VideoFrame; when: DOMHighResTimeStamp } | undefined;
+
+	constructor(broadcast: Moq.BroadcastProducer, props?: VideoProps) {
+		this.broadcast = broadcast;
 		this.media = signal(props?.media);
 		this.constraints = signal(props?.constraints);
 
@@ -70,20 +78,21 @@ export class Video {
 		const media = this.media.get();
 		if (!media) return;
 
-		const producer = new Moq.TrackProducer(`video-${this.#id++}`, 1);
-		this.#track.set(producer);
+		const track = new Moq.TrackProducer(`video-${this.#id++}`, 1);
+		cleanup(() => track.close());
 
-		return () => {
-			producer.close();
-			this.#track.set(undefined);
-		};
+		this.broadcast.insertTrack(track.consume());
+		cleanup(() => this.broadcast.removeTrack(track.name));
+
+		this.#track.set(track);
+		cleanup(() => this.#track.set(undefined));
 	}
 
 	#runEncoder() {
 		const media = this.media.get();
 		if (!media) return;
 
-		const track = this.track.get();
+		const track = this.#track.get();
 		if (!track) return;
 
 		const settings = media.getSettings() as VideoTrackSettings;
@@ -121,9 +130,23 @@ export class Video {
 		this.#encoderConfig.set(undefined);
 		this.#decoderConfig.set(undefined);
 
-		(async () => {
+		void this.#runFrames(encoder, reader, settings);
+
+		return () => {
+			reader.cancel();
+		};
+	}
+
+	async #runFrames(
+		encoder: VideoEncoder,
+		reader: ReadableStreamDefaultReader<VideoFrame>,
+		settings: VideoTrackSettings,
+	) {
+		try {
 			let { value: frame } = await reader.read();
 			if (!frame) return;
+
+			this.#active.set(true);
 
 			const config = await Video.#bestEncoderConfig(settings, frame);
 			encoder.configure(config);
@@ -136,23 +159,20 @@ export class Video {
 					this.#groupTimestamp = frame.timestamp;
 				}
 
+				this.#latest?.frame.close();
+				this.#latest = { frame, when: performance.now() };
+
 				encoder.encode(frame, { keyFrame });
-				frame.close();
 
 				({ value: frame } = await reader.read());
 			}
+		} finally {
+			encoder.close();
+			this.#active.set(false);
 
-			try {
-				encoder.close();
-
-				this.#group?.close();
-				this.#group = undefined;
-			} catch {}
-		})();
-
-		return () => {
-			reader.cancel();
-		};
+			this.#group?.close();
+			this.#group = undefined;
+		}
 	}
 
 	// Try to determine the best config for the given settings.
@@ -326,7 +346,7 @@ export class Video {
 		const decoderConfig = this.#decoderConfig.get();
 		if (!decoderConfig) return;
 
-		const track = this.track.get();
+		const track = this.#track.get();
 		if (!track) return;
 
 		const description = decoderConfig.description
@@ -353,7 +373,15 @@ export class Video {
 		};
 	}
 
+	frame(now: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {
+		if (!this.#latest) return;
+
+		const lag = now - this.#latest.when;
+		return { frame: this.#latest.frame, lag };
+	}
+
 	close() {
+		this.#latest?.frame.close();
 		this.#signals.close();
 	}
 }

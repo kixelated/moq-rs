@@ -14,10 +14,9 @@ import {
 
 export { batch } from "solid-js";
 
-export interface Signal<T> extends Derived<T> {
+export interface Signal<T> extends Memo<T> {
 	set(value: T | ((prev: T) => T)): void;
-	derived<U>(fn: (value: T) => U): Derived<U>;
-	readonly(): Derived<T>;
+	readonly(): Memo<T>;
 }
 
 export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
@@ -33,8 +32,8 @@ export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
 			});
 			return temp.close.bind(temp);
 		},
-		derived(fn) {
-			return derived(() => fn(get()));
+		memo(fn) {
+			return memo(() => fn(get()));
 		},
 		readonly() {
 			return {
@@ -46,6 +45,9 @@ export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
 						fn(get());
 					});
 					return temp.close.bind(temp);
+				},
+				memo(fn) {
+					return memo(() => fn(get()));
 				},
 			};
 		},
@@ -61,13 +63,16 @@ export type Dispose = () => void;
 // biome-ignore lint/suspicious/noConfusingVoidType: it's required to make the callback optional
 export type MaybeDispose = (() => void) | void;
 
-export interface Derived<T> {
+export interface Memo<T> {
 	get(): T;
 	peek(): T;
 	subscribe(fn: (value: T) => void): Dispose;
+	memo<U>(fn: (value: T) => U): Memo<U>;
 }
 
-export function derived<T>(fn: () => T, options?: SignalOptions<T>): Derived<T> {
+export type MemoOptions<T> = SignalOptions<T>;
+
+export function memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
 	const sig = signal(fn(), options);
 	effect(() => {
 		sig.set(fn());
@@ -97,7 +102,7 @@ export class Signals {
 		console.warn(`Root was garbage collected without being closed:\n${debugInfo}`);
 	});
 
-	constructor() {
+	constructor(parent?: Owner) {
 		if (Signals.dev) {
 			const debug = new Error("created here:").stack ?? "No stack";
 			Signals.#finalizer.register(this, debug, this);
@@ -108,7 +113,7 @@ export class Signals {
 			if (!owner) throw new Error("no owner");
 
 			return [dispose, owner];
-		});
+		}, parent);
 	}
 
 	effect(fn: () => MaybeDispose): void {
@@ -121,10 +126,10 @@ export class Signals {
 		}
 	}
 
-	derived<T>(fn: () => T, options?: SignalOptions<T>): Derived<T> {
-		const res = runWithOwner(this.#owner, () => derived(fn, options));
+	memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
+		const res = runWithOwner(this.#owner, () => memo(fn, options));
 		if (!res) {
-			throw new Error("derived called after root was closed");
+			throw new Error("memo called after root was closed");
 		}
 
 		return res;
@@ -146,6 +151,10 @@ export class Signals {
 		if (Signals.dev) {
 			Signals.#finalizer.unregister(this);
 		}
+	}
+
+	nest(): Signals {
+		return new Signals(this.#owner);
 	}
 }
 

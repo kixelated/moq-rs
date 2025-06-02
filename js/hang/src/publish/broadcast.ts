@@ -1,17 +1,19 @@
 import * as Moq from "@kixelated/moq";
-import { Derived, Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioConstraints, AudioTrack } from "./audio";
+import { Location, LocationProps } from "./location";
 import { Video, VideoConstraints, VideoTrack } from "./video";
 
 export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
-	publish?: boolean;
+	enabled?: boolean;
 	path?: string;
 	audio?: AudioConstraints | boolean;
 	video?: VideoConstraints | boolean;
+	location?: LocationProps;
 	device?: Device;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
@@ -20,71 +22,54 @@ export type BroadcastProps = {
 
 export class Broadcast {
 	connection: Connection;
-	publish: Signal<boolean>;
+	enabled: Signal<boolean>;
 	path: Signal<string>;
 
 	audio: Audio;
 	video: Video;
+	location: Location;
 
-	catalog: Derived<Catalog.Broadcast>;
+	catalog: Memo<Catalog.Root>;
 	device: Signal<Device | undefined>;
 
-	#broadcast = signal<Moq.BroadcastProducer | undefined>(undefined);
+	#broadcast = new Moq.BroadcastProducer();
 	#catalog = new Moq.TrackProducer("catalog.json", 0);
 	#signals = new Signals();
 
+	#published = signal(false);
+	readonly published = this.#published.readonly();
+
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
-		this.publish = signal(props?.publish ?? true);
+		this.enabled = signal(props?.enabled ?? false);
 		this.path = signal(props?.path ?? "");
-		this.audio = new Audio({ constraints: props?.audio });
-		this.video = new Video({ constraints: props?.video });
+
+		this.audio = new Audio(this.#broadcast, { constraints: props?.audio });
+		this.video = new Video(this.#broadcast, { constraints: props?.video });
+		this.location = new Location(this.#broadcast, props?.location);
+
 		this.device = signal(props?.device);
 
+		this.#broadcast.insertTrack(this.#catalog.consume());
+
 		this.#signals.effect(() => {
-			if (!this.publish.get()) return;
+			if (!this.enabled.get()) return;
 
 			const connection = this.connection.established.get();
 			if (!connection) return;
 
-			const broadcast = new Moq.BroadcastProducer(this.path.get());
-			broadcast.insertTrack(this.#catalog.consume());
-
-			this.#broadcast.set(broadcast);
+			const path = this.path.get();
+			if (!path) return;
 
 			// Publish the broadcast to the connection.
-			connection.publish(broadcast.consume());
+			const consume = this.#broadcast.consume();
 
-			return () => {
-				broadcast.close();
-				this.#broadcast.set(undefined);
-			};
-		});
+			// Unpublish the broadcast by closing the consumer but not the publisher.
+			cleanup(() => consume.close());
+			connection.publish(path, consume);
 
-		this.#signals.effect(() => {
-			const broadcast = this.#broadcast.get();
-			if (!broadcast) return;
-
-			const track = this.video.track.get();
-			if (!track) return;
-
-			broadcast.insertTrack(track.consume());
-			return () => {
-				broadcast.removeTrack(track.name);
-			};
-		});
-
-		this.#signals.effect(() => {
-			const broadcast = this.#broadcast.get();
-			if (!broadcast) return;
-
-			const track = this.audio.track.get();
-			if (!track) return;
-
-			broadcast.insertTrack(track.consume());
-			return () => {
-				broadcast.removeTrack(track.name);
-			};
+			this.#published.set(true);
+			cleanup(() => this.#published.set(false));
 		});
 
 		// These are separate effects because the camera audio/video constraints can be independent.
@@ -93,7 +78,7 @@ export class Broadcast {
 		this.#signals.effect(() => this.#runCameraVideo());
 		this.#signals.effect(() => this.#runScreen());
 
-		this.catalog = this.#signals.derived(() => this.#runCatalog());
+		this.catalog = this.#signals.memo(() => this.#runCatalog());
 	}
 
 	#runCameraAudio() {
@@ -202,24 +187,20 @@ export class Broadcast {
 		};
 	}
 
-	#runCatalog(): Catalog.Broadcast {
+	#runCatalog(): Catalog.Root {
+		// Create the new catalog.
 		const audio = this.audio.catalog.get();
 		const video = this.video.catalog.get();
 
-		// Create the new catalog.
-		const catalog = new Catalog.Broadcast();
+		const catalog: Catalog.Root = {
+			video: video ? [video] : [],
+			audio: audio ? [audio] : [],
+			location: this.location.catalog.get(),
+		};
 
-		// We need to wait for the encoder to fully initialize with a few frames.
-		if (audio) {
-			catalog.audio.push(audio);
-		}
+		const encoded = Catalog.encode(catalog);
 
-		if (video) {
-			catalog.video.push(video);
-		}
-
-		const encoder = new TextEncoder();
-		const encoded = encoder.encode(catalog.encode());
+		// Encode the catalog.
 		const catalogGroup = this.#catalog.appendGroup();
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();

@@ -3,7 +3,10 @@
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
 		// Biome is too dumb to use our .gitignore.
-		"ignore": ["**/node_modules", "**/dist"]
+		"ignore": [
+			"**/node_modules",
+			"**/dist"
+		]
 	},
 	"vcs": {
 		"enabled": true,
@@ -14,7 +17,9 @@
 		"enabled": true,
 		"useEditorconfig": true
 	},
-	"organizeImports": { "enabled": true },
+	"organizeImports": {
+		"enabled": true
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {

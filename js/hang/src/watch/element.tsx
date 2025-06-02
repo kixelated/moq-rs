@@ -27,7 +27,7 @@ export default class HangWatch extends HTMLElement {
 		const canvas = this.querySelector("canvas") as HTMLCanvasElement | undefined;
 
 		this.connection = new Connection();
-		this.broadcast = new Broadcast(this.connection);
+		this.broadcast = new Broadcast(this.connection, { enabled: true });
 		this.video = new VideoRenderer(this.broadcast.video, { canvas });
 		this.audio = new AudioEmitter(this.broadcast.audio);
 

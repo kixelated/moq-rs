@@ -16,18 +16,15 @@ class State {
  */
 export class BroadcastProducer {
 	/** The path identifier for this broadcast */
-	readonly path: string;
 	#state: WatchProducer<State>;
 
 	/**
 	 * Creates a new BroadcastProducer with the specified path and state.
-	 * @param path - The path identifier
 	 * @param state - The state producer
 	 *
 	 * @internal
 	 */
-	constructor(path: string) {
-		this.path = path;
+	constructor() {
 		this.#state = new WatchProducer<State>(new State());
 	}
 
@@ -115,7 +112,7 @@ export class BroadcastProducer {
 	}
 
 	consume(): BroadcastConsumer {
-		return new BroadcastConsumer(this.#state.consume(), this.path);
+		return new BroadcastConsumer(this.#state.consume());
 	}
 }
 
@@ -127,9 +124,6 @@ export class BroadcastProducer {
  * @public
  */
 export class BroadcastConsumer {
-	/** The path identifier for this reader */
-	readonly path: string;
-
 	#state: WatchConsumer<State>;
 
 	/**
@@ -139,8 +133,7 @@ export class BroadcastConsumer {
 	 *
 	 * @internal
 	 */
-	constructor(state: WatchConsumer<State>, path: string) {
-		this.path = path;
+	constructor(state: WatchConsumer<State>) {
 		this.#state = state;
 	}
 
@@ -190,6 +183,6 @@ export class BroadcastConsumer {
 	 * @returns A new BroadcastConsumer instance
 	 */
 	clone(): BroadcastConsumer {
-		return new BroadcastConsumer(this.#state.clone(), this.path);
+		return new BroadcastConsumer(this.#state.clone());
 	}
 }

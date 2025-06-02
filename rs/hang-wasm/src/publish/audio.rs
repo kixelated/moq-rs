@@ -21,7 +21,7 @@ impl PublishAudio {
 	pub async fn init(id: usize, channel_count: u32, sample_rate: u32) -> Result<Self> {
 		let track = moq_lite::Track {
 			name: format!("audio_{}", id),
-			priority: 1,
+			priority: 2,
 		}
 		.produce();
 
@@ -46,8 +46,8 @@ impl PublishAudio {
 
 	pub async fn run(&mut self) -> Result<()> {
 		while let Some(frame) = self.encoded.frame().await? {
-			if let Some(mut broadcast) = self.broadcast.take() {
-				self.publish_to(&mut broadcast);
+			if let Some(broadcast) = self.broadcast.take() {
+				self.publish_to(broadcast);
 			}
 
 			self.track.write(hang::Frame {
@@ -75,11 +75,11 @@ impl PublishAudio {
 		}
 	}
 
-	pub fn publish_to(&mut self, broadcast: &mut hang::BroadcastProducer) {
+	pub fn publish_to(&mut self, mut broadcast: hang::BroadcastProducer) {
 		if let Some(config) = self.encoded.config() {
-			let info = hang::AudioTrack {
+			let info = hang::catalog::Audio {
 				track: self.track.inner.info.clone(),
-				config: hang::AudioConfig {
+				config: hang::catalog::AudioConfig {
 					codec: config.codec.into(),
 					description: config.description,
 					sample_rate: config.sample_rate,
@@ -91,7 +91,7 @@ impl PublishAudio {
 			broadcast.add_audio(self.track.consume(), info);
 		} else {
 			// Save a reference for later after fully initializing.
-			self.broadcast = Some(broadcast.clone());
+			self.broadcast = Some(broadcast);
 		}
 	}
 }

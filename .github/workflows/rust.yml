@@ -14,12 +14,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Use depot/docker to build the binaries and run CI.
-      - uses: depot/setup-action@v1
-      - uses: depot/build-push-action@v1
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
         with:
-          project: r257ctfqm6
-          file: rs/Dockerfile
-          context: rs
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable flakes
+        run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
+
+      - name: Set up a Rust cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            rs/target/
+          key: rust-${{ runner.os }}-${{ hashFiles('rs/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Check
+        run: cd rs && nix develop --command just check --workspace

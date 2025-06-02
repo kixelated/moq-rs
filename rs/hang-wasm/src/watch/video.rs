@@ -63,7 +63,7 @@ impl Video {
 			}
 		}
 
-		let track = broadcast.track(&video.track);
+		let track = broadcast.subscribe(&video.track);
 
 		// TODO handle the error instead of ignoring it.
 		let video = VideoTrack::new(track, video.clone()).ok()?;
@@ -133,14 +133,14 @@ impl Default for Video {
 
 pub struct VideoTrack {
 	pub track: hang::TrackConsumer,
-	pub info: hang::VideoTrack,
+	pub info: hang::catalog::Video,
 
 	decoder: web_codecs::VideoDecoder,
 	decoded: web_codecs::VideoDecoded,
 }
 
 impl VideoTrack {
-	pub fn new(track: hang::TrackConsumer, info: hang::VideoTrack) -> Result<Self> {
+	pub fn new(track: hang::TrackConsumer, info: hang::catalog::Video) -> Result<Self> {
 		let config = &info.config;
 
 		let resolution = match (config.coded_width, config.coded_height) {
