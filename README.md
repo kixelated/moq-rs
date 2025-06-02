@@ -26,6 +26,12 @@ just setup
 just all
 ```
 
+Or if you're feeling superior, you can use the [Nix](https://nixos.org/download.html) [Flake](https://nixos.wiki/wiki/Flakes) instead:
+
+```sh
+nix develop --command just all
+```
+
 ## Design
 For the non-vibe coders, let's talk about how the protocol works.
 Unlike WebRTC, MoQ is purposely split into multiple layers to allow for maximum flexibility:
@@ -119,6 +125,11 @@ just check
 
 # Optional: Automatically fix easy lint issues.
 just fix
+```
+
+If CI is failing for some mysterious reason, you can use [Nix](https://nixos.org/download.html) to run pinned versions of the tools:
+```sh
+nix develop --command just check
 ```
 
 

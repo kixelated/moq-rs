@@ -31,7 +31,6 @@ RUN apt-get update && \
     gstreamer1.0-pulseaudio \
     git \
     unzip \
-	just \
     && apt-get clean
 
 # Install rustup + toolchain
@@ -41,23 +40,6 @@ ENV PATH="/root/.cargo/bin:$PATH"
 # Add wasm target + clippy + rustfmt
 RUN rustup target add wasm32-unknown-unknown && \
     rustup component add clippy rustfmt
-
-# Let just do the rest.
-COPY justfile .
-
-# Install dependencies.
-# I'm not sure if all of these --mount flags are needed any longer.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/build/target \
-	just setup
-
-# Copy over the rest of the files.
-COPY . .
-
-# Make sure u guys don't write bad code before we build.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/build/target \
-	just check --release
 
 # Reuse a cache between builds.
 # I tried to `cargo install`, but it doesn't seem to work with workspaces.
@@ -76,10 +58,9 @@ FROM ubuntu:24.04 AS moq-clock
 COPY --from=build /out/moq-clock /usr/local/bin
 ENTRYPOINT ["moq-clock"]
 
-## hang (and hang-bbb)
+## hang
 FROM ubuntu:24.04 AS hang
 RUN apt-get update && apt-get install -y ffmpeg wget
-COPY ./hang-bbb /usr/local/bin/hang-bbb
 COPY --from=build /out/hang /usr/local/bin
 ENTRYPOINT ["hang"]
 

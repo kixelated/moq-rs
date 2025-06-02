@@ -75,7 +75,7 @@
           };
         };
 
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           packages = common-deps ++ [
             pkgs.cargo-sort
             pkgs.cargo-shear
