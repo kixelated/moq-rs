@@ -1475,6 +1475,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonwebtoken"
+version = "9.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
+dependencies = [
+ "base64",
+ "js-sys",
+ "pem",
+ "ring",
+ "serde",
+ "serde_json",
+ "simple_asn1",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1645,6 +1660,8 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
+ "serde",
+ "serde_with",
  "time",
  "tokio",
  "tracing",
@@ -1667,12 +1684,37 @@ dependencies = [
  "hyper-serve",
  "moq-lite",
  "moq-native",
+ "moq-token",
+ "serde",
+ "serde_with",
  "thiserror 2.0.12",
  "tokio",
+ "toml",
  "tower-http",
  "tracing",
  "url",
  "web-transport",
+]
+
+[[package]]
+name = "moq-token"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "jsonwebtoken",
+ "serde",
+ "serde_json",
+ "serde_with",
+]
+
+[[package]]
+name = "moq-token-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "moq-token",
 ]
 
 [[package]]
@@ -2580,6 +2622,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_asn1"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "297f631f50729c8c99b84667867963997ec0b50f32b2a7dbcab828ef0541e8bb"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+ "thiserror 2.0.12",
+ "time",
+]
+
+[[package]]
 name = "siphasher"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2882,8 +2936,15 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
+ "toml_write",
  "winnow",
 ]
+
+[[package]]
+name = "toml_write"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb942dfe1d8e29a7ee7fcbde5bd2b9a25fb89aa70caea2eba3bee836ff41076"
 
 [[package]]
 name = "tower"
@@ -2918,12 +2979,13 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.6.5"
+version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cc2d9e086a412a451384326f521c8123a99a466b329941a9403696bff9b0da2"
+checksum = "adc82fd73de2a9722ac5da747f12383d2bfdb93591ee6c58486e0097890f05f2"
 dependencies = [
  "bitflags",
  "bytes",
+ "futures-core",
  "futures-util",
  "http",
  "http-body",
@@ -3096,6 +3158,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]
@@ -3329,9 +3392,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport"
-version = "0.9.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a1d1a5f21fd637605d471d03900a3682dc68e786427be61fdefe1073b25a3b"
+checksum = "11c476f2c40013a2c651393df0fcff40a33e1fc24fddfd3cfa69d2c298018bd0"
 dependencies = [
  "bytes",
  "thiserror 2.0.12",
@@ -3354,9 +3417,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-quinn"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d111d234a1bd0fab080bbf5e7d9af3fd2b2e267f06354b1cee475e30c5ceaf6"
+checksum = "5f9226d1daf46670c9bf83422bf8ff6020c7af549cf7f8159e3dbbb2aed97f3a"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -3375,9 +3438,9 @@ dependencies = [
 
 [[package]]
 name = "web-transport-wasm"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71eeaac1bcb4bbcf5d272b157fefcbd33cea53684b9f0c4cce905c4164e6d557"
+checksum = "b3ad9b5e49988cf8f4fd722c1b390bad43482b866ac7a2ba0f23280eba74c893"
 dependencies = [
  "bytes",
  "js-sys",

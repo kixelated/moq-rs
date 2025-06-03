@@ -1,61 +1,33 @@
+mod auth;
 mod cluster;
+mod config;
 mod connection;
 mod web;
 
+pub use auth::*;
 pub use cluster::*;
+pub use config::*;
 pub use connection::*;
 pub use web::*;
 
-use anyhow::Context;
-use clap::Parser;
-use moq_native::quic;
-
-#[derive(Parser, Clone)]
-pub struct Config {
-	/// Listen on this address, both TCP and UDP.
-	#[arg(long, default_value = "[::]:443")]
-	pub bind: String,
-
-	/// The TLS configuration.
-	#[command(flatten)]
-	pub tls: moq_native::tls::Args,
-
-	/// Log configuration.
-	#[command(flatten)]
-	pub log: moq_native::log::Args,
-
-	/// Cluster configuration.
-	#[command(flatten)]
-	pub cluster: ClusterConfig,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	let config = Config::parse();
-	config.log.init();
+	let config = Config::load()?;
 
-	let bind = tokio::net::lookup_host(config.bind)
-		.await
-		.context("invalid bind address")?
-		.next()
-		.context("invalid bind address")?;
+	let addr = config.server.listen.unwrap_or("[::]:443".parse().unwrap());
+	let mut server = config.server.init()?;
+	let client = config.client.init()?;
+	let auth = config.auth.init()?;
+	let fingerprints = server.fingerprints().to_vec();
 
-	let tls = config.tls.load()?;
-	if tls.server.is_none() {
-		anyhow::bail!("missing TLS certificates");
-	}
-
-	let quic = quic::Endpoint::new(quic::Config { bind, tls: tls.clone() })?;
-	let mut server = quic.server.context("missing TLS certificate")?;
-
-	let cluster = Cluster::new(config.cluster.clone(), quic.client);
+	let cluster = Cluster::new(config.cluster, client);
 	let cloned = cluster.clone();
 	tokio::spawn(async move { cloned.run().await.expect("cluster failed") });
 
 	// Create a web server too.
 	let web = Web::new(WebConfig {
-		bind,
-		tls,
+		bind: addr,
+		fingerprints,
 		cluster: cluster.clone(),
 	});
 
@@ -63,14 +35,29 @@ async fn main() -> anyhow::Result<()> {
 		web.run().await.expect("failed to run web server");
 	});
 
-	tracing::info!(addr = %bind, "listening");
+	tracing::info!(%addr, "listening");
 
 	let mut conn_id = 0;
 
 	while let Some(conn) = server.accept().await {
-		let session = Connection::new(conn_id, conn.into(), cluster.clone());
+		let token = match auth.validate(conn.url()) {
+			Ok(token) => token,
+			Err(err) => {
+				tracing::warn!(?err, "failed to validate token");
+				conn.close(1, b"invalid token");
+				continue;
+			}
+		};
+
+		let conn = Connection {
+			id: conn_id,
+			session: conn.into(),
+			cluster: cluster.clone(),
+			token,
+		};
+
 		conn_id += 1;
-		tokio::spawn(session.run());
+		tokio::spawn(conn.run());
 	}
 
 	Ok(())

@@ -50,6 +50,8 @@
         common-deps = [
           rust
           pkgs.just
+          pkgs.pkg-config
+          pkgs.glib
         ] ++ gst-deps;
 
       in

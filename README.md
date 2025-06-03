@@ -119,17 +119,19 @@ just web
 Then, visit [https://localhost:8080](localhost:8080) to watch the simple demo.
 
 ### Contributing
-When you're ready to submit a PR, make sure the tests pass or face the wrath of CI:
+When you're ready to submit a PR, make sure the tests pass or face the wrath of CI.
+The normal `check` command skips over `hang-gst` and `hang-wasm` to simplify setup, so you'll need the `--workspace` flag to test everything:
+
 ```sh
-just check
+just check --workspace
 
 # Optional: Automatically fix easy lint issues.
-just fix
+just fix --workspace
 ```
 
 If CI is failing for some mysterious reason, you can use [Nix](https://nixos.org/download.html) to run pinned versions of the tools:
 ```sh
-nix develop --command just check
+nix develop --command just check --workspace
 ```
 
 

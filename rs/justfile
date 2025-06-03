@@ -11,12 +11,28 @@ setup:
 	cargo install cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run a localhost relay server
-relay:
-	cargo run --bin moq-relay -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --cluster-node "localhost:4443" --tls-disable-verify
+relay: auth
+	# Run the relay server overriding the provided configuration file.
+	cargo run --bin moq-relay moq-relay/dev.toml
 
 # Run a localhost leaf server, connecting to the relay server
-leaf:
-	cargo run --bin moq-relay -- --bind "[::]:4444" --tls-self-sign "localhost:4444" --cluster-node "localhost:4444" --cluster-root "localhost:4443" --tls-disable-verify
+leaf: auth
+	cargo run --bin moq-relay moq-relay/leaf.toml
+
+# Generate an authentication key and token for clustering, ensuring only clusters get root access.
+# You can use the same approach for user requests but scoped to specific paths.
+auth:
+	# Generate a random secret key for authentication.
+	# By default, this uses HMAC-SHA256.
+	if [ ! -f "dev/root.jwk" ]; then \
+		cargo run --bin moq-token -- --key "dev/root.jwk" generate; \
+	fi
+
+	# Generate a token that allows us to publish and subscribe to all paths.
+	# Obviously this needs to be secured in production.
+	if [ ! -f "dev/root.jwt" ]; then \
+		cargo run --quiet --bin moq-token -- --key "dev/root.jwk" sign --path "" --subscribe "" --publish "" > dev/root.jwt; \
+	fi
 
 # Run a cluster of relay servers
 cluster:
@@ -101,7 +117,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-self-sign "localhost:4443" --tls-disable-verify serve
+		- | cargo run --bin hang -- --listen "[::]:4443" --tls-generate "localhost:4443" --tls-disable-verify serve
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
@@ -120,7 +136,7 @@ check flags="":
 	cargo fmt --all --check
 
 	# Make sure it actually compiles with WASM.
-	cargo check -p hang-wasm --target wasm32-unknown-unknown {{flags}}
+	cargo check -p hang-wasm --target wasm32-unknown-unknown
 
 	# requires: cargo install cargo-shear
 	cargo shear
@@ -160,3 +176,4 @@ upgrade:
 # Build the packages
 build:
 	cargo build
+

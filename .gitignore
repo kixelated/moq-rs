@@ -21,6 +21,8 @@ result
 *.crt
 *.key
 *.hex
+*.jwk
+*.jwt
 
 # We're using pnpm
 package-lock.json

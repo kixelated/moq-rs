@@ -5,7 +5,6 @@ use gst::subclass::prelude::*;
 
 use hang::moq_lite;
 
-use moq_native::{quic, tls};
 use once_cell::sync::Lazy;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -147,24 +146,22 @@ impl ElementImpl for HangSrc {
 
 impl HangSrc {
 	async fn setup(&self) -> anyhow::Result<()> {
-		let (quic, url) = {
+		let (client, url) = {
 			let settings = self.settings.lock().unwrap();
 			let url = url::Url::parse(settings.url.as_ref().expect("url is required"))?;
 
 			// TODO support TLS certs and other options
-			let quic = quic::Args {
-				bind: "[::]:0".parse().unwrap(),
-				tls: tls::Args {
-					disable_verify: settings.tls_disable_verify,
+			let client = moq_native::ClientConfig {
+				tls: moq_native::ClientTls {
+					disable_verify: Some(settings.tls_disable_verify),
 					..Default::default()
 				},
-			};
+				..Default::default()
+			}
+			.init()?;
 
-			(quic, url)
+			(client, url)
 		};
-
-		let quic = quic.load()?;
-		let client = quic::Endpoint::new(quic)?.client;
 
 		let session = client.connect(url).await?;
 		let session = moq_lite::Session::connect(session).await?;

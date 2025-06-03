@@ -38,4 +38,4 @@ jobs:
             rust-${{ runner.os }}-
 
       - name: Check
-        run: cd rs && nix develop --command just check
+        run: cd rs && nix develop --command just check --workspace

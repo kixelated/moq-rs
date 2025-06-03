@@ -1,0 +1,18 @@
+[package]
+name = "moq-token-cli"
+description = "Media over QUIC - Token Generation and Validation"
+authors = ["Luke Curley"]
+repository = "https://github.com/kixelated/moq"
+license = "MIT OR Apache-2.0"
+
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "moq-token"
+path = "src/bin.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+moq-token = { path = "../moq-token" }
