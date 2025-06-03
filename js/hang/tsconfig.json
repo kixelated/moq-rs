@@ -4,7 +4,10 @@
 	"exclude": ["node_modules", "dist"],
 	"compilerOptions": {
 		"outDir": "dist",
-		"jsx": "react-jsx",
-		"jsxImportSource": "solid-js"
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js",
+		"declaration": true,
+		"declarationMap": true,
+		"emitDeclarationOnly": true
 	}
 }
