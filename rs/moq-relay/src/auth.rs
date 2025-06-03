@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -19,9 +18,9 @@ pub struct AuthConfig {
 	/// A map of paths to key files.
 	///
 	/// The .jwt token can be prepended with an optional path to use that key instead of the root key.
-	#[serde(skip_serializing_if = "HashMap::is_empty")]
-	#[arg(long = "auth-path", value_parser = parse_key_val, default_value = "")]
-	pub path: HashMap<String, String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	#[arg(long = "auth-path", value_parser = parse_key_val)]
+	pub path: Option<HashMap<String, String>>,
 }
 
 impl AuthConfig {
@@ -54,7 +53,6 @@ impl Auth {
 
 		let key = match config.key.as_deref() {
 			None | Some("") => {
-				anyhow::ensure!(config.path.is_empty(), "root key is empty but paths are configured");
 				tracing::warn!("connection authentication is disabled; users can publish/subscribe to any path");
 				None
 			}
@@ -68,7 +66,7 @@ impl Auth {
 			}
 		};
 
-		for (path, file) in config.path {
+		for (path, file) in config.path.unwrap_or_default() {
 			let key = match file.as_ref() {
 				"" => None,
 				path => {
@@ -92,34 +90,31 @@ impl Auth {
 
 	// Parse/validate a user provided URL.
 	pub fn validate(&self, url: &Url) -> anyhow::Result<moq_token::Payload> {
-		let segments = url.path_segments().context("missing path")?.collect::<Vec<_>>();
+		tracing::trace!(path = url.path(), "validating URL");
 
-		tracing::trace!(?segments, "validating URL");
+		let path = url.path().trim_start_matches('/');
+		let (prefix, suffix) = path.rsplit_once("/").unwrap_or(("", path));
 
-		if let Some(token) = segments.last().unwrap().strip_suffix(".jwt") {
-			let path = segments[..segments.len() - 1].join("/");
+		let auth = self.paths.get(prefix).unwrap_or(&self.key);
 
-			// As a precaution, reject all incoming connections that expected authentication.
-			anyhow::ensure!(self.key.is_some(), "root key is required for authenticated URLs");
+		if let Some(token) = suffix.strip_suffix(".jwt") {
+			let auth = auth.as_ref().expect("no authentication configured");
 
-			if let Some(auth) = self.paths.get(&path).unwrap_or(&self.key) {
-				// Verify the token and return the payload.
-				let mut token = auth.verify(token)?;
+			// Verify the token and return the payload.
+			let mut token = auth.verify(token)?;
 
-				tracing::trace!(?token, "validated token");
+			// Add the key ID back to the path.
+			token.path = format!("{}{}", prefix, token.path);
+			return Ok(token);
+		}
 
-				// Add the key ID back to the path.
-				token.path = format!("{}{}", path, token.path);
-				return Ok(token);
-			}
-		} else if self.key.is_some() {
+		if auth.is_some() {
 			return Err(anyhow::anyhow!("no token provided"));
 		}
 
 		// No auth required, so create a dummy token that allows accessing everything.
 		Ok(moq_token::Payload {
-			// Use the user-provided path.
-			path: segments.join("/"),
+			path: path.to_string(),
 			publish: Some("".to_string()),
 			subscribe: Some("".to_string()),
 			..Default::default()

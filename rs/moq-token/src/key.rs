@@ -1,5 +1,5 @@
 use serde_with::base64::{Base64, UrlSafe};
-use std::{collections::HashSet, fs::File, io::BufReader, path::Path, sync::OnceLock};
+use std::{collections::HashSet, fmt, fs::File, io::BufReader, path::Path, sync::OnceLock};
 
 use jsonwebtoken::{DecodingKey, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,16 @@ pub struct Key {
 
 	#[serde(skip)]
 	pub(crate) encode: OnceLock<EncodingKey>,
+}
+
+impl fmt::Debug for Key {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Key")
+			.field("algorithm", &self.algorithm)
+			.field("operations", &self.operations)
+			.field("kid", &self.kid)
+			.finish()
+	}
 }
 
 impl Key {
