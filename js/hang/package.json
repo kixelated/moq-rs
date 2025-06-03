@@ -22,7 +22,7 @@
 	"scripts": {
 		"build": "vite build && tsc -b",
 		"check": "tsc --noEmit",
-		"release": "tsx scripts/release.ts"
+		"release": "tsx ../scripts/release.ts"
 	},
 	"dependencies": {
 		"@kixelated/moq": "workspace:^0.5.0",

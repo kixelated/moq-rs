@@ -12,7 +12,7 @@
 	"scripts": {
 		"build": "tsc -b",
 		"check": "tsc --noEmit",
-		"release": "tsx scripts/release.ts"
+		"release": "tsx ../scripts/release.ts"
 	},
 	"dependencies": {
 		"solid-js": "^1.9.7"

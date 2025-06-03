@@ -13,7 +13,7 @@
 		"build": "tsc -b",
 		"check": "tsc --noEmit",
 		"test": "tsx --test",
-		"release": "tsx scripts/release.ts"
+		"release": "tsx ../scripts/release.ts"
 	},
 	"devDependencies": {
 		"typescript": "^5.8.3",
