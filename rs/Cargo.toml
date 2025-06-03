@@ -36,7 +36,7 @@ moq-token = { version = "0.1", path = "moq-token" }
 serde = { version = "1", features = ["derive"] }
 tokio = "1.45"
 web-async = { version = "0.1.1", features = ["tracing"] }
-web-transport = "0.9.2"
+web-transport = "0.9.3"
 
 [profile.release.package.hang-wasm]
 # Tell `rustc` to optimize for small code size.
