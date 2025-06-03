@@ -14,7 +14,7 @@ pub use web::*;
 async fn main() -> anyhow::Result<()> {
 	let config = Config::load()?;
 
-	let bind = config.server.bind;
+	let addr = config.server.listen.unwrap_or("[::]:443".parse().unwrap());
 	let mut server = config.server.init()?;
 	let client = config.client.init()?;
 	let auth = config.auth.init()?;
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
 
 	// Create a web server too.
 	let web = Web::new(WebConfig {
-		bind,
+		bind: addr,
 		fingerprints,
 		cluster: cluster.clone(),
 	});
@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
 		web.run().await.expect("failed to run web server");
 	});
 
-	tracing::info!(addr = %bind, "listening");
+	tracing::info!(%addr, "listening");
 
 	let mut conn_id = 0;
 

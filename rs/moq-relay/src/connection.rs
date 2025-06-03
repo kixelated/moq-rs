@@ -8,7 +8,7 @@ pub struct Connection {
 }
 
 impl Connection {
-	#[tracing::instrument("conn", skip_all, fields(id = self.id, path = self.token.path))]
+	#[tracing::instrument("conn", skip_all, fields(id = self.id, path = %self.token.path))]
 	pub async fn run(mut self) {
 		let mut session = match moq_lite::Session::accept(self.session).await {
 			Ok(session) => session,

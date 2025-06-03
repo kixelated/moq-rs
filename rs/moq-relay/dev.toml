@@ -6,7 +6,7 @@ level = "debug"
 [server]
 # Listen for QUIC connections on UDP:4443
 # Sometimes IPv6 causes issues; try 127.0.0.1:4443 instead.
-bind = "[::]:4443"
+listen = "[::]:4443"
 
 # Generate a self-signed certificate for the given hostnames.
 # This is used for local development, in conjunction with a fingerprint, or with TLS verification disabled.
@@ -18,9 +18,6 @@ tls.generate = ["localhost"]
 # chain = "dev/quic.video.pem"
 # key = "dev/quic.video.key"
 
-[cluster]
-# Include our hostname so leaf nodes can connect to us.
-node = "localhost:4443"
 
 # Authentication is rather crude because it's GOOD ENOUGH for now.
 #
@@ -49,7 +46,7 @@ node = "localhost:4443"
 #
 # ```toml
 #   [auth]
-#   root = "root.jwk"
+#   key = "root.jwk"
 #
 #   [[auth.path]]
 #   demo = "demo.jwk"
@@ -68,9 +65,8 @@ node = "localhost:4443"
 # - If someone tries to connect to `/demo/**` without a (valid) token, then the connection will be rejected.
 # - If someone tries to connect to `/baz/**`, then the root key will be used instead.
 [auth]
-# All that explanation just to disable authentication lul.
-root = ""
+# just relay will generate a root key and set this value via the CLI
+key = "dev/root.jwk"
 
-# $ moq-token generate --key demo.jwk
-#[[auth.path]]
-#demo = "demo.jwk"
+# Allow any connection to `/demo/**` without a token.
+path = { demo = "" }

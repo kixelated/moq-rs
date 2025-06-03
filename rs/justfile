@@ -11,12 +11,28 @@ setup:
 	cargo install cargo-shear cargo-sort cargo-upgrades cargo-edit cargo-audit
 
 # Run a localhost relay server
-relay:
+relay: auth
+	# Run the relay server overriding the provided configuration file.
 	cargo run --bin moq-relay moq-relay/dev.toml
 
 # Run a localhost leaf server, connecting to the relay server
-leaf:
+leaf: auth
 	cargo run --bin moq-relay moq-relay/leaf.toml
+
+# Generate an authentication key and token for clustering, ensuring only clusters get root access.
+# You can use the same approach for user requests but scoped to specific paths.
+auth:
+	# Generate a random secret key for authentication.
+	# By default, this uses HMAC-SHA256.
+	if [ ! -f "dev/root.jwk" ]; then \
+		cargo run --bin moq-token -- --key "dev/root.jwk" generate; \
+	fi
+
+	# Generate a token that allows us to publish and subscribe to all paths.
+	# Obviously this needs to be secured in production.
+	if [ ! -f "dev/root.jwt" ]; then \
+		cargo run --quiet --bin moq-token -- --key "dev/root.jwk" sign --path "" --subscribe "" --publish "" > dev/root.jwt; \
+	fi
 
 # Run a cluster of relay servers
 cluster:
@@ -101,7 +117,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --bind "[::]:4443" --tls-generate "localhost:4443" --tls-disable-verify serve
+		- | cargo run --bin hang -- --listen "[::]:4443" --tls-generate "localhost:4443" --tls-disable-verify serve
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
@@ -161,17 +177,3 @@ upgrade:
 build:
 	cargo build
 
-
-# Generate an authentication key for the given path.
-# This key needs to be added to the moq-relay configuration before it does anything.
-# The sub-token and pub-token commands show how you can use the key to sign requests.
-key path:
-	cargo run --bin moq-token -- --key "{{path}}.jwk" generate; \
-
-# Generate a token for subscribing to the named broadcast ONLY.
-sub-token key path:
-	cargo run --quiet --bin moq-token -- --key "{{key}}.jwk" sign --subscribe "{{path}}.hang"
-
-# Generate a token for publishing the named broadcast ONLY.
-pub-token key path:
-	cargo run --quiet --bin moq-token -- --key "{{key}}.jwk" sign --publish "{{path}}.hang"

@@ -1678,6 +1678,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bytes",
+ "clap",
  "futures",
  "http-body",
  "hyper-serve",

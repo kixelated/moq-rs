@@ -50,12 +50,13 @@ pub struct ServerTlsConfig {
 	pub generate: Vec<String>,
 }
 
-#[derive(clap::Args, Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(clap::Args, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct ServerConfig {
 	/// Listen for UDP packets on the given address.
+	/// Defaults to `[::]:443` if not provided.
 	#[arg(long)]
-	pub bind: net::SocketAddr,
+	pub listen: Option<net::SocketAddr>,
 
 	#[command(flatten)]
 	#[serde(default)]
@@ -117,7 +118,9 @@ impl Server {
 		// There's a bit more boilerplate to make a generic endpoint.
 		let runtime = quinn::default_runtime().context("no async runtime")?;
 		let endpoint_config = quinn::EndpointConfig::default();
-		let socket = std::net::UdpSocket::bind(config.bind).context("failed to bind UDP socket")?;
+
+		let listen = config.listen.unwrap_or("[::]:443".parse().unwrap());
+		let socket = std::net::UdpSocket::bind(listen).context("failed to bind UDP socket")?;
 
 		// Create the generic QUIC endpoint.
 		let quic = quinn::Endpoint::new(endpoint_config, Some(tls), socket, runtime)

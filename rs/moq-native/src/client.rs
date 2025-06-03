@@ -9,7 +9,7 @@ use url::Url;
 use web_transport::quinn as web_transport_quinn;
 
 #[derive(Clone, Default, Debug, clap::Args, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct ClientTls {
 	/// Use the TLS root at this path, encoded as PEM.
 	///
@@ -22,16 +22,17 @@ pub struct ClientTls {
 	/// Danger: Disable TLS certificate verification.
 	///
 	/// Fine for local development and between relays, but should be used in caution in production.
-	#[serde(skip_serializing_if = "std::ops::Not::not")]
+	// This is an Option<bool> so clap skips over it when not provided, otherwise it is set to false.
+	#[serde(skip_serializing_if = "Option::is_none")]
 	#[arg(long = "tls-disable-verify")]
-	pub disable_verify: bool,
+	pub disable_verify: Option<bool>,
 }
 
 #[derive(Clone, Debug, clap::Parser, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ClientConfig {
 	/// Listen for UDP packets on the given address.
-	#[arg(long, default_value = "[::]:0")]
+	#[arg(long, id = "client-bind", default_value = "[::]:0")]
 	pub bind: net::SocketAddr,
 
 	#[command(flatten)]
@@ -102,8 +103,8 @@ impl Client {
 			.with_no_client_auth();
 
 		// Allow disabling TLS verification altogether.
-		if config.tls.disable_verify {
-			tracing::warn!("TLS server certificate verification is disabled");
+		if config.tls.disable_verify.unwrap_or_default() {
+			tracing::warn!("TLS server certificate verification is disabled; A man-in-the-middle attack is possible.");
 
 			let noop = NoCertificateVerification(provider.clone());
 			tls.dangerous().set_certificate_verifier(Arc::new(noop));

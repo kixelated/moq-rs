@@ -84,8 +84,6 @@ impl Key {
 		let mut validation = jsonwebtoken::Validation::new(self.algorithm.into());
 		validation.required_spec_claims = Default::default(); // Don't require exp, but still validate it if present
 
-		println!("token: {}", token);
-
 		let token = jsonwebtoken::decode::<Payload>(token, decode, &validation)?;
 		Ok(token.claims)
 	}

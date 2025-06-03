@@ -17,13 +17,13 @@ pub async fn server<T: AsyncRead + Unpin>(
 	public: Option<PathBuf>,
 	input: &mut T,
 ) -> anyhow::Result<()> {
-	config.bind = tokio::net::lookup_host(config.bind)
+	config.listen = tokio::net::lookup_host(config.listen)
 		.await
-		.context("invalid bind address")?
+		.context("invalid listen address")?
 		.next()
-		.context("invalid bind address")?;
+		.context("invalid listen address")?;
 
-	let bind = config.bind;
+	let bind = config.listen;
 	let server = config.init()?;
 	let fingerprints = server.fingerprints().to_vec();
 
