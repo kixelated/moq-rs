@@ -13,17 +13,17 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 pub async fn server<T: AsyncRead + Unpin>(
-	mut config: moq_native::ServerConfig,
+	config: moq_native::ServerConfig,
 	public: Option<PathBuf>,
 	input: &mut T,
 ) -> anyhow::Result<()> {
-	config.listen = tokio::net::lookup_host(config.listen)
+	let mut listen = config.listen.unwrap_or("[::]:443".parse().unwrap());
+	listen = tokio::net::lookup_host(listen)
 		.await
 		.context("invalid listen address")?
 		.next()
 		.context("invalid listen address")?;
 
-	let bind = config.listen;
 	let server = config.init()?;
 	let fingerprints = server.fingerprints().to_vec();
 
@@ -33,7 +33,7 @@ pub async fn server<T: AsyncRead + Unpin>(
 	tokio::select! {
 		res = accept(server, consumer) => res,
 		res = publish(producer, input) => res,
-		res = web(bind, fingerprints, public) => res,
+		res = web(listen, fingerprints, public) => res,
 	}
 }
 

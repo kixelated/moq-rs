@@ -82,12 +82,7 @@ impl Cluster {
 
 		// If we're a node, then we need to announce ourselves as an origin.
 		// We do this by creating a "broadcast" with no tracks.
-		let prefix = self
-			.config
-			.prefix
-			.as_ref()
-			.map(|p| p.as_str())
-			.unwrap_or(Self::DEFAULT_PATH);
+		let prefix = self.config.prefix.as_deref().unwrap_or(Self::DEFAULT_PATH);
 
 		tracing::info!(%prefix, %root, "connecting to root");
 
