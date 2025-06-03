@@ -1,8 +1,10 @@
 // ChatGPT made a script that rewrites package.json file to use the correct paths.
+// The problem is that I want paths to reference `src` during development, but `dist` during release.
 // It's not pretty but nothing in NPM is.
 
 import { execSync } from "node:child_process";
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 console.log("🧹 Cleaning dist/...");
 rmSync("dist", { recursive: true, force: true });
@@ -14,7 +16,7 @@ console.log("✍️  Rewriting package.json...");
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
 function rewritePath(p: string): string {
-	return p.replace(/^\.\/src/, "./dist").replace(/\.ts(x)?$/, ".js");
+	return p.replace(/^\.\/src/, ".").replace(/\.ts(x)?$/, ".js");
 }
 
 pkg.main &&= rewritePath(pkg.main);
@@ -39,20 +41,30 @@ if (pkg.sideEffects) {
 	pkg.sideEffects = pkg.sideEffects.map(rewritePath);
 }
 
+if (pkg.files) {
+	pkg.files = pkg.files.map(rewritePath);
+}
+
 // biome-ignore lint/performance/noDelete: <explanation>
 delete pkg.devDependencies;
 // biome-ignore lint/performance/noDelete: <explanation>
 delete pkg.scripts;
 
-// Temporarily swap out the package.json with the one that has the correct paths.
-renameSync("package.json", "package.backup.json");
-try {
-	writeFileSync("package.json", JSON.stringify(pkg, null, 2));
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/package.json", JSON.stringify(pkg, null, 2));
 
-	console.log("🚀 Publishing...");
-	execSync("pnpm publish --access=public --no-git-checks", {
-		stdio: "inherit",
-	});
-} finally {
-	renameSync("package.backup.json", "package.json");
-}
+// Copy static files
+console.log("📄 Copying README.md...");
+copyFileSync("README.md", join("dist", "README.md"));
+
+console.log("🔍 Installing dependencies...");
+execSync("pnpm install", {
+	stdio: "inherit",
+	cwd: "dist",
+});
+
+console.log("🚀 Publishing...");
+execSync("pnpm publish --access=public", {
+	stdio: "inherit",
+	cwd: "dist",
+});
