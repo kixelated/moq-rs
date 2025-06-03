@@ -36,10 +36,10 @@ importers:
   hang:
     dependencies:
       '@kixelated/moq':
-        specifier: workspace:^0.5.0
+        specifier: workspace:^0.6.0
         version: link:../moq
       '@kixelated/signals':
-        specifier: workspace:^0.1.0
+        specifier: workspace:^0.2.0
         version: link:../signals
       buffer:
         specifier: ^6.0.3

@@ -1,7 +1,7 @@
 {
 	"name": "@kixelated/moq",
 	"type": "module",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Media over QUIC library",
 	"license": "(MIT OR Apache-2.0)",
 	"repository": "github:kixelated/moq",
