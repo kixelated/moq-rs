@@ -36,10 +36,9 @@ RUN apt-get update && \
 # Install rustup + toolchain
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
+RUN rustup target add wasm32-unknown-unknown
 
-# Add wasm target + clippy + rustfmt
-RUN rustup target add wasm32-unknown-unknown && \
-    rustup component add clippy rustfmt
+COPY . .
 
 # Reuse a cache between builds.
 # I tried to `cargo install`, but it doesn't seem to work with workspaces.
@@ -50,8 +49,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/build/target \
 	mkdir -p /out && \
 	cargo build --release && \
-	cp /build/target/release/moq* /out && \
-	cp /build/target/release/hang* /out
+	cp /build/target/release/moq-* /out/ && \
+	cp /build/target/release/hang* /out/
 
 # moq-clock
 FROM ubuntu:24.04 AS moq-clock
@@ -61,6 +60,7 @@ ENTRYPOINT ["moq-clock"]
 ## hang
 FROM ubuntu:24.04 AS hang
 RUN apt-get update && apt-get install -y ffmpeg wget
+COPY ./hang-bbb /usr/local/bin/hang-bbb
 COPY --from=build /out/hang /usr/local/bin
 ENTRYPOINT ["hang"]
 
