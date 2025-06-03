@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/kixelated/moq/compare/moq-clock-v0.6.0...moq-clock-v0.6.1) - 2025-06-03
+
+### Other
+
+- Add support for authentication tokens ([#399](https://github.com/kixelated/moq/pull/399))
+- Add location tracks, fix some bugs, switch to nix ([#401](https://github.com/kixelated/moq/pull/401))
+
 ## [0.5.26](https://github.com/kixelated/moq/compare/moq-clock-v0.5.25...moq-clock-v0.5.26) - 2025-03-09
 
 ### Other

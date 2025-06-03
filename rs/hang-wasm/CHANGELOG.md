@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kixelated/moq/compare/hang-wasm-v0.1.0...hang-wasm-v0.1.1) - 2025-06-03
+
+### Other
+
+- Add location tracks, fix some bugs, switch to nix ([#401](https://github.com/kixelated/moq/pull/401))
+- Revamp origin/announced ([#390](https://github.com/kixelated/moq/pull/390))
+- Move config to a separate field to match the specification. ([#387](https://github.com/kixelated/moq/pull/387))
+
 ## [0.1.0](https://github.com/kixelated/moq/releases/tag/hang-wasm-v0.1.0) - 2025-05-21
 
 ### Other
