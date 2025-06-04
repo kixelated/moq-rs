@@ -59,7 +59,7 @@ export class Broadcast {
 			if (!connection) return;
 
 			const path = this.path.get();
-			if (!path) return;
+			if (path === undefined) return;
 
 			// Publish the broadcast to the connection.
 			const consume = this.#broadcast.consume();

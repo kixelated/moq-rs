@@ -109,7 +109,7 @@ impl Auth {
 		}
 
 		if auth.is_some() {
-			return Err(anyhow::anyhow!("no token provided"));
+			return Err(anyhow::anyhow!("token required"));
 		}
 
 		// No auth required, so create a dummy token that allows accessing everything.
