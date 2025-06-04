@@ -68,5 +68,5 @@ tls.generate = ["localhost"]
 # just relay will generate a root key and set this value via the CLI
 key = "dev/root.jwk"
 
-# Allow any connection to `/demo/**` without a token.
-path = { demo = "" }
+# Allow any connection to `/demo/**` or `/anon/**` without a token.
+path = { demo = "", anon = "" }

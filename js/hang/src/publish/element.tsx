@@ -33,7 +33,7 @@ export default class HangPublish extends HTMLElement {
 			const media = this.broadcast.video.media.get();
 			if (!media || !preview) return;
 
-			preview.srcObject = new MediaStream([media]) ?? null;
+			preview.srcObject = new MediaStream([media]);
 			return () => {
 				preview.srcObject = null;
 			};
