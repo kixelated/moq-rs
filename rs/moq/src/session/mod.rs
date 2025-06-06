@@ -27,6 +27,8 @@ pub struct Session {
 
 impl Session {
 	fn new(mut session: web_transport::Session, stream: Stream) -> Self {
+		tracing::info!("session started");
+
 		let publisher = Publisher::new(session.clone());
 		let subscriber = Subscriber::new(session.clone());
 
@@ -53,7 +55,7 @@ impl Session {
 					session.close(err.to_code(), &err.to_string());
 				}
 				_ => {
-					tracing::info!("session ended");
+					tracing::info!("session closed");
 					session.close(0, "");
 				}
 			}
