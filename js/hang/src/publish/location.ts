@@ -7,7 +7,7 @@ export type LocationProps = {
 	enabled?: boolean;
 
 	// Our initial position.
-	position?: Catalog.Position;
+	current?: Catalog.Position;
 
 	// If true, then this broadcaster allows other peers to request position updates.
 	peering?: boolean;
@@ -18,7 +18,7 @@ export class Location {
 
 	enabled: Signal<boolean>;
 
-	position: Signal<Catalog.Position | undefined>;
+	current: Signal<Catalog.Position | undefined>;
 	peering: Signal<boolean | undefined>;
 
 	#track = new Moq.TrackProducer("location.json", 0);
@@ -34,7 +34,7 @@ export class Location {
 		this.broadcast = broadcast;
 
 		this.enabled = signal(props?.enabled ?? false);
-		this.position = signal(props?.position ?? undefined);
+		this.current = signal(props?.current ?? undefined);
 		this.peering = signal(props?.peering ?? undefined);
 
 		broadcast.insertTrack(this.#track.consume());
@@ -45,7 +45,7 @@ export class Location {
 			if (!enabled) return;
 
 			return {
-				initial: this.position.peek(), // Doesn't trigger a re-render
+				initial: this.current.peek(), // Doesn't trigger a re-render
 				updates: { name: this.#track.name, priority: this.#track.priority },
 				peering: this.peering.get(),
 				peers: this.#peers.get(),
@@ -53,7 +53,7 @@ export class Location {
 		});
 
 		this.#signals.effect(() => {
-			const position = this.position.get();
+			const position = this.current.get();
 			if (!position) return;
 			this.#producer.update(position);
 		});

@@ -46,6 +46,8 @@ impl Connection {
 		}
 
 		// Wait until the session is closed.
-		session.closed().await;
+		let err = session.closed().await;
+
+		tracing::info!(?err, "connection terminated");
 	}
 }
