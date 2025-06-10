@@ -27,7 +27,7 @@ jobs:
         run: echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
 
       - name: Set up a Rust cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/git
