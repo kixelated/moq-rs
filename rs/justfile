@@ -117,7 +117,7 @@ serve name:
 		-i "dev/{{name}}.fmp4" \
 		-c copy \
 		-f mp4 -movflags cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame \
-		- | cargo run --bin hang -- --listen "[::]:4443" --tls-generate "localhost:4443" --tls-disable-verify serve
+		- | cargo run --bin hang -- serve --listen "[::]:4443" --tls-generate "localhost:4443"
 
 # Publish the clock broadcast
 # `action` is either `publish` or `subscribe`
