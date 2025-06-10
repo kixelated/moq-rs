@@ -281,10 +281,9 @@ impl ServeCerts {
 			})
 			.collect()
 	}
-}
 
-impl ResolvesServerCert for ServeCerts {
-	fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+	// Return the best certificate for the given ClientHello.
+	fn best_certificate(&self, client_hello: &ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
 		let server_name = client_hello.server_name()?;
 		let dns_name = webpki::DnsNameRef::try_from_ascii_str(server_name).ok()?;
 
@@ -299,8 +298,20 @@ impl ResolvesServerCert for ServeCerts {
 			}
 		}
 
-		tracing::warn!(?server_name, "no certificate found for server name");
-
 		None
+	}
+}
+
+impl ResolvesServerCert for ServeCerts {
+	fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+		if let Some(cert) = self.best_certificate(&client_hello) {
+			return Some(cert);
+		}
+
+		// If this happens, it means the client was trying to connect to an unknown hostname.
+		// We do our best and return the first certificate.
+		tracing::warn!(server_name = ?client_hello.server_name(), "no SNI certificate found");
+
+		self.certs.first().cloned()
 	}
 }
