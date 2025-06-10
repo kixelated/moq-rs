@@ -45,7 +45,7 @@ pub struct ServerTlsConfig {
 
 	/// Or generate a new certificate and key with the given hostnames.
 	/// This won't be valid unless the client uses the fingerprint or disables verification.
-	#[arg(long = "tls-generate")]
+	#[arg(long = "tls-generate", value_delimiter = ',')]
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub generate: Vec<String>,
 }
