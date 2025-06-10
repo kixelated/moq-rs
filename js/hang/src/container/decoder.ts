@@ -1,20 +1,76 @@
 import * as Moq from "@kixelated/moq";
-import { Frame } from "./frame";
+import { decodeFrame } from "./frame";
 
+export interface Frame {
+	timestamp: number;
+	data: Uint8Array;
+	keyframe: boolean;
+}
+
+export interface DecoderProps {
+	// The track is required to decode, but can be provided later.
+	track?: Moq.TrackConsumer;
+
+	// If epoch is provided, all timestamps will be offset by this value.
+	epoch?: number;
+}
+
+// TODO This class is a mess.
 export class Decoder {
-	#track: Moq.TrackConsumer;
+	epoch: number;
+
 	#group?: Moq.GroupConsumer;
+
+	#track: Moq.TrackConsumer | Promise<Moq.TrackConsumer | undefined>;
+	#trackResolve?: (track: Moq.TrackConsumer | undefined) => void;
 
 	#nextGroup?: Promise<Moq.GroupConsumer | undefined>;
 	#nextFrame?: Promise<Frame | undefined>;
 
-	constructor(track: Moq.TrackConsumer) {
-		this.#track = track;
-		this.#nextGroup = track.nextGroup();
+	constructor(props?: DecoderProps) {
+		this.epoch = props?.epoch ?? 0;
+		this.track = props?.track;
+		this.#track =
+			props?.track ??
+			new Promise((resolve) => {
+				this.#trackResolve = resolve;
+			});
+	}
+
+	get track(): Moq.TrackConsumer | undefined {
+		if (this.#track instanceof Promise) return undefined;
+		return this.#track;
+	}
+
+	set track(track: Moq.TrackConsumer | undefined) {
+		if (this.#track instanceof Moq.TrackConsumer) {
+			this.#track.close();
+		}
+
+		console.debug("setting track", track);
+
+		this.#group?.close();
+		this.#group = undefined;
+
+		this.#nextFrame = undefined;
+
+		if (track) {
+			this.#track = track;
+			this.#nextGroup = track.nextGroup();
+			this.#trackResolve?.(track);
+		} else {
+			this.#track = new Promise((resolve) => {
+				this.#trackResolve = resolve;
+			});
+			this.#nextGroup = undefined;
+		}
 	}
 
 	async readFrame(): Promise<Frame | undefined> {
 		for (;;) {
+			const track = await this.#track;
+			if (!track) return undefined;
+
 			if (this.#nextGroup && this.#nextFrame) {
 				// Figure out if nextFrame or nextGroup wins the race.
 				// TODO support variable latency
@@ -23,6 +79,8 @@ export class Decoder {
 						this.#nextFrame.then((frame) => ({ frame })),
 						this.#nextGroup.then((group) => ({ group })),
 					]);
+
+				console.debug("next", track.name, next);
 
 				if ("frame" in next) {
 					const frame = next.frame;
@@ -34,7 +92,7 @@ export class Decoder {
 
 					// We got a frame; return it.
 					// But first start fetching the next frame (note: group cannot be undefined).
-					this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
+					this.#nextFrame = this.#group ? this.#decode(false) : undefined;
 					return frame;
 				}
 
@@ -46,7 +104,7 @@ export class Decoder {
 				}
 
 				// Start fetching the next group.
-				this.#nextGroup = this.#track.nextGroup();
+				this.#nextGroup = track.nextGroup();
 
 				if (this.#group && this.#group.id >= group.id) {
 					// Skip this old group.
@@ -58,7 +116,7 @@ export class Decoder {
 				// Skip the rest of the current group.
 				this.#group?.close();
 				this.#group = next.group;
-				this.#nextFrame = this.#group ? Frame.decode(this.#group, true) : undefined;
+				this.#nextFrame = this.#group ? this.#decode(true) : undefined;
 			} else if (this.#nextGroup) {
 				// Wait for the next group.
 				const group = await this.#nextGroup;
@@ -66,8 +124,8 @@ export class Decoder {
 				this.#group = group;
 
 				if (this.#group) {
-					this.#nextGroup = this.#track.nextGroup();
-					this.#nextFrame = Frame.decode(this.#group, true);
+					this.#nextGroup = track.nextGroup();
+					this.#nextFrame = this.#decode(true);
 				} else {
 					this.#nextGroup = undefined;
 					this.#nextFrame = undefined;
@@ -85,7 +143,7 @@ export class Decoder {
 					return undefined;
 				}
 
-				this.#nextFrame = this.#group ? Frame.decode(this.#group, false) : undefined;
+				this.#nextFrame = this.#group ? this.#decode(false) : undefined;
 				return frame;
 			} else {
 				return undefined;
@@ -93,13 +151,29 @@ export class Decoder {
 		}
 	}
 
+	async #decode(keyframe: boolean): Promise<Frame | undefined> {
+		if (!this.#group) throw new Error("no group");
+
+		const buffer = await this.#group.readFrame();
+		if (!buffer) return undefined;
+
+		const frame = decodeFrame(buffer);
+
+		return { data: frame.data, keyframe, timestamp: frame.timestamp + this.epoch };
+	}
+
 	close() {
-		this.#nextFrame = undefined;
-		this.#nextGroup = undefined;
+		if (this.#track instanceof Moq.TrackConsumer) {
+			this.#track.close();
+		}
 
 		this.#group?.close();
 		this.#group = undefined;
+		this.#trackResolve?.(undefined);
 
-		this.#track.close();
+		this.#nextGroup?.then((group) => group?.close());
+		this.#nextGroup = undefined;
+
+		this.#nextFrame = undefined;
 	}
 }

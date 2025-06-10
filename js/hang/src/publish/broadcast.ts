@@ -1,10 +1,11 @@
 import * as Moq from "@kixelated/moq";
-import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
+import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioConstraints, AudioTrack } from "./audio";
 import { Location, LocationProps } from "./location";
 import { Video, VideoConstraints, VideoTrack } from "./video";
+import { Chat, ChatProps } from "./chat";
 
 export type Device = "screen" | "camera";
 
@@ -14,7 +15,9 @@ export type BroadcastProps = {
 	audio?: AudioConstraints | boolean;
 	video?: VideoConstraints | boolean;
 	location?: LocationProps;
+	user?: Catalog.User;
 	device?: Device;
+	chat?: ChatProps;
 
 	// You can disable reloading if you want to save a round trip when you know the broadcast is already live.
 	reload?: boolean;
@@ -28,8 +31,10 @@ export class Broadcast {
 	audio: Audio;
 	video: Video;
 	location: Location;
+	user: Signal<Catalog.User | undefined>;
+	chat: Chat;
 
-	catalog: Memo<Catalog.Root>;
+	//catalog: Memo<Catalog.Root>;
 	device: Signal<Device | undefined>;
 
 	#broadcast = new Moq.BroadcastProducer();
@@ -47,6 +52,8 @@ export class Broadcast {
 		this.audio = new Audio(this.#broadcast, { constraints: props?.audio });
 		this.video = new Video(this.#broadcast, { constraints: props?.video });
 		this.location = new Location(this.#broadcast, props?.location);
+		this.chat = new Chat(this.#broadcast, props?.chat);
+		this.user = signal(props?.user);
 
 		this.device = signal(props?.device);
 
@@ -78,7 +85,7 @@ export class Broadcast {
 		this.#signals.effect(() => this.#runCameraVideo());
 		this.#signals.effect(() => this.#runScreen());
 
-		this.catalog = this.#signals.memo(() => this.#runCatalog());
+		this.#signals.effect(() => this.#runCatalog());
 	}
 
 	#runCameraAudio() {
@@ -187,7 +194,9 @@ export class Broadcast {
 		};
 	}
 
-	#runCatalog(): Catalog.Root {
+	#runCatalog() {
+		if (!this.enabled.get()) return;
+
 		// Create the new catalog.
 		const audio = this.audio.catalog.get();
 		const video = this.video.catalog.get();
@@ -196,6 +205,8 @@ export class Broadcast {
 			video: video ? [video] : [],
 			audio: audio ? [audio] : [],
 			location: this.location.catalog.get(),
+			user: this.user.get(),
+			chat: this.chat.catalog.get(),
 		};
 
 		const encoded = Catalog.encode(catalog);
@@ -205,12 +216,14 @@ export class Broadcast {
 		catalogGroup.writeFrame(encoded);
 		catalogGroup.close();
 
-		return catalog;
+		console.debug("published catalog", this.path.peek(), catalog);
 	}
 
 	close() {
 		this.#signals.close();
 		this.audio.close();
 		this.video.close();
+		this.location.close();
+		this.chat.close();
 	}
 }

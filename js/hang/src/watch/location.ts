@@ -87,14 +87,20 @@ export class Location {
 }
 
 async function runConsumer(consumer: LocationConsumer, location: Signal<Catalog.Position | undefined>) {
-	for (;;) {
-		const position = await consumer.next();
-		if (!position) break;
+	try {
+		for (;;) {
+			const position = await consumer.next();
+			if (!position) break;
 
-		location.set(position);
+			location.set(position);
+		}
+
+		location.set(undefined);
+	} catch (err) {
+		console.warn("error running location consumer", err);
+	} finally {
+		consumer.close();
 	}
-
-	location.set(undefined);
 }
 
 export class LocationPeer {

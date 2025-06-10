@@ -197,7 +197,7 @@ export class Audio {
 			description: config.description ? Buffer.from(config.description, "hex") : undefined,
 		});
 
-		const media = new Container.Decoder(sub);
+		const media = new Container.Decoder({ track: sub });
 
 		(async () => {
 			for (;;) {

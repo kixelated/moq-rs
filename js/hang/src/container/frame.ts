@@ -1,33 +1,23 @@
-import type { GroupConsumer, GroupProducer } from "@kixelated/moq";
 import { getVint53, setVint53 } from "./vint";
 
-export class Frame {
-	keyframe: boolean;
-	timestamp: number;
-	data: Uint8Array;
+export interface FrameSource {
+	byteLength: number;
+	copyTo(buffer: Uint8Array): void;
+}
 
-	constructor(keyframe: boolean, timestamp: number, data: Uint8Array) {
-		this.keyframe = keyframe;
-		this.timestamp = timestamp;
-		this.data = data;
+export function encodeFrame(source: Uint8Array | FrameSource, timestamp: number): Uint8Array {
+	const data = new Uint8Array(8 + (source instanceof Uint8Array ? source.byteLength : source.byteLength));
+	const size = setVint53(data, timestamp).byteLength;
+	if (source instanceof Uint8Array) {
+		data.set(source, size);
+	} else {
+		source.copyTo(data.subarray(size));
 	}
+	return data.subarray(0, (source instanceof Uint8Array ? source.byteLength : source.byteLength) + size);
+}
 
-	static async decode(group: GroupConsumer, keyframe: boolean): Promise<Frame | undefined> {
-		const payload = await group.readFrame();
-		if (!payload) {
-			return undefined;
-		}
-
-		const [timestamp, data] = getVint53(payload);
-		return new Frame(keyframe, timestamp, data);
-	}
-
-	encode(group: GroupProducer) {
-		let frame = new Uint8Array(8 + this.data.byteLength);
-		const size = setVint53(frame, this.timestamp).byteLength;
-		frame.set(this.data, size);
-		frame = new Uint8Array(frame.buffer, 0, this.data.byteLength + size);
-
-		group.writeFrame(frame);
-	}
+// NOTE: A keyframe is always the first frame in a group, so it's not encoded on the wire.
+export function decodeFrame(buffer: Uint8Array): { data: Uint8Array; timestamp: number } {
+	const [timestamp, data] = getVint53(buffer);
+	return { timestamp, data };
 }

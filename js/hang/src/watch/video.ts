@@ -193,7 +193,7 @@ export class Video {
 
 		// We don't clear previous frames so we can seamlessly switch tracks.
 		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
-		const media = new Container.Decoder(sub);
+		const media = new Container.Decoder({ track: sub });
 
 		const decoder = new VideoDecoder({
 			output: (frame) => {

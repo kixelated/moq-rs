@@ -113,11 +113,8 @@ export class Video {
 					throw new Error("no keyframe");
 				}
 
-				const buffer = new Uint8Array(frame.byteLength);
-				frame.copyTo(buffer);
-
-				const container = new Container.Frame(frame.type === "key", frame.timestamp, buffer);
-				container.encode(this.#group);
+				const buffer = Container.encodeFrame(frame, frame.timestamp);
+				this.#group.writeFrame(buffer);
 			},
 			error: (err: Error) => {
 				this.#group?.abort(err);

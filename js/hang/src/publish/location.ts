@@ -37,12 +37,12 @@ export class Location {
 		this.current = signal(props?.current ?? undefined);
 		this.peering = signal(props?.peering ?? undefined);
 
-		broadcast.insertTrack(this.#track.consume());
-		this.#signals.cleanup(() => broadcast.removeTrack(this.#track.name));
-
 		this.catalog = this.#signals.memo(() => {
 			const enabled = this.enabled.get();
 			if (!enabled) return;
+
+			broadcast.insertTrack(this.#track.consume());
+			cleanup(() => broadcast.removeTrack(this.#track.name));
 
 			return {
 				initial: this.current.peek(), // Doesn't trigger a re-render

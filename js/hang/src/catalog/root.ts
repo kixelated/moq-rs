@@ -5,11 +5,15 @@ import { AudioSchema } from "./audio";
 import { CapabilitiesSchema } from "./capabilities";
 import { LocationSchema } from "./location";
 import { VideoSchema } from "./video";
+import { UserSchema } from "./user";
+import { ChatSchema } from "./chat";
 
 export const RootSchema = z.object({
 	video: z.optional(z.array(VideoSchema)),
 	audio: z.optional(z.array(AudioSchema)),
 	location: z.optional(LocationSchema),
+	user: z.optional(UserSchema),
+	chat: z.optional(ChatSchema),
 	capabilities: z.optional(CapabilitiesSchema),
 });
 
