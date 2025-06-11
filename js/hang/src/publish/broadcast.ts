@@ -3,9 +3,9 @@ import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioConstraints, AudioTrack } from "./audio";
+import { Chat, ChatProps } from "./chat";
 import { Location, LocationProps } from "./location";
 import { Video, VideoConstraints, VideoTrack } from "./video";
-import { Chat, ChatProps } from "./chat";
 
 export type Device = "screen" | "camera";
 

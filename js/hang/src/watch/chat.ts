@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import * as Catalog from "../catalog";
 
-import { cleanup, Memo, Signal, signal, Signals } from "@kixelated/signals";
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import { Container } from "..";
 
 export interface ChatProps {

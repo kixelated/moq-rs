@@ -3,10 +3,10 @@ import { z } from "zod/v4-mini";
 
 import { AudioSchema } from "./audio";
 import { CapabilitiesSchema } from "./capabilities";
-import { LocationSchema } from "./location";
-import { VideoSchema } from "./video";
-import { UserSchema } from "./user";
 import { ChatSchema } from "./chat";
+import { LocationSchema } from "./location";
+import { UserSchema } from "./user";
+import { VideoSchema } from "./video";
 
 export const RootSchema = z.object({
 	video: z.optional(z.array(VideoSchema)),

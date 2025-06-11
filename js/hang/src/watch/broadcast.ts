@@ -3,9 +3,9 @@ import { Memo, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioProps } from "./audio";
+import { Chat, ChatProps } from "./chat";
 import { Location, LocationProps } from "./location";
 import { Video, VideoProps } from "./video";
-import { Chat, ChatProps } from "./chat";
 
 export interface BroadcastProps {
 	// Whether to start downloading the broadcast.

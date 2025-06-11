@@ -8,9 +8,7 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"files": [
-		"./src"
-	],
+	"files": ["./src"],
 	"scripts": {
 		"build": "tsc -b",
 		"check": "tsc --noEmit",
