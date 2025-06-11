@@ -31,7 +31,7 @@ export function decode(raw: Uint8Array): Root {
 		const json = JSON.parse(str);
 		return RootSchema.parse(json);
 	} catch (error) {
-		console.error("invalid catalog", str);
+		console.warn("invalid catalog", str);
 		throw error;
 	}
 }
