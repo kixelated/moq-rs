@@ -8,13 +8,16 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"files": ["./src"],
+	"files": [
+		"./src"
+	],
 	"scripts": {
 		"build": "tsc -b",
 		"check": "tsc --noEmit",
 		"release": "tsx ../scripts/release.ts"
 	},
 	"dependencies": {
+		"dequal": "^2.0.3",
 		"solid-js": "^1.9.7"
 	},
 	"devDependencies": {

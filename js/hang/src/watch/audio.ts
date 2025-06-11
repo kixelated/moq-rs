@@ -1,6 +1,5 @@
 import * as Moq from "@kixelated/moq";
 import { Memo, Signal, Signals, signal } from "@kixelated/signals";
-import { isEqual } from "lodash";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -129,9 +128,7 @@ export class Audio {
 		this.catalog = catalog;
 		this.enabled = signal(props?.enabled ?? false);
 
-		this.selected = this.#signals.memo(() => this.catalog.get()?.audio?.[0], {
-			equals: (a, b) => isEqual(a, b),
-		});
+		this.selected = this.#signals.memo(() => this.catalog.get()?.audio?.[0], { deepEquals: true });
 
 		// Stop all active samples when disabled.
 		this.#signals.effect(() => {
@@ -197,17 +194,17 @@ export class Audio {
 			description: config.description ? Buffer.from(config.description, "hex") : undefined,
 		});
 
-		const media = new Container.Decoder({ track: sub });
-
 		(async () => {
 			for (;;) {
-				const frame = await media.readFrame();
+				const frame = await sub.nextFrame();
 				if (!frame) break;
+
+				const decoded = Container.decodeFrame(frame.data);
 
 				const chunk = new EncodedAudioChunk({
 					type: "key",
-					data: frame.data,
-					timestamp: frame.timestamp,
+					data: decoded.data,
+					timestamp: decoded.timestamp,
 				});
 
 				decoder.decode(chunk);
@@ -216,7 +213,6 @@ export class Audio {
 
 		return () => {
 			sub.close();
-			media.close();
 			decoder.close();
 		};
 	}

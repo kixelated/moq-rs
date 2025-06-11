@@ -37,14 +37,7 @@ export function decode(raw: Uint8Array): Root {
 }
 
 export async function fetch(track: Moq.TrackConsumer): Promise<Root | undefined> {
-	const group = await track.nextGroup();
-	if (!group) return undefined; // track is done
-
-	try {
-		const frame = await group.readFrame();
-		if (!frame) throw new Error("empty group");
-		return decode(frame);
-	} finally {
-		group.close();
-	}
+	const frame = await track.nextFrame();
+	if (!frame) return undefined;
+	return decode(frame.data);
 }

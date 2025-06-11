@@ -49,7 +49,7 @@ export class Broadcast {
 	readonly active = this.#active.readonly();
 
 	#reload: boolean;
-	#signals = new Signals();
+	signals = new Signals();
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
@@ -61,11 +61,11 @@ export class Broadcast {
 		this.chat = new Chat(this.#broadcast, this.#catalog, props?.chat);
 		this.#reload = props?.reload ?? true;
 
-		this.user = this.#signals.memo(() => this.#catalog.get()?.user);
+		this.user = this.signals.memo(() => this.#catalog.get()?.user);
 
-		this.#signals.effect(() => this.#runActive());
-		this.#signals.effect(() => this.#runBroadcast());
-		this.#signals.effect(() => this.#runCatalog());
+		this.signals.effect(() => this.#runActive());
+		this.signals.effect(() => this.#runBroadcast());
+		this.signals.effect(() => this.#runCatalog());
 	}
 
 	#runActive() {
@@ -160,7 +160,7 @@ export class Broadcast {
 	}
 
 	close() {
-		this.#signals.close();
+		this.signals.close();
 
 		this.audio.close();
 		this.video.close();

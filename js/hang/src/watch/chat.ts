@@ -15,6 +15,8 @@ export class Chat {
 
 	enabled: Signal<boolean>;
 	catalog: Memo<Catalog.Chat | undefined>;
+	track: Memo<Container.ChatConsumer | undefined>;
+	ttl: Memo<DOMHighResTimeStamp | undefined>;
 
 	#signals = new Signals();
 
@@ -26,32 +28,33 @@ export class Chat {
 		this.broadcast = broadcast;
 		this.enabled = signal(props?.enabled ?? false);
 
-		this.catalog = this.#signals.memo(() => {
-			return this.enabled.get() ? catalog.get()?.chat : undefined;
+		// Grab the chat section from the catalog (if it's changed).
+		this.catalog = this.#signals.memo(
+			() => {
+				if (!this.enabled.get()) return undefined;
+				return catalog.get()?.chat;
+			},
+			{ deepEquals: true },
+		);
+
+		// TODO enforce the TTL?
+		this.ttl = this.#signals.memo(() => {
+			return this.catalog.get()?.ttl;
 		});
-	}
 
-	consume(): Container.ChatDecoder {
-		// This works because Decoder supports signals... kinda.
-		const decoder = new Container.ChatDecoder();
-
-		this.#signals.effect(() => {
+		this.track = this.#signals.memo(() => {
 			const catalog = this.catalog.get();
-			if (!catalog) return;
+			if (!catalog) return undefined;
 
 			const broadcast = this.broadcast.get();
-			if (!broadcast) return;
+			if (!broadcast) return undefined;
 
 			const track = broadcast.subscribe(catalog.track.name, catalog.track.priority);
-			decoder.track = track;
-			decoder.epoch = catalog.epoch ?? 0;
+			const consumer = new Container.ChatConsumer(track);
 
-			cleanup(() => {
-				track.close();
-			});
+			cleanup(() => consumer.close());
+			return consumer;
 		});
-
-		return decoder;
 	}
 
 	close() {

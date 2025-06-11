@@ -39,7 +39,7 @@ export class Broadcast {
 
 	#broadcast = new Moq.BroadcastProducer();
 	#catalog = new Moq.TrackProducer("catalog.json", 0);
-	#signals = new Signals();
+	signals = new Signals();
 
 	#published = signal(false);
 	readonly published = this.#published.readonly();
@@ -59,7 +59,7 @@ export class Broadcast {
 
 		this.#broadcast.insertTrack(this.#catalog.consume());
 
-		this.#signals.effect(() => {
+		this.signals.effect(() => {
 			if (!this.enabled.get()) return;
 
 			const connection = this.connection.established.get();
@@ -81,11 +81,11 @@ export class Broadcast {
 
 		// These are separate effects because the camera audio/video constraints can be independent.
 		// The screen constraints are needed at the same time.
-		this.#signals.effect(() => this.#runCameraAudio());
-		this.#signals.effect(() => this.#runCameraVideo());
-		this.#signals.effect(() => this.#runScreen());
+		this.signals.effect(() => this.#runCameraAudio());
+		this.signals.effect(() => this.#runCameraVideo());
+		this.signals.effect(() => this.#runScreen());
 
-		this.#signals.effect(() => this.#runCatalog());
+		this.signals.effect(() => this.#runCatalog());
 	}
 
 	#runCameraAudio() {
@@ -220,7 +220,7 @@ export class Broadcast {
 	}
 
 	close() {
-		this.#signals.close();
+		this.signals.close();
 		this.audio.close();
 		this.video.close();
 		this.location.close();

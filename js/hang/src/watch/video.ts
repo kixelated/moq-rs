@@ -1,7 +1,6 @@
 import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
 import { Memo, Signal, Signals, signal } from "@kixelated/signals";
-import { isEqual } from "lodash";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -173,9 +172,7 @@ export class Video {
 		this.enabled = signal(props?.enabled ?? false);
 
 		// TODO use isConfigSupported
-		this.selected = this.#signals.memo(() => this.catalog.get()?.video?.[0], {
-			equals: (a, b) => isEqual(a, b),
-		});
+		this.selected = this.#signals.memo(() => this.catalog.get()?.video?.[0], { deepEquals: true });
 		this.active = this.#signals.memo(() => this.selected.get() !== undefined);
 
 		this.#signals.effect(() => this.#init());
@@ -193,7 +190,6 @@ export class Video {
 
 		// We don't clear previous frames so we can seamlessly switch tracks.
 		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
-		const media = new Container.Decoder({ track: sub });
 
 		const decoder = new VideoDecoder({
 			output: (frame) => {
@@ -229,13 +225,15 @@ export class Video {
 		(async () => {
 			try {
 				for (;;) {
-					const frame = await media.readFrame();
-					if (!frame) break;
+					const next = await sub.nextFrame();
+					if (!next) break;
+
+					const decoded = Container.decodeFrame(next.data);
 
 					const chunk = new EncodedVideoChunk({
-						type: frame.keyframe ? "key" : "delta",
-						data: frame.data,
-						timestamp: frame.timestamp,
+						type: next.frame === 0 ? "key" : "delta",
+						data: decoded.data,
+						timestamp: decoded.timestamp,
 					});
 
 					decoder.decode(chunk);
@@ -243,13 +241,12 @@ export class Video {
 			} catch (error) {
 				console.warn("video decoder error", error);
 			} finally {
-				media.close();
+				sub.close();
 			}
 		})();
 
 		return () => {
 			decoder.close();
-			media.close();
 			sub.close();
 		};
 	}

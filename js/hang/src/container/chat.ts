@@ -1,45 +1,48 @@
 import * as Moq from "@kixelated/moq";
-import { Decoder, DecoderProps } from "./decoder";
 
-export type ChatMessage = {
-	timestamp: DOMHighResTimeStamp;
-	text: string;
-};
+export class ChatProducer {
+	#track: Moq.TrackProducer;
 
-// A wrapper around Decoder that converts messages to text.
-export class ChatDecoder {
-	#decoder: Decoder;
-
-	constructor(props?: DecoderProps) {
-		this.#decoder = new Decoder(props);
+	constructor(track: Moq.TrackProducer) {
+		this.#track = track;
 	}
 
-	get track(): Moq.TrackConsumer | undefined {
-		return this.#decoder.track;
+	// Chat messages are just text/markdown.
+	encode(markdown: string) {
+		const encoder = new TextEncoder();
+		const buffer = encoder.encode(markdown);
+
+		const group = this.#track.appendGroup();
+		group.writeFrame(buffer);
+		group.close();
 	}
 
-	set track(track: Moq.TrackConsumer | undefined) {
-		this.#decoder.track = track;
-	}
-
-	get epoch(): number {
-		return this.#decoder.epoch;
-	}
-
-	set epoch(epoch: number) {
-		this.#decoder.epoch = epoch;
-	}
-
-	async readMessage(): Promise<ChatMessage | undefined> {
-		const frame = await this.#decoder.readFrame();
-		if (!frame) return;
-
-		const text = new TextDecoder().decode(frame.data);
-		console.debug("received chat frame", text);
-		return { timestamp: frame.timestamp, text };
+	consume(): ChatConsumer {
+		return new ChatConsumer(this.#track.consume());
 	}
 
 	close() {
-		this.#decoder.close();
+		this.#track.close();
+	}
+}
+
+export class ChatConsumer {
+	#track: Moq.TrackConsumer;
+
+	constructor(track: Moq.TrackConsumer) {
+		this.#track = track;
+	}
+
+	// Chat messages are just text/markdown.
+	async next(): Promise<string | undefined> {
+		const frame = await this.#track.nextFrame();
+		if (!frame) return undefined;
+
+		const decoder = new TextDecoder();
+		return decoder.decode(frame.data);
+	}
+
+	close() {
+		this.#track.close();
 	}
 }

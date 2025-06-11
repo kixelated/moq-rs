@@ -91,21 +91,21 @@ test("track group cloning", async () => {
 	assert.strictEqual(groupA?.id, group.id);
 	assert.strictEqual(groupB?.id, group.id);
 
-	const frame1A = await groupA.readFrame();
-	const frame1B = await groupB.readFrame();
+	const frame1A = await groupA.nextFrame();
+	const frame1B = await groupB.nextFrame();
 
 	assert.deepEqual(frame1A, new Uint8Array([1]));
 	assert.deepEqual(frame1B, new Uint8Array([1]));
 
-	const frame2A = await groupA.readFrame();
+	const frame2A = await groupA.nextFrame();
 	groupA.close(); // closing doesn't impact the other reader
-	const frame2B = await groupB.readFrame();
+	const frame2B = await groupB.nextFrame();
 
 	assert.deepEqual(frame2A, new Uint8Array([2]));
 	assert.deepEqual(frame2B, new Uint8Array([2]));
 
-	const frame3A = await groupA.readFrame();
-	const frame3B = await groupB.readFrame();
+	const frame3A = await groupA.nextFrame();
+	const frame3B = await groupB.nextFrame();
 
 	assert.deepEqual(frame3A, undefined);
 	assert.deepEqual(frame3B, new Uint8Array([3]));

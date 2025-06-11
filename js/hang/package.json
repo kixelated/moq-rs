@@ -28,12 +28,10 @@
 		"@kixelated/moq": "workspace:^0.6.0",
 		"@kixelated/signals": "workspace:^0.2.0",
 		"buffer": "^6.0.3",
-		"lodash": "^4.17.21",
 		"solid-js": "^1.9.7",
 		"zod": "^3.25.20"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.17.17",
 		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
 		"fast-glob": "^3.3.3",
 		"typescript": "^5.8.3",
