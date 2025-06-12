@@ -128,14 +128,14 @@ export class Signals {
 			return true;
 		});
 		if (!res) {
-			throw new Error("effect called after root was closed");
+			throw new Error("root is closed");
 		}
 	}
 
 	memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
 		const res = runWithOwner(this.#owner, () => memo(fn, options));
 		if (!res) {
-			throw new Error("memo called after root was closed");
+			throw new Error("root is closed");
 		}
 
 		return res;
@@ -148,12 +148,13 @@ export class Signals {
 		});
 
 		if (!ok) {
-			fn();
+			throw new Error("root is closed");
 		}
 	}
 
 	close(): void {
 		this.#dispose();
+
 		if (Signals.dev) {
 			Signals.#finalizer.unregister(this);
 		}
