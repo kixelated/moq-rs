@@ -1,33 +1,69 @@
-import type { GroupConsumer, GroupProducer } from "@kixelated/moq";
+import * as Moq from "@kixelated/moq";
 import { getVint53, setVint53 } from "./vint";
 
-export class Frame {
-	keyframe: boolean;
-	timestamp: number;
-	data: Uint8Array;
+export interface FrameSource {
+	byteLength: number;
+	copyTo(buffer: Uint8Array): void;
+}
 
-	constructor(keyframe: boolean, timestamp: number, data: Uint8Array) {
-		this.keyframe = keyframe;
-		this.timestamp = timestamp;
-		this.data = data;
+export function encodeFrame(source: Uint8Array | FrameSource, timestamp: number): Uint8Array {
+	const data = new Uint8Array(8 + (source instanceof Uint8Array ? source.byteLength : source.byteLength));
+	const size = setVint53(data, timestamp).byteLength;
+	if (source instanceof Uint8Array) {
+		data.set(source, size);
+	} else {
+		source.copyTo(data.subarray(size));
+	}
+	return data.subarray(0, (source instanceof Uint8Array ? source.byteLength : source.byteLength) + size);
+}
+
+// NOTE: A keyframe is always the first frame in a group, so it's not encoded on the wire.
+export function decodeFrame(buffer: Uint8Array): { data: Uint8Array; timestamp: number } {
+	const [timestamp, data] = getVint53(buffer);
+	return { timestamp, data };
+}
+
+export class FrameProducer {
+	#track: Moq.TrackProducer;
+	#group?: Moq.GroupProducer;
+
+	constructor(track: Moq.TrackProducer) {
+		this.#track = track;
 	}
 
-	static async decode(group: GroupConsumer, keyframe: boolean): Promise<Frame | undefined> {
-		const payload = await group.readFrame();
-		if (!payload) {
-			return undefined;
+	encode(data: Uint8Array | FrameSource, timestamp: number, keyframe: boolean) {
+		if (keyframe) {
+			this.#group?.close();
+			this.#group = this.#track.appendGroup();
+		} else if (!this.#group) {
+			throw new Error("must start with a keyframe");
 		}
 
-		const [timestamp, data] = getVint53(payload);
-		return new Frame(keyframe, timestamp, data);
+		this.#group?.writeFrame(encodeFrame(data, timestamp));
 	}
 
-	encode(group: GroupProducer) {
-		let frame = new Uint8Array(8 + this.data.byteLength);
-		const size = setVint53(frame, this.timestamp).byteLength;
-		frame.set(this.data, size);
-		frame = new Uint8Array(frame.buffer, 0, this.data.byteLength + size);
+	consume(): FrameConsumer {
+		return new FrameConsumer(this.#track.consume());
+	}
 
-		group.writeFrame(frame);
+	close() {
+		this.#track.close();
+		this.#group?.close();
+	}
+}
+
+export class FrameConsumer {
+	#track: Moq.TrackConsumer;
+
+	constructor(track: Moq.TrackConsumer) {
+		this.#track = track;
+	}
+
+	async decode(): Promise<{ data: Uint8Array; timestamp: number; keyframe: boolean } | undefined> {
+		const next = await this.#track.nextFrame();
+		if (!next) return undefined;
+
+		const { timestamp, data } = decodeFrame(next.data);
+		return { data, timestamp, keyframe: next.frame === 0 };
 	}
 }

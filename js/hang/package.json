@@ -25,16 +25,14 @@
 		"release": "tsx ../scripts/release.ts"
 	},
 	"dependencies": {
-		"@kixelated/moq": "workspace:^0.6.0",
-		"@kixelated/signals": "workspace:^0.2.0",
+		"@kixelated/moq": "workspace:^",
+		"@kixelated/signals": "workspace:^",
 		"buffer": "^6.0.3",
-		"lodash": "^4.17.21",
 		"solid-js": "^1.9.7",
-		"zod": "^3.25.20"
+		"zod": "^3.25.62"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.17.17",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
+		"@typescript/lib-dom": "npm:@types/web@^0.0.241",
 		"fast-glob": "^3.3.3",
 		"typescript": "^5.8.3",
 		"vite": "^6.3.5",

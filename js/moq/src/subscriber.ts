@@ -105,6 +105,7 @@ export class Subscriber {
 					producer.removeTrack(track.name);
 				} catch (err) {
 					// Already closed.
+					console.warn("track already removed");
 				}
 			});
 		});
@@ -131,15 +132,16 @@ export class Subscriber {
 		const stream = await Wire.Stream.open(this.#quic, msg);
 		try {
 			await Wire.SubscribeOk.decode(stream.reader);
-			console.debug(`subscribe ok: broadcast=${path} track=${track.name}`);
+			console.debug(`subscribe ok: id=${id} broadcast=${path} track=${track.name}`);
 
 			await Promise.race([stream.reader.closed(), track.unused()]);
 
 			track.close();
+			console.debug(`subscribe close: id=${id} broadcast=${path} track=${track.name}`);
 		} catch (err) {
 			track.abort(error(err));
+			console.warn(`subscribe error: id=${id} broadcast=${path} track=${track.name} error=${error(err)}`);
 		} finally {
-			console.debug(`subscribe close: broadcast=${path} track=${track.name}`);
 			this.#subscribes.delete(id);
 			stream.close();
 		}
@@ -154,7 +156,10 @@ export class Subscriber {
 	 */
 	async runGroup(group: Wire.Group, stream: Wire.Reader) {
 		const subscribe = this.#subscribes.get(group.subscribe);
-		if (!subscribe) return;
+		if (!subscribe) {
+			console.warn(`unknown subscription: id=${group.subscribe}`);
+			return;
+		}
 
 		const producer = new GroupProducer(group.sequence);
 		subscribe.insertGroup(producer.consume());

@@ -204,8 +204,8 @@ impl Publisher {
 								tracing::debug!(?err, track = %track.name, group = %group.info.sequence, "serving group error");
 								stream.abort(&err);
 							}
-							_ => {
-								tracing::trace!(track = %track.name, group = %group.info.sequence, "serving group complete");
+							Ok(size) => {
+								tracing::trace!(track = %track.name, group = %group.info.sequence, size, "serving group complete");
 							}
 						}
 
@@ -234,8 +234,14 @@ impl Publisher {
 		Ok(())
 	}
 
-	pub async fn serve_group(stream: &mut Writer, msg: message::Group, group: &mut GroupConsumer) -> Result<(), Error> {
+	pub async fn serve_group(
+		stream: &mut Writer,
+		msg: message::Group,
+		group: &mut GroupConsumer,
+	) -> Result<usize, Error> {
 		stream.encode(&msg).await?;
+
+		let mut size = 0;
 
 		loop {
 			tokio::select! {
@@ -247,18 +253,30 @@ impl Publisher {
 						None => break,
 					};
 
+					size += frame.info.size as usize;
+
 					let header = message::Frame { size: frame.info.size };
 					stream.encode(&header).await?;
 
-					// Technically we should tokio::select here but who cares.
-					while let Some(chunk) = frame.read().await? {
-						stream.write(&chunk).await?;
+					loop {
+						tokio::select! {
+							biased;
+							_ = stream.closed() => return Err(Error::Cancel),
+							chunk = frame.read() => {
+								match chunk? {
+									Some(chunk) => stream.write(&chunk).await?,
+									None => break,
+								}
+							}
+						}
 					}
 				}
 			}
 		}
 
-		stream.finish().await
+		stream.finish().await?;
+
+		Ok(size)
 	}
 
 	// Quinn takes a i32 priority.

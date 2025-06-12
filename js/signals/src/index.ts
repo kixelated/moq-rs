@@ -14,6 +14,8 @@ import {
 
 export { batch } from "solid-js";
 
+import { dequal } from "dequal";
+
 export interface Signal<T> extends Memo<T> {
 	set(value: T | ((prev: T) => T)): void;
 	readonly(): Memo<T>;
@@ -70,9 +72,13 @@ export interface Memo<T> {
 	memo<U>(fn: (value: T) => U): Memo<U>;
 }
 
-export type MemoOptions<T> = SignalOptions<T>;
+export type MemoOptions<T> = SignalOptions<T> & { deepEquals?: boolean };
 
 export function memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
+	if (options?.deepEquals) {
+		options.equals = dequal;
+	}
+
 	const sig = signal(fn(), options);
 	effect(() => {
 		sig.set(fn());

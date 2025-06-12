@@ -1,8 +1,9 @@
 import * as Moq from "@kixelated/moq";
-import { Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioProps } from "./audio";
+import { Chat, ChatProps } from "./chat";
 import { Location, LocationProps } from "./location";
 import { Video, VideoProps } from "./video";
 
@@ -21,6 +22,7 @@ export interface BroadcastProps {
 	video?: VideoProps;
 	audio?: AudioProps;
 	location?: LocationProps;
+	chat?: ChatProps;
 }
 
 // A broadcast that (optionally) reloads automatically when live/offline.
@@ -30,10 +32,12 @@ export class Broadcast {
 	enabled: Signal<boolean>;
 	path: Signal<string>;
 	status = signal<"offline" | "loading" | "live">("offline");
+	user: Memo<Catalog.User | undefined>;
 
 	audio: Audio;
 	video: Video;
 	location: Location;
+	chat: Chat;
 
 	#broadcast = signal<Moq.BroadcastConsumer | undefined>(undefined);
 
@@ -45,7 +49,7 @@ export class Broadcast {
 	readonly active = this.#active.readonly();
 
 	#reload: boolean;
-	#signals = new Signals();
+	signals = new Signals();
 
 	constructor(connection: Connection, props?: BroadcastProps) {
 		this.connection = connection;
@@ -54,11 +58,14 @@ export class Broadcast {
 		this.audio = new Audio(this.#broadcast, this.#catalog, props?.audio);
 		this.video = new Video(this.#broadcast, this.#catalog, props?.video);
 		this.location = new Location(this.#broadcast, this.#catalog, props?.location);
+		this.chat = new Chat(this.#broadcast, this.#catalog, props?.chat);
 		this.#reload = props?.reload ?? true;
 
-		this.#signals.effect(() => this.#runActive());
-		this.#signals.effect(() => this.#runBroadcast());
-		this.#signals.effect(() => this.#runCatalog());
+		this.user = this.signals.memo(() => this.#catalog.get()?.user);
+
+		this.signals.effect(() => this.#runActive());
+		this.signals.effect(() => this.#runBroadcast());
+		this.signals.effect(() => this.#runCatalog());
 	}
 
 	#runActive() {
@@ -134,9 +141,13 @@ export class Broadcast {
 					const update = await Catalog.fetch(catalog);
 					if (!update) break;
 
+					console.debug("received catalog", this.path.peek(), update);
+
 					this.#catalog.set(update);
 					this.status.set("live");
 				}
+			} catch (err) {
+				console.warn("error fetching catalog", this.path.peek(), err);
 			} finally {
 				this.#catalog.set(undefined);
 				this.status.set("offline");
@@ -149,10 +160,11 @@ export class Broadcast {
 	}
 
 	close() {
-		this.#signals.close();
+		this.signals.close();
 
 		this.audio.close();
 		this.video.close();
 		this.location.close();
+		this.chat.close();
 	}
 }

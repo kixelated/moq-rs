@@ -1,6 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
+import * as Container from "../container";
 
 export type LocationProps = {
 	// If true, then we'll publish our position to the broadcast.
@@ -22,7 +23,7 @@ export class Location {
 	peering: Signal<boolean | undefined>;
 
 	#track = new Moq.TrackProducer("location.json", 0);
-	#producer = new LocationProducer(this.#track);
+	#producer = new Container.PositionProducer(this.#track);
 
 	catalog: Memo<Catalog.Location | undefined>;
 
@@ -37,12 +38,12 @@ export class Location {
 		this.current = signal(props?.current ?? undefined);
 		this.peering = signal(props?.peering ?? undefined);
 
-		broadcast.insertTrack(this.#track.consume());
-		this.#signals.cleanup(() => broadcast.removeTrack(this.#track.name));
-
 		this.catalog = this.#signals.memo(() => {
 			const enabled = this.enabled.get();
 			if (!enabled) return;
+
+			broadcast.insertTrack(this.#track.consume());
+			cleanup(() => broadcast.removeTrack(this.#track.name));
 
 			return {
 				initial: this.current.peek(), // Doesn't trigger a re-render
@@ -75,7 +76,7 @@ export class LocationPeer {
 	catalog: Signal<Record<string, Catalog.Track> | undefined>;
 	broadcast: Moq.BroadcastProducer;
 	//location: Signal<Catalog.Position | undefined>
-	producer: Memo<LocationProducer | undefined>;
+	producer: Memo<Container.PositionProducer | undefined>;
 
 	#signals = new Signals();
 
@@ -117,7 +118,7 @@ export class LocationPeer {
 				});
 			});
 
-			const producer = new LocationProducer(track);
+			const producer = new Container.PositionProducer(track);
 			cleanup(() => producer.close());
 
 			return producer;
@@ -126,29 +127,5 @@ export class LocationPeer {
 
 	close() {
 		this.#signals.close();
-	}
-}
-
-export class LocationProducer {
-	track: Moq.TrackProducer;
-
-	constructor(track: Moq.TrackProducer) {
-		this.track = track;
-	}
-
-	update(position: Catalog.Position) {
-		const group = this.track.appendGroup();
-
-		// We encode everything as JSON for simplicity.
-		// In the future, we should encode as a binary format to save bytes.
-		const encoder = new TextEncoder();
-		const encoded = encoder.encode(JSON.stringify(position));
-
-		group.writeFrame(encoded);
-		group.close();
-	}
-
-	close() {
-		this.track.close();
 	}
 }

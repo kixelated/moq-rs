@@ -86,7 +86,7 @@ export class GroupConsumer {
 	 * Reads the next frame from the group.
 	 * @returns A promise that resolves to the next frame or undefined
 	 */
-	async readFrame(): Promise<Uint8Array | undefined> {
+	async nextFrame(): Promise<Uint8Array | undefined> {
 		const frames = await this.#frames.when((frames) => frames.length > this.#index);
 		return frames?.at(this.#index++);
 	}
@@ -104,5 +104,9 @@ export class GroupConsumer {
 	 */
 	clone(): GroupConsumer {
 		return new GroupConsumer(this.#frames.clone(), this.id);
+	}
+
+	get index() {
+		return this.#index;
 	}
 }

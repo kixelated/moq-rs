@@ -1,7 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
-import { Frame } from "../container/frame";
+import * as Container from "../container";
 
 // Create a group every half a second
 const GOP_DURATION = 0.5;
@@ -159,11 +159,8 @@ export class Audio {
 					this.#groupTimestamp = frame.timestamp;
 				}
 
-				const buffer = new Uint8Array(frame.byteLength);
-				frame.copyTo(buffer);
-
-				const hang = new Frame(frame.type === "key", frame.timestamp, buffer);
-				hang.encode(this.#group);
+				const buffer = Container.encodeFrame(frame, frame.timestamp);
+				this.#group.writeFrame(buffer);
 			},
 			error: (err) => {
 				this.#group?.abort(err);

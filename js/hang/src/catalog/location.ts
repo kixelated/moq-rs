@@ -3,13 +3,19 @@ import { TrackSchema } from "./track";
 
 export const PositionSchema = z.object({
 	// The relative X position of the broadcast, from -1 to +1.
+	// This should be used for audio panning but can also be used for video positioning.
 	x: z.optional(z.number()),
 
 	// The relative Y position of the broadcast, from -1 to +1.
+	// This can be used for video positioning, and maybe audio panning.
 	y: z.optional(z.number()),
 
-	// The relative zoom level of the broadcast, where 1 is 100%
-	zoom: z.optional(z.number()),
+	// The relative Z index of the broadcast, where larger values are closer to the viewer.
+	// This is used to break ties when there are multiple broadcasts at the same position.
+	z: z.optional(z.number()),
+
+	// The scale of the broadcast, where 1 is 100%
+	scale: z.optional(z.number()),
 });
 
 export const LocationSchema = z.object({

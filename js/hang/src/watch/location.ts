@@ -1,6 +1,7 @@
 import * as Moq from "@kixelated/moq";
 import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
+import * as Container from "../container";
 
 export interface LocationProps {
 	enabled?: boolean;
@@ -27,9 +28,15 @@ export class Location {
 	) {
 		this.enabled = signal(props?.enabled ?? false);
 		this.broadcast = broadcast;
-		this.catalog = this.#signals.memo(() => {
-			return this.enabled.get() ? catalog.get()?.location : undefined;
-		});
+
+		// Grab the location section from the catalog (if it's changed).
+		this.catalog = this.#signals.memo(
+			() => {
+				if (!this.enabled.get()) return undefined;
+				return catalog.get()?.location;
+			},
+			{ deepEquals: true },
+		);
 		this.peering = this.#signals.memo(() => this.catalog.get()?.peering);
 
 		this.#signals.effect(() => {
@@ -42,7 +49,6 @@ export class Location {
 			this.#current.set(initial);
 		});
 
-		// Use equals to prevent re-subscribing to an identical track.
 		this.#updates = this.#signals.memo(
 			() => {
 				const broadcast = this.broadcast.get();
@@ -56,7 +62,7 @@ export class Location {
 
 				return updates;
 			},
-			{ equals: (a, b) => a?.name === b?.name },
+			{ deepEquals: true },
 		);
 
 		this.#signals.effect(() => {
@@ -69,7 +75,7 @@ export class Location {
 			const track = broadcast.subscribe(updates.name, updates.priority);
 			cleanup(() => track.close());
 
-			const consumer = new LocationConsumer(track);
+			const consumer = new Container.PositionConsumer(track);
 			void runConsumer(consumer, this.#current);
 
 			cleanup(() => consumer.close());
@@ -86,15 +92,21 @@ export class Location {
 	}
 }
 
-async function runConsumer(consumer: LocationConsumer, location: Signal<Catalog.Position | undefined>) {
-	for (;;) {
-		const position = await consumer.next();
-		if (!position) break;
+async function runConsumer(consumer: Container.PositionConsumer, location: Signal<Catalog.Position | undefined>) {
+	try {
+		for (;;) {
+			const position = await consumer.next();
+			if (!position) break;
 
-		location.set(position);
+			location.set(position);
+		}
+
+		location.set(undefined);
+	} catch (err) {
+		console.warn("error running location consumer", err);
+	} finally {
+		consumer.close();
 	}
-
-	location.set(undefined);
 }
 
 export class LocationPeer {
@@ -114,18 +126,21 @@ export class LocationPeer {
 		this.location = signal<Catalog.Position | undefined>(undefined);
 		this.broadcast = broadcast;
 
-		this.#track = this.#signals.memo(() => {
-			const handle = this.handle.get();
-			if (!handle) return undefined;
+		this.#track = this.#signals.memo(
+			() => {
+				const handle = this.handle.get();
+				if (!handle) return undefined;
 
-			const root = catalog.get();
-			if (!root) return undefined;
+				const root = catalog.get();
+				if (!root) return undefined;
 
-			const track = root.peers?.[handle];
-			if (!track) return undefined;
+				const track = root.peers?.[handle];
+				if (!track) return undefined;
 
-			return track;
-		});
+				return track;
+			},
+			{ deepEquals: true },
+		);
 
 		this.#signals.effect(this.#run.bind(this));
 	}
@@ -142,41 +157,11 @@ export class LocationPeer {
 		const sub = broadcast.subscribe(track.name, track.priority);
 		cleanup(() => sub.close());
 
-		const consumer = new LocationConsumer(sub);
+		const consumer = new Container.PositionConsumer(sub);
 		void runConsumer(consumer, this.location);
 	}
 
 	close() {
 		this.#signals.close();
-	}
-}
-
-export class LocationConsumer {
-	track: Moq.TrackConsumer;
-
-	constructor(track: Moq.TrackConsumer) {
-		this.track = track;
-	}
-
-	async next(): Promise<Catalog.Position | undefined> {
-		const group = await this.track.nextGroup();
-		if (!group) return undefined;
-
-		try {
-			const frame = await group.readFrame();
-			if (!frame) return undefined;
-
-			const decoder = new TextDecoder();
-			const str = decoder.decode(frame);
-			const position = Catalog.PositionSchema.parse(JSON.parse(str));
-
-			return position;
-		} finally {
-			group.close();
-		}
-	}
-
-	close() {
-		this.track.close();
 	}
 }
