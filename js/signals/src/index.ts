@@ -21,6 +21,8 @@ export interface Signal<T> extends Memo<T> {
 	readonly(): Memo<T>;
 }
 
+// TODO: Require this is called using a Signals root.
+// TODO: Error on set if the root is closed, preventing potential errors.
 export function signal<T>(initial: T, options?: SignalOptions<T>): Signal<T> {
 	const [get, set] = createSignal(initial, options);
 	return {
@@ -62,9 +64,6 @@ export function cleanup(fn: () => void) {
 
 export type Dispose = () => void;
 
-// biome-ignore lint/suspicious/noConfusingVoidType: it's required to make the callback optional
-export type MaybeDispose = (() => void) | void;
-
 export interface Memo<T> {
 	get(): T;
 	peek(): T;
@@ -74,24 +73,28 @@ export interface Memo<T> {
 
 export type MemoOptions<T> = SignalOptions<T> & { deepEquals?: boolean };
 
-export function memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
+// Unlike solid-js, this doesn't support passing an initial value.
+// It calls the function immediately instead.
+export function memo<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Memo<T> {
 	if (options?.deepEquals) {
 		options.equals = dequal;
 	}
 
-	const sig = signal(fn(), options);
+	const sig = signal(fn(undefined), options);
 	effect(() => {
-		sig.set(fn());
+		const next = fn(sig.peek());
+		sig.set(next);
 	});
 
 	return sig;
 }
 
-export function effect(fn: () => MaybeDispose) {
+export function effect(fn: () => void) {
 	createEffect(() => {
-		const res = fn();
-		if (res) {
-			onCleanup(res);
+		const result = fn();
+		if (typeof result === "function") {
+			// Feels bad that Typescript can't enforce this.
+			throw new Error("effect must return void; use cleanup() instead");
 		}
 	});
 }
@@ -122,7 +125,7 @@ export class Signals {
 		}, parent);
 	}
 
-	effect(fn: () => MaybeDispose): void {
+	effect(fn: () => void): void {
 		const res = runWithOwner(this.#owner, () => {
 			effect(fn);
 			return true;
@@ -132,7 +135,7 @@ export class Signals {
 		}
 	}
 
-	memo<T>(fn: () => T, options?: MemoOptions<T>): Memo<T> {
+	memo<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Memo<T> {
 		const res = runWithOwner(this.#owner, () => memo(fn, options));
 		if (!res) {
 			throw new Error("root is closed");

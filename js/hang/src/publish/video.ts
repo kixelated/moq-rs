@@ -34,15 +34,18 @@ export type VideoConstraints = Omit<
 };
 
 export type VideoProps = {
+	enabled?: boolean;
 	media?: VideoTrack;
-	constraints?: VideoConstraints | boolean;
+	constraints?: VideoConstraints;
 };
 
 export class Video {
 	broadcast: Moq.BroadcastProducer;
 
+	enabled: Signal<boolean>;
+
 	readonly media: Signal<VideoTrack | undefined>;
-	readonly constraints: Signal<VideoConstraints | boolean | undefined>;
+	readonly constraints: Signal<VideoConstraints | undefined>;
 
 	#catalog = signal<Catalog.Video | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -67,6 +70,7 @@ export class Video {
 	constructor(broadcast: Moq.BroadcastProducer, props?: VideoProps) {
 		this.broadcast = broadcast;
 		this.media = signal(props?.media);
+		this.enabled = signal(props?.enabled ?? false);
 		this.constraints = signal(props?.constraints);
 
 		this.#signals.effect(() => this.#runTrack());
@@ -74,7 +78,9 @@ export class Video {
 		this.#signals.effect(() => this.#runCatalog());
 	}
 
-	#runTrack() {
+	#runTrack(): void {
+		if (!this.enabled.get()) return;
+
 		const media = this.media.get();
 		if (!media) return;
 
@@ -88,7 +94,9 @@ export class Video {
 		cleanup(() => this.#track.set(undefined));
 	}
 
-	#runEncoder() {
+	#runEncoder(): void {
+		if (!this.enabled.get()) return;
+
 		const media = this.media.get();
 		if (!media) return;
 
@@ -98,6 +106,7 @@ export class Video {
 		const settings = media.getSettings() as VideoTrackSettings;
 		const processor = VideoTrackProcessor(media);
 		const reader = processor.getReader();
+		cleanup(() => reader.cancel());
 
 		const encoder = new VideoEncoder({
 			output: (frame: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) => {
@@ -128,10 +137,6 @@ export class Video {
 		this.#decoderConfig.set(undefined);
 
 		void this.#runFrames(encoder, reader, settings);
-
-		return () => {
-			reader.cancel();
-		};
 	}
 
 	async #runFrames(
@@ -336,7 +341,7 @@ export class Video {
 	}
 
 	// Returns the catalog for the configured settings.
-	#runCatalog() {
+	#runCatalog(): void {
 		const encoderConfig = this.#encoderConfig.get();
 		if (!encoderConfig) return;
 
@@ -364,10 +369,7 @@ export class Video {
 		};
 
 		this.#catalog.set(catalog);
-
-		return () => {
-			this.#catalog.set(undefined);
-		};
+		cleanup(() => this.#catalog.set(undefined));
 	}
 
 	frame(now: DOMHighResTimeStamp): { frame: VideoFrame; lag: DOMHighResTimeStamp } | undefined {

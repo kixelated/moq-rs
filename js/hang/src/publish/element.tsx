@@ -1,4 +1,4 @@
-import { Signals, signal } from "@kixelated/signals";
+import { Signals, cleanup, signal } from "@kixelated/signals";
 import { Show, render } from "solid-js/web";
 import { Connection } from "../connection";
 import { Broadcast, Device } from "./broadcast";
@@ -34,9 +34,9 @@ export default class HangPublish extends HTMLElement {
 			if (!media || !preview) return;
 
 			preview.srcObject = new MediaStream([media]);
-			return () => {
+			cleanup(() => {
 				preview.srcObject = null;
-			};
+			});
 		});
 
 		// Render the controls element.
@@ -56,9 +56,9 @@ export default class HangPublish extends HTMLElement {
 		} else if (name === "device") {
 			this.broadcast.device.set(newValue as Device);
 		} else if (name === "audio") {
-			this.broadcast.audio.constraints.set(newValue !== null);
+			this.broadcast.audio.enabled.set(newValue !== null);
 		} else if (name === "video") {
-			this.broadcast.video.constraints.set(newValue !== null);
+			this.broadcast.video.enabled.set(newValue !== null);
 		} else if (name === "controls") {
 			this.#controls.set(newValue !== null);
 		}

@@ -32,15 +32,17 @@ export interface AudioTrackSettings {
 }
 
 export type AudioProps = {
+	enabled?: boolean;
 	media?: AudioTrack;
-	constraints?: AudioConstraints | boolean;
+	constraints?: AudioConstraints;
 };
 
 export class Audio {
 	broadcast: Moq.BroadcastProducer;
+	enabled: Signal<boolean>;
 
 	readonly media: Signal<AudioTrack | undefined>;
-	readonly constraints: Signal<AudioConstraints | boolean | undefined>;
+	readonly constraints: Signal<AudioConstraints | undefined>;
 
 	#catalog = signal<Catalog.Audio | undefined>(undefined);
 	readonly catalog = this.#catalog.readonly();
@@ -58,19 +60,16 @@ export class Audio {
 	constructor(broadcast: Moq.BroadcastProducer, props?: AudioProps) {
 		this.broadcast = broadcast;
 		this.media = signal(props?.media);
+		this.enabled = signal(props?.enabled ?? false);
 		this.constraints = signal(props?.constraints);
 
-		this.#signals.effect(() => this.#runCatalog());
 		this.#signals.effect(() => this.#runWorklet());
 		this.#signals.effect(() => this.#runEncoder());
 	}
 
-	#runCatalog() {
-		const media = this.media.get();
-		if (!media) return;
-	}
+	#runWorklet(): void {
+		if (!this.enabled.get()) return;
 
-	#runWorklet() {
 		const media = this.media.get();
 		if (!media) return;
 
@@ -85,6 +84,7 @@ export class Audio {
 		const context = new AudioContext({
 			sampleRate: settings.sampleRate,
 		});
+		cleanup(() => context.close());
 
 		// Async because we need to wait for the worklet to be registered.
 		// Annoying, I know
@@ -93,16 +93,17 @@ export class Audio {
 			this.#root.set({ context, node });
 		});
 
-		return () => {
+		cleanup(() => {
 			this.#root.set((p) => {
 				p?.node.disconnect();
-				p?.context.close();
 				return undefined;
 			});
-		};
+		});
 	}
 
-	#runEncoder() {
+	#runEncoder(): void {
+		if (!this.enabled.get()) return;
+
 		const root = this.root.get();
 		if (!root) return;
 

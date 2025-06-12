@@ -2,18 +2,18 @@ import * as Moq from "@kixelated/moq";
 import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
-import { Audio, AudioConstraints, AudioTrack } from "./audio";
+import { Audio, AudioProps, AudioTrack } from "./audio";
 import { Chat, ChatProps } from "./chat";
 import { Location, LocationProps } from "./location";
-import { Video, VideoConstraints, VideoTrack } from "./video";
+import { Video, VideoProps, VideoTrack } from "./video";
 
 export type Device = "screen" | "camera";
 
 export type BroadcastProps = {
 	enabled?: boolean;
 	path?: string;
-	audio?: AudioConstraints | boolean;
-	video?: VideoConstraints | boolean;
+	audio?: AudioProps;
+	video?: VideoProps;
 	location?: LocationProps;
 	user?: Catalog.User;
 	device?: Device;
@@ -49,8 +49,8 @@ export class Broadcast {
 		this.enabled = signal(props?.enabled ?? false);
 		this.path = signal(props?.path ?? "");
 
-		this.audio = new Audio(this.#broadcast, { constraints: props?.audio });
-		this.video = new Video(this.#broadcast, { constraints: props?.video });
+		this.audio = new Audio(this.#broadcast, props?.audio);
+		this.video = new Video(this.#broadcast, props?.video);
 		this.location = new Location(this.#broadcast, props?.location);
 		this.chat = new Chat(this.#broadcast, props?.chat);
 		this.user = signal(props?.user);
@@ -92,10 +92,9 @@ export class Broadcast {
 		const device = this.device.get();
 		if (device !== "camera") return;
 
-		const audio = this.audio.constraints.get();
-		if (!audio) return;
+		if (!this.audio.enabled.get()) return;
 
-		const media = navigator.mediaDevices.getUserMedia({ audio });
+		const media = navigator.mediaDevices.getUserMedia({ audio: this.audio.constraints.get() ?? true });
 
 		media
 			.then((media) => {
@@ -106,22 +105,21 @@ export class Broadcast {
 				console.error("failed to get media", err);
 			});
 
-		return () => {
+		cleanup(() => {
 			this.audio.media.set((prev) => {
 				prev?.stop();
 				return undefined;
 			});
-		};
+		});
 	}
 
 	#runCameraVideo() {
 		const device = this.device.get();
 		if (device !== "camera") return;
 
-		const video = this.video.constraints.get();
-		if (!video) return;
+		if (!this.video.enabled.get()) return;
 
-		const media = navigator.mediaDevices.getUserMedia({ video });
+		const media = navigator.mediaDevices.getUserMedia({ video: this.video.constraints.get() ?? true });
 
 		media
 			.then((media) => {
@@ -132,21 +130,19 @@ export class Broadcast {
 				console.error("failed to get media", err);
 			});
 
-		return () => {
+		cleanup(() => {
 			this.video.media.set((prev) => {
 				prev?.stop();
 				return undefined;
 			});
-		};
+		});
 	}
 
 	#runScreen() {
 		const device = this.device.get();
 		if (device !== "screen") return;
 
-		const audio = this.audio.constraints.get();
-		const video = this.video.constraints.get();
-		if (!audio && !video) return;
+		if (!this.audio.enabled.get() && !this.video.enabled.get()) return;
 
 		// TODO Expose these to the application.
 		// @ts-expect-error Chrome only
@@ -159,8 +155,8 @@ export class Broadcast {
 		}
 
 		const media = navigator.mediaDevices.getDisplayMedia({
-			video,
-			audio,
+			video: this.video.constraints.get() ?? true,
+			audio: this.audio.constraints.get() ?? true,
 			// @ts-expect-error Chrome only
 			controller,
 			preferCurrentTab: false,
@@ -181,7 +177,7 @@ export class Broadcast {
 				console.error("failed to get media", err);
 			});
 
-		return () => {
+		cleanup(() => {
 			this.video.media.set((prev) => {
 				prev?.stop();
 				return undefined;
@@ -191,7 +187,7 @@ export class Broadcast {
 				prev?.stop();
 				return undefined;
 			});
-		};
+		});
 	}
 
 	#runCatalog() {

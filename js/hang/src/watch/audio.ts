@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import { Memo, Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -181,11 +181,13 @@ export class Audio {
 		if (!broadcast) return;
 
 		const sub = broadcast.subscribe(selected.track.name, selected.track.priority);
+		cleanup(() => sub.close());
 
 		const decoder = new AudioDecoder({
 			output: (data) => this.#emit(data),
 			error: (error) => console.error(error),
 		});
+		cleanup(() => decoder.close());
 
 		const config = selected.config;
 
@@ -210,11 +212,6 @@ export class Audio {
 				decoder.decode(chunk);
 			}
 		})();
-
-		return () => {
-			sub.close();
-			decoder.close();
-		};
 	}
 
 	#emit(sample: AudioData) {
