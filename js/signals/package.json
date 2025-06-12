@@ -19,7 +19,7 @@
 		"solid-js": "^1.9.7"
 	},
 	"devDependencies": {
-		"tsx": "^4.19.4",
+		"tsx": "^4.20.1",
 		"typescript": "^5.8.3"
 	}
 }

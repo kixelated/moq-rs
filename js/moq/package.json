@@ -16,9 +16,9 @@
 		"release": "tsx ../scripts/release.ts"
 	},
 	"devDependencies": {
+		"@typescript/lib-dom": "npm:@types/web@^0.0.241",
+		"tsx": "^4.20.1",
 		"typescript": "^5.8.3",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.235",
-		"tsx": "^4.19.4",
 		"vite": "^6.3.5",
 		"vite-plugin-html": "^3.2.2"
 	},
