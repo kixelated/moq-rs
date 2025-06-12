@@ -52,9 +52,3 @@ upgrade:
 build flags="":
 	pnpm -r install {{flags}}
 	pnpm -r run build
-
-# Generate documentation
-doc: build
-	# Currently bugged for hang
-	pnpm --dir moq exec api-extractor run --local --verbose
-	pnpm exec api-documenter markdown --input api --output doc
