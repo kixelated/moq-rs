@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/kixelated/moq/compare/moq-native-v0.7.0...moq-native-v0.7.1) - 2025-06-13
+
+### Fixed
+
+- args for tls generate need to be without the port number ([#413](https://github.com/kixelated/moq/pull/413))
+
+### Other
+
+- Default to the first certificate when SNI matching fails. ([#414](https://github.com/kixelated/moq/pull/414))
+
 ## [0.7.0](https://github.com/kixelated/moq/compare/moq-native-v0.6.9...moq-native-v0.7.0) - 2025-06-03
 
 ### Other

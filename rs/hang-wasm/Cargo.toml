@@ -2,7 +2,7 @@
 name = "hang-wasm"
 authors = ["Luke Curley <kixelated@gmail.com>"]
 edition = "2021"
-version = "0.1.1"
+version = "0.1.2"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kixelated/moq"
 description = "Web implementation for MoQ utilizing WebAssembly+Typescript"
