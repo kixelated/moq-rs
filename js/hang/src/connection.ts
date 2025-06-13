@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import { Signal, Signals, signal } from "@kixelated/signals";
+import { Signal, Signals, cleanup, signal } from "@kixelated/signals";
 
 export type ConnectionProps = {
 	// The URL of the relay server.
@@ -53,7 +53,7 @@ export class Connection {
 		this.#signals.effect(() => this.#connect());
 	}
 
-	#connect() {
+	#connect(): void {
 		// Will retry when the tick changes.
 		this.#tick.get();
 
@@ -61,6 +61,7 @@ export class Connection {
 		if (!url) return;
 
 		this.status.set("connecting");
+		cleanup(() => this.status.set("disconnected"));
 
 		(async () => {
 			try {
@@ -90,13 +91,12 @@ export class Connection {
 			}
 		})();
 
-		return () => {
+		cleanup(() => {
 			this.established.set((prev) => {
 				prev?.close();
 				return undefined;
 			});
-			this.status.set("disconnected");
-		};
+		});
 	}
 
 	close() {

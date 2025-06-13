@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import * as Moq from "@kixelated/moq";
-import { Memo, Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import * as Container from "../container";
 
@@ -59,11 +59,8 @@ export class VideoRenderer {
 		);
 
 		observer.observe(canvas);
-
-		return () => {
-			observer.disconnect();
-			this.source.enabled.set(false);
-		};
+		cleanup(() => observer.disconnect());
+		cleanup(() => this.source.enabled.set(false));
 	}
 
 	// (re)schedule a render maybe.

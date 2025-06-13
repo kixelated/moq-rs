@@ -76,9 +76,9 @@ export class Location {
 			cleanup(() => track.close());
 
 			const consumer = new Container.PositionConsumer(track);
-			void runConsumer(consumer, this.#current);
-
 			cleanup(() => consumer.close());
+
+			void runConsumer(consumer, this.#current);
 		});
 	}
 
