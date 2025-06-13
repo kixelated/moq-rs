@@ -94,7 +94,7 @@ export function effect(fn: () => void) {
 		const result = fn();
 		if (typeof result === "function") {
 			// Feels bad that Typescript can't enforce this.
-			throw new Error("effect must return void; use cleanup() instead");
+			console.warn("effect must return void; use cleanup() instead");
 		}
 	});
 }
