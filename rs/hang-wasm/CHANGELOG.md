@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/kixelated/moq/compare/hang-wasm-v0.1.1...hang-wasm-v0.1.2) - 2025-06-13
+
+### Other
+
+- Add a simple chat protocol and user details ([#416](https://github.com/kixelated/moq/pull/416))
+
 ## [0.1.1](https://github.com/kixelated/moq/compare/hang-wasm-v0.1.0...hang-wasm-v0.1.1) - 2025-06-03
 
 ### Other
