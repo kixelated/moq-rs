@@ -1,5 +1,5 @@
 import * as Moq from "@kixelated/moq";
-import { Memo, Signal, Signals, signal } from "@kixelated/signals";
+import { Memo, Signal, Signals, cleanup, signal } from "@kixelated/signals";
 import * as Catalog from "../catalog";
 import { Connection } from "../connection";
 import { Audio, AudioProps } from "./audio";
@@ -68,15 +68,13 @@ export class Broadcast {
 		this.signals.effect(() => this.#runCatalog());
 	}
 
-	#runActive() {
+	#runActive(): void {
 		if (!this.enabled.get()) return;
 
 		if (!this.#reload) {
 			this.#active.set(true);
-
-			return () => {
-				this.#active.set(false);
-			};
+			cleanup(() => this.#active.set(false));
+			return;
 		}
 
 		const conn = this.connection.established.get();
@@ -85,6 +83,8 @@ export class Broadcast {
 		const path = this.path.get();
 
 		const announced = conn.announced(path);
+		cleanup(() => announced.close());
+
 		(async () => {
 			for (;;) {
 				const update = await announced.next();
@@ -101,13 +101,9 @@ export class Broadcast {
 				this.#active.set(update.active);
 			}
 		})();
-
-		return () => {
-			announced.close();
-		};
 	}
 
-	#runBroadcast() {
+	#runBroadcast(): void {
 		const conn = this.connection.established.get();
 		if (!conn) return;
 
@@ -117,15 +113,13 @@ export class Broadcast {
 		if (!this.#active.get()) return;
 
 		const broadcast = conn.consume(path);
-		this.#broadcast.set(broadcast);
+		cleanup(() => broadcast.close());
 
-		return () => {
-			broadcast.close();
-			this.#broadcast.set(undefined);
-		};
+		this.#broadcast.set(broadcast);
+		cleanup(() => this.#broadcast.set(undefined));
 	}
 
-	#runCatalog() {
+	#runCatalog(): void {
 		if (!this.enabled.get()) return;
 
 		const broadcast = this.#broadcast.get();
@@ -134,6 +128,7 @@ export class Broadcast {
 		this.status.set("loading");
 
 		const catalog = broadcast.subscribe("catalog.json", 0);
+		cleanup(() => catalog.close());
 
 		(async () => {
 			try {
@@ -153,10 +148,6 @@ export class Broadcast {
 				this.status.set("offline");
 			}
 		})();
-
-		return () => {
-			catalog.close();
-		};
 	}
 
 	close() {
